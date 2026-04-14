@@ -1730,18 +1730,24 @@ async function instructorCreateSession() {
       body: JSON.stringify({name, total_rounds:20, round_duration_minutes:30})
     });
     const sData = await sRes.json();
+    console.log('Session created:', sData);
+    if (!sData.session?.id) throw new Error('Session creation failed: ' + JSON.stringify(sData));
     sessionId = sData.session.id;
 
     const rRes  = await fetch(`${API_URL}/sessions/${sessionId}/rounds/next`, {method:'POST'});
     const rData = await rRes.json();
+    console.log('Round created:', rData);
+    if (!rData.round?.id) throw new Error('Round creation failed: ' + JSON.stringify(rData));
     roundId = rData.round.id;
     updateRoundDisplay(rData.round);
 
     const tRes  = await fetch(`${API_URL}/teams`, {
       method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({session_id:sessionId, name:'Instructor', color_hex:'#7c3aed', team_type:'observer'})
+      body: JSON.stringify({session_id:sessionId, name:'Instructor', color_hex:'#7c3aed', team_type:'human'})
     });
     const tData = await tRes.json();
+    console.log('Team created:', tData);
+    if (!tData.team?.id) throw new Error('Team creation failed: ' + JSON.stringify(tData));
     teamId = tData.team.id;
 
     enterSimulator();
@@ -1749,6 +1755,7 @@ async function instructorCreateSession() {
     showInstructorControls();
   } catch(e) {
     err.textContent = 'Failed: ' + e.message;
+    console.error('instructorCreateSession error:', e);
   }
 }
 
