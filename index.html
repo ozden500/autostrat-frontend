@@ -800,11 +800,11 @@ input[type=text]:focus,input[type=number]:focus{outline:none;border-color:var(--
   <div class="kpi-grid g2">
     <div class="card">
       <div class="card-title"><span class="tag tc">PRICING</span> Per-Segment Prices</div>
-      <div class="ctrl"><div class="ctrl-lbl"><span>Mass Market</span><span class="ctrl-v" id="cm-p1">€19,900</span></div><input type="range" min="14000" max="28000" step="100" value="19900" oninput="svp('cm-p1',this.value)"></div>
-      <div class="ctrl"><div class="ctrl-lbl"><span>SUV & Crossover</span><span class="ctrl-v" id="cm-p2">€32,500</span></div><input type="range" min="24000" max="52000" step="500" value="32500" oninput="svp('cm-p2',this.value)"></div>
-      <div class="ctrl"><div class="ctrl-lbl"><span>Electric Vehicles</span><span class="ctrl-v" id="cm-p3">€36,800</span></div><input type="range" min="26000" max="60000" step="500" value="36800" oninput="svp('cm-p3',this.value)"></div>
-      <div class="ctrl"><div class="ctrl-lbl"><span>Premium / Luxury</span><span class="ctrl-v" id="cm-p4">€58,000</span></div><input type="range" min="40000" max="120000" step="1000" value="58000" oninput="svp('cm-p4',this.value)"></div>
-      <div class="ctrl"><div class="ctrl-lbl"><span>Commercial Vehicles</span><span class="ctrl-v" id="cm-p5">€24,400</span></div><input type="range" min="18000" max="45000" step="200" value="24400" oninput="svp('cm-p5',this.value)"></div>
+      <div class="ctrl"><div class="ctrl-lbl"><span>Mass Market</span><span class="ctrl-v" id="cm-p1">€19,900</span></div><input id="cm-p1-range" type="range" min="14000" max="28000" step="100" value="19900" oninput="svp('cm-p1',this.value)"></div>
+      <div class="ctrl"><div class="ctrl-lbl"><span>SUV & Crossover</span><span class="ctrl-v" id="cm-p2">€32,500</span></div><input id="cm-p2-range" type="range" min="24000" max="52000" step="500" value="32500" oninput="svp('cm-p2',this.value)"></div>
+      <div class="ctrl"><div class="ctrl-lbl"><span>Electric Vehicles</span><span class="ctrl-v" id="cm-p3">€36,800</span></div><input id="cm-p3-range" type="range" min="26000" max="60000" step="500" value="36800" oninput="svp('cm-p3',this.value)"></div>
+      <div class="ctrl"><div class="ctrl-lbl"><span>Premium / Luxury</span><span class="ctrl-v" id="cm-p4">€58,000</span></div><input id="cm-p4-range" type="range" min="40000" max="120000" step="1000" value="58000" oninput="svp('cm-p4',this.value)"></div>
+      <div class="ctrl"><div class="ctrl-lbl"><span>Commercial Vehicles</span><span class="ctrl-v" id="cm-p5">€24,400</span></div><input id="cm-p5-range" type="range" min="18000" max="45000" step="200" value="24400" oninput="svp('cm-p5',this.value)"></div>
     </div>
     <div class="card">
       <div class="card-title"><span class="tag tc">MARKETING</span> Spend & Positioning</div>
@@ -1912,29 +1912,61 @@ function applyUserContext(user) {
 // COLLECT DECISIONS
 // ══════════════════════════════════════════
 function collectDecisions() {
+  // Get per-segment prices from the UI sliders
+  const getVal = (id, def) => {
+    const el = document.getElementById(id);
+    return el ? parseFloat(el.value) : def;
+  };
+  const getInt = (id, def) => {
+    const el = document.getElementById(id);
+    return el ? parseInt(el.value) : def;
+  };
+
+  // Per-segment commercial decisions using the segment price sliders
+  const segmentPrices = {
+    mass:       getVal('cm-p1-range', 19900) || 19900,
+    suv:        getVal('cm-p2-range', 32500) || 32500,
+    ev:         getVal('cm-p3-range', 36800) || 36800,
+    premium:    getVal('cm-p4-range', 58000) || 58000,
+    commercial: getVal('cm-p5-range', 24400) || 24400,
+  };
+
+  // Fall back to reading from display values if range inputs not found
+  const readPrice = (id, def) => {
+    const el = document.getElementById(id);
+    if (!el) return def;
+    const text = el.textContent.replace(/[€,]/g, '');
+    const val = parseFloat(text);
+    return isNaN(val) ? def : val;
+  };
+
+  const marketingSpend = getVal('sl-mktg', 10) || 10;
+  const distReach      = getVal('sl-dist',  50) || 50;
+
+  const commercialBySegment = [
+    { segment_code: 'mass',       price_eur: readPrice('cm-p1', 19900), marketing_spend_m: marketingSpend * 0.3,  distribution_reach_pct: distReach, feature_tier: 2, volume_allocation_pct: 20 },
+    { segment_code: 'suv',        price_eur: readPrice('cm-p2', 32500), marketing_spend_m: marketingSpend * 0.25, distribution_reach_pct: distReach, feature_tier: 2, volume_allocation_pct: 20 },
+    { segment_code: 'ev',         price_eur: readPrice('cm-p3', 36800), marketing_spend_m: marketingSpend * 0.2,  distribution_reach_pct: distReach, feature_tier: 2, volume_allocation_pct: 20 },
+    { segment_code: 'premium',    price_eur: readPrice('cm-p4', 58000), marketing_spend_m: marketingSpend * 0.15, distribution_reach_pct: distReach, feature_tier: 3, volume_allocation_pct: 20 },
+    { segment_code: 'commercial', price_eur: readPrice('cm-p5', 24400), marketing_spend_m: marketingSpend * 0.1,  distribution_reach_pct: distReach, feature_tier: 2, volume_allocation_pct: 20 },
+  ];
+
   return {
     operational: {
-      production_volume:     parseInt(document.getElementById('sl-prod')?.value    || 0),
-      capacity_investment_m: parseFloat(document.getElementById('sl-capinv')?.value || 0),
-      inventory_target_days: parseInt(document.getElementById('sl-inv')?.value     || 30),
-      supplier_tier:         parseInt(document.getElementById('sl-sup')?.value     || 2),
-      quality_spend_m:       parseFloat(document.getElementById('sl-qual')?.value  || 0),
-      workforce_headcount:   parseInt(document.getElementById('sl-wf')?.value      || 1000)
+      production_volume:     getInt('sl-prod',   420000),
+      capacity_investment_m: getVal('sl-capinv', 0),
+      inventory_target_days: getInt('sl-inv',    30),
+      supplier_tier:         getInt('sl-sup',    2),
+      quality_spend_m:       getVal('sl-qual',   0),
+      workforce_headcount:   getInt('sl-wf',     1000)
     },
     financial: {
-      capex_investment_m: parseFloat(document.getElementById('sl-capex')?.value || 0),
-      rd_spend_m:         parseFloat(document.getElementById('sl-rd')?.value    || 0),
-      debt_ratio_pct:     parseFloat(document.getElementById('sl-debt')?.value  || 30),
-      dividend_pct:       parseFloat(document.getElementById('sl-div')?.value   || 0)
+      capex_investment_m: getVal('sl-capex', 0),
+      rd_spend_m:         getVal('sl-rd',    0),
+      debt_ratio_pct:     getVal('sl-debt',  30),
+      dividend_pct:       getVal('sl-div',   0)
     },
-    commercial: {
-      segment_code:           document.getElementById('seg-focus')?.value || 'mass',
-      price_eur:              parseFloat(document.getElementById('sl-price')?.value || 25000),
-      marketing_spend_m:      parseFloat(document.getElementById('sl-mktg')?.value  || 10),
-      distribution_reach_pct: parseFloat(document.getElementById('sl-dist')?.value  || 50),
-      feature_tier:           2,
-      volume_allocation_pct:  20
-    }
+    commercialBySegment
   };
 }
 
@@ -1969,10 +2001,13 @@ async function submitRound() {
       method:'POST', headers:{'Content-Type':'application/json'},
       body: JSON.stringify({submission_id:submissionId, ...d.financial})
     });
-    await fetch(`${API_URL}/decisions/commercial`, {
-      method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({submission_id:submissionId, ...d.commercial})
-    });
+    // Save one commercial record per segment so engine gets per-segment pricing
+    for (const segDec of d.commercialBySegment) {
+      await fetch(`${API_URL}/decisions/commercial`, {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({submission_id:submissionId, ...segDec})
+      });
+    }
     await fetch(`${API_URL}/submissions/${submissionId}/submit`, {method:'POST'});
 
     submitted = true;
