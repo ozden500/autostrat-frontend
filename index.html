@@ -398,6 +398,114 @@ input[type=text]:focus,input[type=number]:focus{outline:none;border-color:var(--
 ::-webkit-scrollbar-track{background:transparent;}
 ::-webkit-scrollbar-thumb{background:var(--border2);border-radius:2px;}
 
+/* ══ INSTRUCTOR RESULTS SUMMARY ══ */
+#instructor-results-modal {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 9000;
+  background: rgba(0,0,0,.7);
+  align-items: center;
+  justify-content: center;
+}
+#instructor-results-modal.open { display: flex; }
+.ir-box {
+  background: #0f172a;
+  border: 1px solid #7c3aed;
+  border-radius: 16px;
+  width: 860px;
+  max-width: 95vw;
+  max-height: 88vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 25px 60px rgba(0,0,0,.6);
+}
+.ir-header {
+  background: #7c3aed;
+  padding: 14px 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-shrink: 0;
+}
+.ir-header h2 {
+  font-family: 'Orbitron', sans-serif;
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 2px;
+  color: #fff;
+  margin: 0;
+}
+.ir-close {
+  background: rgba(255,255,255,.15);
+  border: none;
+  color: #fff;
+  width: 28px; height: 28px;
+  border-radius: 50%;
+  cursor: pointer;
+  font-size: 16px;
+  display: flex; align-items: center; justify-content: center;
+}
+.ir-body { padding: 20px; overflow-y: auto; }
+.ir-round-label {
+  font-family: 'DM Mono', monospace;
+  font-size: 11px;
+  color: #64748b;
+  margin-bottom: 16px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+.ir-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+.ir-table th {
+  font-family: 'DM Mono', monospace;
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: #475569;
+  padding: 8px 12px;
+  text-align: right;
+  border-bottom: 1px solid #1e293b;
+}
+.ir-table th:first-child { text-align: left; }
+.ir-table td {
+  padding: 10px 12px;
+  text-align: right;
+  border-bottom: 1px solid #0f172a;
+  color: #94a3b8;
+}
+.ir-table td:first-child { text-align: left; }
+.ir-table tr:hover td { background: #111827; }
+.ir-rank-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px; height: 22px;
+  border-radius: 50%;
+  font-family: 'Orbitron', sans-serif;
+  font-size: 10px;
+  font-weight: 700;
+  margin-right: 8px;
+}
+.ir-rank-1 { background: #c8a43c; color: #000; }
+.ir-rank-2 { background: #64748b; color: #fff; }
+.ir-rank-3 { background: #92400e; color: #fff; }
+.ir-rank-n { background: #1e293b; color: #64748b; }
+.ir-team-dot {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+  margin-right: 6px;
+}
+.ir-val-good { color: #4ade80; font-weight: 600; }
+.ir-val-bad  { color: #f87171; font-weight: 600; }
+.ir-val-neu  { color: #fff; font-weight: 600; }
+.ir-no-data  { text-align: center; padding: 40px; color: #475569; font-size: 13px; }
+
 /* ══ INSTRUCTOR PANEL ══ */
 #instructor-panel {
   display: none;
@@ -1631,7 +1739,7 @@ async function instructorCreateSession() {
 
     const tRes  = await fetch(`${API_URL}/teams`, {
       method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({session_id:sessionId, name:'Instructor', color_hex:'#7c3aed', team_type:'human'})
+      body: JSON.stringify({session_id:sessionId, name:'Instructor', color_hex:'#7c3aed', team_type:'observer'})
     });
     const tData = await tRes.json();
     teamId = tData.team.id;
@@ -2081,6 +2189,85 @@ function updateRoundDisplay(roundData) {
 let ipVisible = false;
 let ipPollInterval = null;
 
+// ══════════════════════════════════════════
+// INSTRUCTOR RESULTS SUMMARY
+// ══════════════════════════════════════════
+async function openInstructorResults() {
+  document.getElementById('instructor-results-modal').classList.add('open');
+  document.getElementById('ir-content').innerHTML = '<div class="ir-no-data">Loading results...</div>';
+  try {
+    const tRes  = await fetch(`${API_URL}/sessions/${sessionId}/teams`);
+    const tData = await tRes.json();
+    const teams = (tData.teams || []).filter(t => t.name !== 'Instructor' && t.team_type !== 'observer');
+    const teamMap = {};
+    teams.forEach(t => teamMap[t.id] = t);
+
+    const oRes  = await fetch(`${API_URL}/sessions/${sessionId}/rounds/${roundId}/outcomes`);
+    const oData = await oRes.json();
+    const outcomes = oData.outcomes || [];
+    const scores   = oData.scores   || [];
+    const segments = oData.segments || [];
+
+    const rRes  = await fetch(`${API_URL}/sessions/${sessionId}/rounds`);
+    const rData = await rRes.json();
+    const round = (rData.rounds||[]).find(r => r.id === roundId) || (rData.rounds||[]).slice(-1)[0];
+    if (round) document.getElementById('ir-round-label').textContent =
+      `Round ${round.round_number} · Q${round.quarter} ${round.year} · ${scores.length} teams scored`;
+
+    if (scores.length === 0) {
+      document.getElementById('ir-content').innerHTML = '<div class="ir-no-data">No results yet — run the simulation first.</div>';
+      return;
+    }
+
+    // Sort by composite score descending — only include known teams
+    const sorted = [...scores]
+      .filter(s => teamMap[s.team_id]) // exclude unknown/instructor
+      .sort((a,b) => (b.composite_score||0) - (a.composite_score||0));
+
+    // Deduplicate segments per team by segment_code
+    const teamSegs = {};
+    segments.forEach(s => {
+      if (!teamSegs[s.team_id]) teamSegs[s.team_id] = {};
+      if (!teamSegs[s.team_id][s.segment_code]) teamSegs[s.team_id][s.segment_code] = s;
+    });
+
+    let html = `<table class="ir-table">
+      <thead><tr>
+        <th>Team</th><th>Score</th><th>Financial</th><th>Commercial</th><th>Operational</th>
+        <th>Revenue</th><th>EBIT%</th><th>Mkt Share</th><th>Units</th>
+      </tr></thead><tbody>`;
+
+    sorted.forEach((score, idx) => {
+      const rank    = idx + 1;
+      const team    = teamMap[score.team_id] || {name:'Unknown', color_hex:'#475569'};
+      const outcome = outcomes.find(o => o.team_id === score.team_id);
+      const segs    = Object.values(teamSegs[score.team_id] || {});
+      const totalShare = segs.reduce((s,x) => s + parseFloat(x.market_share_pct||0), 0);
+      const revM    = parseFloat(outcome?.revenue_m || 0);
+      const ebitM   = parseFloat(outcome?.ebit_m    || 0);
+      const ebitPct = revM > 0 ? ((ebitM/revM)*100).toFixed(1) : '0.0';
+      const units   = parseInt(outcome?.total_units_sold || 0);
+      const rankClass = rank===1?'ir-rank-1':rank===2?'ir-rank-2':rank===3?'ir-rank-3':'ir-rank-n';
+      const ebitClass = parseFloat(ebitPct)>5?'ir-val-good':parseFloat(ebitPct)<0?'ir-val-bad':'ir-val-neu';
+      html += `<tr>
+        <td><span class="ir-rank-badge ${rankClass}">${rank}</span><span class="ir-team-dot" style="background:${team.color_hex}"></span><strong style="color:#fff">${team.name}</strong></td>
+        <td class="ir-val-neu">${score.composite_score?.toFixed(1)||'—'}</td>
+        <td>${score.financial_score?.toFixed(1)||'—'}</td>
+        <td>${score.commercial_score?.toFixed(1)||'—'}</td>
+        <td>${score.operational_score?.toFixed(1)||'—'}</td>
+        <td class="ir-val-neu">€${Math.round(revM).toLocaleString()}M</td>
+        <td class="${ebitClass}">${ebitPct}%</td>
+        <td>${totalShare.toFixed(1)}%</td>
+        <td>${units.toLocaleString()}</td>
+      </tr>`;
+    });
+    html += '</tbody></table>';
+    document.getElementById('ir-content').innerHTML = html;
+  } catch(e) {
+    document.getElementById('ir-content').innerHTML = `<div class="ir-no-data">Error: ${e.message}</div>`;
+  }
+}
+
 function toggleInstructorPanel() {
   ipVisible = !ipVisible;
   document.getElementById('instructor-panel').classList.toggle('visible', ipVisible);
@@ -2106,7 +2293,7 @@ async function refreshInstructorPanel() {
     // Get teams
     const tRes  = await fetch(`${API_URL}/sessions/${sessionId}/teams`);
     const tData = await tRes.json();
-    const teams = (tData.teams || []).filter(t => t.name !== 'Instructor');
+    const teams = (tData.teams || []).filter(t => t.name !== 'Instructor' && t.team_type !== 'observer');
 
     // Get rounds
     const rRes  = await fetch(`${API_URL}/sessions/${sessionId}/rounds`);
@@ -2168,6 +2355,7 @@ async function instructorCloseRound() {
     btn.textContent = '✓ Round closed';
     document.getElementById('ip-status-label').textContent = 'results';
     document.getElementById('ip-btn-next').disabled = false;
+    document.getElementById('ip-btn-results').disabled = false;
     document.getElementById('phase-pill').textContent = '📊 Results Phase';
     await refreshInstructorPanel();
   } catch(e) {
@@ -2243,7 +2431,21 @@ buildBenchRows();
     </div>
     <button class="ip-btn ip-btn-refresh" onclick="refreshInstructorPanel()">↻ Refresh Status</button>
     <button class="ip-btn ip-btn-close" id="ip-btn-close" onclick="instructorCloseRound()" disabled>⏹ Close Round & Run Simulation</button>
+    <button class="ip-btn" id="ip-btn-results" onclick="openInstructorResults()" disabled style="background:#0f766e;color:#fff">📊 View Round Results Summary</button>
     <button class="ip-btn ip-btn-next"  id="ip-btn-next"  onclick="instructorNextRound()"  disabled>▶ Open Next Round</button>
+  </div>
+</div>
+<!-- ══ INSTRUCTOR RESULTS SUMMARY MODAL ══ -->
+<div id="instructor-results-modal">
+  <div class="ir-box">
+    <div class="ir-header">
+      <h2>📊 ROUND RESULTS SUMMARY</h2>
+      <button class="ir-close" onclick="document.getElementById('instructor-results-modal').classList.remove('open')">×</button>
+    </div>
+    <div class="ir-body">
+      <div class="ir-round-label" id="ir-round-label">Loading...</div>
+      <div id="ir-content"><div class="ir-no-data">Run the simulation first to see results.</div></div>
+    </div>
   </div>
 </div>
 
