@@ -2074,7 +2074,7 @@ function updateDashboardKPIs(outcome, score, segs) {
   const revM       = parseFloat(outcome.revenue_m);
   const ebitM      = parseFloat(outcome.ebit_m);
   const ebitMargin = revM > 0 ? ((ebitM / revM) * 100).toFixed(1) : '0';
-  const totalShare = segs.reduce((s, x) => s + parseFloat(x.market_share_pct || 0), 0);
+  const totalShare = segs.length > 0 ? segs.reduce((s, x) => s + parseFloat(x.market_share_pct || 0), 0) / segs.length : 0;
   const rank       = score ? score.rank : '—';
 
   if (el('kpi-revenue'))       el('kpi-revenue').textContent       = '€' + Math.round(revM).toLocaleString();
@@ -2183,7 +2183,7 @@ function showResults(data, tid) {
   }
 
   const ebitMargin = outcome.revenue_m > 0 ? ((outcome.ebit_m/outcome.revenue_m)*100).toFixed(1)+'%' : '0%';
-  const totalShare = segs.reduce((s,x) => s+parseFloat(x.market_share_pct||0), 0);
+  const totalShare = segs.length > 0 ? segs.reduce((s,x) => s+parseFloat(x.market_share_pct||0), 0) / segs.length : 0;
   const el = id => document.getElementById(id);
   if (el('res-revenue')) el('res-revenue').textContent = '€'+parseFloat(outcome.revenue_m).toLocaleString(undefined,{maximumFractionDigits:0})+'M';
   if (el('res-ebit'))    el('res-ebit').textContent    = ebitMargin;
@@ -2284,7 +2284,7 @@ async function openInstructorResults() {
       const team    = teamMap[score.team_id] || {name:'Unknown', color_hex:'#475569'};
       const outcome = outcomes.find(o => o.team_id === score.team_id);
       const segs    = Object.values(teamSegs[score.team_id] || {});
-      const totalShare = segs.reduce((s,x) => s + parseFloat(x.market_share_pct||0), 0);
+      const totalShare = segs.length > 0 ? segs.reduce((s,x) => s + parseFloat(x.market_share_pct||0), 0) / segs.length : 0;
       const revM    = parseFloat(outcome?.revenue_m || 0);
       const ebitM   = parseFloat(outcome?.ebit_m    || 0);
       const ebitPct = revM > 0 ? ((ebitM/revM)*100).toFixed(1) : '0.0';
