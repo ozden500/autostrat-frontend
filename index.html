@@ -701,12 +701,12 @@ input[type=text]:focus,input[type=number]:focus{outline:none;border-color:var(--
 
   <div class="sb-sec">
     <div class="sb-lbl">Human Teams</div>
-    <div class="team-row" id="sidebar-h1"><div class="tdot" style="background:var(--h1)"></div><div class="tname" data-team="Alpha Motors">Alpha Motors</div><div class="trev">€42.3B</div></div>
-    <div class="team-row" id="sidebar-h2"><div class="tdot" style="background:var(--h2)"></div><div class="tname" data-team="Beta Automotive">Beta Automotive</div><div class="trev">€38.7B</div></div>
-    <div class="team-row" id="sidebar-h3"><div class="tdot" style="background:var(--h3)"></div><div class="tname" data-team="Gamma Drive">Gamma Drive</div><div class="trev">€35.1B</div></div>
-    <div class="team-row" id="sidebar-h4"><div class="tdot" style="background:var(--h4)"></div><div class="tname" data-team="Delta Vehicles">Delta Vehicles</div><div class="trev">€29.8B</div></div>
-    <div class="team-row" id="sidebar-h5"><div class="tdot" style="background:var(--h5)"></div><div class="tname" data-team="Epsilon Auto">Epsilon Auto</div><div class="trev">€31.2B</div></div>
-    <div class="team-row" id="sidebar-h6"><div class="tdot" style="background:var(--h6)"></div><div class="tname" data-team="Zeta Motors">Zeta Motors</div><div class="trev">€27.4B</div></div>
+    <div class="team-row" id="sidebar-h1"><div class="tdot" style="background:var(--h1)"></div><div class="tname" data-team="Alpha Motors">Alpha Motors</div><div class="trev" id="srev-Alpha Motors">—</div></div>
+    <div class="team-row" id="sidebar-h2"><div class="tdot" style="background:var(--h2)"></div><div class="tname" data-team="Beta Automotive">Beta Automotive</div><div class="trev" id="srev-Beta Automotive">—</div></div>
+    <div class="team-row" id="sidebar-h3"><div class="tdot" style="background:var(--h3)"></div><div class="tname" data-team="Gamma Drive">Gamma Drive</div><div class="trev" id="srev-Gamma Drive">—</div></div>
+    <div class="team-row" id="sidebar-h4"><div class="tdot" style="background:var(--h4)"></div><div class="tname" data-team="Delta Vehicles">Delta Vehicles</div><div class="trev" id="srev-Delta Vehicles">—</div></div>
+    <div class="team-row" id="sidebar-h5"><div class="tdot" style="background:var(--h5)"></div><div class="tname" data-team="Epsilon Auto">Epsilon Auto</div><div class="trev" id="srev-Epsilon Auto">—</div></div>
+    <div class="team-row" id="sidebar-h6"><div class="tdot" style="background:var(--h6)"></div><div class="tname" data-team="Zeta Motors">Zeta Motors</div><div class="trev" id="srev-Zeta Motors">—</div></div>
   </div>
 
   <div class="sb-sec" style="flex:1">
@@ -778,10 +778,10 @@ input[type=text]:focus,input[type=number]:focus{outline:none;border-color:var(--
 <div class="page" id="page-operations">
   <div class="pg-title">OPERATIONS</div><div class="pg-sub">Production · Supply Chain · Quality · Workforce</div>
   <div class="kpi-grid g4">
-    <div class="kpi kk-g"><div class="kl">Capacity</div><div class="kv">512k</div><div class="kd neu">units/yr</div></div>
-    <div class="kpi kk-c"><div class="kl">Utilization</div><div class="kv" style="color:var(--cyan)">82%</div><div class="kd up">optimal</div></div>
-    <div class="kpi kk-r"><div class="kl">Defect Rate</div><div class="kv">1.8%</div><div class="kd dn">reduce</div></div>
-    <div class="kpi kk-p"><div class="kl">COGS/unit</div><div class="kv">€18.2k</div><div class="kd dn">+2.1% inflation</div></div>
+    <div class="kpi kk-g"><div class="kl">Capacity</div><div class="kv" id="ops-capacity">512k</div><div class="kd neu">units/yr</div></div>
+    <div class="kpi kk-c"><div class="kl">Utilization</div><div class="kv" id="ops-utilization" style="color:var(--cyan)">82%</div><div class="kd up">optimal</div></div>
+    <div class="kpi kk-r"><div class="kl">Defect Rate</div><div class="kv" id="ops-defect">1.8%</div><div class="kd dn">reduce</div></div>
+    <div class="kpi kk-p"><div class="kl">COGS/unit</div><div class="kv" id="ops-cogs-unit">€18.2k</div><div class="kd dn">+2.1% inflation</div></div>
   </div>
   <div class="kpi-grid g2">
     <div class="card">
@@ -805,10 +805,10 @@ input[type=text]:focus,input[type=number]:focus{outline:none;border-color:var(--
 <div class="page" id="page-commercial">
   <div class="pg-title">COMMERCIAL</div><div class="pg-sub">Pricing · Marketing · Distribution · Customer Experience</div>
   <div class="kpi-grid g4">
-    <div class="kpi kk-g"><div class="kl">Market Share</div><div class="kv" style="color:var(--gold)">14.2%</div><div class="kd up">▲ +0.4pp</div></div>
-    <div class="kpi kk-c"><div class="kl">Blended ASP</div><div class="kv">€28.5k</div><div class="kd up">▲ mix shift</div></div>
-    <div class="kpi kk-b"><div class="kl">Brand Index</div><div class="kv">72/100</div><div class="kd up">▲ +3pts</div></div>
-    <div class="kpi kk-r"><div class="kl">NPS</div><div class="kv">+41</div><div class="kd dn">▼ -4pts</div></div>
+    <div class="kpi kk-g"><div class="kl">Market Share</div><div class="kv" id="com-share" style="color:var(--gold)">14.2%</div><div class="kd up" id="com-share-delta">▲ +0.4pp</div></div>
+    <div class="kpi kk-c"><div class="kl">Blended ASP</div><div class="kv" id="com-asp">€28.5k</div><div class="kd up">▲ mix shift</div></div>
+    <div class="kpi kk-b"><div class="kl">Brand Index</div><div class="kv" id="com-brand">72/100</div><div class="kd up">▲ +3pts</div></div>
+    <div class="kpi kk-r"><div class="kl">NPS</div><div class="kv" id="com-nps">+41</div><div class="kd dn">▼ -4pts</div></div>
   </div>
   <div class="kpi-grid g2">
     <div class="card">
@@ -833,24 +833,24 @@ input[type=text]:focus,input[type=number]:focus{outline:none;border-color:var(--
 <div class="page" id="page-financial">
   <div class="pg-title">FINANCIAL</div><div class="pg-sub">P&L · Balance Sheet · Capital Structure</div>
   <div class="kpi-grid g4">
-    <div class="kpi kk-c"><div class="kl">Revenue (Qtr)</div><div class="kv" style="color:var(--cyan)">€10,585M</div><div class="kd up">▲ +8.2%</div></div>
-    <div class="kpi kk-g"><div class="kl">EBIT</div><div class="kv" style="color:var(--gold)">€784M</div><div class="kd up">7.4% margin</div></div>
-    <div class="kpi kk-r"><div class="kl">Net Debt</div><div class="kv" style="color:var(--red)">€6,240M</div><div class="kd dn">1.5× EBITDA</div></div>
-    <div class="kpi kk-b"><div class="kl">Free Cash Flow</div><div class="kv">€455M</div><div class="kd up">▲ strong</div></div>
+    <div class="kpi kk-c"><div class="kl">Revenue (Qtr)</div><div class="kv" id="fin-revenue" style="color:var(--cyan)">€10,585M</div><div class="kd up" id="fin-revenue-delta">▲ +8.2%</div></div>
+    <div class="kpi kk-g"><div class="kl">EBIT</div><div class="kv" id="fin-ebit" style="color:var(--gold)">€784M</div><div class="kd up" id="fin-ebit-pct">7.4% margin</div></div>
+    <div class="kpi kk-r"><div class="kl">Net Debt</div><div class="kv" id="fin-debt" style="color:var(--red)">€6,240M</div><div class="kd dn">1.5× EBITDA</div></div>
+    <div class="kpi kk-b"><div class="kl">Free Cash Flow</div><div class="kv" id="fin-cashflow">€455M</div><div class="kd up">▲ strong</div></div>
   </div>
   <div class="card" style="margin-bottom:12px;">
     <div class="card-title" id="pl-title">Quarterly P&L — Q2 2025</div>
     <table class="tbl">
       <thead><tr><th>Line Item</th><th>Q2 2025</th><th>Q1 2025</th><th>Δ %</th></tr></thead>
       <tbody>
-        <tr><td>Revenue</td><td>10,585</td><td>9,782</td><td class="pos">+8.2%</td></tr>
-        <tr><td>Cost of Goods Sold</td><td class="neg">-7,860</td><td class="neg">-7,280</td><td class="neg">-8.0%</td></tr>
-        <tr><td>Gross Profit</td><td>2,725</td><td>2,502</td><td class="pos">+8.9%</td></tr>
-        <tr><td>R&D Expense</td><td class="neg">-820</td><td class="neg">-750</td><td class="neg">-9.3%</td></tr>
-        <tr><td>SG&A + Marketing</td><td class="neg">-1,370</td><td class="neg">-1,280</td><td class="neg">-7.0%</td></tr>
-        <tr class="tot"><td>EBIT</td><td>784</td><td>658</td><td class="pos">+19.1%</td></tr>
-        <tr><td>Tax & Financing</td><td class="neg">-286</td><td class="neg">-241</td><td class="neg">-18.7%</td></tr>
-        <tr class="tot"><td>Net Income</td><td>498</td><td>417</td><td class="pos">+19.4%</td></tr>
+        <tr><td>Revenue</td><td id="pl-rev">10,585</td><td>9,782</td><td class="pos" id="pl-rev-delta">+8.2%</td></tr>
+        <tr><td>Cost of Goods Sold</td><td class="neg" id="pl-cogs">-7,860</td><td class="neg">-7,280</td><td class="neg" id="pl-cogs-delta">-8.0%</td></tr>
+        <tr><td>Gross Profit</td><td id="pl-gp">2,725</td><td>2,502</td><td class="pos" id="pl-gp-delta">+8.9%</td></tr>
+        <tr><td>R&D Expense</td><td class="neg" id="pl-rd">-820</td><td class="neg">-750</td><td class="neg">-9.3%</td></tr>
+        <tr><td>SG&A + Marketing</td><td class="neg" id="pl-mktg">-1,370</td><td class="neg">-1,280</td><td class="neg">-7.0%</td></tr>
+        <tr class="tot"><td>EBIT</td><td id="pl-ebit">784</td><td>658</td><td class="pos" id="pl-ebit-delta">+19.1%</td></tr>
+        <tr><td>Tax & Financing</td><td class="neg" id="pl-tax">-286</td><td class="neg">-241</td><td class="neg">-18.7%</td></tr>
+        <tr class="tot"><td>Net Income</td><td id="pl-ni">498</td><td>417</td><td class="pos" id="pl-ni-delta">+19.4%</td></tr>
       </tbody>
     </table>
   </div>
@@ -1081,10 +1081,10 @@ input[type=text]:focus,input[type=number]:focus{outline:none;border-color:var(--
 </div>
   <div class="pg-title">LEADERBOARD</div><div class="pg-sub" id="lb-sub">Cumulative · Round 1 · 12 OEMs</div>
   <div class="kpi-grid g4">
-    <div class="kpi kk-g"><div class="kl">Your Rank</div><div class="kv" style="color:var(--gold)">#1</div><div class="kd up">of 12 OEMs</div></div>
-    <div class="kpi kk-c"><div class="kl">Your Score</div><div class="kv">9,240</div><div class="kd up">▲ +380 this round</div></div>
-    <div class="kpi kk-b"><div class="kl">Gap to #2</div><div class="kv" style="color:var(--green)">+430</div><div class="kd neu">pts ahead</div></div>
-    <div class="kpi kk-r"><div class="kl">Rounds Left</div><div class="kv">15</div><div class="kd neu">of 20</div></div>
+    <div class="kpi kk-g"><div class="kl">Your Rank</div><div class="kv" id="lb-your-rank" style="color:var(--gold)">#—</div><div class="kd up">of 12 OEMs</div></div>
+    <div class="kpi kk-c"><div class="kl">Your Score</div><div class="kv" id="lb-your-score">—</div><div class="kd up" id="lb-your-score-delta">this round</div></div>
+    <div class="kpi kk-b"><div class="kl">Gap to #1</div><div class="kv" id="lb-gap" style="color:var(--green)">—</div><div class="kd neu" id="lb-gap-label">pts</div></div>
+    <div class="kpi kk-r"><div class="kl">Rounds Left</div><div class="kv" id="lb-rounds-left">—</div><div class="kd neu">of 20</div></div>
   </div>
   <div class="card">
     <div class="card-title">Full Standings</div>
@@ -2129,8 +2129,132 @@ setInterval(()=>{
 // ROUND DISPLAY UPDATE
 // ══════════════════════════════════════════
 // ══════════════════════════════════════════
-// DASHBOARD KPI UPDATE
+// UPDATE ALL HARDCODED KPIs FROM REAL DATA
 // ══════════════════════════════════════════
+async function updateAllKPIs(data, myTeamId) {
+  const el = id => document.getElementById(id);
+  const fmt = (v, d=0) => parseFloat(v||0).toLocaleString(undefined,{maximumFractionDigits:d});
+
+  const outcome = data.outcomes?.find(o => o.team_id === myTeamId);
+  const score   = data.scores?.find(s => s.team_id === myTeamId);
+  const segs    = (data.segments||[]).filter(s => s.team_id === myTeamId);
+  const seen    = new Set();
+  const mySegs  = segs.filter(s => { if(seen.has(s.segment_code)) return false; seen.add(s.segment_code); return true; });
+  const share   = mySegs.length > 0 ? mySegs.reduce((a,s)=>a+parseFloat(s.market_share_pct||0),0)/mySegs.length : 0;
+
+  if (!outcome) return;
+
+  const rev    = parseFloat(outcome.revenue_m||0);
+  const cogs   = parseFloat(outcome.cogs_m||0);
+  const gp     = parseFloat(outcome.gross_profit_m||0);
+  const ebit   = parseFloat(outcome.ebit_m||0);
+  const units  = parseInt(outcome.total_units_sold||0);
+  const rd     = parseFloat(outcome.rd_spend_m||0);
+  const mktg   = parseFloat(outcome.marketing_spend_m||0);
+  const cf     = parseFloat(outcome.cash_flow_m||0);
+  const ebitPct = rev > 0 ? (ebit/rev*100).toFixed(1) : '0.0';
+  const asp     = units > 0 ? (rev*1000000/units/1000).toFixed(1) : '0';
+
+  // ── Dashboard KPIs ──
+  if(el('kpi-revenue'))       el('kpi-revenue').textContent       = '€'+fmt(rev)+'M';
+  if(el('kpi-revenue-delta')) el('kpi-revenue-delta').textContent = 'Last round';
+  if(el('kpi-ebit'))          el('kpi-ebit').textContent          = ebitPct+'%';
+  if(el('kpi-share'))         el('kpi-share').textContent         = share.toFixed(1)+'%';
+  if(el('kpi-rank'))          el('kpi-rank').textContent          = score ? '#'+score.rank : '#—';
+  if(el('kpi-rank-sub'))      el('kpi-rank-sub').textContent      = score ? 'Score: '+fmt(score.composite_score,1) : '—';
+
+  // ── Operations KPIs ──
+  if(el('ops-utilization'))   el('ops-utilization').textContent   = units > 0 ? Math.min(Math.round(units/5000),'100')+'%' : '—';
+  if(el('ops-cogs-unit'))     el('ops-cogs-unit').textContent     = units > 0 ? '€'+fmt(cogs*1000000/units/1000,1)+'k' : '—';
+
+  // ── Commercial KPIs ──
+  if(el('com-share'))         el('com-share').textContent         = share.toFixed(1)+'%';
+  if(el('com-asp'))           el('com-asp').textContent           = '€'+asp+'k';
+
+  // ── Financial KPIs ──
+  if(el('fin-revenue'))       el('fin-revenue').textContent       = '€'+fmt(rev,0)+'M';
+  if(el('fin-ebit'))          el('fin-ebit').textContent          = '€'+fmt(ebit,0)+'M';
+  if(el('fin-ebit-pct'))      el('fin-ebit-pct').textContent      = ebitPct+'% margin';
+  if(el('fin-cashflow'))      el('fin-cashflow').textContent      = '€'+fmt(cf,0)+'M';
+
+  // ── P&L Table ──
+  if(el('pl-rev'))  el('pl-rev').textContent  = fmt(rev,0);
+  if(el('pl-cogs')) el('pl-cogs').textContent = '-'+fmt(cogs,0);
+  if(el('pl-gp'))   el('pl-gp').textContent   = fmt(gp,0);
+  if(el('pl-rd'))   el('pl-rd').textContent   = '-'+fmt(rd,0);
+  if(el('pl-mktg')) el('pl-mktg').textContent = '-'+fmt(mktg,0);
+  if(el('pl-ebit')) el('pl-ebit').textContent = fmt(ebit,0);
+  const tax = ebit * 0.25;
+  if(el('pl-tax'))  el('pl-tax').textContent  = '-'+fmt(tax,0);
+  if(el('pl-ni'))   el('pl-ni').textContent   = fmt(ebit-tax,0);
+
+  // ── Leaderboard KPIs ──
+  const myRank = score?.rank || 0;
+  const topScore = data.scores?.find(s=>s.rank===1)?.composite_score || 0;
+  const myScore  = score?.composite_score || 0;
+  if(el('lb-your-rank'))  el('lb-your-rank').textContent  = myRank ? '#'+myRank : '#—';
+  if(el('lb-your-score')) el('lb-your-score').textContent = myScore ? fmt(myScore,1) : '—';
+  if(el('lb-gap')) {
+    const gap = myRank===1 ? 0 : myScore - topScore;
+    el('lb-gap').textContent = gap === 0 ? '🥇 Leader' : fmt(gap,1);
+    el('lb-gap').style.color = gap >= 0 ? 'var(--green)' : 'var(--red)';
+  }
+
+  // ── Sidebar team revenues ──
+  const teamOutcomes = {};
+  (data.outcomes||[]).forEach(o => teamOutcomes[o.team_id] = o);
+  // Fetch teams to get name->id mapping
+  if (sessionId) {
+    try {
+      const tRes = await fetch(`${API_URL}/sessions/${sessionId}/teams`);
+      const tData = await tRes.json();
+      (tData.teams||[]).forEach(t => {
+        const tOutcome = teamOutcomes[t.id];
+        if (tOutcome) {
+          const revEl = document.getElementById('srev-' + t.name);
+          if (revEl) revEl.textContent = '€'+fmt(parseFloat(tOutcome.revenue_m||0),0)+'M';
+        }
+      });
+    } catch(e) { /* skip */ }
+  }
+
+  // ── Update leaderboard table with real data ──
+  updateLBFromResults(data);
+}
+
+function updateLBFromResults(data) {
+  const el = document.getElementById('lb-rows');
+  if (!el) return;
+  const scores = [...(data.scores||[])].sort((a,b)=>(a.rank||99)-(b.rank||99));
+  const outcomeMap = {};
+  (data.outcomes||[]).forEach(o => outcomeMap[o.team_id] = o);
+  const segMap = {};
+  (data.segments||[]).forEach(s => {
+    if (!segMap[s.team_id]) segMap[s.team_id] = {};
+    if (!segMap[s.team_id][s.segment_code]) segMap[s.team_id][s.segment_code] = s;
+  });
+
+  const rc = ['gld','slv','brz'];
+  el.innerHTML = scores.map((s,i) => {
+    const o = outcomeMap[s.team_id] || {};
+    const segs = Object.values(segMap[s.team_id]||{});
+    const share = segs.length > 0 ? segs.reduce((a,x)=>a+parseFloat(x.market_share_pct||0),0)/segs.length : 0;
+    const rev = parseFloat(o.revenue_m||0);
+    const ebit = rev > 0 ? (parseFloat(o.ebit_m||0)/rev*100).toFixed(1)+'%' : '—';
+    const isYou = s.team_id === teamId;
+    return `<div class="lb-r${isYou?' you-row':''}">
+      <div class="lb-rank ${i<3?rc[i]:''}">${s.rank||i+1}</div>
+      <div class="lb-tc"><div class="tdot" style="background:var(--h${Math.min(i+1,6)})"></div>${s.team_name||'Team'} ${isYou?'<span class="you-tag">YOU</span>':''}</div>
+      <div class="lb-n">€${Math.round(rev).toLocaleString()}M</div>
+      <div class="lb-n ${parseFloat(ebit)>6?'pos':'neu'}">${ebit}</div>
+      <div class="lb-n">${share.toFixed(1)}%</div>
+      <div class="lb-n">—</div>
+      <div class="lb-n" style="color:var(--gold)">${parseFloat(s.composite_score||0).toFixed(0)}</div>
+    </div>`;
+  }).join('');
+}
+
+
 let lastResultsData = null;
 
 function updateDashboardKPIs(outcome, score, segs) {
@@ -2282,7 +2406,9 @@ function showResults(data, tid) {
     return;
   }
 
-  // Update dashboard KPIs
+  // Update ALL KPIs across all pages
+  updateAllKPIs(data, tid);
+  // Update dashboard KPIs (legacy)
   updateDashboardKPIs(outcome, score, segs);
 
   // Show/update results button
