@@ -398,6 +398,18 @@ input[type=text]:focus,input[type=number]:focus{outline:none;border-color:var(--
 ::-webkit-scrollbar-track{background:transparent;}
 ::-webkit-scrollbar-thumb{background:var(--border2);border-radius:2px;}
 
+/* ══ PERFORMANCE PAGE ══ */
+.perf-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px; }
+.perf-card { background: var(--s1); border: 1px solid var(--border); border-radius: 8px; padding: 16px; }
+.perf-card-title { font-family: 'DM Mono', monospace; font-size: 9px; text-transform: uppercase; letter-spacing: 1.5px; color: var(--muted); margin-bottom: 12px; }
+.perf-chart { width: 100%; height: 140px; position: relative; }
+.perf-no-data { height: 140px; display: flex; align-items: center; justify-content: center; color: var(--muted2); font-size: 12px; }
+.perf-legend { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.perf-legend-item { display: flex; align-items: center; gap: 4px; font-size: 10px; color: var(--muted2); }
+.perf-legend-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.perf-refresh { background: var(--s2); border: 1px solid var(--border2); color: var(--muted2); border-radius: 6px; padding: 6px 14px; font-size: 11px; cursor: pointer; margin-bottom: 16px; }
+.perf-refresh:hover { color: var(--text); border-color: var(--border3); }
+
 /* ══ INSTRUCTOR RESULTS SUMMARY ══ */
 #instructor-results-modal {
   display: none;
@@ -684,6 +696,7 @@ input[type=text]:focus,input[type=number]:focus{outline:none;border-color:var(--
     <div class="nav-item" onclick="nav('brands',this)"><span class="nav-icon">◆</span> Brand Mgmt <span class="nav-badge">3</span></div>
     <div class="nav-item" onclick="nav('market',this)"><span class="nav-icon">≋</span> Market Intel</div>
     <div class="nav-item" onclick="nav('leaderboard',this)"><span class="nav-icon">▲</span> Leaderboard</div>
+    <div class="nav-item" onclick="nav('performance',this);loadPerformanceData()"><span class="nav-icon">📈</span> Performance</div>
   </div>
 
   <div class="sb-sec">
@@ -1031,7 +1044,41 @@ input[type=text]:focus,input[type=number]:focus{outline:none;border-color:var(--
 </div>
 
 <!-- ████ LEADERBOARD ████ -->
-<div class="page" id="page-leaderboard">
+<div class="page" id="page-performance">
+  <div class="pg-title">PERFORMANCE</div>
+  <div class="pg-sub">Multi-round evolution · Your team vs competitors</div>
+  <button class="perf-refresh" onclick="loadPerformanceData()">↻ Refresh Data</button>
+  <div id="perf-no-session" style="display:none;color:var(--muted2);font-size:13px;padding:40px 0">Join a session and complete at least one round to see performance charts.</div>
+  <div id="perf-content">
+    <div class="perf-grid">
+      <div class="perf-card">
+        <div class="perf-card-title">Revenue (€M) — Round by Round</div>
+        <div class="perf-chart" id="chart-revenue"><div class="perf-no-data">No data yet</div></div>
+        <div class="perf-legend" id="legend-revenue"></div>
+      </div>
+      <div class="perf-card">
+        <div class="perf-card-title">EBIT Margin % — Round by Round</div>
+        <div class="perf-chart" id="chart-ebit"><div class="perf-no-data">No data yet</div></div>
+        <div class="perf-legend" id="legend-ebit"></div>
+      </div>
+      <div class="perf-card">
+        <div class="perf-card-title">Market Share % — Round by Round</div>
+        <div class="perf-chart" id="chart-share"><div class="perf-no-data">No data yet</div></div>
+        <div class="perf-legend" id="legend-share"></div>
+      </div>
+      <div class="perf-card">
+        <div class="perf-card-title">Composite Score — Round by Round</div>
+        <div class="perf-chart" id="chart-score"><div class="perf-no-data">No data yet</div></div>
+        <div class="perf-legend" id="legend-score"></div>
+      </div>
+    </div>
+    <div class="perf-card" style="margin-bottom:16px">
+      <div class="perf-card-title">Units Sold — Round by Round</div>
+      <div class="perf-chart" id="chart-units" style="height:120px"><div class="perf-no-data">No data yet</div></div>
+      <div class="perf-legend" id="legend-units"></div>
+    </div>
+  </div>
+</div>
   <div class="pg-title">LEADERBOARD</div><div class="pg-sub" id="lb-sub">Cumulative · Round 1 · 12 OEMs</div>
   <div class="kpi-grid g4">
     <div class="kpi kk-g"><div class="kl">Your Rank</div><div class="kv" style="color:var(--gold)">#1</div><div class="kd up">of 12 OEMs</div></div>
@@ -2251,8 +2298,161 @@ let ipVisible = false;
 let ipPollInterval = null;
 
 // ══════════════════════════════════════════
-// INSTRUCTOR RESULTS SUMMARY
+// PERFORMANCE CHARTS
 // ══════════════════════════════════════════
+const TEAM_COLORS = [
+  '#4a8ce0','#e04a4a','#4ae07a','#e0c44a','#a44ae0','#4ae0d4',
+  '#8098b8','#b87880','#70a880','#b8a870','#a870b8','#70b8b8'
+];
+
+async function loadPerformanceData() {
+  if (!sessionId) {
+    document.getElementById('perf-no-session').style.display = 'block';
+    document.getElementById('perf-content').style.display = 'none';
+    return;
+  }
+  document.getElementById('perf-no-session').style.display = 'none';
+  document.getElementById('perf-content').style.display = 'block';
+
+  try {
+    // Get all rounds for this session
+    const rRes  = await fetch(`${API_URL}/sessions/${sessionId}/rounds`);
+    const rData = await rRes.json();
+    const rounds = rData.rounds || [];
+    if (rounds.length === 0) { showPerfNoData(); return; }
+
+    // Get all teams
+    const tRes  = await fetch(`${API_URL}/sessions/${sessionId}/teams`);
+    const tData = await tRes.json();
+    const teams = (tData.teams || []).filter(t => t.name !== 'Instructor');
+    const teamMap = {};
+    teams.forEach((t, i) => { teamMap[t.id] = {...t, color: TEAM_COLORS[i % TEAM_COLORS.length]}; });
+
+    // Fetch outcomes for each completed round
+    const roundLabels = [];
+    const teamSeries  = {}; // teamId -> {revenue, ebit, share, score, units}[]
+    teams.forEach(t => { teamSeries[t.id] = {revenue:[], ebit:[], share:[], score:[], units:[]}; });
+
+    for (const round of rounds) {
+      const oRes  = await fetch(`${API_URL}/sessions/${sessionId}/rounds/${round.id}/outcomes`);
+      const oData = await oRes.json();
+      if (!oData.outcomes || oData.outcomes.length === 0) continue;
+
+      roundLabels.push(`Q${round.quarter} ${round.year}`);
+
+      // Build segment lookup per team
+      const teamSegs = {};
+      (oData.segments || []).forEach(s => {
+        if (!teamSegs[s.team_id]) teamSegs[s.team_id] = {};
+        if (!teamSegs[s.team_id][s.segment_code]) teamSegs[s.team_id][s.segment_code] = s;
+      });
+
+      teams.forEach(t => {
+        const outcome = oData.outcomes.find(o => o.team_id === t.id);
+        const score   = oData.scores?.find(s => s.team_id === t.id);
+        const segs    = Object.values(teamSegs[t.id] || {});
+        const share   = segs.length > 0 ? segs.reduce((a,s) => a + parseFloat(s.market_share_pct||0), 0) / segs.length : 0;
+        const rev     = parseFloat(outcome?.revenue_m || 0);
+        const ebit    = rev > 0 ? (parseFloat(outcome?.ebit_m || 0) / rev * 100) : 0;
+
+        teamSeries[t.id].revenue.push(rev);
+        teamSeries[t.id].ebit.push(ebit);
+        teamSeries[t.id].share.push(share);
+        teamSeries[t.id].score.push(score?.composite_score || 0);
+        teamSeries[t.id].units.push(parseInt(outcome?.total_units_sold || 0));
+      });
+    }
+
+    if (roundLabels.length === 0) { showPerfNoData(); return; }
+
+    // Draw all 5 charts
+    drawLineChart('chart-revenue', 'legend-revenue', roundLabels, teams, teamMap, teamSeries, 'revenue', '€', 'M');
+    drawLineChart('chart-ebit',    'legend-ebit',    roundLabels, teams, teamMap, teamSeries, 'ebit',    '',  '%');
+    drawLineChart('chart-share',   'legend-share',   roundLabels, teams, teamMap, teamSeries, 'share',   '',  '%');
+    drawLineChart('chart-score',   'legend-score',   roundLabels, teams, teamMap, teamSeries, 'score',   '',  '');
+    drawLineChart('chart-units',   'legend-units',   roundLabels, teams, teamMap, teamSeries, 'units',   '',  '');
+
+  } catch(e) {
+    console.error('Performance data error:', e);
+    showPerfNoData();
+  }
+}
+
+function showPerfNoData() {
+  ['revenue','ebit','share','score','units'].forEach(m => {
+    const el = document.getElementById(`chart-${m}`);
+    if (el) el.innerHTML = '<div class="perf-no-data">No round data yet</div>';
+  });
+}
+
+function drawLineChart(chartId, legendId, labels, teams, teamMap, teamSeries, metric, prefix, suffix) {
+  const el = document.getElementById(chartId);
+  if (!el) return;
+  const W = el.clientWidth || 380;
+  const H = el.clientHeight || 140;
+  const pad = {top:10, right:10, bottom:24, left:44};
+  const cw = W - pad.left - pad.right;
+  const ch = H - pad.top - pad.bottom;
+  const n  = labels.length;
+
+  // Gather all values to find min/max
+  let allVals = [];
+  teams.forEach(t => { allVals = allVals.concat(teamSeries[t.id][metric]); });
+  const minV = Math.min(...allVals) * 0.95;
+  const maxV = Math.max(...allVals) * 1.05 || 1;
+  const range = maxV - minV || 1;
+
+  const xPos = i => pad.left + (n === 1 ? cw/2 : i * cw / (n-1));
+  const yPos = v => pad.top + ch - ((v - minV) / range) * ch;
+
+  let svg = `<svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg">`;
+
+  // Grid lines
+  for (let i = 0; i <= 4; i++) {
+    const y = pad.top + (ch / 4) * i;
+    const val = maxV - (range / 4) * i;
+    svg += `<line x1="${pad.left}" y1="${y}" x2="${W-pad.right}" y2="${y}" stroke="#1a2034" stroke-width="1"/>`;
+    svg += `<text x="${pad.left-4}" y="${y+4}" text-anchor="end" font-size="8" fill="#475569">${prefix}${Math.round(val)}${suffix}</text>`;
+  }
+
+  // X axis labels
+  labels.forEach((lbl, i) => {
+    svg += `<text x="${xPos(i)}" y="${H-4}" text-anchor="middle" font-size="8" fill="#475569">${lbl}</text>`;
+  });
+
+  // Lines per team
+  teams.forEach(t => {
+    const color = teamMap[t.id]?.color || '#4a8ce0';
+    const vals  = teamSeries[t.id][metric];
+    if (vals.length < 1) return;
+
+    let path = vals.map((v, i) => `${i===0?'M':'L'}${xPos(i).toFixed(1)},${yPos(v).toFixed(1)}`).join(' ');
+    svg += `<path d="${path}" fill="none" stroke="${color}" stroke-width="2" stroke-linejoin="round" opacity="0.9"/>`;
+
+    // Dots
+    vals.forEach((v, i) => {
+      svg += `<circle cx="${xPos(i).toFixed(1)}" cy="${yPos(v).toFixed(1)}" r="3" fill="${color}" stroke="#07080d" stroke-width="1.5"/>`;
+    });
+  });
+
+  svg += '</svg>';
+  el.innerHTML = svg;
+
+  // Legend — highlight current user's team
+  const legendEl = document.getElementById(legendId);
+  if (legendEl) {
+    legendEl.innerHTML = teams.map(t => {
+      const color  = teamMap[t.id]?.color || '#4a8ce0';
+      const isYou  = currentUser && t.name === currentUser.team_name;
+      const style  = isYou ? 'font-weight:700;color:#fff' : '';
+      return `<div class="perf-legend-item" style="${style}">
+        <div class="perf-legend-dot" style="background:${color}"></div>${t.name}${isYou?' (You)':''}
+      </div>`;
+    }).join('');
+  }
+}
+
+
 async function openInstructorResults() {
   document.getElementById('instructor-results-modal').classList.add('open');
   document.getElementById('ir-content').innerHTML = '<div class="ir-no-data">Loading results...</div>';
