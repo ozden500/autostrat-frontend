@@ -1886,11 +1886,11 @@ function enterSimulator() {
   applyUserContext(currentUser);
   document.getElementById('login-overlay').classList.add('hidden');
   if (currentUser.role === 'instructor') showInstructorControls();
-  // Persist session state so page refresh doesn't lose it
+  else startRoundStatePolling(); // teams poll for round changes
+  // Persist session state
   sessionStorage.setItem('as_sessionId', sessionId || '');
   sessionStorage.setItem('as_teamId', teamId || '');
   sessionStorage.setItem('as_roundId', roundId || '');
-  // Check if current round already has results or submissions
   if (sessionId && roundId) checkRoundStateOnEntry();
 }
 
@@ -2168,6 +2168,52 @@ function openResultsModal() {
 
 
 let resultsPollInterval = null;
+let roundStatePollInterval = null;
+
+function startRoundStatePolling() {
+  // Only poll for teams, not instructor
+  if (!sessionId || currentUser?.role === 'instructor') return;
+  if (roundStatePollInterval) clearInterval(roundStatePollInterval);
+  roundStatePollInterval = setInterval(async () => {
+    if (!sessionId) return;
+    try {
+      const rRes  = await fetch(`${API_URL}/sessions/${sessionId}/rounds`);
+      const rData = await rRes.json();
+      const rounds = rData.rounds || [];
+      if (rounds.length === 0) return;
+      const latest = rounds[rounds.length - 1];
+
+      // New round opened by instructor
+      if (latest.id !== roundId && latest.phase === 'decision') {
+        roundId   = latest.id;
+        submitted = false;
+        updateRoundDisplay(latest);
+        sessionStorage.setItem('as_roundId', roundId);
+        document.getElementById('submitBtn').textContent = 'SUBMIT DECISIONS →';
+        document.getElementById('submitBtn').disabled = false;
+        document.getElementById('submitBtn').classList.remove('done');
+        document.getElementById('sb-stat').innerHTML = '⚡ <strong>New round open</strong> — submit your decisions';
+        // Hide results button, reset state
+        const rb = document.getElementById('resultsBtn');
+        if (rb) { rb.style.display = 'none'; }
+        lastResultsData = null;
+        // Stop results polling if running
+        if (resultsPollInterval) { clearInterval(resultsPollInterval); resultsPollInterval = null; }
+        toast('⚡ New round opened — submit your decisions!');
+      }
+
+      // Results available (instructor closed round)
+      if (latest.id === roundId && latest.phase === 'results' && !lastResultsData) {
+        const oRes  = await fetch(`${API_URL}/sessions/${sessionId}/rounds/${roundId}/outcomes`);
+        const oData = await oRes.json();
+        if (oData.outcomes && oData.outcomes.length > 0) {
+          showResults(oData, teamId);
+          document.getElementById('resModal').classList.add('open');
+        }
+      }
+    } catch(e) { /* keep polling */ }
+  }, 15000); // check every 15 seconds
+}
 
 function showWaitingModal() {
   const modal = document.getElementById('resModal');
