@@ -1741,6 +1741,7 @@ async function instructorCreateSession() {
     roundId = rData.round.id;
     updateRoundDisplay(rData.round);
 
+    // Register instructor
     const tRes  = await fetch(`${API_URL}/teams`, {
       method:'POST', headers:{'Content-Type':'application/json'},
       body: JSON.stringify({session_id:sessionId, name:'Instructor', color_hex:'#7c3aed', team_type:'human'})
@@ -1749,6 +1750,24 @@ async function instructorCreateSession() {
     console.log('Team created:', tData);
     if (!tData.team?.id) throw new Error('Team creation failed: ' + JSON.stringify(tData));
     teamId = tData.team.id;
+
+    // Register 6 AI competitor teams
+    err.textContent = 'Creating AI competitors...';
+    const aiTeams = [
+      {name:'Nordvik AG',    color_hex:'#8098b8'},
+      {name:'Solaris Auto',  color_hex:'#b87880'},
+      {name:'Pacific Motors',color_hex:'#70a880'},
+      {name:'Aurum Drive',   color_hex:'#b8a870'},
+      {name:'Titan Fleet',   color_hex:'#a870b8'},
+      {name:'Vertex Cars',   color_hex:'#70b8b8'},
+    ];
+    for (const ai of aiTeams) {
+      await fetch(`${API_URL}/teams`, {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({session_id:sessionId, name:ai.name, color_hex:ai.color_hex, team_type:'ai'})
+      });
+    }
+    console.log('AI teams created');
 
     enterSimulator();
     showSessionBanner(sessionId);
