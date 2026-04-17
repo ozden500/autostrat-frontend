@@ -398,6 +398,60 @@ input[type=text]:focus,input[type=number]:focus{outline:none;border-color:var(--
 ::-webkit-scrollbar-track{background:transparent;}
 ::-webkit-scrollbar-thumb{background:var(--border2);border-radius:2px;}
 
+/* ══ INDUSTRIAL OPERATIONS ══ */
+.ops-tabs { display:flex; gap:4px; margin-bottom:14px; border-bottom:1px solid var(--border); padding-bottom:8px; }
+.ops-tab { padding:6px 16px; border-radius:6px 6px 0 0; font-size:12px; font-weight:600; cursor:pointer; color:var(--muted2); border:1px solid transparent; border-bottom:none; transition:all .15s; }
+.ops-tab:hover { color:var(--text); background:var(--s2); }
+.ops-tab.active { color:var(--gold); background:var(--s2); border-color:var(--border2); }
+.ops-panel { display:none; }
+.ops-panel.active { display:block; }
+.mfg-regions { display:grid; grid-template-columns:repeat(5,1fr); gap:10px; }
+.region-card { background:var(--s1); border:1px solid var(--border); border-radius:8px; padding:12px; min-height:120px; }
+.region-header { display:flex; align-items:center; gap:6px; margin-bottom:10px; padding-bottom:8px; border-bottom:1px solid var(--border); }
+.region-flag { font-size:16px; }
+.region-name { font-size:10px; font-weight:700; color:var(--text); flex:1; }
+.region-cap { font-family:'DM Mono',monospace; font-size:9px; color:var(--cyan); background:var(--s3); padding:2px 6px; border-radius:4px; }
+.plant-list { display:flex; flex-direction:column; gap:6px; }
+.plant-item { background:var(--s2); border:1px solid var(--border2); border-radius:6px; padding:8px 10px; }
+.plant-item-header { display:flex; align-items:center; gap:6px; margin-bottom:4px; }
+.plant-type-badge { font-size:8px; padding:1px 6px; border-radius:3px; font-weight:700; letter-spacing:.5px; }
+.plant-type-vehicle { background:rgba(68,128,224,.15); color:var(--blue); }
+.plant-type-powertrain { background:rgba(200,164,60,.15); color:var(--gold); }
+.plant-item-name { font-size:11px; font-weight:600; color:var(--text); flex:1; }
+.plant-item-cap { font-family:'DM Mono',monospace; font-size:9px; color:var(--muted2); }
+.plant-status { font-size:8px; padding:1px 5px; border-radius:3px; }
+.plant-status-active { background:rgba(56,212,134,.12); color:var(--green); }
+.plant-status-building { background:rgba(200,164,60,.12); color:var(--gold); }
+.plant-status-closing { background:rgba(224,58,82,.12); color:var(--red); }
+.plant-empty { font-size:11px; color:var(--muted); text-align:center; padding:16px 0; }
+
+.mfg-decision-form { background:var(--s1); border:1px solid var(--border); border-radius:8px; padding:16px; }
+.mfg-form-row { display:flex; gap:12px; margin-bottom:12px; }
+.mfg-field { flex:1; display:flex; flex-direction:column; gap:4px; }
+.mfg-field label { font-family:'DM Mono',monospace; font-size:9px; text-transform:uppercase; letter-spacing:1px; color:var(--muted); }
+.mfg-field select, .mfg-field input[type=text], .mfg-field input[type=number] {
+  background:var(--s2); border:1px solid var(--border2); border-radius:6px;
+  color:var(--text); padding:8px 10px; font-size:13px; outline:none;
+  font-family:inherit; transition:border-color .15s;
+}
+.mfg-field select:focus, .mfg-field input:focus { border-color:var(--gold); }
+.mfg-cost-preview { display:grid; grid-template-columns:repeat(4,1fr); gap:8px; margin:14px 0; background:var(--s3); border-radius:8px; padding:12px; }
+.mfg-preview-item { display:flex; flex-direction:column; gap:3px; }
+.mfg-preview-item span { font-family:'DM Mono',monospace; font-size:8px; text-transform:uppercase; color:var(--muted); letter-spacing:.5px; }
+.mfg-preview-item strong { font-family:'Orbitron',sans-serif; font-size:14px; color:var(--gold); }
+.mfg-submit-btn { background:var(--gold); color:#000; border:none; border-radius:8px; padding:11px 24px; font-size:13px; font-weight:700; cursor:pointer; letter-spacing:.5px; transition:opacity .2s; }
+.mfg-submit-btn:hover { opacity:.85; }
+
+.pipeline-item { background:var(--s1); border:1px solid var(--border); border-radius:8px; padding:12px 14px; margin-bottom:8px; display:flex; align-items:center; gap:12px; }
+.pipeline-icon { font-size:20px; }
+.pipeline-info { flex:1; }
+.pipeline-title { font-size:13px; font-weight:600; color:var(--text); margin-bottom:2px; }
+.pipeline-meta { font-size:10px; color:var(--muted2); font-family:'DM Mono',monospace; }
+.pipeline-progress { display:flex; flex-direction:column; align-items:flex-end; gap:4px; }
+.pipeline-rounds { font-family:'Orbitron',monospace; font-size:12px; color:var(--gold); }
+.pipeline-bar { width:80px; height:4px; background:var(--border2); border-radius:2px; overflow:hidden; }
+.pipeline-bar-fill { height:100%; background:var(--gold); border-radius:2px; transition:width .3s; }
+
 /* ══ PERFORMANCE PAGE ══ */
 .perf-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px; }
 .perf-card { background: var(--s1); border: 1px solid var(--border); border-radius: 8px; padding: 16px; }
@@ -688,7 +742,7 @@ input[type=text]:focus,input[type=number]:focus{outline:none;border-color:var(--
   <div class="sb-sec">
     <div class="sb-lbl">Navigation</div>
     <div class="nav-item active" onclick="nav('dashboard',this)"><span class="nav-icon">◈</span> Dashboard</div>
-    <div class="nav-item" onclick="nav('operations',this)"><span class="nav-icon">⚙</span> Operations</div>
+    <div class="nav-item" onclick="nav('operations',this);loadMfgFootprint()"><span class="nav-icon">⚙</span> Industrial Ops</div>
     <div class="nav-item" onclick="nav('commercial',this)"><span class="nav-icon">◎</span> Commercial</div>
     <div class="nav-item" onclick="nav('financial',this)"><span class="nav-icon">$</span> Financial</div>
     <div class="nav-item" onclick="nav('engineering',this)"><span class="nav-icon">⚗</span> Engineering Lab <span class="nav-badge">14 specs</span></div>
@@ -774,32 +828,125 @@ input[type=text]:focus,input[type=number]:focus{outline:none;border-color:var(--
   </div>
 </div>
 
-<!-- ████ OPERATIONS ████ -->
+<!-- ████ INDUSTRIAL OPERATIONS ████ -->
 <div class="page" id="page-operations">
-  <div class="pg-title">OPERATIONS</div><div class="pg-sub">Production · Supply Chain · Quality · Workforce</div>
-  <div class="kpi-grid g4">
-    <div class="kpi kk-g"><div class="kl">Capacity</div><div class="kv" id="ops-capacity">512k</div><div class="kd neu">units/yr</div></div>
-    <div class="kpi kk-c"><div class="kl">Utilization</div><div class="kv" id="ops-utilization" style="color:var(--cyan)">82%</div><div class="kd up">optimal</div></div>
-    <div class="kpi kk-r"><div class="kl">Defect Rate</div><div class="kv" id="ops-defect">1.8%</div><div class="kd dn">reduce</div></div>
-    <div class="kpi kk-p"><div class="kl">COGS/unit</div><div class="kv" id="ops-cogs-unit">€18.2k</div><div class="kd dn">+2.1% inflation</div></div>
+  <div class="pg-title">INDUSTRIAL OPERATIONS</div>
+  <div class="pg-sub">Manufacturing Footprint · Plant Decisions · Capacity Management</div>
+
+  <!-- KPI Strip -->
+  <div class="kpi-grid g4" style="margin-bottom:14px">
+    <div class="kpi kk-g"><div class="kl">Total Capacity</div><div class="kv" id="ops-capacity">—</div><div class="kd neu">units/yr</div></div>
+    <div class="kpi kk-c"><div class="kl">Vehicle Plants</div><div class="kv" id="ops-veh-plants">—</div><div class="kd neu">active</div></div>
+    <div class="kpi kk-b"><div class="kl">Powertrain Plants</div><div class="kv" id="ops-pt-plants">—</div><div class="kd neu">active</div></div>
+    <div class="kpi kk-r"><div class="kl">COGS/unit</div><div class="kv" id="ops-cogs-unit">—</div><div class="kd dn">est.</div></div>
   </div>
-  <div class="kpi-grid g2">
-    <div class="card">
-      <div class="card-title"><span class="tag to">PRODUCTION</span> Volume & Capacity</div>
-      <div class="ctrl"><div class="ctrl-lbl"><span>Target Volume (k units/yr)</span><span class="ctrl-v" id="op-vol">420k</span></div><input type="range" min="150" max="800" value="420" oninput="sv('op-vol',this.value,'k')"></div>
-      <div class="ctrl"><div class="ctrl-lbl"><span>Overtime Authorization</span><span class="ctrl-v" id="op-ot">10%</span></div><input type="range" min="0" max="30" value="10" oninput="sv('op-ot',this.value,'%')"></div>
-      <div class="ctrl"><label class="ctrl-lbl-top">Capacity Expansion</label><select><option>Hold current</option><option>Expand Plant A (+80k)</option><option>Greenfield (+200k)</option><option>JV Assembly</option></select></div>
-      <div class="ctrl"><label class="ctrl-lbl-top">Production Platform</label><select><option>ICE + Hybrid flex</option><option>EV retool (partial)</option><option>Dedicated EV platform</option></select></div>
+
+  <!-- Sub-tabs -->
+  <div class="ops-tabs">
+    <div class="ops-tab active" onclick="opsTab('footprint',this)">🗺 Footprint</div>
+    <div class="ops-tab" onclick="opsTab('decisions',this)">⚙ Decisions</div>
+    <div class="ops-tab" onclick="opsTab('pipeline',this)">📋 Pipeline</div>
+  </div>
+
+  <!-- FOOTPRINT TAB -->
+  <div class="ops-panel active" id="ops-footprint">
+    <div class="mfg-regions">
+      <!-- Region cards -->
+      <div class="region-card" id="region-NA">
+        <div class="region-header"><span class="region-flag">🌎</span><span class="region-name">North America</span><span class="region-cap" id="rcap-NA">0k</span></div>
+        <div class="plant-list" id="plants-NA"></div>
+      </div>
+      <div class="region-card" id="region-SA">
+        <div class="region-header"><span class="region-flag">🌎</span><span class="region-name">South America</span><span class="region-cap" id="rcap-SA">0k</span></div>
+        <div class="plant-list" id="plants-SA"></div>
+      </div>
+      <div class="region-card" id="region-EU">
+        <div class="region-header"><span class="region-flag">🌍</span><span class="region-name">Europe</span><span class="region-cap" id="rcap-EU">0k</span></div>
+        <div class="plant-list" id="plants-EU"></div>
+      </div>
+      <div class="region-card" id="region-MEA">
+        <div class="region-header"><span class="region-flag">🌍</span><span class="region-name">Middle East & Africa</span><span class="region-cap" id="rcap-MEA">0k</span></div>
+        <div class="plant-list" id="plants-MEA"></div>
+      </div>
+      <div class="region-card" id="region-APAC">
+        <div class="region-header"><span class="region-flag">🌏</span><span class="region-name">APAC</span><span class="region-cap" id="rcap-APAC">0k</span></div>
+        <div class="plant-list" id="plants-APAC"></div>
+      </div>
     </div>
-    <div class="card">
-      <div class="card-title"><span class="tag to">SUPPLY CHAIN</span> Sourcing & Logistics</div>
-      <div class="ctrl"><div class="ctrl-lbl"><span>Inventory Buffer (days)</span><span class="ctrl-v" id="op-inv">22 days</span></div><input type="range" min="5" max="60" value="22" oninput="sv('op-inv',this.value,' days')"></div>
-      <div class="ctrl"><label class="ctrl-lbl-top">Battery / Cell Strategy</label><select><option>3rd-party supply</option><option>JV with cell maker</option><option>In-house gigafactory</option></select></div>
-      <div class="ctrl"><label class="ctrl-lbl-top">Steel & Raw Materials</label><select><option>Spot market</option><option>Long-term contract 3yr</option><option>Backward integration</option></select></div>
-      <div class="ctrl"><label class="ctrl-lbl-top">Logistics</label><select><option>Outsourced 3PL</option><option>Hybrid owned+3PL</option><option>Full in-house</option></select></div>
+  </div>
+
+  <!-- DECISIONS TAB -->
+  <div class="ops-panel" id="ops-decisions">
+    <div class="mfg-decision-form">
+      <div class="mfg-form-row">
+        <div class="mfg-field">
+          <label>Decision Type</label>
+          <select id="dec-type" onchange="updateDecisionForm()">
+            <option value="build">🏗 Build New Plant</option>
+            <option value="expand">📈 Expand Existing Plant</option>
+            <option value="close">🔒 Close Plant</option>
+            <option value="sell">💰 Sell Plant</option>
+          </select>
+        </div>
+        <div class="mfg-field">
+          <label>Plant Type</label>
+          <select id="dec-plant-type">
+            <option value="vehicle">🚗 Vehicle Plant</option>
+            <option value="powertrain">⚙ Powertrain Plant</option>
+          </select>
+        </div>
+        <div class="mfg-field">
+          <label>Region</label>
+          <select id="dec-region">
+            <option value="NA">North America</option>
+            <option value="SA">South America</option>
+            <option value="EU">Europe</option>
+            <option value="MEA">Middle East & Africa</option>
+            <option value="APAC">APAC</option>
+          </select>
+        </div>
+      </div>
+      <div class="mfg-form-row" id="dec-build-row">
+        <div class="mfg-field">
+          <label>Plant Name</label>
+          <input type="text" id="dec-plant-name" placeholder="e.g. Munich Plant 2" maxlength="40"/>
+        </div>
+        <div class="mfg-field">
+          <label>Capacity (k units/yr)</label>
+          <input type="number" id="dec-capacity" value="100" min="50" max="500" step="50" oninput="updateDecisionPreview()"/>
+        </div>
+      </div>
+      <div class="mfg-form-row" id="dec-existing-row" style="display:none">
+        <div class="mfg-field" style="flex:2">
+          <label>Select Plant</label>
+          <select id="dec-plant-select"><option>— select a plant —</option></select>
+        </div>
+        <div class="mfg-field" id="dec-expand-cap-row">
+          <label>Additional Capacity (k units/yr)</label>
+          <input type="number" id="dec-expand-cap" value="50" min="50" max="300" step="50" oninput="updateDecisionPreview()"/>
+        </div>
+      </div>
+
+      <!-- Cost & Lead Time Preview -->
+      <div class="mfg-cost-preview" id="dec-preview">
+        <div class="mfg-preview-item"><span>Investment Required</span><strong id="prev-cost">€500M</strong></div>
+        <div class="mfg-preview-item"><span>Lead Time</span><strong id="prev-lead">4 rounds</strong></div>
+        <div class="mfg-preview-item"><span>Capacity Impact</span><strong id="prev-cap">+100k units/yr</strong></div>
+        <div class="mfg-preview-item"><span>Operational from</span><strong id="prev-ready">Round 5</strong></div>
+      </div>
+
+      <button class="mfg-submit-btn" onclick="submitPlantDecision()">Submit Plant Decision →</button>
+      <div id="mfg-msg" style="font-size:12px;margin-top:8px;color:var(--cyan)"></div>
     </div>
+  </div>
+
+  <!-- PIPELINE TAB -->
+  <div class="ops-panel" id="ops-pipeline">
+    <div id="pipeline-empty" style="color:var(--muted2);font-size:13px;padding:24px 0">No plant decisions in progress.</div>
+    <div id="pipeline-list"></div>
   </div>
 </div>
+
 
 <!-- ████ COMMERCIAL ████ -->
 <div class="page" id="page-commercial">
@@ -1819,6 +1966,10 @@ async function instructorCreateSession() {
     }
     console.log('AI teams created');
 
+    // Auto-initialize default plant footprint for all teams
+    await fetch(`${API_URL}/sessions/${sessionId}/plants/initialize`, {method: 'POST'});
+    console.log('Plant footprint initialized');
+
     enterSimulator();
     showSessionBanner(sessionId);
     showInstructorControls();
@@ -2410,6 +2561,7 @@ function startRoundStatePolling() {
         // Stop results polling if running
         if (resultsPollInterval) { clearInterval(resultsPollInterval); resultsPollInterval = null; }
         toast('⚡ New round opened — submit your decisions!');
+        advanceMfgPipeline();
       }
 
       // Results available (instructor closed round)
@@ -2556,8 +2708,439 @@ let ipVisible = false;
 let ipPollInterval = null;
 
 // ══════════════════════════════════════════
-// PERFORMANCE CHARTS
+// INSTRUCTOR FOOTPRINT SETUP
 // ══════════════════════════════════════════
+let footprintPlants = []; // instructor-defined starting plants
+
+function openFootprintSetup() {
+  const saved = localStorage.getItem('autostrat_footprint');
+  footprintPlants = saved ? JSON.parse(saved) : getDefaultPlants();
+  renderFootprintList();
+  document.getElementById('footprint-modal').style.display = 'flex';
+}
+
+function addFootprintPlant() {
+  const name   = document.getElementById('fp-name').value.trim();
+  const type   = document.getElementById('fp-type').value;
+  const region = document.getElementById('fp-region').value;
+  const cap    = parseInt(document.getElementById('fp-cap').value);
+  if (!name) { alert('Please enter a plant name.'); return; }
+  footprintPlants.push({
+    id: 'fp_' + Date.now(),
+    name, type, region, capacity_k: cap, status: 'active'
+  });
+  document.getElementById('fp-name').value = '';
+  renderFootprintList();
+}
+
+function removeFootprintPlant(id) {
+  footprintPlants = footprintPlants.filter(p => p.id !== id);
+  renderFootprintList();
+}
+
+function renderFootprintList() {
+  const el = document.getElementById('fp-plant-list');
+  if (!el) return;
+  if (footprintPlants.length === 0) {
+    el.innerHTML = '<div style="color:#475569;font-size:12px;padding:12px 0">No plants defined yet. Add plants above.</div>';
+    return;
+  }
+  const regionNames = {NA:'North America',SA:'South America',EU:'Europe',MEA:'Middle East & Africa',APAC:'APAC'};
+  el.innerHTML = `
+    <div style="background:#111827;border:1px solid #1e293b;border-radius:8px;overflow:hidden;">
+      <div style="display:grid;grid-template-columns:2fr 1fr 1fr 1fr 40px;gap:0;padding:8px 12px;font-family:'DM Mono',monospace;font-size:9px;text-transform:uppercase;letter-spacing:1px;color:#475569;border-bottom:1px solid #1e293b;">
+        <div>Plant Name</div><div>Type</div><div>Region</div><div>Capacity</div><div></div>
+      </div>
+      ${footprintPlants.map(p => `
+        <div style="display:grid;grid-template-columns:2fr 1fr 1fr 1fr 40px;gap:0;padding:10px 12px;border-bottom:1px solid #0f172a;align-items:center;">
+          <div style="font-size:12px;font-weight:600;color:#fff">${p.name}</div>
+          <div style="font-size:11px;color:${p.type==='vehicle'?'#60a5fa':'#fbbf24'}">${p.type==='vehicle'?'🚗 Vehicle':'⚙ Powertrain'}</div>
+          <div style="font-size:11px;color:#94a3b8">${regionNames[p.region]||p.region}</div>
+          <div style="font-family:'DM Mono',monospace;font-size:11px;color:#4ade80">${p.capacity_k}k/yr</div>
+          <div><button onclick="removeFootprintPlant('${p.id}')" style="background:none;border:none;color:#ef4444;cursor:pointer;font-size:14px">×</button></div>
+        </div>
+      `).join('')}
+    </div>`;
+}
+
+async function saveFootprintSetup() {
+  if (footprintPlants.length === 0) { alert('Add at least one plant before saving.'); return; }
+  const msgEl = document.getElementById('fp-msg');
+  msgEl.textContent = 'Saving...';
+
+  try {
+    if (!sessionId) {
+      // No session yet — save to localStorage for later
+      localStorage.setItem('autostrat_footprint', JSON.stringify(footprintPlants));
+      msgEl.textContent = `✓ Footprint saved locally — will apply when session starts`;
+    } else {
+      // Delete existing plants for this session first
+      const existRes  = await fetch(`${API_URL}/sessions/${sessionId}/plants`);
+      const existData = await existRes.json();
+      for (const p of (existData.plants || [])) {
+        await fetch(`${API_URL}/plants/${p.id}`, {method: 'DELETE'});
+      }
+
+      // Get all teams
+      const tRes  = await fetch(`${API_URL}/sessions/${sessionId}/teams`);
+      const tData = await tRes.json();
+      const teams = (tData.teams || []).filter(t => t.name !== 'Instructor');
+
+      // Create plants for each team
+      let created = 0;
+      for (const team of teams) {
+        for (const plant of footprintPlants) {
+          await fetch(`${API_URL}/plants`, {
+            method: 'POST', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+              session_id: sessionId, team_id: team.id,
+              name: plant.name, type: plant.type,
+              region: plant.region, capacity_k: plant.capacity_k,
+              status: 'active'
+            })
+          });
+          created++;
+        }
+      }
+      localStorage.setItem('autostrat_footprint', JSON.stringify(footprintPlants));
+      msgEl.textContent = `✓ ${created} plants created across ${teams.length} teams`;
+    }
+
+    setTimeout(() => {
+      document.getElementById('footprint-modal').style.display = 'none';
+      msgEl.textContent = '';
+    }, 1500);
+    toast(`✓ Footprint saved — ${footprintPlants.length} plant types defined`);
+
+  } catch(e) {
+    msgEl.style.color = 'var(--red)';
+    msgEl.textContent = '⚠ Error: ' + e.message;
+  }
+}
+
+
+
+// Plant data store (localStorage-backed per team)
+let mfgPlants    = []; // {id, name, type, region, capacity_k, status, round_built}
+let mfgPipeline  = []; // {id, plant_id, decision, rounds_remaining, cost_m, cap_delta}
+let mfgCurrentRound = 1;
+
+const REGIONS = ['NA','SA','EU','MEA','APAC'];
+const REGION_NAMES = {NA:'North America', SA:'South America', EU:'Europe', MEA:'Middle East & Africa', APAC:'APAC'};
+
+const DECISION_PARAMS = {
+  build:   { lead: 4, icon: '🏗', label: 'Build New Plant',     costPer100k: 500  },
+  expand:  { lead: 2, icon: '📈', label: 'Expand Plant',        costPer50k:  200  },
+  close:   { lead: 1, icon: '🔒', label: 'Close Plant',         fixedCost:   50   },
+  sell:    { lead: 1, icon: '💰', label: 'Sell Plant',          recovery:    0.40 },
+};
+
+function opsTab(tab, el) {
+  document.querySelectorAll('.ops-tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.ops-panel').forEach(p => p.classList.remove('active'));
+  el.classList.add('active');
+  document.getElementById('ops-' + tab).classList.add('active');
+  if (tab === 'decisions') updateDecisionForm();
+  if (tab === 'pipeline')  renderPipeline();
+}
+
+async function loadMfgFootprint() {
+  if (!teamId) {
+    // No session yet — use defaults for display
+    mfgPlants = getDefaultPlants();
+    mfgPipeline = [];
+    renderFootprint();
+    updateMfgKPIs();
+    return;
+  }
+  try {
+    // Load plants from database
+    const res  = await fetch(`${API_URL}/teams/${teamId}/plants`);
+    const data = await res.json();
+    if (data.plants && data.plants.length > 0) {
+      mfgPlants = data.plants;
+    } else {
+      // No plants yet — use defaults
+      mfgPlants = getDefaultPlants();
+    }
+    // Load pipeline decisions
+    const dRes  = await fetch(`${API_URL}/teams/${teamId}/plant-decisions`);
+    const dData = await dRes.json();
+    mfgPipeline = (dData.decisions || []).map(d => ({
+      id: d.id,
+      plant_id: d.plant_id,
+      decision: d.decision_type,
+      icon: DECISION_PARAMS[d.decision_type]?.icon || '⚙',
+      label: `${DECISION_PARAMS[d.decision_type]?.label || d.decision_type}: ${d.plant_footprint?.name || ''}`,
+      region: d.plant_footprint?.region || '',
+      cap_delta: d.capacity_delta_k,
+      cost_m: d.investment_m,
+      rounds_remaining: d.rounds_remaining,
+      rounds_total: d.rounds_total
+    }));
+  } catch(e) {
+    console.warn('loadMfgFootprint error:', e);
+    mfgPlants = getDefaultPlants();
+    mfgPipeline = [];
+  }
+  renderFootprint();
+  updateMfgKPIs();
+}
+
+function getDefaultPlants() {
+  const regions = [
+    {code:'EU',   name:'Europe'},
+    {code:'NA',   name:'North America'},
+    {code:'APAC', name:'APAC'},
+    {code:'SA',   name:'South America'},
+    {code:'MEA',  name:'Middle East & Africa'},
+  ];
+  const plants = [];
+  regions.forEach(r => {
+    plants.push({id:`def_veh_${r.code}`, name:`${r.name} Vehicle Plant`,    type:'vehicle',    region:r.code, capacity_k:200, status:'active'});
+    plants.push({id:`def_pt_${r.code}`,  name:`${r.name} Powertrain Plant`, type:'powertrain', region:r.code, capacity_k:200, status:'active'});
+  });
+  return plants;
+}
+
+async function saveMfgData() {
+  // Data is saved directly to DB in submitPlantDecision
+  // This function kept for compatibility
+}
+
+function renderFootprint() {
+  REGIONS.forEach(r => {
+    const container = document.getElementById(`plants-${r}`);
+    const capEl     = document.getElementById(`rcap-${r}`);
+    if (!container) return;
+    const regionPlants = mfgPlants.filter(p => p.region === r);
+    const totalCap = regionPlants.filter(p=>p.status==='active').reduce((s,p)=>s+p.capacity_k,0);
+    if (capEl) capEl.textContent = totalCap > 0 ? totalCap+'k' : '0k';
+    if (regionPlants.length === 0) {
+      container.innerHTML = '<div class="plant-empty">No plants</div>';
+      return;
+    }
+    container.innerHTML = regionPlants.map(p => {
+      const typeClass = p.type === 'vehicle' ? 'plant-type-vehicle' : 'plant-type-powertrain';
+      const typeLabel = p.type === 'vehicle' ? '🚗 VEH' : '⚙ PT';
+      const statusClass = `plant-status-${p.status}`;
+      const statusLabel = p.status === 'active' ? '● Active' : p.status === 'building' ? '⏳ Building' : '🔒 Closing';
+      return `<div class="plant-item">
+        <div class="plant-item-header">
+          <span class="plant-type-badge ${typeClass}">${typeLabel}</span>
+          <span class="plant-item-name">${p.name}</span>
+          <span class="plant-status ${statusClass}">${statusLabel}</span>
+        </div>
+        <div class="plant-item-cap">${p.capacity_k}k units/yr</div>
+      </div>`;
+    }).join('');
+  });
+}
+
+function updateMfgKPIs() {
+  const activePlants = mfgPlants.filter(p => p.status === 'active');
+  const totalCap  = activePlants.reduce((s,p) => s+p.capacity_k, 0);
+  const vehCount  = activePlants.filter(p => p.type==='vehicle').length;
+  const ptCount   = activePlants.filter(p => p.type==='powertrain').length;
+  const el = id => document.getElementById(id);
+  if(el('ops-capacity'))   el('ops-capacity').textContent   = totalCap+'k';
+  if(el('ops-veh-plants')) el('ops-veh-plants').textContent = vehCount;
+  if(el('ops-pt-plants'))  el('ops-pt-plants').textContent  = ptCount;
+}
+
+function updateDecisionForm() {
+  const type = document.getElementById('dec-type')?.value || 'build';
+  const buildRow    = document.getElementById('dec-build-row');
+  const existingRow = document.getElementById('dec-existing-row');
+  const expandCapRow = document.getElementById('dec-expand-cap-row');
+
+  if (type === 'build') {
+    buildRow.style.display    = 'flex';
+    existingRow.style.display = 'none';
+  } else {
+    buildRow.style.display    = 'none';
+    existingRow.style.display = 'flex';
+    expandCapRow.style.display = type === 'expand' ? 'flex' : 'none';
+    // Populate plant dropdown
+    const sel = document.getElementById('dec-plant-select');
+    const activePlants = mfgPlants.filter(p => p.status === 'active');
+    sel.innerHTML = '<option value="">— select a plant —</option>' +
+      activePlants.map(p => `<option value="${p.id}">[${p.region}] ${p.name} (${p.capacity_k}k)</option>`).join('');
+  }
+  updateDecisionPreview();
+}
+
+function updateDecisionPreview() {
+  const type     = document.getElementById('dec-type')?.value || 'build';
+  const cap      = parseInt(document.getElementById('dec-capacity')?.value || 100);
+  const expCap   = parseInt(document.getElementById('dec-expand-cap')?.value || 50);
+  const params   = DECISION_PARAMS[type];
+  let cost = 0, capDelta = 0;
+
+  if (type === 'build')   { cost = (cap / 100) * params.costPer100k;  capDelta = +cap; }
+  if (type === 'expand')  { cost = (expCap / 50) * params.costPer50k; capDelta = +expCap; }
+  if (type === 'close')   { cost = params.fixedCost;                   capDelta = 0; }
+  if (type === 'sell') {
+    const pid = document.getElementById('dec-plant-select')?.value;
+    const plant = mfgPlants.find(p=>p.id===pid);
+    cost = plant ? -(plant.capacity_k * 5 * params.recovery) : 0; // recovery
+    capDelta = plant ? -plant.capacity_k : 0;
+  }
+
+  const roundReady = mfgCurrentRound + params.lead;
+  document.getElementById('prev-cost').textContent  = cost < 0 ? '+€'+Math.abs(Math.round(cost))+'M (recovery)' : '€'+Math.round(cost)+'M';
+  document.getElementById('prev-lead').textContent  = params.lead + ' round' + (params.lead > 1 ? 's' : '');
+  document.getElementById('prev-cap').textContent   = capDelta > 0 ? '+'+capDelta+'k units/yr' : capDelta < 0 ? capDelta+'k units/yr' : 'No change';
+  document.getElementById('prev-ready').textContent = 'Round ' + roundReady;
+}
+
+async function submitPlantDecision() {
+  const type      = document.getElementById('dec-type').value;
+  const plantType = document.getElementById('dec-plant-type').value;
+  const region    = document.getElementById('dec-region').value;
+  const params    = DECISION_PARAMS[type];
+  const msgEl     = document.getElementById('mfg-msg');
+
+  if (!teamId || !roundId) {
+    msgEl.style.color = 'var(--red)';
+    msgEl.textContent = '⚠ Join a session first before submitting plant decisions.';
+    return;
+  }
+
+  try {
+    if (type === 'build') {
+      const name = document.getElementById('dec-plant-name').value.trim();
+      const cap  = parseInt(document.getElementById('dec-capacity').value);
+      if (!name) { msgEl.textContent = '⚠ Please enter a plant name.'; msgEl.style.color='var(--red)'; return; }
+      const cost = (cap / 100) * params.costPer100k;
+
+      // Create plant in DB with 'building' status
+      const pRes  = await fetch(`${API_URL}/plants`, {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+          session_id: sessionId, team_id: teamId,
+          name, type: plantType, region, capacity_k: cap, status: 'building'
+        })
+      });
+      const pData = await pRes.json();
+      const plantId = pData.plant.id;
+
+      // Create decision record
+      await fetch(`${API_URL}/plant-decisions`, {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+          plant_id: plantId, team_id: teamId, round_id: roundId,
+          decision_type: type, capacity_delta_k: cap,
+          investment_m: cost, rounds_remaining: params.lead, rounds_total: params.lead
+        })
+      });
+
+    } else {
+      const pid   = document.getElementById('dec-plant-select').value;
+      const plant = mfgPlants.find(p => p.id === pid);
+      if (!plant) { msgEl.textContent = '⚠ Please select a plant.'; msgEl.style.color='var(--red)'; return; }
+
+      let capDelta = 0, cost = 0, newStatus = plant.status;
+
+      if (type === 'expand') {
+        capDelta = parseInt(document.getElementById('dec-expand-cap').value);
+        cost = (capDelta / 50) * params.costPer50k;
+      } else if (type === 'close') {
+        capDelta = -plant.capacity_k;
+        cost = params.fixedCost;
+        newStatus = 'closing';
+      } else if (type === 'sell') {
+        capDelta = -plant.capacity_k;
+        cost = -(plant.capacity_k * 5 * params.recovery);
+        newStatus = 'closing';
+      }
+
+      // Update plant status if needed
+      if (newStatus !== plant.status) {
+        await fetch(`${API_URL}/plants/${pid}`, {
+          method: 'PATCH', headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({status: newStatus})
+        });
+        plant.status = newStatus;
+      }
+
+      // Create decision record
+      await fetch(`${API_URL}/plant-decisions`, {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+          plant_id: pid, team_id: teamId, round_id: roundId,
+          decision_type: type, capacity_delta_k: capDelta,
+          investment_m: cost, rounds_remaining: params.lead, rounds_total: params.lead
+        })
+      });
+    }
+
+    // Reload footprint from DB
+    await loadMfgFootprint();
+    msgEl.style.color = 'var(--cyan)';
+    msgEl.textContent = `✓ Decision submitted — ${params.label} queued (${params.lead} round lead time)`;
+    setTimeout(() => msgEl.textContent = '', 4000);
+
+  } catch(e) {
+    msgEl.style.color = 'var(--red)';
+    msgEl.textContent = '⚠ Error: ' + e.message;
+  }
+}
+
+function renderPipeline() {
+  const emptyEl = document.getElementById('pipeline-empty');
+  const listEl  = document.getElementById('pipeline-list');
+  if (!listEl) return;
+  if (mfgPipeline.length === 0) {
+    emptyEl.style.display = 'block';
+    listEl.innerHTML = '';
+    return;
+  }
+  emptyEl.style.display = 'none';
+  listEl.innerHTML = mfgPipeline.map((p,i) => {
+    const pct = Math.round(((p.rounds_total - p.rounds_remaining) / p.rounds_total) * 100);
+    const capText = p.cap_delta > 0 ? '+'+p.cap_delta+'k units/yr' : p.cap_delta+'k units/yr';
+    const costText = p.cost_m < 0 ? '+€'+Math.abs(p.cost_m)+'M recovery' : '€'+p.cost_m+'M investment';
+    return `<div class="pipeline-item">
+      <div class="pipeline-icon">${p.icon}</div>
+      <div class="pipeline-info">
+        <div class="pipeline-title">${p.label}</div>
+        <div class="pipeline-meta">${REGION_NAMES[p.region] || p.region} · ${capText} · ${costText}</div>
+      </div>
+      <div class="pipeline-progress">
+        <div class="pipeline-rounds">${p.rounds_remaining} round${p.rounds_remaining!==1?'s':''} left</div>
+        <div class="pipeline-bar"><div class="pipeline-bar-fill" style="width:${pct}%"></div></div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+// Advance pipeline each round (call when new round opens)
+function advanceMfgPipeline() {
+  mfgCurrentRound++;
+  mfgPipeline = mfgPipeline.filter(p => {
+    p.rounds_remaining--;
+    if (p.rounds_remaining <= 0) {
+      // Execute the decision
+      const plant = mfgPlants.find(pl => pl.id === p.plant_id);
+      if (plant) {
+        if (p.decision === 'build')  { plant.status = 'active'; }
+        if (p.decision === 'expand') { plant.capacity_k += p.cap_delta; }
+        if (p.decision === 'close' || p.decision === 'sell') {
+          mfgPlants = mfgPlants.filter(pl => pl.id !== p.plant_id);
+        }
+      }
+      return false; // remove from pipeline
+    }
+    return true;
+  });
+  saveMfgData();
+  renderFootprint();
+  updateMfgKPIs();
+  renderPipeline();
+}
+
+
 const TEAM_COLORS = [
   '#4a8ce0','#e04a4a','#4ae07a','#e0c44a','#a44ae0','#4ae0d4',
   '#8098b8','#b87880','#70a880','#b8a870','#a870b8','#70b8b8'
@@ -2925,7 +3508,63 @@ buildBenchRows();
   }
 })();
 </script>
-<!-- ══ INSTRUCTOR PANEL ══ -->
+<!-- ══ FOOTPRINT SETUP MODAL ══ -->
+<div id="footprint-modal" style="display:none;position:fixed;inset:0;z-index:9100;background:rgba(0,0,0,.75);align-items:center;justify-content:center;">
+  <div style="background:#0f172a;border:1px solid #1e4d8c;border-radius:14px;width:780px;max-width:95vw;max-height:88vh;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 25px 60px rgba(0,0,0,.6);">
+    <div style="background:#1e3a5f;padding:14px 20px;display:flex;align-items:center;justify-content:space-between;">
+      <span style="font-family:'Orbitron',sans-serif;font-size:13px;font-weight:700;letter-spacing:2px;color:#fff">🏭 STARTING FOOTPRINT SETUP</span>
+      <button onclick="document.getElementById('footprint-modal').style.display='none'" style="background:rgba(255,255,255,.15);border:none;color:#fff;width:28px;height:28px;border-radius:50%;cursor:pointer;font-size:16px">×</button>
+    </div>
+    <div style="padding:20px;overflow-y:auto;">
+      <p style="font-size:12px;color:#64748b;margin-bottom:16px">Define the starting plant footprint that all teams will begin with. Add plants before the session starts.</p>
+      
+      <!-- Add plant form -->
+      <div style="background:#111827;border:1px solid #1e293b;border-radius:8px;padding:14px;margin-bottom:16px;">
+        <div style="font-family:'DM Mono',monospace;font-size:9px;text-transform:uppercase;letter-spacing:1px;color:#475569;margin-bottom:12px">Add New Plant</div>
+        <div style="display:grid;grid-template-columns:2fr 1fr 1fr 1fr 1fr;gap:10px;align-items:end;">
+          <div>
+            <div style="font-size:10px;color:#64748b;margin-bottom:4px">Plant Name</div>
+            <input id="fp-name" type="text" placeholder="e.g. Munich Plant" maxlength="40" style="width:100%;box-sizing:border-box;background:#0f172a;border:1px solid #1e293b;border-radius:6px;color:#fff;padding:7px 10px;font-size:12px;font-family:inherit;outline:none"/>
+          </div>
+          <div>
+            <div style="font-size:10px;color:#64748b;margin-bottom:4px">Type</div>
+            <select id="fp-type" style="width:100%;background:#0f172a;border:1px solid #1e293b;border-radius:6px;color:#fff;padding:7px 10px;font-size:12px;font-family:inherit;outline:none">
+              <option value="vehicle">🚗 Vehicle</option>
+              <option value="powertrain">⚙ Powertrain</option>
+            </select>
+          </div>
+          <div>
+            <div style="font-size:10px;color:#64748b;margin-bottom:4px">Region</div>
+            <select id="fp-region" style="width:100%;background:#0f172a;border:1px solid #1e293b;border-radius:6px;color:#fff;padding:7px 10px;font-size:12px;font-family:inherit;outline:none">
+              <option value="EU">Europe</option>
+              <option value="NA">North America</option>
+              <option value="APAC">APAC</option>
+              <option value="SA">South America</option>
+              <option value="MEA">Middle East & Africa</option>
+            </select>
+          </div>
+          <div>
+            <div style="font-size:10px;color:#64748b;margin-bottom:4px">Capacity (k/yr)</div>
+            <input id="fp-cap" type="number" value="100" min="50" max="500" step="50" style="width:100%;box-sizing:border-box;background:#0f172a;border:1px solid #1e293b;border-radius:6px;color:#fff;padding:7px 10px;font-size:12px;font-family:inherit;outline:none"/>
+          </div>
+          <div>
+            <button onclick="addFootprintPlant()" style="width:100%;background:#3b82f6;color:#fff;border:none;border-radius:6px;padding:8px;font-size:12px;font-weight:700;cursor:pointer">＋ Add</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Plant list -->
+      <div id="fp-plant-list"></div>
+      
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-top:16px;">
+        <span id="fp-msg" style="font-size:12px;color:#4ade80"></span>
+        <button onclick="saveFootprintSetup()" style="background:#16a34a;color:#fff;border:none;border-radius:8px;padding:10px 24px;font-size:13px;font-weight:700;cursor:pointer">✓ Save & Apply to All Teams</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+</body>
 <button class="ip-toggle" id="ip-toggle" onclick="toggleInstructorPanel()">🎓 Instructor Panel</button>
 <div id="instructor-panel">
   <div class="ip-header">
@@ -2953,6 +3592,7 @@ buildBenchRows();
     <button class="ip-btn ip-btn-close" id="ip-btn-close" onclick="instructorCloseRound()" disabled>⏹ Close Round & Run Simulation</button>
     <button class="ip-btn" id="ip-btn-results" onclick="openInstructorResults()" disabled style="background:#0f766e;color:#fff">📊 View Round Results Summary</button>
     <button class="ip-btn ip-btn-next"  id="ip-btn-next"  onclick="instructorNextRound()"  disabled>▶ Open Next Round</button>
+    <button class="ip-btn" onclick="openFootprintSetup()" style="background:#1e3a5f;color:#93c5fd;margin-top:4px">🏭 Setup Starting Footprint</button>
   </div>
 </div>
 <!-- ══ INSTRUCTOR RESULTS SUMMARY MODAL ══ -->
