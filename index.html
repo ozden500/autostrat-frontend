@@ -452,6 +452,25 @@ input[type=text]:focus,input[type=number]:focus{outline:none;border-color:var(--
 .pipeline-bar { width:80px; height:4px; background:var(--border2); border-radius:2px; overflow:hidden; }
 .pipeline-bar-fill { height:100%; background:var(--gold); border-radius:2px; transition:width .3s; }
 
+/* ══ INSTRUCTOR PAGES ══ */
+.event-inject-btn { background:none; border:1px solid; border-radius:6px; padding:9px 14px; font-size:12px; font-weight:600; cursor:pointer; text-align:left; transition:opacity .15s; font-family:inherit; }
+.event-inject-btn:hover { opacity:.75; }
+.instr-team-card { background:var(--s1); border:1px solid var(--border); border-radius:8px; padding:14px; margin-bottom:10px; }
+.instr-team-card-header { display:flex; align-items:center; gap:10px; margin-bottom:10px; padding-bottom:8px; border-bottom:1px solid var(--border); }
+.instr-team-name { font-size:13px; font-weight:700; color:var(--text); flex:1; }
+.instr-team-status { font-size:10px; padding:2px 8px; border-radius:4px; }
+.instr-submitted { background:rgba(74,222,128,.12); color:var(--green); }
+.instr-pending { background:rgba(251,191,36,.12); color:var(--gold); }
+.instr-decision-grid { display:grid; grid-template-columns:repeat(5,1fr); gap:6px; }
+.instr-dec-item { background:var(--s2); border-radius:6px; padding:8px; }
+.instr-dec-label { font-family:'DM Mono',monospace; font-size:8px; color:var(--muted); text-transform:uppercase; letter-spacing:.5px; margin-bottom:3px; }
+.instr-dec-value { font-size:12px; font-weight:600; color:var(--text); }
+.fp-mgr-team { background:var(--s1); border:1px solid var(--border); border-radius:8px; padding:14px; margin-bottom:12px; }
+.fp-mgr-team-name { font-size:13px; font-weight:700; color:#a78bfa; margin-bottom:10px; }
+.fp-mgr-grid { display:grid; grid-template-columns:repeat(5,1fr); gap:6px; }
+.fp-mgr-region { background:var(--s2); border-radius:6px; padding:8px; }
+.fp-mgr-region-name { font-family:'DM Mono',monospace; font-size:8px; color:var(--muted); text-transform:uppercase; margin-bottom:4px; }
+
 /* ══ PERFORMANCE PAGE ══ */
 .perf-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px; }
 .perf-card { background: var(--s1); border: 1px solid var(--border); border-radius: 8px; padding: 16px; }
@@ -739,6 +758,8 @@ input[type=text]:focus,input[type=number]:focus{outline:none;border-color:var(--
 
 <!-- ══ SIDEBAR ══ -->
 <div class="sidebar">
+  <!-- TEAM NAV (shown for teams) -->
+  <div id="team-nav">
   <div class="sb-sec">
     <div class="sb-lbl">Navigation</div>
     <div class="nav-item active" onclick="nav('dashboard',this)"><span class="nav-icon">◈</span> Dashboard</div>
@@ -772,6 +793,29 @@ input[type=text]:focus,input[type=number]:focus{outline:none;border-color:var(--
     <div class="team-row"><div class="tdot" style="background:var(--a5)"></div><div class="tname">Titan Fleet</div><div class="tai">AI</div><div class="trev">€28.9B</div></div>
     <div class="team-row"><div class="tdot" style="background:var(--a6)"></div><div class="tname">Vertex Cars</div><div class="tai">AI</div><div class="trev">€22.1B</div></div>
   </div>
+  </div><!-- /team-nav -->
+
+  <!-- INSTRUCTOR NAV (shown for instructor only) -->
+  <div id="instructor-nav" style="display:none;flex-direction:column;height:100%">
+    <div class="sb-sec">
+      <div class="sb-lbl" style="color:#a78bfa">🎓 Instructor Mode</div>
+      <div class="nav-item active" onclick="navInstr('instr-hub',this)"><span class="nav-icon">⚡</span> Session Hub</div>
+      <div class="nav-item" onclick="navInstr('instr-results',this)"><span class="nav-icon">📊</span> Results Analyst</div>
+      <div class="nav-item" onclick="navInstr('instr-monitor',this)"><span class="nav-icon">👁</span> Team Monitor</div>
+      <div class="nav-item" onclick="navInstr('instr-footprint',this)"><span class="nav-icon">🏭</span> Footprint Manager</div>
+      <div class="nav-item" onclick="navInstr('instr-events',this)"><span class="nav-icon">⚠</span> Event Injector</div>
+    </div>
+    <div class="sb-sec" style="flex:1">
+      <div class="sb-lbl" style="color:#a78bfa">Session</div>
+      <div style="font-family:'DM Mono',monospace;font-size:9px;color:#64748b;padding:4px 0">Session ID</div>
+      <div id="instr-session-id" style="font-family:'DM Mono',monospace;font-size:10px;color:#a78bfa;word-break:break-all;cursor:pointer" onclick="copySessionId()">—</div>
+      <div style="margin-top:8px;font-family:'DM Mono',monospace;font-size:9px;color:#64748b">Round</div>
+      <div id="instr-round-badge" style="font-size:13px;font-weight:700;color:#fff">—</div>
+      <div style="margin-top:8px;font-family:'DM Mono',monospace;font-size:9px;color:#64748b">Submissions</div>
+      <div id="instr-sub-count" style="font-size:13px;font-weight:700;color:#4ade80">0 / 0</div>
+    </div>
+  </div>
+
 </div>
 
 <!-- ══ MAIN ══ -->
@@ -1274,6 +1318,116 @@ input[type=text]:focus,input[type=number]:focus{outline:none;border-color:var(--
       Explore how brand architecture choices (Alpha / Apex / Arrow) can allow differentiated pricing strategies across segments without cannibalisation.<br><br>
       <strong style="color:var(--gold)">Debrief:</strong> How does the 5-year product plan constrain quarterly decisions?
     </div>
+  </div>
+</div>
+
+<!-- ████ INSTRUCTOR: SESSION HUB ████ -->
+<div class="page" id="page-instr-hub" style="display:none">
+  <div class="pg-title" style="color:#a78bfa">SESSION HUB</div>
+  <div class="pg-sub" id="instr-hub-sub">Round control · Submission tracker · Live status</div>
+
+  <!-- Round Control Bar -->
+  <div style="background:linear-gradient(135deg,#1e1b4b,#2d1d6b);border:1px solid #4c1d95;border-radius:12px;padding:20px;margin-bottom:16px;display:flex;align-items:center;gap:20px;flex-wrap:wrap">
+    <div style="flex:1;min-width:200px">
+      <div style="font-family:'DM Mono',monospace;font-size:9px;color:#a78bfa;letter-spacing:1.5px;margin-bottom:4px">CURRENT ROUND</div>
+      <div id="hub-round" style="font-family:'Orbitron',sans-serif;font-size:28px;font-weight:700;color:#fff">—</div>
+      <div id="hub-phase" style="font-size:11px;color:#94a3b8;margin-top:2px">Waiting to start</div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:8px;min-width:220px">
+      <button id="hub-btn-close" onclick="instructorCloseRound()" disabled style="background:#7c3aed;color:#fff;border:none;border-radius:8px;padding:12px 20px;font-size:13px;font-weight:700;cursor:pointer;opacity:.5">⏹ Close Round & Run Simulation</button>
+      <button id="hub-btn-next" onclick="instructorNextRound()" disabled style="background:#059669;color:#fff;border:none;border-radius:8px;padding:12px 20px;font-size:13px;font-weight:700;cursor:pointer;opacity:.5">▶ Open Next Round</button>
+      <button onclick="openFootprintSetup()" style="background:#1e3a5f;color:#93c5fd;border:none;border-radius:8px;padding:10px 20px;font-size:12px;font-weight:600;cursor:pointer">🏭 Setup Starting Footprint</button>
+    </div>
+    <div style="min-width:180px;text-align:right">
+      <div style="font-family:'DM Mono',monospace;font-size:9px;color:#a78bfa;letter-spacing:1.5px;margin-bottom:4px">SESSION ID</div>
+      <div id="hub-session-id" onclick="copySessionId()" style="font-family:'DM Mono',monospace;font-size:11px;color:#c4b5fd;cursor:pointer;word-break:break-all" title="Click to copy">—</div>
+      <div style="font-size:10px;color:#475569;margin-top:4px">Click to copy</div>
+    </div>
+  </div>
+
+  <!-- Submission Tracker -->
+  <div style="background:var(--s1);border:1px solid var(--border);border-radius:10px;padding:16px;margin-bottom:16px">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+      <div style="font-family:'DM Mono',monospace;font-size:9px;text-transform:uppercase;letter-spacing:1.5px;color:#a78bfa">Submission Status</div>
+      <div id="hub-sub-summary" style="font-size:12px;color:#94a3b8">0 / 0 submitted</div>
+    </div>
+    <div id="hub-submissions" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:8px">
+      <div style="color:var(--muted2);font-size:12px">Waiting for session...</div>
+    </div>
+  </div>
+
+  <!-- Quick Results Preview -->
+  <div style="background:var(--s1);border:1px solid var(--border);border-radius:10px;padding:16px">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+      <div style="font-family:'DM Mono',monospace;font-size:9px;text-transform:uppercase;letter-spacing:1.5px;color:#a78bfa">Last Round Results</div>
+      <button onclick="navInstr('instr-results',document.querySelector('#instructor-nav .nav-item:nth-child(2)'))" style="background:none;border:1px solid #4c1d95;color:#a78bfa;border-radius:6px;padding:4px 12px;font-size:11px;cursor:pointer">Full Analysis →</button>
+    </div>
+    <div id="hub-quick-results" style="color:var(--muted2);font-size:12px">No results yet.</div>
+  </div>
+</div>
+
+<!-- ████ INSTRUCTOR: RESULTS ANALYST ████ -->
+<div class="page" id="page-instr-results" style="display:none">
+  <div class="pg-title" style="color:#a78bfa">RESULTS ANALYST</div>
+  <div class="pg-sub">Full performance breakdown · All teams · All rounds</div>
+  <div style="display:flex;gap:8px;margin-bottom:16px;align-items:center">
+    <select id="analyst-round-sel" onchange="loadAnalystResults()" style="background:var(--s2);border:1px solid var(--border2);color:var(--text);border-radius:6px;padding:7px 12px;font-size:12px;font-family:inherit">
+      <option>Select round...</option>
+    </select>
+    <button onclick="loadAnalystResults()" style="background:#4c1d95;color:#c4b5fd;border:none;border-radius:6px;padding:8px 16px;font-size:12px;cursor:pointer">Load Results</button>
+  </div>
+  <div id="analyst-content">
+    <div style="color:var(--muted2);font-size:13px;padding:40px 0;text-align:center">Select a round to view full analysis.</div>
+  </div>
+</div>
+
+<!-- ████ INSTRUCTOR: TEAM MONITOR ████ -->
+<div class="page" id="page-instr-monitor" style="display:none">
+  <div class="pg-title" style="color:#a78bfa">TEAM MONITOR</div>
+  <div class="pg-sub">Live view of all team decisions this round</div>
+  <button onclick="loadTeamMonitor()" style="background:#4c1d95;color:#c4b5fd;border:none;border-radius:6px;padding:8px 16px;font-size:12px;cursor:pointer;margin-bottom:16px">↻ Refresh</button>
+  <div id="monitor-content">
+    <div style="color:var(--muted2);font-size:13px;padding:40px 0;text-align:center">Loading team decisions...</div>
+  </div>
+</div>
+
+<!-- ████ INSTRUCTOR: FOOTPRINT MANAGER ████ -->
+<div class="page" id="page-instr-footprint" style="display:none">
+  <div class="pg-title" style="color:#a78bfa">FOOTPRINT MANAGER</div>
+  <div class="pg-sub">All teams' manufacturing plants — current status</div>
+  <button onclick="loadFootprintManager()" style="background:#4c1d95;color:#c4b5fd;border:none;border-radius:6px;padding:8px 16px;font-size:12px;cursor:pointer;margin-bottom:16px">↻ Refresh</button>
+  <div id="footprint-manager-content">
+    <div style="color:var(--muted2);font-size:13px;padding:40px 0;text-align:center">Loading plant data...</div>
+  </div>
+</div>
+
+<!-- ████ INSTRUCTOR: EVENT INJECTOR ████ -->
+<div class="page" id="page-instr-events" style="display:none">
+  <div class="pg-title" style="color:#a78bfa">EVENT INJECTOR</div>
+  <div class="pg-sub">Inject market events that affect the next round simulation</div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:16px">
+    <div class="card">
+      <div class="card-title"><span style="color:#ef4444">⚠</span> Risk Events</div>
+      <div style="display:flex;flex-direction:column;gap:8px">
+        <button onclick="injectEvent('steel_tariff')" class="event-inject-btn" style="border-color:#ef4444;color:#ef4444">🔧 Steel Tariffs +15% — COGS impact</button>
+        <button onclick="injectEvent('semiconductor')" class="event-inject-btn" style="border-color:#ef4444;color:#ef4444">💻 Semiconductor Shortage — capacity -10%</button>
+        <button onclick="injectEvent('recession')" class="event-inject-btn" style="border-color:#ef4444;color:#ef4444">📉 Demand Recession — market -20%</button>
+        <button onclick="injectEvent('strike')" class="event-inject-btn" style="border-color:#ef4444;color:#ef4444">✊ Labour Strike — production -15%</button>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-title"><span style="color:#4ade80">✦</span> Opportunity Events</div>
+      <div style="display:flex;flex-direction:column;gap:8px">
+        <button onclick="injectEvent('ev_subsidy')" class="event-inject-btn" style="border-color:#4ade80;color:#4ade80">⚡ EV Subsidy Extended — EV demand +25%</button>
+        <button onclick="injectEvent('boom')" class="event-inject-btn" style="border-color:#4ade80;color:#4ade80">📈 Consumer Boom — market +15%</button>
+        <button onclick="injectEvent('suv_surge')" class="event-inject-btn" style="border-color:#4ade80;color:#4ade80">🚙 SUV Surge — SUV demand +30%</button>
+        <button onclick="injectEvent('fuel_price')" class="event-inject-btn" style="border-color:#4ade80;color:#4ade80">⛽ Fuel Price Spike — EV switch +20%</button>
+      </div>
+    </div>
+  </div>
+  <div style="background:var(--s1);border:1px solid var(--border);border-radius:8px;padding:14px">
+    <div style="font-family:'DM Mono',monospace;font-size:9px;color:#a78bfa;margin-bottom:8px">ACTIVE EVENTS — NEXT ROUND</div>
+    <div id="active-events-list" style="color:var(--muted2);font-size:12px">No events injected yet.</div>
   </div>
 </div>
 
@@ -2143,14 +2297,7 @@ function applyUserContext(user) {
       el.textContent = el.textContent.replace(/Alpha Motors/g, name);
   });
   if (user.role === 'instructor') {
-    const tb = document.querySelector('.topbar');
-    if (tb) {
-      const b = document.createElement('div');
-      b.className = 'pill';
-      b.style.cssText = 'background:#7c3aed;color:#fff;font-weight:700';
-      b.textContent = '🎓 Instructor';
-      tb.appendChild(b);
-    }
+    activateInstructorMode();
   }
   document.documentElement.style.setProperty('--team-color', color);
 }
@@ -2716,8 +2863,313 @@ let ipVisible = false;
 let ipPollInterval = null;
 
 // ══════════════════════════════════════════
-// INSTRUCTOR FOOTPRINT SETUP
+// INSTRUCTOR MODE — FULL UI
 // ══════════════════════════════════════════
+let activeEvents = [];
+
+function activateInstructorMode() {
+  // Switch sidebar to instructor nav
+  document.getElementById('team-nav').style.display = 'none';
+  document.getElementById('instructor-nav').style.display = 'flex';
+  // Style topbar purple
+  document.querySelector('.topbar').style.background = 'linear-gradient(90deg,#1e1b4b,#2d1b69)';
+  document.querySelector('.topbar').style.borderBottom = '1px solid #4c1d95';
+  // Hide submit bar
+  const sb = document.querySelector('.submit-bar');
+  if (sb) sb.style.display = 'none';
+  // Show instructor pages, hide team pages
+  document.querySelectorAll('.page').forEach(p => {
+    p.style.display = 'none';
+    p.classList.remove('active');
+  });
+  document.getElementById('page-instr-hub').style.display = 'block';
+  document.getElementById('page-instr-hub').classList.add('active');
+  // Update session info in sidebar
+  if (sessionId) {
+    const el = document.getElementById('instr-session-id');
+    if (el) el.textContent = sessionId;
+    const hub = document.getElementById('hub-session-id');
+    if (hub) hub.textContent = sessionId;
+  }
+  // Start instructor polling
+  startInstructorHubPoll();
+}
+
+function navInstr(page, el) {
+  document.querySelectorAll('#instructor-nav .nav-item').forEach(n => n.classList.remove('active'));
+  if (el) el.classList.add('active');
+  document.querySelectorAll('.page').forEach(p => { p.style.display = 'none'; p.classList.remove('active'); });
+  const target = document.getElementById('page-' + page);
+  if (target) { target.style.display = 'block'; target.classList.add('active'); }
+  // Load data for the page
+  if (page === 'instr-monitor')   loadTeamMonitor();
+  if (page === 'instr-footprint') loadFootprintManager();
+  if (page === 'instr-results')   loadAnalystRounds();
+}
+
+function copySessionId() {
+  if (!sessionId) return;
+  navigator.clipboard.writeText(sessionId).then(() => toast('✓ Session ID copied!'));
+}
+
+// ── SESSION HUB ──────────────────────────
+let hubPollInterval = null;
+
+function startInstructorHubPoll() {
+  if (hubPollInterval) clearInterval(hubPollInterval);
+  refreshInstructorHub();
+  hubPollInterval = setInterval(refreshInstructorHub, 10000);
+}
+
+async function refreshInstructorHub() {
+  if (!sessionId) return;
+  try {
+    const [tRes, rRes] = await Promise.all([
+      fetch(`${API_URL}/sessions/${sessionId}/teams`),
+      fetch(`${API_URL}/sessions/${sessionId}/rounds`)
+    ]);
+    const tData = await tRes.json();
+    const rData = await rRes.json();
+    const teams  = (tData.teams || []).filter(t => t.name !== 'Instructor' && t.team_type === 'human');
+    const rounds = rData.rounds || [];
+    const latest = rounds[rounds.length - 1];
+
+    // Update round display
+    if (latest) {
+      roundId = latest.id;
+      document.getElementById('hub-round').textContent = `Round ${latest.round_number}`;
+      document.getElementById('hub-phase').textContent = `Q${latest.quarter} ${latest.year} · ${latest.phase === 'decision' ? '⚡ Decision Phase' : '✓ Results Phase'}`;
+      document.getElementById('instr-round-badge').textContent = `R${latest.round_number} · Q${latest.quarter} ${latest.year}`;
+      // Enable/disable buttons
+      const btnClose = document.getElementById('hub-btn-close');
+      const btnNext  = document.getElementById('hub-btn-next');
+      if (btnClose) { btnClose.disabled = latest.phase !== 'decision'; btnClose.style.opacity = latest.phase === 'decision' ? '1' : '.4'; }
+      if (btnNext)  { btnNext.disabled  = latest.phase !== 'results';  btnNext.style.opacity  = latest.phase === 'results'  ? '1' : '.4'; }
+      // Also sync original buttons
+      const ob1 = document.getElementById('ip-btn-close');
+      const ob2 = document.getElementById('ip-btn-next');
+      const ob3 = document.getElementById('ip-btn-results');
+      if (ob1) { ob1.disabled = latest.phase !== 'decision'; }
+      if (ob2) { ob2.disabled = latest.phase !== 'results'; }
+      if (ob3) { ob3.disabled = latest.phase !== 'results'; }
+    }
+
+    // Load submissions
+    if (latest && latest.id) {
+      const sRes  = await fetch(`${API_URL}/sessions/${sessionId}/rounds/${latest.id}/submissions`);
+      const sData = await sRes.json();
+      const subs  = sData.submissions || [];
+      const submitted = subs.filter(s => s.status === 'submitted');
+      document.getElementById('hub-sub-summary').textContent = `${submitted.length} / ${teams.length} submitted`;
+      document.getElementById('instr-sub-count').textContent = `${submitted.length} / ${teams.length}`;
+
+      // Render submission cards
+      const subMap = {};
+      subs.forEach(s => subMap[s.team_id] = s);
+      document.getElementById('hub-submissions').innerHTML = teams.map(t => {
+        const sub = subMap[t.id];
+        const done = sub?.status === 'submitted';
+        return `<div style="background:${done?'rgba(74,222,128,.08)':'rgba(251,191,36,.06)'};border:1px solid ${done?'rgba(74,222,128,.25)':'rgba(251,191,36,.2)'};border-radius:8px;padding:12px">
+          <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
+            <span style="font-size:16px">${done?'✅':'⏳'}</span>
+            <span style="font-size:12px;font-weight:700;color:${t.color_hex||'#fff'}">${t.name}</span>
+          </div>
+          <div style="font-size:10px;color:${done?'#4ade80':'#fbbf24'}">${done?'Submitted':'Pending'}</div>
+        </div>`;
+      }).join('');
+
+      // Quick results preview
+      if (latest.phase === 'results') {
+        const oRes  = await fetch(`${API_URL}/sessions/${sessionId}/rounds/${latest.id}/outcomes`);
+        const oData = await oRes.json();
+        const scores = oData.scores || [];
+        if (scores.length > 0) {
+          document.getElementById('hub-quick-results').innerHTML = scores.slice(0,5).map((s,i) =>
+            `<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border)">
+              <span style="font-family:'Orbitron',sans-serif;font-size:11px;color:${i===0?'#fbbf24':i===1?'#94a3b8':i===2?'#b45309':'var(--muted2)'}">#${s.rank}</span>
+              <span style="font-size:12px;font-weight:600;color:var(--text);flex:1">${s.team_name||'—'}</span>
+              <span style="font-family:'DM Mono',monospace;font-size:11px;color:#a78bfa">${parseFloat(s.composite_score||0).toFixed(1)}</span>
+            </div>`
+          ).join('');
+        }
+      }
+    }
+  } catch(e) { console.warn('Hub refresh error:', e); }
+}
+
+// ── RESULTS ANALYST ──────────────────────
+async function loadAnalystRounds() {
+  if (!sessionId) return;
+  try {
+    const res  = await fetch(`${API_URL}/sessions/${sessionId}/rounds`);
+    const data = await res.json();
+    const rounds = (data.rounds || []).filter(r => r.phase === 'results');
+    const sel  = document.getElementById('analyst-round-sel');
+    sel.innerHTML = '<option value="">Select round...</option>' +
+      rounds.map(r => `<option value="${r.id}">Round ${r.round_number} · Q${r.quarter} ${r.year}</option>`).join('');
+  } catch(e) {}
+}
+
+async function loadAnalystResults() {
+  const sel = document.getElementById('analyst-round-sel');
+  const rid = sel?.value;
+  if (!rid) return;
+  const content = document.getElementById('analyst-content');
+  content.innerHTML = '<div style="color:var(--muted2);font-size:12px;padding:20px 0">Loading...</div>';
+  try {
+    const res  = await fetch(`${API_URL}/sessions/${sessionId}/rounds/${rid}/outcomes`);
+    const data = await res.json();
+    const scores   = data.scores || [];
+    const outcomes = data.outcomes || [];
+    const segMap   = {};
+    (data.segments || []).forEach(s => { if (!segMap[s.team_id]) segMap[s.team_id] = {}; segMap[s.team_id][s.segment_code] = s; });
+    const outcomeMap = {};
+    outcomes.forEach(o => outcomeMap[o.team_id] = o);
+
+    content.innerHTML = `
+      <div style="overflow-x:auto">
+        <table class="tbl" style="width:100%;min-width:700px">
+          <thead><tr>
+            <th>#</th><th>Team</th><th>Revenue</th><th>EBIT%</th><th>Mkt Share</th><th>Units</th>
+            <th>Financial</th><th>Commercial</th><th>Operational</th><th style="color:#a78bfa">Score</th>
+          </tr></thead>
+          <tbody>
+            ${scores.map(s => {
+              const o = outcomeMap[s.team_id] || {};
+              const segs = Object.values(segMap[s.team_id] || {});
+              const share = segs.length ? (segs.reduce((a,x)=>a+parseFloat(x.market_share_pct||0),0)/segs.length).toFixed(1) : '—';
+              const rev = parseFloat(o.revenue_m||0);
+              const ebit = rev > 0 ? (parseFloat(o.ebit_m||0)/rev*100).toFixed(1) : '—';
+              const rc = s.rank === 1 ? '#fbbf24' : s.rank === 2 ? '#94a3b8' : s.rank === 3 ? '#b45309' : 'var(--muted2)';
+              return `<tr>
+                <td style="color:${rc};font-weight:700">#${s.rank}</td>
+                <td style="font-weight:600">${s.team_name||'—'}</td>
+                <td>€${Math.round(rev).toLocaleString()}M</td>
+                <td class="${parseFloat(ebit)>8?'pos':'neu'}">${ebit}%</td>
+                <td>${share}%</td>
+                <td>${parseInt(o.total_units_sold||0).toLocaleString()}</td>
+                <td>${parseFloat(s.financial_score||0).toFixed(1)}</td>
+                <td>${parseFloat(s.commercial_score||0).toFixed(1)}</td>
+                <td>${parseFloat(s.operational_score||0).toFixed(1)}</td>
+                <td style="color:#a78bfa;font-weight:700">${parseFloat(s.composite_score||0).toFixed(1)}</td>
+              </tr>`;
+            }).join('')}
+          </tbody>
+        </table>
+      </div>`;
+  } catch(e) { content.innerHTML = '<div style="color:var(--red)">Error loading results.</div>'; }
+}
+
+// ── TEAM MONITOR ─────────────────────────
+async function loadTeamMonitor() {
+  if (!sessionId || !roundId) return;
+  const content = document.getElementById('monitor-content');
+  content.innerHTML = '<div style="color:var(--muted2);font-size:12px;padding:20px 0">Loading...</div>';
+  try {
+    const [tRes, sRes, cRes] = await Promise.all([
+      fetch(`${API_URL}/sessions/${sessionId}/teams`),
+      fetch(`${API_URL}/sessions/${sessionId}/rounds/${roundId}/submissions`),
+      fetch(`${API_URL}/sessions/${sessionId}/rounds/${roundId}/outcomes`)
+    ]);
+    const teams = ((await tRes.json()).teams || []).filter(t => t.name !== 'Instructor' && t.team_type === 'human');
+    const subs  = (await sRes.json()).submissions || [];
+    const subMap = {};
+    subs.forEach(s => subMap[s.team_id] = s);
+
+    content.innerHTML = teams.map(t => {
+      const sub  = subMap[t.id];
+      const done = sub?.status === 'submitted';
+      return `<div class="instr-team-card">
+        <div class="instr-team-card-header">
+          <div class="tdot" style="background:${t.color_hex||'#fff'}"></div>
+          <div class="instr-team-name">${t.name}</div>
+          <span class="instr-team-status ${done?'instr-submitted':'instr-pending'}">${done?'✓ Submitted':'⏳ Pending'}</span>
+        </div>
+        <div style="font-size:11px;color:var(--muted2)">${done ? 'Decisions submitted this round.' : 'No decisions submitted yet.'}</div>
+      </div>`;
+    }).join('') || '<div style="color:var(--muted2);font-size:12px">No teams found.</div>';
+  } catch(e) { content.innerHTML = '<div style="color:var(--red)">Error loading team data.</div>'; }
+}
+
+// ── FOOTPRINT MANAGER ─────────────────────
+async function loadFootprintManager() {
+  if (!sessionId) return;
+  const content = document.getElementById('footprint-manager-content');
+  content.innerHTML = '<div style="color:var(--muted2);font-size:12px;padding:20px 0">Loading...</div>';
+  try {
+    const [tRes, pRes] = await Promise.all([
+      fetch(`${API_URL}/sessions/${sessionId}/teams`),
+      fetch(`${API_URL}/sessions/${sessionId}/plants`)
+    ]);
+    const teams  = ((await tRes.json()).teams || []).filter(t => t.name !== 'Instructor' && t.team_type === 'human');
+    const plants = (await pRes.json()).plants || [];
+    const regionNames = {NA:'North America',SA:'South America',EU:'Europe',MEA:'MEA',APAC:'APAC'};
+    const regions = ['EU','NA','APAC','SA','MEA'];
+
+    content.innerHTML = teams.map(t => {
+      const teamPlants = plants.filter(p => p.team_id === t.id);
+      return `<div class="fp-mgr-team">
+        <div class="fp-mgr-team-name">🏢 ${t.name} — ${teamPlants.filter(p=>p.status==='active').length} active plants · ${teamPlants.reduce((s,p)=>s+(p.status==='active'?p.capacity_k:0),0)}k total capacity</div>
+        <div class="fp-mgr-grid">
+          ${regions.map(r => {
+            const rPlants = teamPlants.filter(p => p.region === r);
+            return `<div class="fp-mgr-region">
+              <div class="fp-mgr-region-name">${regionNames[r]}</div>
+              ${rPlants.length === 0 ? '<div style="font-size:10px;color:var(--muted)">No plants</div>' :
+                rPlants.map(p => `<div style="font-size:10px;color:${p.status==='active'?'#4ade80':p.status==='building'?'#fbbf24':'#94a3b8'};margin-bottom:2px">
+                  ${p.type==='vehicle'?'🚗':'⚙'} ${p.name}<br>
+                  <span style="color:var(--muted2)">${p.capacity_k}k · ${p.country_name||''} · ${p.status}</span>
+                </div>`).join('')}
+            </div>`;
+          }).join('')}
+        </div>
+      </div>`;
+    }).join('') || '<div style="color:var(--muted2)">No teams found.</div>';
+  } catch(e) { content.innerHTML = '<div style="color:var(--red)">Error loading footprint data.</div>'; }
+}
+
+// ── EVENT INJECTOR ───────────────────────
+const EVENT_DEFS = {
+  steel_tariff:  { label:'Steel Tariffs +15%',        icon:'🔧', type:'risk',  effect:'cogs_multiplier:1.15' },
+  semiconductor: { label:'Semiconductor Shortage',     icon:'💻', type:'risk',  effect:'capacity_multiplier:0.90' },
+  recession:     { label:'Demand Recession -20%',      icon:'📉', type:'risk',  effect:'demand_multiplier:0.80' },
+  strike:        { label:'Labour Strike -15%',         icon:'✊', type:'risk',  effect:'capacity_multiplier:0.85' },
+  ev_subsidy:    { label:'EV Subsidy Extended',        icon:'⚡', type:'opp',   effect:'ev_demand_multiplier:1.25' },
+  boom:          { label:'Consumer Boom +15%',         icon:'📈', type:'opp',   effect:'demand_multiplier:1.15' },
+  suv_surge:     { label:'SUV Surge +30%',             icon:'🚙', type:'opp',   effect:'suv_demand_multiplier:1.30' },
+  fuel_price:    { label:'Fuel Price Spike',           icon:'⛽', type:'opp',   effect:'ev_demand_multiplier:1.20' },
+};
+
+function injectEvent(eventKey) {
+  const def = EVENT_DEFS[eventKey];
+  if (!def) return;
+  if (activeEvents.find(e => e.key === eventKey)) { toast('Event already active'); return; }
+  activeEvents.push({key: eventKey, ...def});
+  localStorage.setItem('autostrat_events', JSON.stringify(activeEvents));
+  renderActiveEvents();
+  toast(`${def.icon} Event injected: ${def.label}`);
+}
+
+function renderActiveEvents() {
+  const el = document.getElementById('active-events-list');
+  if (!el) return;
+  if (activeEvents.length === 0) { el.textContent = 'No events injected yet.'; return; }
+  el.innerHTML = activeEvents.map(e =>
+    `<div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--border)">
+      <span style="font-size:16px">${e.icon}</span>
+      <span style="font-size:12px;color:${e.type==='risk'?'#f87171':'#4ade80'};flex:1">${e.label}</span>
+      <button onclick="removeEvent('${e.key}')" style="background:none;border:none;color:#ef4444;cursor:pointer;font-size:14px">×</button>
+    </div>`
+  ).join('');
+}
+
+function removeEvent(key) {
+  activeEvents = activeEvents.filter(e => e.key !== key);
+  localStorage.setItem('autostrat_events', JSON.stringify(activeEvents));
+  renderActiveEvents();
+}
+
+
 let footprintPlants = []; // instructor-defined starting plants
 
 async function openFootprintSetup() {
@@ -3455,6 +3907,11 @@ function showInstructorControls() {
   document.getElementById('ip-toggle').classList.add('visible');
   if (sessionId) {
     document.getElementById('ip-session-label').textContent = sessionId.substring(0,8).toUpperCase();
+    const el = document.getElementById('instr-session-id');
+    if (el) el.textContent = sessionId;
+    const hub = document.getElementById('hub-session-id');
+    if (hub) hub.textContent = sessionId;
+    startInstructorHubPoll();
     startInstructorPoll();
   }
 }
