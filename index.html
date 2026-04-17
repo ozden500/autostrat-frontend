@@ -453,6 +453,8 @@ input[type=text]:focus,input[type=number]:focus{outline:none;border-color:var(--
 .pipeline-bar-fill { height:100%; background:var(--gold); border-radius:2px; transition:width .3s; }
 
 /* ══ INSTRUCTOR PAGES ══ */
+.instr-page { display:none; padding:20px 24px; overflow-y:auto; height:100%; box-sizing:border-box; }
+.instr-page.active { display:block; }
 .event-inject-btn { background:none; border:1px solid; border-radius:6px; padding:9px 14px; font-size:12px; font-weight:600; cursor:pointer; text-align:left; transition:opacity .15s; font-family:inherit; }
 .event-inject-btn:hover { opacity:.75; }
 .instr-team-card { background:var(--s1); border:1px solid var(--border); border-radius:8px; padding:14px; margin-bottom:10px; }
@@ -1322,7 +1324,7 @@ input[type=text]:focus,input[type=number]:focus{outline:none;border-color:var(--
 </div>
 
 <!-- ████ INSTRUCTOR: SESSION HUB ████ -->
-<div class="page" id="page-instr-hub" style="display:none">
+<div class="page" id="page-instr-hub" class="instr-page">
   <div class="pg-title" style="color:#a78bfa">SESSION HUB</div>
   <div class="pg-sub" id="instr-hub-sub">Round control · Submission tracker · Live status</div>
 
@@ -1367,7 +1369,7 @@ input[type=text]:focus,input[type=number]:focus{outline:none;border-color:var(--
 </div>
 
 <!-- ████ INSTRUCTOR: RESULTS ANALYST ████ -->
-<div class="page" id="page-instr-results" style="display:none">
+<div class="page" id="page-instr-results" class="instr-page">
   <div class="pg-title" style="color:#a78bfa">RESULTS ANALYST</div>
   <div class="pg-sub">Full performance breakdown · All teams · All rounds</div>
   <div style="display:flex;gap:8px;margin-bottom:16px;align-items:center">
@@ -1382,7 +1384,7 @@ input[type=text]:focus,input[type=number]:focus{outline:none;border-color:var(--
 </div>
 
 <!-- ████ INSTRUCTOR: TEAM MONITOR ████ -->
-<div class="page" id="page-instr-monitor" style="display:none">
+<div class="page" id="page-instr-monitor" class="instr-page">
   <div class="pg-title" style="color:#a78bfa">TEAM MONITOR</div>
   <div class="pg-sub">Live view of all team decisions this round</div>
   <button onclick="loadTeamMonitor()" style="background:#4c1d95;color:#c4b5fd;border:none;border-radius:6px;padding:8px 16px;font-size:12px;cursor:pointer;margin-bottom:16px">↻ Refresh</button>
@@ -1392,7 +1394,7 @@ input[type=text]:focus,input[type=number]:focus{outline:none;border-color:var(--
 </div>
 
 <!-- ████ INSTRUCTOR: FOOTPRINT MANAGER ████ -->
-<div class="page" id="page-instr-footprint" style="display:none">
+<div class="page" id="page-instr-footprint" class="instr-page">
   <div class="pg-title" style="color:#a78bfa">FOOTPRINT MANAGER</div>
   <div class="pg-sub">All teams' manufacturing plants — current status</div>
   <button onclick="loadFootprintManager()" style="background:#4c1d95;color:#c4b5fd;border:none;border-radius:6px;padding:8px 16px;font-size:12px;cursor:pointer;margin-bottom:16px">↻ Refresh</button>
@@ -1402,7 +1404,7 @@ input[type=text]:focus,input[type=number]:focus{outline:none;border-color:var(--
 </div>
 
 <!-- ████ INSTRUCTOR: EVENT INJECTOR ████ -->
-<div class="page" id="page-instr-events" style="display:none">
+<div class="page" id="page-instr-events" class="instr-page">
   <div class="pg-title" style="color:#a78bfa">EVENT INJECTOR</div>
   <div class="pg-sub">Inject market events that affect the next round simulation</div>
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:16px">
@@ -2886,13 +2888,14 @@ function activateInstructorMode() {
   // Hide login overlay just in case
   const lo = document.getElementById('login-overlay');
   if (lo) lo.classList.add('hidden');
-  // Show instructor hub, hide all team pages
-  document.querySelectorAll('.page').forEach(p => {
-    p.style.display = 'none';
-    p.classList.remove('active');
-  });
+  // Hide all team pages, show instructor hub
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.instr-page').forEach(p => p.classList.remove('active'));
   const hub = document.getElementById('page-instr-hub');
-  if (hub) { hub.style.display = 'block'; hub.classList.add('active'); }
+  if (hub) hub.classList.add('active');
+  // Mark first nav item active
+  const firstNav = document.querySelector('#instructor-nav .nav-item');
+  if (firstNav) firstNav.classList.add('active');
   // Update session info in sidebar
   if (sessionId) {
     const el = document.getElementById('instr-session-id');
@@ -2907,9 +2910,12 @@ function activateInstructorMode() {
 function navInstr(page, el) {
   document.querySelectorAll('#instructor-nav .nav-item').forEach(n => n.classList.remove('active'));
   if (el) el.classList.add('active');
-  document.querySelectorAll('.page').forEach(p => { p.style.display = 'none'; p.classList.remove('active'); });
+  // Hide all team pages and instructor pages
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.instr-page').forEach(p => p.classList.remove('active'));
+  // Show target instructor page
   const target = document.getElementById('page-' + page);
-  if (target) { target.style.display = 'block'; target.classList.add('active'); }
+  if (target) target.classList.add('active');
   // Load data for the page
   if (page === 'instr-monitor')   loadTeamMonitor();
   if (page === 'instr-footprint') loadFootprintManager();
