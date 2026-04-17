@@ -897,12 +897,18 @@ input[type=text]:focus,input[type=number]:focus{outline:none;border-color:var(--
         </div>
         <div class="mfg-field">
           <label>Region</label>
-          <select id="dec-region">
+          <select id="dec-region" onchange="updateCountryDropdown();updateDecisionPreview()">
             <option value="NA">North America</option>
             <option value="SA">South America</option>
             <option value="EU">Europe</option>
             <option value="MEA">Middle East & Africa</option>
             <option value="APAC">APAC</option>
+          </select>
+        </div>
+        <div class="mfg-field">
+          <label>Country</label>
+          <select id="dec-country">
+            <option value="US">United States</option>
           </select>
         </div>
       </div>
@@ -2712,22 +2718,27 @@ let ipPollInterval = null;
 // ══════════════════════════════════════════
 let footprintPlants = []; // instructor-defined starting plants
 
-function openFootprintSetup() {
+async function openFootprintSetup() {
+  await loadMfgCountries();
   const saved = localStorage.getItem('autostrat_footprint');
   footprintPlants = saved ? JSON.parse(saved) : getDefaultPlants();
   renderFootprintList();
+  updateFpCountryDropdown();
   document.getElementById('footprint-modal').style.display = 'flex';
 }
 
 function addFootprintPlant() {
-  const name   = document.getElementById('fp-name').value.trim();
-  const type   = document.getElementById('fp-type').value;
-  const region = document.getElementById('fp-region').value;
-  const cap    = parseInt(document.getElementById('fp-cap').value);
+  const name        = document.getElementById('fp-name').value.trim();
+  const type        = document.getElementById('fp-type').value;
+  const region      = document.getElementById('fp-region').value;
+  const countryEl   = document.getElementById('fp-country');
+  const country_code = countryEl?.value || '';
+  const country_name = countryEl?.options[countryEl.selectedIndex]?.text || '';
+  const cap         = parseInt(document.getElementById('fp-cap').value);
   if (!name) { alert('Please enter a plant name.'); return; }
   footprintPlants.push({
     id: 'fp_' + Date.now(),
-    name, type, region, capacity_k: cap, status: 'active'
+    name, type, region, country_code, country_name, capacity_k: cap, status: 'active'
   });
   document.getElementById('fp-name').value = '';
   renderFootprintList();
@@ -2748,14 +2759,15 @@ function renderFootprintList() {
   const regionNames = {NA:'North America',SA:'South America',EU:'Europe',MEA:'Middle East & Africa',APAC:'APAC'};
   el.innerHTML = `
     <div style="background:#111827;border:1px solid #1e293b;border-radius:8px;overflow:hidden;">
-      <div style="display:grid;grid-template-columns:2fr 1fr 1fr 1fr 40px;gap:0;padding:8px 12px;font-family:'DM Mono',monospace;font-size:9px;text-transform:uppercase;letter-spacing:1px;color:#475569;border-bottom:1px solid #1e293b;">
-        <div>Plant Name</div><div>Type</div><div>Region</div><div>Capacity</div><div></div>
+      <div style="display:grid;grid-template-columns:2fr 1fr 1fr 1fr 1fr 40px;gap:0;padding:8px 12px;font-family:'DM Mono',monospace;font-size:9px;text-transform:uppercase;letter-spacing:1px;color:#475569;border-bottom:1px solid #1e293b;">
+        <div>Plant Name</div><div>Type</div><div>Region</div><div>Country</div><div>Capacity</div><div></div>
       </div>
       ${footprintPlants.map(p => `
-        <div style="display:grid;grid-template-columns:2fr 1fr 1fr 1fr 40px;gap:0;padding:10px 12px;border-bottom:1px solid #0f172a;align-items:center;">
+        <div style="display:grid;grid-template-columns:2fr 1fr 1fr 1fr 1fr 40px;gap:0;padding:10px 12px;border-bottom:1px solid #0f172a;align-items:center;">
           <div style="font-size:12px;font-weight:600;color:#fff">${p.name}</div>
           <div style="font-size:11px;color:${p.type==='vehicle'?'#60a5fa':'#fbbf24'}">${p.type==='vehicle'?'🚗 Vehicle':'⚙ Powertrain'}</div>
-          <div style="font-size:11px;color:#94a3b8">${regionNames[p.region]||p.region}</div>
+          <div style="font-size:11px;color:#94a3b8">${REGION_NAMES[p.region]||p.region}</div>
+          <div style="font-size:11px;color:#94a3b8">${p.country_name||'—'}</div>
           <div style="font-family:'DM Mono',monospace;font-size:11px;color:#4ade80">${p.capacity_k}k/yr</div>
           <div><button onclick="removeFootprintPlant('${p.id}')" style="background:none;border:none;color:#ef4444;cursor:pointer;font-size:14px">×</button></div>
         </div>
@@ -2795,7 +2807,10 @@ async function saveFootprintSetup() {
             body: JSON.stringify({
               session_id: sessionId, team_id: team.id,
               name: plant.name, type: plant.type,
-              region: plant.region, capacity_k: plant.capacity_k,
+              region: plant.region,
+              country_code: plant.country_code || '',
+              country_name: plant.country_name || '',
+              capacity_k: plant.capacity_k,
               status: 'active'
             })
           });
@@ -2821,9 +2836,10 @@ async function saveFootprintSetup() {
 
 
 // Plant data store (localStorage-backed per team)
-let mfgPlants    = []; // {id, name, type, region, capacity_k, status, round_built}
+let mfgPlants    = []; // {id, name, type, region, country_code, country_name, capacity_k, status}
 let mfgPipeline  = []; // {id, plant_id, decision, rounds_remaining, cost_m, cap_delta}
 let mfgCurrentRound = 1;
+let mfgCountries = {}; // {region: [{country_code, country_name}]}
 
 const REGIONS = ['NA','SA','EU','MEA','APAC'];
 const REGION_NAMES = {NA:'North America', SA:'South America', EU:'Europe', MEA:'Middle East & Africa', APAC:'APAC'};
@@ -2835,6 +2851,57 @@ const DECISION_PARAMS = {
   sell:    { lead: 1, icon: '💰', label: 'Sell Plant',          recovery:    0.40 },
 };
 
+async function loadMfgCountries() {
+  if (Object.keys(mfgCountries).length > 0) return; // already loaded
+  try {
+    const res  = await fetch(`${API_URL}/manufacturing-countries`);
+    const data = await res.json();
+    mfgCountries = data.by_region || {};
+  } catch(e) {
+    // Fallback hardcoded
+    mfgCountries = {
+      NA:   [{country_code:'US',country_name:'United States'},{country_code:'MX',country_name:'Mexico'},{country_code:'CA',country_name:'Canada'}],
+      SA:   [{country_code:'BR',country_name:'Brazil'},{country_code:'AR',country_name:'Argentina'},{country_code:'CO',country_name:'Colombia'}],
+      EU:   [{country_code:'DE',country_name:'Germany'},{country_code:'ES',country_name:'Spain'},{country_code:'FR',country_name:'France'},{country_code:'CZ',country_name:'Czech Republic'},{country_code:'SK',country_name:'Slovakia'},{country_code:'TR',country_name:'Turkey'},{country_code:'GB',country_name:'United Kingdom'},{country_code:'IT',country_name:'Italy'},{country_code:'PL',country_name:'Poland'},{country_code:'RO',country_name:'Romania'}],
+      MEA:  [{country_code:'ZA',country_name:'South Africa'},{country_code:'MA',country_name:'Morocco'},{country_code:'EG',country_name:'Egypt'},{country_code:'NG',country_name:'Nigeria'},{country_code:'SA_',country_name:'Saudi Arabia'}],
+      APAC: [{country_code:'CN',country_name:'China'},{country_code:'JP',country_name:'Japan'},{country_code:'IN',country_name:'India'},{country_code:'KR',country_name:'South Korea'},{country_code:'TH',country_name:'Thailand'},{country_code:'ID',country_name:'Indonesia'}],
+    };
+  }
+}
+
+function updateCountryDropdown() {
+  const region = document.getElementById('dec-region')?.value || 'EU';
+  const sel    = document.getElementById('dec-country');
+  if (!sel) return;
+  const countries = mfgCountries[region] || [];
+  // APAC always defaults to China
+  if (region === 'APAC') {
+    sel.innerHTML = '<option value="CN">China</option>';
+    sel.disabled  = true;
+  } else {
+    sel.disabled = false;
+    sel.innerHTML = countries.map(c =>
+      `<option value="${c.country_code}">${c.country_name}</option>`
+    ).join('');
+  }
+}
+
+function updateFpCountryDropdown() {
+  const region = document.getElementById('fp-region')?.value || 'EU';
+  const sel    = document.getElementById('fp-country');
+  if (!sel) return;
+  const countries = mfgCountries[region] || [];
+  if (region === 'APAC') {
+    sel.innerHTML = '<option value="CN">China</option>';
+    sel.disabled  = true;
+  } else {
+    sel.disabled = false;
+    sel.innerHTML = countries.map(c =>
+      `<option value="${c.country_code}">${c.country_name}</option>`
+    ).join('');
+  }
+}
+
 function opsTab(tab, el) {
   document.querySelectorAll('.ops-tab').forEach(t => t.classList.remove('active'));
   document.querySelectorAll('.ops-panel').forEach(p => p.classList.remove('active'));
@@ -2845,6 +2912,7 @@ function opsTab(tab, el) {
 }
 
 async function loadMfgFootprint() {
+  await loadMfgCountries();
   if (!teamId) {
     // No session yet — use defaults for display
     mfgPlants = getDefaultPlants();
@@ -2924,14 +2992,14 @@ function renderFootprint() {
       const typeClass = p.type === 'vehicle' ? 'plant-type-vehicle' : 'plant-type-powertrain';
       const typeLabel = p.type === 'vehicle' ? '🚗 VEH' : '⚙ PT';
       const statusClass = `plant-status-${p.status}`;
-      const statusLabel = p.status === 'active' ? '● Active' : p.status === 'building' ? '⏳ Building' : '🔒 Closing';
+      const statusLabel = p.status === 'active' ? '● Active' : p.status === 'building' ? '⏳ Building' : p.status === 'closing' ? '🔒 Closing' : '💰 Sold';
       return `<div class="plant-item">
         <div class="plant-item-header">
           <span class="plant-type-badge ${typeClass}">${typeLabel}</span>
           <span class="plant-item-name">${p.name}</span>
           <span class="plant-status ${statusClass}">${statusLabel}</span>
         </div>
-        <div class="plant-item-cap">${p.capacity_k}k units/yr</div>
+        <div class="plant-item-cap">${p.capacity_k}k units/yr${p.country_name ? ' · ' + p.country_name : ''}</div>
       </div>`;
     }).join('');
   });
@@ -3014,12 +3082,17 @@ async function submitPlantDecision() {
       if (!name) { msgEl.textContent = '⚠ Please enter a plant name.'; msgEl.style.color='var(--red)'; return; }
       const cost = (cap / 100) * params.costPer100k;
 
+      const countryEl    = document.getElementById('dec-country');
+      const country_code = countryEl?.value || '';
+      const country_name = countryEl?.options[countryEl.selectedIndex]?.text || '';
+
       // Create plant in DB with 'building' status
       const pRes  = await fetch(`${API_URL}/plants`, {
         method: 'POST', headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({
           session_id: sessionId, team_id: teamId,
-          name, type: plantType, region, capacity_k: cap, status: 'building'
+          name, type: plantType, region, country_code, country_name,
+          capacity_k: cap, status: 'building'
         })
       });
       const pData = await pRes.json();
@@ -3521,7 +3594,7 @@ buildBenchRows();
       <!-- Add plant form -->
       <div style="background:#111827;border:1px solid #1e293b;border-radius:8px;padding:14px;margin-bottom:16px;">
         <div style="font-family:'DM Mono',monospace;font-size:9px;text-transform:uppercase;letter-spacing:1px;color:#475569;margin-bottom:12px">Add New Plant</div>
-        <div style="display:grid;grid-template-columns:2fr 1fr 1fr 1fr 1fr;gap:10px;align-items:end;">
+        <div style="display:grid;grid-template-columns:2fr 1fr 1fr 1fr 1fr 1fr;gap:10px;align-items:end;">
           <div>
             <div style="font-size:10px;color:#64748b;margin-bottom:4px">Plant Name</div>
             <input id="fp-name" type="text" placeholder="e.g. Munich Plant" maxlength="40" style="width:100%;box-sizing:border-box;background:#0f172a;border:1px solid #1e293b;border-radius:6px;color:#fff;padding:7px 10px;font-size:12px;font-family:inherit;outline:none"/>
@@ -3535,12 +3608,18 @@ buildBenchRows();
           </div>
           <div>
             <div style="font-size:10px;color:#64748b;margin-bottom:4px">Region</div>
-            <select id="fp-region" style="width:100%;background:#0f172a;border:1px solid #1e293b;border-radius:6px;color:#fff;padding:7px 10px;font-size:12px;font-family:inherit;outline:none">
+            <select id="fp-region" onchange="updateFpCountryDropdown()" style="width:100%;background:#0f172a;border:1px solid #1e293b;border-radius:6px;color:#fff;padding:7px 10px;font-size:12px;font-family:inherit;outline:none">
               <option value="EU">Europe</option>
               <option value="NA">North America</option>
               <option value="APAC">APAC</option>
               <option value="SA">South America</option>
               <option value="MEA">Middle East & Africa</option>
+            </select>
+          </div>
+          <div>
+            <div style="font-size:10px;color:#64748b;margin-bottom:4px">Country</div>
+            <select id="fp-country" style="width:100%;background:#0f172a;border:1px solid #1e293b;border-radius:6px;color:#fff;padding:7px 10px;font-size:12px;font-family:inherit;outline:none">
+              <option value="DE">Germany</option>
             </select>
           </div>
           <div>
