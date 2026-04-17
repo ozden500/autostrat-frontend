@@ -1292,39 +1292,9 @@ input[type=text]:focus,input[type=number]:focus{outline:none;border-color:var(--
   </div>
 </div>
 
-</div><!-- /main -->
-
-<!-- ══ RIGHT PANEL ══ -->
-<div class="rpanel">
-  <div class="rp-sec">
-    <div class="rp-lbl">Q2 Events</div>
-    <div class="event-card risk"><div class="etype">⚠ Risk</div><div class="etxt">Steel tariffs +12% — EU–US trade dispute.</div><div class="eimp">→ +€180/vehicle COGS</div></div>
-    <div class="event-card opp"><div class="etype">✦ Opportunity</div><div class="etxt">EV subsidy extended — €3,500 consumer credit through 2026.</div><div class="eimp">→ EV demand +18% if ≤€38k</div></div>
-    <div class="event-card risk"><div class="etype">⚠ Operational</div><div class="etxt">Semiconductor shortage — 8–12 wk lead time increase.</div><div class="eimp">→ Min 30-day buffer advised</div></div>
-    <div class="event-card mac"><div class="etype">◎ Macro</div><div class="etxt">Consumer confidence +4pts. SUV & premium strongest demand.</div><div class="eimp">→ +5% demand SUV/Premium</div></div>
-    <div class="event-card opp"><div class="etype">✦ Regulation</div><div class="etxt">Fleet electrification mandate in 3 EU markets from Q3 2025.</div><div class="eimp">→ Commercial EV demand surge</div></div>
-  </div>
-  <div class="rp-sec">
-    <div class="rp-lbl">Your Position</div>
-    <div class="m-row"><div class="m-name">ASP vs market</div><div class="m-val up">+6.3%</div></div>
-    <div class="m-row"><div class="m-name">R&D intensity</div><div class="m-val">1.9%</div></div>
-    <div class="m-row"><div class="m-name">EV mix (mkt 22%)</div><div class="m-val dn">18% ▼</div></div>
-    <div class="m-row"><div class="m-name">Net debt/EBITDA</div><div class="m-val" style="color:var(--gold)">1.5×</div></div>
-    <div class="m-row"><div class="m-name">Brand index</div><div class="m-val">72/100</div></div>
-    <div class="m-row"><div class="m-name">CO₂ compliance</div><div class="m-val dn">⚠ 118mg</div></div>
-  </div>
-  <div class="rp-sec" style="flex:1">
-    <div class="rp-lbl">Instructor Notes</div>
-    <div style="font-size:10px;line-height:1.7;color:var(--muted2);">
-      <strong style="color:var(--text)">Q2 Focus:</strong> EV strategy under cost pressure.<br><br>
-      Explore how brand architecture choices (Alpha / Apex / Arrow) can allow differentiated pricing strategies across segments without cannibalisation.<br><br>
-      <strong style="color:var(--gold)">Debrief:</strong> How does the 5-year product plan constrain quarterly decisions?
-    </div>
-  </div>
-</div>
 
 <!-- ████ INSTRUCTOR: SESSION HUB ████ -->
-<div class="page" id="page-instr-hub" class="instr-page">
+<div class="instr-page" id="page-instr-hub">
   <div class="pg-title" style="color:#a78bfa">SESSION HUB</div>
   <div class="pg-sub" id="instr-hub-sub">Round control · Submission tracker · Live status</div>
 
@@ -1369,7 +1339,7 @@ input[type=text]:focus,input[type=number]:focus{outline:none;border-color:var(--
 </div>
 
 <!-- ████ INSTRUCTOR: RESULTS ANALYST ████ -->
-<div class="page" id="page-instr-results" class="instr-page">
+<div class="instr-page" id="page-instr-results">
   <div class="pg-title" style="color:#a78bfa">RESULTS ANALYST</div>
   <div class="pg-sub">Full performance breakdown · All teams · All rounds</div>
   <div style="display:flex;gap:8px;margin-bottom:16px;align-items:center">
@@ -1384,7 +1354,7 @@ input[type=text]:focus,input[type=number]:focus{outline:none;border-color:var(--
 </div>
 
 <!-- ████ INSTRUCTOR: TEAM MONITOR ████ -->
-<div class="page" id="page-instr-monitor" class="instr-page">
+<div class="instr-page" id="page-instr-monitor">
   <div class="pg-title" style="color:#a78bfa">TEAM MONITOR</div>
   <div class="pg-sub">Live view of all team decisions this round</div>
   <button onclick="loadTeamMonitor()" style="background:#4c1d95;color:#c4b5fd;border:none;border-radius:6px;padding:8px 16px;font-size:12px;cursor:pointer;margin-bottom:16px">↻ Refresh</button>
@@ -1394,7 +1364,7 @@ input[type=text]:focus,input[type=number]:focus{outline:none;border-color:var(--
 </div>
 
 <!-- ████ INSTRUCTOR: FOOTPRINT MANAGER ████ -->
-<div class="page" id="page-instr-footprint" class="instr-page">
+<div class="instr-page" id="page-instr-footprint">
   <div class="pg-title" style="color:#a78bfa">FOOTPRINT MANAGER</div>
   <div class="pg-sub">All teams' manufacturing plants — current status</div>
   <button onclick="loadFootprintManager()" style="background:#4c1d95;color:#c4b5fd;border:none;border-radius:6px;padding:8px 16px;font-size:12px;cursor:pointer;margin-bottom:16px">↻ Refresh</button>
@@ -1404,7 +1374,7 @@ input[type=text]:focus,input[type=number]:focus{outline:none;border-color:var(--
 </div>
 
 <!-- ████ INSTRUCTOR: EVENT INJECTOR ████ -->
-<div class="page" id="page-instr-events" class="instr-page">
+<div class="instr-page" id="page-instr-events">
   <div class="pg-title" style="color:#a78bfa">EVENT INJECTOR</div>
   <div class="pg-sub">Inject market events that affect the next round simulation</div>
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:16px">
@@ -1430,6 +1400,39 @@ input[type=text]:focus,input[type=number]:focus{outline:none;border-color:var(--
   <div style="background:var(--s1);border:1px solid var(--border);border-radius:8px;padding:14px">
     <div style="font-family:'DM Mono',monospace;font-size:9px;color:#a78bfa;margin-bottom:8px">ACTIVE EVENTS — NEXT ROUND</div>
     <div id="active-events-list" style="color:var(--muted2);font-size:12px">No events injected yet.</div>
+  </div>
+</div>
+
+
+
+</div><!-- /main -->
+
+<!-- ══ RIGHT PANEL ══ -->
+<div class="rpanel">
+  <div class="rp-sec">
+    <div class="rp-lbl">Q2 Events</div>
+    <div class="event-card risk"><div class="etype">⚠ Risk</div><div class="etxt">Steel tariffs +12% — EU–US trade dispute.</div><div class="eimp">→ +€180/vehicle COGS</div></div>
+    <div class="event-card opp"><div class="etype">✦ Opportunity</div><div class="etxt">EV subsidy extended — €3,500 consumer credit through 2026.</div><div class="eimp">→ EV demand +18% if ≤€38k</div></div>
+    <div class="event-card risk"><div class="etype">⚠ Operational</div><div class="etxt">Semiconductor shortage — 8–12 wk lead time increase.</div><div class="eimp">→ Min 30-day buffer advised</div></div>
+    <div class="event-card mac"><div class="etype">◎ Macro</div><div class="etxt">Consumer confidence +4pts. SUV & premium strongest demand.</div><div class="eimp">→ +5% demand SUV/Premium</div></div>
+    <div class="event-card opp"><div class="etype">✦ Regulation</div><div class="etxt">Fleet electrification mandate in 3 EU markets from Q3 2025.</div><div class="eimp">→ Commercial EV demand surge</div></div>
+  </div>
+  <div class="rp-sec">
+    <div class="rp-lbl">Your Position</div>
+    <div class="m-row"><div class="m-name">ASP vs market</div><div class="m-val up">+6.3%</div></div>
+    <div class="m-row"><div class="m-name">R&D intensity</div><div class="m-val">1.9%</div></div>
+    <div class="m-row"><div class="m-name">EV mix (mkt 22%)</div><div class="m-val dn">18% ▼</div></div>
+    <div class="m-row"><div class="m-name">Net debt/EBITDA</div><div class="m-val" style="color:var(--gold)">1.5×</div></div>
+    <div class="m-row"><div class="m-name">Brand index</div><div class="m-val">72/100</div></div>
+    <div class="m-row"><div class="m-name">CO₂ compliance</div><div class="m-val dn">⚠ 118mg</div></div>
+  </div>
+  <div class="rp-sec" style="flex:1">
+    <div class="rp-lbl">Instructor Notes</div>
+    <div style="font-size:10px;line-height:1.7;color:var(--muted2);">
+      <strong style="color:var(--text)">Q2 Focus:</strong> EV strategy under cost pressure.<br><br>
+      Explore how brand architecture choices (Alpha / Apex / Arrow) can allow differentiated pricing strategies across segments without cannibalisation.<br><br>
+      <strong style="color:var(--gold)">Debrief:</strong> How does the 5-year product plan constrain quarterly decisions?
+    </div>
   </div>
 </div>
 
