@@ -1902,34 +1902,50 @@ function enterSimulator() {
 
 async function checkRoundStateOnEntry() {
   try {
-    // Check if results already exist for this round
-    const res  = await fetch(`${API_URL}/sessions/${sessionId}/rounds/${roundId}/outcomes`);
-    const data = await res.json();
-    if (data.outcomes && data.outcomes.length > 0) {
-      // Results already available — show button immediately
-      lastResultsData = data;
-      const rb = document.getElementById('resultsBtn');
-      if (rb) {
-        rb.style.display = 'inline-block';
-        rb.textContent = '📊 VIEW RESULTS';
-        rb.style.background = 'var(--cyan)';
-        rb.style.color = '#000';
-      }
-      showResults(data, teamId);
-      document.getElementById('sb-stat').innerHTML = '📊 <strong>Round complete</strong> — results available';
-    } else if (submitted === false && teamId) {
-      // Round open, team hasn't submitted yet — check if they already submitted
-      const sRes  = await fetch(`${API_URL}/submissions?round_id=${roundId}&team_id=${teamId}`, {method:'POST'});
-      const sData = await sRes.json();
-      if (sData.submission?.status === 'submitted') {
-        // Already submitted this round — show awaiting button and start polling
-        submitted = true;
-        document.getElementById('submitBtn').textContent = '✓ SUBMITTED';
-        document.getElementById('submitBtn').classList.add('done');
-        document.getElementById('sb-stat').innerHTML = '✓ <strong>Decisions submitted</strong> — waiting for instructor to close round';
+    // Get latest round state first
+    const rRes  = await fetch(`${API_URL}/sessions/${sessionId}/rounds`);
+    const rData = await rRes.json();
+    const rounds = rData.rounds || [];
+    if (rounds.length === 0) return;
+    const latest = rounds[rounds.length - 1];
+
+    // Always use the latest round
+    if (latest.id !== roundId) {
+      roundId = latest.id;
+      sessionStorage.setItem('as_roundId', roundId);
+      updateRoundDisplay(latest);
+    }
+
+    // Only fetch/show results if round is in results phase
+    if (latest.phase === 'results') {
+      const res  = await fetch(`${API_URL}/sessions/${sessionId}/rounds/${roundId}/outcomes`);
+      const data = await res.json();
+      if (data.outcomes && data.outcomes.length > 0) {
+        lastResultsData = data;
         const rb = document.getElementById('resultsBtn');
-        if (rb) { rb.style.display = 'inline-block'; rb.textContent = '⏳ Awaiting Results'; rb.style.background = '#334155'; rb.style.color = '#94a3b8'; }
-        startResultsPoll();
+        if (rb) {
+          rb.style.display = 'inline-block';
+          rb.textContent = '📊 VIEW RESULTS';
+          rb.style.background = 'var(--cyan)';
+          rb.style.color = '#000';
+        }
+        showResults(data, teamId);
+        document.getElementById('sb-stat').innerHTML = '📊 <strong>Round complete</strong> — results available';
+      }
+    } else if (latest.phase === 'decision') {
+      // Round is open — check if already submitted
+      if (submitted === false && teamId) {
+        const sRes  = await fetch(`${API_URL}/submissions?round_id=${roundId}&team_id=${teamId}`, {method:'POST'});
+        const sData = await sRes.json();
+        if (sData.submission?.status === 'submitted') {
+          submitted = true;
+          document.getElementById('submitBtn').textContent = '✓ SUBMITTED';
+          document.getElementById('submitBtn').classList.add('done');
+          document.getElementById('sb-stat').innerHTML = '✓ <strong>Decisions submitted</strong> — waiting for instructor to close round';
+          const rb = document.getElementById('resultsBtn');
+          if (rb) { rb.style.display = 'inline-block'; rb.textContent = '⏳ Awaiting Results'; rb.style.background = '#334155'; rb.style.color = '#94a3b8'; }
+          startResultsPoll();
+        }
       }
     }
   } catch(e) {
@@ -2134,6 +2150,70 @@ setInterval(()=>{
 // ══════════════════════════════════════════
 // ROUND DISPLAY UPDATE
 // ══════════════════════════════════════════
+function updateAllKPIsSync(outcome, score, segs, data, tid) {
+  if (!outcome) return;
+  const el = id => document.getElementById(id);
+  const fmt = (v, d=0) => parseFloat(v||0).toLocaleString(undefined,{maximumFractionDigits:d});
+
+  const share = segs.length > 0 ? segs.reduce((a,s)=>a+parseFloat(s.market_share_pct||0),0)/segs.length : 0;
+  const rev   = parseFloat(outcome.revenue_m||0);
+  const cogs  = parseFloat(outcome.cogs_m||0);
+  const gp    = parseFloat(outcome.gross_profit_m||0);
+  const ebit  = parseFloat(outcome.ebit_m||0);
+  const units = parseInt(outcome.total_units_sold||0);
+  const rd    = parseFloat(outcome.rd_spend_m||0);
+  const mktg  = parseFloat(outcome.marketing_spend_m||0);
+  const cf    = parseFloat(outcome.cash_flow_m||0);
+  const ebitPct = rev > 0 ? (ebit/rev*100).toFixed(1) : '0.0';
+  const asp   = units > 0 ? (rev*1000000/units/1000).toFixed(1) : '0';
+
+  // Dashboard
+  if(el('kpi-revenue'))       el('kpi-revenue').textContent       = '€'+fmt(rev)+'M';
+  if(el('kpi-ebit'))          el('kpi-ebit').textContent          = ebitPct+'%';
+  if(el('kpi-share'))         el('kpi-share').textContent         = share.toFixed(1)+'%';
+  if(el('kpi-rank'))          el('kpi-rank').textContent          = score ? '#'+score.rank : '#—';
+  if(el('kpi-rank-sub'))      el('kpi-rank-sub').textContent      = score ? 'Score: '+fmt(score.composite_score,1) : '—';
+
+  // Operations
+  if(el('ops-cogs-unit'))     el('ops-cogs-unit').textContent     = units > 0 ? '€'+fmt(cogs*1000000/units/1000,1)+'k' : '—';
+
+  // Commercial
+  if(el('com-share'))         el('com-share').textContent         = share.toFixed(1)+'%';
+  if(el('com-asp'))           el('com-asp').textContent           = '€'+asp+'k';
+
+  // Financial
+  if(el('fin-revenue'))       el('fin-revenue').textContent       = '€'+fmt(rev,0)+'M';
+  if(el('fin-ebit'))          el('fin-ebit').textContent          = '€'+fmt(ebit,0)+'M';
+  if(el('fin-ebit-pct'))      el('fin-ebit-pct').textContent      = ebitPct+'% margin';
+  if(el('fin-cashflow'))      el('fin-cashflow').textContent      = '€'+fmt(cf,0)+'M';
+
+  // P&L Table
+  if(el('pl-rev'))  el('pl-rev').textContent  = fmt(rev,0);
+  if(el('pl-cogs')) el('pl-cogs').textContent = '-'+fmt(cogs,0);
+  if(el('pl-gp'))   el('pl-gp').textContent   = fmt(gp,0);
+  if(el('pl-rd'))   el('pl-rd').textContent   = '-'+fmt(rd,0);
+  if(el('pl-mktg')) el('pl-mktg').textContent = '-'+fmt(mktg,0);
+  if(el('pl-ebit')) el('pl-ebit').textContent = fmt(ebit,0);
+  const tax = ebit * 0.25;
+  if(el('pl-tax'))  el('pl-tax').textContent  = '-'+fmt(tax,0);
+  if(el('pl-ni'))   el('pl-ni').textContent   = fmt(ebit-tax,0);
+
+  // Leaderboard KPIs
+  const myRank   = score?.rank || 0;
+  const topScore = data.scores?.find(s=>s.rank===1)?.composite_score || 0;
+  const myScore  = score?.composite_score || 0;
+  if(el('lb-your-rank'))  el('lb-your-rank').textContent  = myRank ? '#'+myRank : '#—';
+  if(el('lb-your-score')) el('lb-your-score').textContent = myScore ? fmt(myScore,1) : '—';
+  if(el('lb-gap')) {
+    const gap = myRank===1 ? 0 : myScore - topScore;
+    el('lb-gap').textContent = gap === 0 ? '🥇 Leader' : fmt(gap,1);
+    el('lb-gap').style.color = gap >= 0 ? 'var(--green)' : 'var(--red)';
+  }
+
+  // Leaderboard table
+  updateLBFromResults(data);
+}
+
 // ══════════════════════════════════════════
 // UPDATE ALL HARDCODED KPIs FROM REAL DATA
 // ══════════════════════════════════════════
@@ -2412,8 +2492,8 @@ function showResults(data, tid) {
     return;
   }
 
-  // Update ALL KPIs across all pages
-  updateAllKPIs(data, tid);
+  // Update ALL KPIs across all pages using already-computed outcome
+  updateAllKPIsSync(outcome, score, segs, data, tid);
   // Update dashboard KPIs (legacy)
   updateDashboardKPIs(outcome, score, segs);
 
