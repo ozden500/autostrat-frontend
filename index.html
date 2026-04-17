@@ -1771,6 +1771,9 @@ async function instructorCreateSession() {
   const name = document.getElementById('session-name-input').value.trim() || 'AutoStrat Session';
   const err  = document.getElementById('login-error2');
   err.textContent = 'Creating session...';
+  // Clear any old session state
+  sessionStorage.clear();
+  sessionId = null; teamId = null; roundId = null; submitted = false;
   try {
     const sRes  = await fetch(`${API_URL}/sessions`, {
       method:'POST', headers:{'Content-Type':'application/json'},
@@ -1856,6 +1859,9 @@ async function teamJoinSession() {
   const err = document.getElementById('login-error2');
   if (!id) { err.textContent = 'Please paste the Session ID from your instructor.'; return; }
   err.textContent = 'Joining...';
+  // Clear old session state
+  sessionStorage.clear();
+  sessionId = null; teamId = null; roundId = null; submitted = false;
   try {
     const res = await fetch(`${API_URL}/sessions/${id}`);
     if (!res.ok) { err.textContent = 'Session not found. Check the ID and try again.'; return; }
@@ -2825,7 +2831,7 @@ async function instructorNextRound() {
 recalcEng();
 buildBenchRows();
 
-// Restore session state if page was refreshed
+// Restore session state if page was refreshed (only restore, don't auto-login)
 (function restoreSession() {
   const sid = sessionStorage.getItem('as_sessionId');
   const tid = sessionStorage.getItem('as_teamId');
@@ -2835,6 +2841,7 @@ buildBenchRows();
     teamId    = tid;
     roundId   = rid || null;
     console.log('Restored session:', sid.substring(0,8), 'team:', tid.substring(0,8));
+    // Don't auto-enter simulator — user still needs to login with PIN
   }
 })();
 </script>
