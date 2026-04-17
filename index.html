@@ -2036,6 +2036,8 @@ async function teamJoinSession() {
     });
     const tData = await tRes.json();
     teamId = tData.team.id;
+    // Initialize plants for this team if not already done
+    await fetch(`${API_URL}/sessions/${sessionId}/plants/initialize`, {method:'POST'});
     enterSimulator();
   } catch(e) {
     err.textContent = 'Error joining: ' + e.message;
