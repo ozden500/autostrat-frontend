@@ -2297,7 +2297,8 @@ function applyUserContext(user) {
       el.textContent = el.textContent.replace(/Alpha Motors/g, name);
   });
   if (user.role === 'instructor') {
-    activateInstructorMode();
+    // Use setTimeout to ensure DOM is ready after all other setup
+    setTimeout(activateInstructorMode, 100);
   }
   document.documentElement.style.setProperty('--team-color', color);
 }
@@ -2869,32 +2870,40 @@ let activeEvents = [];
 
 function activateInstructorMode() {
   // Switch sidebar to instructor nav
-  document.getElementById('team-nav').style.display = 'none';
-  document.getElementById('instructor-nav').style.display = 'flex';
+  const teamNav = document.getElementById('team-nav');
+  const instrNav = document.getElementById('instructor-nav');
+  if (teamNav) teamNav.style.display = 'none';
+  if (instrNav) instrNav.style.display = 'flex';
   // Style topbar purple
-  document.querySelector('.topbar').style.background = 'linear-gradient(90deg,#1e1b4b,#2d1b69)';
-  document.querySelector('.topbar').style.borderBottom = '1px solid #4c1d95';
+  const tb = document.querySelector('.topbar');
+  if (tb) {
+    tb.style.background = 'linear-gradient(90deg,#1e1b4b,#2d1b69)';
+    tb.style.borderBottom = '1px solid #4c1d95';
+  }
   // Hide submit bar
   const sb = document.querySelector('.submit-bar');
   if (sb) sb.style.display = 'none';
-  // Show instructor pages, hide team pages
+  // Hide login overlay just in case
+  const lo = document.getElementById('login-overlay');
+  if (lo) lo.classList.add('hidden');
+  // Show instructor hub, hide all team pages
   document.querySelectorAll('.page').forEach(p => {
     p.style.display = 'none';
     p.classList.remove('active');
   });
-  document.getElementById('page-instr-hub').style.display = 'block';
-  document.getElementById('page-instr-hub').classList.add('active');
+  const hub = document.getElementById('page-instr-hub');
+  if (hub) { hub.style.display = 'block'; hub.classList.add('active'); }
   // Update session info in sidebar
   if (sessionId) {
     const el = document.getElementById('instr-session-id');
     if (el) el.textContent = sessionId;
-    const hub = document.getElementById('hub-session-id');
-    if (hub) hub.textContent = sessionId;
+    const hubId = document.getElementById('hub-session-id');
+    if (hubId) hubId.textContent = sessionId;
   }
-  // Start instructor polling
+  // Start hub polling
   startInstructorHubPoll();
+  console.log('Instructor mode activated');
 }
-
 function navInstr(page, el) {
   document.querySelectorAll('#instructor-nav .nav-item').forEach(n => n.classList.remove('active'));
   if (el) el.classList.add('active');
