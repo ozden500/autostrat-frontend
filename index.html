@@ -453,7 +453,7 @@ input[type=text]:focus,input[type=number]:focus{outline:none;border-color:var(--
 .pipeline-bar-fill { height:100%; background:var(--gold); border-radius:2px; transition:width .3s; }
 
 /* ══ INSTRUCTOR PAGES ══ */
-.instr-page { display:none; padding:20px 24px; overflow-y:auto; height:100%; box-sizing:border-box; }
+.instr-page { display:none; padding:20px 24px; overflow-y:auto; height:100%; box-sizing:border-box; width:100%; }
 .instr-page.active { display:block; }
 .event-inject-btn { background:none; border:1px solid; border-radius:6px; padding:9px 14px; font-size:12px; font-weight:600; cursor:pointer; text-align:left; transition:opacity .15s; font-family:inherit; }
 .event-inject-btn:hover { opacity:.75; }
@@ -2303,7 +2303,7 @@ function applyUserContext(user) {
   });
   if (user.role === 'instructor') {
     // Use setTimeout to ensure DOM is ready after all other setup
-    setTimeout(activateInstructorMode, 100);
+    setTimeout(activateInstructorMode, 300);
   }
   document.documentElement.style.setProperty('--team-color', color);
 }
@@ -2903,9 +2903,10 @@ function activateInstructorMode() {
   const bw = document.querySelector('.body-wrap');
   if (bw) bw.style.gridTemplateColumns = '194px 1fr';
 
-  // Hide all team pages
+  // Force hide ALL team pages with inline style (overrides any active class)
   document.querySelectorAll('.page').forEach(p => {
     p.classList.remove('active');
+    p.style.display = 'none';
   });
 
   // Hide all instructor pages then show hub
