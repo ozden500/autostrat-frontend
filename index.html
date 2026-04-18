@@ -895,7 +895,7 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
 
   <!-- Sub-tabs -->
   <div class="ops-tabs">
-    <div class="ops-tab active" onclick="opsTab('footprint',this)">🗺 Footprint</div>
+    <div class="ops-tab active" onclick="opsTab('footprint',this);loadMfgFootprint(true)">🗺 Footprint</div>
     <div class="ops-tab" onclick="opsTab('decisions',this)">⚙ Decisions</div>
     <div class="ops-tab" onclick="opsTab('pipeline',this)">📋 Pipeline</div>
   </div>
@@ -3437,9 +3437,8 @@ function opsTab(tab, el) {
   document.querySelectorAll('.ops-panel').forEach(p => p.classList.remove('active'));
   el.classList.add('active');
   document.getElementById('ops-' + tab).classList.add('active');
-  if (tab === 'footprint') loadMfgFootprint(true);
-  if (tab === 'decisions') { loadMfgFootprint(true).then(() => updateDecisionForm()); }
-  if (tab === 'pipeline')  { loadMfgFootprint(true).then(() => renderPipeline()); }
+  if (tab === 'decisions') updateDecisionForm();
+  if (tab === 'pipeline')  renderPipeline();
 }
 
 async function loadMfgFootprint(forceRefresh = false) {
