@@ -3522,13 +3522,13 @@ function renderFootprint() {
                           p.status === 'closing'   ? '🔒 Closing'   :
                           p.status === 'inactive'  ? '⏸ Inactive'   :
                           p.status === 'sold'      ? '💰 Sold'      : p.status;
-      return `<div class="plant-item" style="${p.status==='inactive'?'opacity:.6':''}${p.status==='sold'?'opacity:.3':''}">
+      return `<div class="plant-item" style="${p.status==='inactive'?'border-color:#334155;':''}${p.status==='sold'?'border-color:#1e293b;background:var(--s3);':''}">
         <div class="plant-item-header">
-          <span class="plant-type-badge ${typeClass}">${typeLabel}</span>
-          <span class="plant-item-name">${p.name}</span>
+          <span class="plant-type-badge ${typeClass}" style="${p.status==='inactive'||p.status==='sold'?'opacity:.5':''}">  ${typeLabel}</span>
+          <span class="plant-item-name" style="${p.status==='inactive'?'color:#64748b':''}${p.status==='sold'?'color:#334155;text-decoration:line-through':''}">  ${p.name}</span>
           <span class="plant-status ${statusClass}">${statusLabel}</span>
         </div>
-        <div class="plant-item-cap">${p.capacity_k}k units/yr${p.country_name ? ' · ' + p.country_name : ''}</div>
+        <div class="plant-item-cap" style="${p.status==='inactive'||p.status==='sold'?'color:#475569':''}">${p.capacity_k}k units/yr${p.country_name ? ' · ' + p.country_name : ''}</div>
       </div>`;
     }).join('');
   });
