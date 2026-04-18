@@ -457,8 +457,7 @@ body.instructor-mode .page { display:none !important; }
 body.instructor-mode .submit-bar { display:none !important; }
 body.instructor-mode .rpanel { display:none !important; }
 body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
-body.instructor-mode #mainArea { position:relative; }
-.instr-page { display:none; padding:20px 24px; overflow-y:auto; box-sizing:border-box; width:100%; position:absolute; top:0; left:0; right:0; bottom:0; }
+.instr-page { display:none; padding:20px 24px; box-sizing:border-box; width:100%; }
 .instr-page.active { display:block; }
 .event-inject-btn { background:none; border:1px solid; border-radius:6px; padding:9px 14px; font-size:12px; font-weight:600; cursor:pointer; text-align:left; transition:opacity .15s; font-family:inherit; }
 .event-inject-btn:hover { opacity:.75; }
@@ -1299,6 +1298,12 @@ body.instructor-mode #mainArea { position:relative; }
 </div>
 
 
+
+</div><!-- /main -->
+
+<!-- ██ INSTRUCTOR PAGES CONTAINER ██ -->
+<div id="instructor-pages-container" style="display:none;position:fixed;top:46px;left:194px;right:0;bottom:0;overflow-y:auto;z-index:100;background:var(--bg);">
+
 <!-- ████ INSTRUCTOR: SESSION HUB ████ -->
 <div class="instr-page" id="page-instr-hub">
   <div class="pg-title" style="color:#a78bfa">SESSION HUB</div>
@@ -1410,8 +1415,7 @@ body.instructor-mode #mainArea { position:relative; }
 </div>
 
 
-
-</div><!-- /main -->
+</div>
 
 <!-- ══ RIGHT PANEL ══ -->
 <div class="rpanel">
@@ -2915,13 +2919,17 @@ function activateInstructorMode() {
   const bw = document.querySelector('.body-wrap');
   if (bw) bw.style.gridTemplateColumns = '194px 1fr';
 
-  // Force hide ALL team pages with inline style (overrides any active class)
+  // Force hide ALL team pages
   document.querySelectorAll('.page').forEach(p => {
     p.classList.remove('active');
     p.style.display = 'none';
   });
 
-  // Hide all instructor pages then show hub
+  // Show instructor pages container
+  const ic = document.getElementById('instructor-pages-container');
+  if (ic) ic.style.display = 'block';
+
+  // Show hub page
   document.querySelectorAll('.instr-page').forEach(p => p.classList.remove('active'));
   const hub = document.getElementById('page-instr-hub');
   if (hub) hub.classList.add('active');
