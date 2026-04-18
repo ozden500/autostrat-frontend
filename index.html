@@ -771,7 +771,7 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
   <div class="sb-sec">
     <div class="sb-lbl">Navigation</div>
     <div class="nav-item active" onclick="nav('dashboard',this)"><span class="nav-icon">◈</span> Dashboard</div>
-    <div class="nav-item" onclick="nav('operations',this);loadMfgFootprint()"><span class="nav-icon">⚙</span> Industrial Ops</div>
+    <div class="nav-item" onclick="nav('operations',this);loadMfgFootprint(true)"><span class="nav-icon">⚙</span> Industrial Ops</div>
     <div class="nav-item" onclick="nav('commercial',this)"><span class="nav-icon">◎</span> Commercial</div>
     <div class="nav-item" onclick="nav('financial',this)"><span class="nav-icon">$</span> Financial</div>
     <div class="nav-item" onclick="nav('engineering',this)"><span class="nav-icon">⚗</span> Engineering Lab <span class="nav-badge">14 specs</span></div>
@@ -3441,10 +3441,9 @@ function opsTab(tab, el) {
   if (tab === 'pipeline')  renderPipeline();
 }
 
-async function loadMfgFootprint() {
+async function loadMfgFootprint(forceRefresh = false) {
   await loadMfgCountries();
   if (!teamId) {
-    // No session yet — use defaults for display
     mfgPlants = getDefaultPlants();
     mfgPipeline = [];
     renderFootprint();
@@ -3452,15 +3451,10 @@ async function loadMfgFootprint() {
     return;
   }
   try {
-    // Load plants from database
     const res  = await fetch(`${API_URL}/teams/${teamId}/plants`);
     const data = await res.json();
-    if (data.plants && data.plants.length > 0) {
-      mfgPlants = data.plants;
-    } else {
-      // No plants yet — use defaults
-      mfgPlants = getDefaultPlants();
-    }
+    // Always use fresh data from API — no caching
+    mfgPlants = (data.plants && data.plants.length > 0) ? data.plants : getDefaultPlants();
     // Load pipeline decisions
     const dRes  = await fetch(`${API_URL}/teams/${teamId}/plant-decisions`);
     const dData = await dRes.json();
@@ -3478,7 +3472,7 @@ async function loadMfgFootprint() {
     }));
   } catch(e) {
     console.warn('loadMfgFootprint error:', e);
-    mfgPlants = getDefaultPlants();
+    if (mfgPlants.length === 0) mfgPlants = getDefaultPlants();
     mfgPipeline = [];
   }
   renderFootprint();
