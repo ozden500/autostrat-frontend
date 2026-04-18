@@ -2218,7 +2218,7 @@ async function teamJoinSession() {
     const tData = await tRes.json();
     teamId = tData.team.id;
     // Initialize plants for this team if not already done
-    await fetch(`${API_URL}/sessions/${sessionId}/plants/initialize`, {method:'POST'});
+    await fetch(`${API_URL}/teams/${teamId}/plants/initialize`, {method:'POST'});
     enterSimulator();
   } catch(e) {
     err.textContent = 'Error joining: ' + e.message;
@@ -3458,8 +3458,8 @@ async function loadMfgFootprint(forceRefresh = false) {
     if (data.plants && data.plants.length > 0) {
       mfgPlants = data.plants;
     } else {
-      // No plants in DB — initialize them now
-      await fetch(`${API_URL}/sessions/${sessionId}/plants/initialize`, {method:'POST'});
+      // No plants in DB — initialize for this team specifically
+      await fetch(`${API_URL}/teams/${teamId}/plants/initialize`, {method:'POST'});
       const res2  = await fetch(`${API_URL}/teams/${teamId}/plants`);
       const data2 = await res2.json();
       mfgPlants = data2.plants || [];
