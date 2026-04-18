@@ -2879,33 +2879,56 @@ function activateInstructorMode() {
   const instrNav = document.getElementById('instructor-nav');
   if (teamNav) teamNav.style.display = 'none';
   if (instrNav) instrNav.style.display = 'flex';
+
   // Style topbar purple
   const tb = document.querySelector('.topbar');
   if (tb) {
     tb.style.background = 'linear-gradient(90deg,#1e1b4b,#2d1b69)';
     tb.style.borderBottom = '1px solid #4c1d95';
   }
+
   // Hide submit bar
   const sb = document.querySelector('.submit-bar');
   if (sb) sb.style.display = 'none';
-  // Hide login overlay just in case
-  const lo = document.getElementById('login-overlay');
-  if (lo) lo.classList.add('hidden');
-  // Hide all team pages, show instructor hub
-  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+
+  // Hide right panel — instructor doesn't need it
+  const rp = document.querySelector('.rpanel');
+  if (rp) rp.style.display = 'none';
+
+  // Expand main area to full width without rpanel
+  const main = document.getElementById('mainArea');
+  if (main) main.style.gridColumn = '1 / -1';
+
+  // Expand body-wrap to 2 columns (sidebar + main only)
+  const bw = document.querySelector('.body-wrap');
+  if (bw) bw.style.gridTemplateColumns = '194px 1fr';
+
+  // Hide all team pages
+  document.querySelectorAll('.page').forEach(p => {
+    p.classList.remove('active');
+  });
+
+  // Hide all instructor pages then show hub
   document.querySelectorAll('.instr-page').forEach(p => p.classList.remove('active'));
   const hub = document.getElementById('page-instr-hub');
   if (hub) hub.classList.add('active');
+
   // Mark first nav item active
   const firstNav = document.querySelector('#instructor-nav .nav-item');
   if (firstNav) firstNav.classList.add('active');
-  // Update session info in sidebar
+
+  // Hide login overlay
+  const lo = document.getElementById('login-overlay');
+  if (lo) lo.classList.add('hidden');
+
+  // Update session info
   if (sessionId) {
     const el = document.getElementById('instr-session-id');
     if (el) el.textContent = sessionId;
     const hubId = document.getElementById('hub-session-id');
     if (hubId) hubId.textContent = sessionId;
   }
+
   // Start hub polling
   startInstructorHubPoll();
   console.log('Instructor mode activated');
