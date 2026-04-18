@@ -3437,8 +3437,9 @@ function opsTab(tab, el) {
   document.querySelectorAll('.ops-panel').forEach(p => p.classList.remove('active'));
   el.classList.add('active');
   document.getElementById('ops-' + tab).classList.add('active');
-  if (tab === 'decisions') updateDecisionForm();
-  if (tab === 'pipeline')  renderPipeline();
+  if (tab === 'footprint') loadMfgFootprint(true);
+  if (tab === 'decisions') { loadMfgFootprint(true).then(() => updateDecisionForm()); }
+  if (tab === 'pipeline')  { loadMfgFootprint(true).then(() => renderPipeline()); }
 }
 
 async function loadMfgFootprint(forceRefresh = false) {
