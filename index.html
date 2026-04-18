@@ -2999,7 +2999,9 @@ async function refreshInstructorHub() {
     ]);
     const tData = await tRes.json();
     const rData = await rRes.json();
-    const teams  = (tData.teams || []).filter(t => t.name !== 'Instructor' && t.team_type === 'human');
+    const teams  = (tData.teams || []).filter(t => t.name !== 'Instructor');
+    const humanTeams = teams.filter(t => t.team_type === 'human');
+    const aiTeams    = teams.filter(t => t.team_type === 'ai');
     const rounds = rData.rounds || [];
     const latest = rounds[rounds.length - 1];
 
@@ -3029,37 +3031,49 @@ async function refreshInstructorHub() {
       const sData = await sRes.json();
       const subs  = sData.submissions || [];
       const submitted = subs.filter(s => s.status === 'submitted');
-      document.getElementById('hub-sub-summary').textContent = `${submitted.length} / ${teams.length} submitted`;
-      document.getElementById('instr-sub-count').textContent = `${submitted.length} / ${teams.length}`;
+      document.getElementById('hub-sub-summary').textContent = `${submitted.length} / ${humanTeams.length} human submitted`;
+      document.getElementById('instr-sub-count').textContent = `${submitted.length} / ${humanTeams.length}`;
 
-      // Render submission cards
       const subMap = {};
       subs.forEach(s => subMap[s.team_id] = s);
-      document.getElementById('hub-submissions').innerHTML = teams.map(t => {
-        const sub = subMap[t.id];
-        const done = sub?.status === 'submitted';
-        return `<div style="background:${done?'rgba(74,222,128,.08)':'rgba(251,191,36,.06)'};border:1px solid ${done?'rgba(74,222,128,.25)':'rgba(251,191,36,.2)'};border-radius:8px;padding:12px">
-          <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
-            <span style="font-size:16px">${done?'✅':'⏳'}</span>
-            <span style="font-size:12px;font-weight:700;color:${t.color_hex||'#fff'}">${t.name}</span>
-          </div>
-          <div style="font-size:10px;color:${done?'#4ade80':'#fbbf24'}">${done?'Submitted':'Pending'}</div>
-        </div>`;
-      }).join('');
+      document.getElementById('hub-submissions').innerHTML =
+        humanTeams.map(t => {
+          const sub  = subMap[t.id];
+          const done = sub?.status === 'submitted';
+          return `<div style="background:${done?'rgba(74,222,128,.08)':'rgba(251,191,36,.06)'};border:1px solid ${done?'rgba(74,222,128,.25)':'rgba(251,191,36,.2)'};border-radius:8px;padding:12px">
+            <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
+              <span style="font-size:16px">${done?'✅':'⏳'}</span>
+              <span style="font-size:12px;font-weight:700;color:${t.color_hex||'#fff'}">${t.name}</span>
+            </div>
+            <div style="font-size:10px;color:${done?'#4ade80':'#fbbf24'}">${done?'Submitted':'Pending'}</div>
+          </div>`;
+        }).join('') +
+        aiTeams.map(t => `
+          <div style="background:rgba(148,163,184,.06);border:1px solid rgba(148,163,184,.2);border-radius:8px;padding:12px">
+            <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
+              <span style="font-size:16px">🤖</span>
+              <span style="font-size:12px;font-weight:700;color:${t.color_hex||'#94a3b8'}">${t.name}</span>
+            </div>
+            <div style="font-size:10px;color:#64748b">AI — Auto Ready</div>
+          </div>`
+        ).join('');
 
       // Quick results preview
       if (latest.phase === 'results') {
         const oRes  = await fetch(`${API_URL}/sessions/${sessionId}/rounds/${latest.id}/outcomes`);
         const oData = await oRes.json();
         const scores = oData.scores || [];
+        const humanIds = new Set(humanTeams.map(t => t.id));
         if (scores.length > 0) {
-          document.getElementById('hub-quick-results').innerHTML = scores.slice(0,5).map((s,i) =>
-            `<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border)">
-              <span style="font-family:'Orbitron',sans-serif;font-size:11px;color:${i===0?'#fbbf24':i===1?'#94a3b8':i===2?'#b45309':'var(--muted2)'}">#${s.rank}</span>
-              <span style="font-size:12px;font-weight:600;color:var(--text);flex:1">${s.team_name||'—'}</span>
-              <span style="font-family:'DM Mono',monospace;font-size:11px;color:#a78bfa">${parseFloat(s.composite_score||0).toFixed(1)}</span>
-            </div>`
-          ).join('');
+          document.getElementById('hub-quick-results').innerHTML = scores.map((s,i) => {
+            const isHuman = humanIds.has(s.team_id);
+            const rc = s.rank===1?'#fbbf24':s.rank===2?'#94a3b8':s.rank===3?'#b45309':'var(--muted2)';
+            return `<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border);${isHuman?'background:rgba(167,139,250,.06);border-radius:4px;padding:6px 8px;':''}">
+              <span style="font-family:'Orbitron',sans-serif;font-size:11px;color:${rc}">#${s.rank}</span>
+              <span style="font-size:12px;font-weight:${isHuman?'700':'500'};color:${isHuman?'#fff':'var(--muted2)'};flex:1">${s.team_name||'—'}${isHuman?' 👤':' 🤖'}</span>
+              <span style="font-family:'DM Mono',monospace;font-size:11px;color:${isHuman?'#a78bfa':'#475569'}">${parseFloat(s.composite_score||0).toFixed(1)}</span>
+            </div>`;
+          }).join('');
         }
       }
     }
@@ -3397,16 +3411,10 @@ function updateCountryDropdown() {
   const sel    = document.getElementById('dec-country');
   if (!sel) return;
   const countries = mfgCountries[region] || [];
-  // APAC always defaults to China
-  if (region === 'APAC') {
-    sel.innerHTML = '<option value="CN">China</option>';
-    sel.disabled  = true;
-  } else {
-    sel.disabled = false;
-    sel.innerHTML = countries.map(c =>
-      `<option value="${c.country_code}">${c.country_name}</option>`
-    ).join('');
-  }
+  sel.disabled = false;
+  sel.innerHTML = countries.map(c =>
+    `<option value="${c.country_code}">${c.country_name}</option>`
+  ).join('');
 }
 
 function updateFpCountryDropdown() {
@@ -3414,15 +3422,10 @@ function updateFpCountryDropdown() {
   const sel    = document.getElementById('fp-country');
   if (!sel) return;
   const countries = mfgCountries[region] || [];
-  if (region === 'APAC') {
-    sel.innerHTML = '<option value="CN">China</option>';
-    sel.disabled  = true;
-  } else {
-    sel.disabled = false;
-    sel.innerHTML = countries.map(c =>
-      `<option value="${c.country_code}">${c.country_name}</option>`
-    ).join('');
-  }
+  sel.disabled = false;
+  sel.innerHTML = countries.map(c =>
+    `<option value="${c.country_code}">${c.country_name}</option>`
+  ).join('');
 }
 
 function opsTab(tab, el) {
