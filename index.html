@@ -420,11 +420,12 @@ input[type=text]:focus,input[type=number]:focus{outline:none;border-color:var(--
 .plant-item-name { font-size:11px; font-weight:600; color:var(--text); flex:1; }
 .plant-item-cap { font-family:'DM Mono',monospace; font-size:9px; color:var(--muted2); }
 .plant-status { font-size:8px; padding:1px 5px; border-radius:3px; }
-.plant-status-active   { background:rgba(56,212,134,.12); color:var(--green); }
-.plant-status-building { background:rgba(200,164,60,.12); color:var(--gold); }
-.plant-status-closing  { background:rgba(224,58,82,.12); color:var(--red); }
-.plant-status-inactive { background:rgba(148,163,184,.12); color:#64748b; }
-.plant-status-sold     { background:rgba(100,116,139,.08); color:#334155; }
+.plant-status-active    { background:rgba(56,212,134,.12); color:var(--green); }
+.plant-status-building  { background:rgba(200,164,60,.12); color:var(--gold); }
+.plant-status-closing   { background:rgba(224,58,82,.12); color:var(--red); }
+.plant-status-reopening { background:rgba(56,189,212,.12); color:#22d3ee; }
+.plant-status-inactive  { background:rgba(148,163,184,.12); color:#64748b; }
+.plant-status-sold      { background:rgba(100,116,139,.08); color:#334155; }
 .plant-empty { font-size:11px; color:var(--muted); text-align:center; padding:16px 0; }
 
 .mfg-decision-form { background:var(--s1); border:1px solid var(--border); border-radius:8px; padding:16px; }
@@ -3388,7 +3389,7 @@ const DECISION_PARAMS = {
   build:   { lead: 4, icon: '🏗', label: 'Build New Plant',  costPer100k: 500  },
   expand:  { lead: 2, icon: '📈', label: 'Expand Plant',     costPer50k:  200  },
   close:   { lead: 1, icon: '🔒', label: 'Close Plant',      fixedCost:   50   },
-  reopen:  { lead: 2, icon: '🔓', label: 'Reopen Plant',     fixedCost:   80   },
+  reopen:  { lead: 1, icon: '🔓', label: 'Reopen Plant',     fixedCost:   80   },
   sell:    { lead: 1, icon: '💰', label: 'Sell Plant',       recovery:    0.40 },
 };
 
@@ -3516,11 +3517,12 @@ function renderFootprint() {
       const typeClass = p.type === 'vehicle' ? 'plant-type-vehicle' : 'plant-type-powertrain';
       const typeLabel = p.type === 'vehicle' ? '🚗 VEH' : '⚙ PT';
       const statusClass = `plant-status-${p.status}`;
-      const statusLabel = p.status === 'active'   ? '● Active'      :
-                          p.status === 'building'  ? '⏳ Building'   :
-                          p.status === 'closing'   ? '🔒 Closing'   :
-                          p.status === 'inactive'  ? '⏸ Inactive'   :
-                          p.status === 'sold'      ? '💰 Sold'      : p.status;
+      const statusLabel = p.status === 'active'    ? '● Active'      :
+                          p.status === 'building'   ? '⏳ Building'   :
+                          p.status === 'closing'    ? '🔒 Closing'   :
+                          p.status === 'reopening'  ? '🔓 Reopening' :
+                          p.status === 'inactive'   ? '⏸ Inactive'   :
+                          p.status === 'sold'       ? '💰 Sold'      : p.status;
       return `<div class="plant-item" style="${p.status==='inactive'?'border-color:#334155;':''}${p.status==='sold'?'border-color:#1e293b;background:var(--s3);':''}">
         <div class="plant-item-header">
           <span class="plant-type-badge ${typeClass}" style="${p.status==='inactive'||p.status==='sold'?'opacity:.5':''}">  ${typeLabel}</span>
@@ -3656,9 +3658,9 @@ async function submitPlantDecision() {
         cost = params.fixedCost;
         newStatus = 'closing'; // engine will set to 'inactive' when complete
       } else if (type === 'reopen') {
-        capDelta = 0; // restore original capacity when complete
+        capDelta = 0;
         cost = params.fixedCost;
-        newStatus = 'closing'; // reuse 'closing' status during lead time, engine sets to active
+        newStatus = 'reopening'; // engine sets to active when complete
       } else if (type === 'sell') {
         capDelta = -plant.capacity_k;
         cost = -(plant.capacity_k * 5 * params.recovery);
