@@ -457,7 +457,8 @@ body.instructor-mode .page { display:none !important; }
 body.instructor-mode .submit-bar { display:none !important; }
 body.instructor-mode .rpanel { display:none !important; }
 body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
-.instr-page { display:none; padding:20px 24px; overflow-y:auto; height:100%; box-sizing:border-box; width:100%; }
+body.instructor-mode #mainArea { position:relative; }
+.instr-page { display:none; padding:20px 24px; overflow-y:auto; box-sizing:border-box; width:100%; position:absolute; top:0; left:0; right:0; bottom:0; }
 .instr-page.active { display:block; }
 .event-inject-btn { background:none; border:1px solid; border-radius:6px; padding:9px 14px; font-size:12px; font-weight:600; cursor:pointer; text-align:left; transition:opacity .15s; font-family:inherit; }
 .event-inject-btn:hover { opacity:.75; }
