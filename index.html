@@ -4066,45 +4066,68 @@ async function refreshInstructorPanel() {
 
 async function instructorCloseRound() {
   if (!sessionId || !roundId) return;
-  const btn = document.getElementById('ip-btn-close');
-  btn.disabled = true; btn.textContent = '⏳ Running simulation...';
+  const btn = document.getElementById('ip-btn-close') || document.getElementById('hub-btn-close');
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Running simulation...'; }
   try {
-    await fetch(`${API_URL}/sessions/${sessionId}/rounds/${roundId}/run`, {method:'POST'});
+    const res = await fetch(`${API_URL}/sessions/${sessionId}/rounds/${roundId}/run`, {method:'POST'});
+    if (!res.ok) throw new Error('Simulation failed: ' + res.status);
     toast('✓ Simulation complete — results ready for all teams');
-    btn.textContent = '✓ Round closed';
-    document.getElementById('ip-status-label').textContent = 'results';
-    document.getElementById('ip-btn-next').disabled = false;
-    document.getElementById('ip-btn-results').disabled = false;
-    document.getElementById('phase-pill').textContent = '📊 Results Phase';
-    await refreshInstructorPanel();
+    if (btn) btn.textContent = '✓ Round closed';
+    const statusLabel = document.getElementById('ip-status-label');
+    if (statusLabel) statusLabel.textContent = 'results';
+    const nextBtn = document.getElementById('ip-btn-next');
+    if (nextBtn) nextBtn.disabled = false;
+    const resultsBtn = document.getElementById('ip-btn-results');
+    if (resultsBtn) resultsBtn.disabled = false;
+    const phasePill = document.getElementById('phase-pill');
+    if (phasePill) phasePill.textContent = '📊 Results Phase';
+    // Update hub buttons
+    const hubClose = document.getElementById('hub-btn-close');
+    const hubNext  = document.getElementById('hub-btn-next');
+    if (hubClose) { hubClose.disabled = true;  hubClose.style.opacity = '.4'; }
+    if (hubNext)  { hubNext.disabled = false;  hubNext.style.opacity  = '1'; }
+    await refreshInstructorHub();
   } catch(e) {
     toast('⚠ Simulation error: ' + e.message);
-    btn.disabled = false; btn.textContent = '⏹ Close Round & Run Simulation';
+    if (btn) { btn.disabled = false; btn.textContent = '⏹ Close Round & Run Simulation'; }
   }
 }
 
 async function instructorNextRound() {
   if (!sessionId) return;
-  const btn = document.getElementById('ip-btn-next');
-  btn.disabled = true; btn.textContent = '⏳ Opening next round...';
+  const btn = document.getElementById('ip-btn-next') || document.getElementById('hub-btn-next');
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Opening...'; }
   try {
     const rRes  = await fetch(`${API_URL}/sessions/${sessionId}/rounds/next`, {method:'POST'});
     const rData = await rRes.json();
+    if (!rData.round?.id) throw new Error(JSON.stringify(rData));
     roundId = rData.round.id;
+    sessionStorage.setItem('as_roundId', roundId);
     updateRoundDisplay(rData.round);
-    document.getElementById('submitBtn').textContent = 'SUBMIT DECISIONS →';
-    document.getElementById('submitBtn').disabled = false;
-    document.getElementById('submitBtn').classList.remove('done');
-    document.getElementById('sb-stat').innerHTML = 'Round opened — teams can now submit decisions';
-    document.getElementById('phase-pill').textContent = '⚡ Decision Phase';
+    // Only update submit bar if visible (team mode)
+    const submitBtn = document.getElementById('submitBtn');
+    if (submitBtn) {
+      submitBtn.textContent = 'SUBMIT DECISIONS →';
+      submitBtn.disabled = false;
+      submitBtn.classList.remove('done');
+    }
+    const sbStat = document.getElementById('sb-stat');
+    if (sbStat) sbStat.innerHTML = 'Round opened — teams can now submit decisions';
+    const phasePill = document.getElementById('phase-pill');
+    if (phasePill) phasePill.textContent = '⚡ Decision Phase';
     toast('✓ Round ' + rData.round.round_number + ' opened');
-    btn.textContent = '▶ Open Next Round';
-    document.getElementById('ip-btn-close').disabled = false;
-    document.getElementById('ip-btn-close').textContent = '⏹ Close Round & Run Simulation';
-    await refreshInstructorPanel();
+    if (btn) { btn.textContent = '▶ Open Next Round'; }
+    const closeBtn = document.getElementById('ip-btn-close');
+    if (closeBtn) { closeBtn.disabled = false; closeBtn.textContent = '⏹ Close Round & Run Simulation'; }
+    // Update hub buttons
+    const hubClose = document.getElementById('hub-btn-close');
+    const hubNext  = document.getElementById('hub-btn-next');
+    if (hubClose) { hubClose.disabled = false; hubClose.style.opacity = '1'; }
+    if (hubNext)  { hubNext.disabled = true;  hubNext.style.opacity  = '.4'; }
+    await refreshInstructorHub();
   } catch(e) {
-    toast('⚠ Error: ' + e.message);
-    btn.disabled = false; btn.textContent = '▶ Open Next Round';
+    toast('⚠ Error opening round: ' + e.message);
+    if (btn) { btn.disabled = false; btn.textContent = '▶ Open Next Round'; }
   }
 }
 
