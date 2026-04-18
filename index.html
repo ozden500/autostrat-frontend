@@ -2065,6 +2065,13 @@ async function handleLogin() {
     }
     currentUser = data.user;
     document.getElementById('login-step1').style.display = 'none';
+
+    // If session already exists in storage, skip step 2 and go straight in
+    if (sessionId && teamId && currentUser.role === sessionStorage.getItem('as_role')) {
+      enterSimulator();
+      return;
+    }
+
     document.getElementById('login-step2').style.display = 'block';
     const badge = document.getElementById('login-team-badge');
     badge.textContent = currentUser.team_name;
@@ -2083,10 +2090,8 @@ async function handleLogin() {
 document.addEventListener('DOMContentLoaded', () => {
   const input = document.getElementById('pin-input');
   if (input) input.addEventListener('keydown', e => { if (e.key === 'Enter') handleLogin(); });
-  // Auto-enter simulator if session was restored
-  if (sessionId && teamId && currentUser) {
-    enterSimulator();
-  }
+  // Do NOT auto-enter simulator on reload — always require PIN login
+  // sessionStorage preserves sessionId/teamId/roundId for use after PIN login
 });
 
 // ══════════════════════════════════════════
