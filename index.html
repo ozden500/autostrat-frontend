@@ -2154,7 +2154,7 @@ async function instructorCreateSession() {
     console.log('Plant footprint initialized');
 
     enterSimulator();
-    showSessionBanner(sessionId);
+    if (currentUser?.role !== 'instructor') showSessionBanner(sessionId);
     showInstructorControls();
   } catch(e) {
     err.textContent = 'Failed: ' + e.message;
@@ -2957,6 +2957,8 @@ function activateInstructorMode() {
 
   // Start hub polling
   startInstructorHubPoll();
+  // Show session ID toast for instructor
+  if (sessionId) setTimeout(() => toast('📋 Session ID in sidebar — click to copy'), 500);
   console.log('Instructor mode activated');
 }
 function navInstr(page, el) {
