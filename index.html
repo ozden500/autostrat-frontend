@@ -3444,8 +3444,9 @@ function opsTab(tab, el) {
 
 async function loadMfgFootprint(forceRefresh = false) {
   await loadMfgCountries();
-  if (!teamId) {
-    mfgPlants = getDefaultPlants();
+  if (!teamId || !sessionId) {
+    // No session yet — show empty regions
+    mfgPlants = [];
     mfgPipeline = [];
     renderFootprint();
     updateMfgKPIs();
@@ -3454,8 +3455,15 @@ async function loadMfgFootprint(forceRefresh = false) {
   try {
     const res  = await fetch(`${API_URL}/teams/${teamId}/plants`);
     const data = await res.json();
-    // Always use fresh data from API — no caching
-    mfgPlants = (data.plants && data.plants.length > 0) ? data.plants : getDefaultPlants();
+    if (data.plants && data.plants.length > 0) {
+      mfgPlants = data.plants;
+    } else {
+      // No plants in DB — initialize them now
+      await fetch(`${API_URL}/sessions/${sessionId}/plants/initialize`, {method:'POST'});
+      const res2  = await fetch(`${API_URL}/teams/${teamId}/plants`);
+      const data2 = await res2.json();
+      mfgPlants = data2.plants || [];
+    }
     // Load pipeline decisions
     const dRes  = await fetch(`${API_URL}/teams/${teamId}/plant-decisions`);
     const dData = await dRes.json();
@@ -3473,7 +3481,7 @@ async function loadMfgFootprint(forceRefresh = false) {
     }));
   } catch(e) {
     console.warn('loadMfgFootprint error:', e);
-    if (mfgPlants.length === 0) mfgPlants = getDefaultPlants();
+    mfgPlants = [];
     mfgPipeline = [];
   }
   renderFootprint();
@@ -3647,6 +3655,13 @@ async function submitPlantDecision() {
       const pid   = document.getElementById('dec-plant-select').value;
       const plant = mfgPlants.find(p => p.id === pid);
       if (!plant) { msgEl.textContent = '⚠ Please select a plant.'; msgEl.style.color='var(--red)'; return; }
+      // Guard against fake/default plant IDs
+      if (pid.startsWith('def_') || pid.startsWith('fp_') || pid.length < 10) {
+        msgEl.textContent = '⚠ Plants not initialized — please refresh the footprint tab first.';
+        msgEl.style.color='var(--red)';
+        await loadMfgFootprint(true);
+        return;
+      }
 
       let capDelta = 0, cost = 0, newStatus = plant.status;
 
