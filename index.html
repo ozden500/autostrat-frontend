@@ -453,6 +453,10 @@ input[type=text]:focus,input[type=number]:focus{outline:none;border-color:var(--
 .pipeline-bar-fill { height:100%; background:var(--gold); border-radius:2px; transition:width .3s; }
 
 /* ══ INSTRUCTOR PAGES ══ */
+body.instructor-mode .page { display:none !important; }
+body.instructor-mode .submit-bar { display:none !important; }
+body.instructor-mode .rpanel { display:none !important; }
+body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
 .instr-page { display:none; padding:20px 24px; overflow-y:auto; height:100%; box-sizing:border-box; width:100%; }
 .instr-page.active { display:block; }
 .event-inject-btn { background:none; border:1px solid; border-radius:6px; padding:9px 14px; font-size:12px; font-weight:600; cursor:pointer; text-align:left; transition:opacity .15s; font-family:inherit; }
@@ -2302,8 +2306,9 @@ function applyUserContext(user) {
       el.textContent = el.textContent.replace(/Alpha Motors/g, name);
   });
   if (user.role === 'instructor') {
-    // Use setTimeout to ensure DOM is ready after all other setup
-    setTimeout(activateInstructorMode, 300);
+    // Activate instructor mode immediately via body class
+    document.body.classList.add('instructor-mode');
+    setTimeout(activateInstructorMode, 50);
   }
   document.documentElement.style.setProperty('--team-color', color);
 }
