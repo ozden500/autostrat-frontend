@@ -2078,6 +2078,10 @@ async function handleLogin() {
 document.addEventListener('DOMContentLoaded', () => {
   const input = document.getElementById('pin-input');
   if (input) input.addEventListener('keydown', e => { if (e.key === 'Enter') handleLogin(); });
+  // Auto-enter simulator if session was restored
+  if (sessionId && teamId && currentUser) {
+    enterSimulator();
+  }
 });
 
 // ══════════════════════════════════════════
@@ -2214,11 +2218,13 @@ function enterSimulator() {
   applyUserContext(currentUser);
   document.getElementById('login-overlay').classList.add('hidden');
   if (currentUser.role === 'instructor') showInstructorControls();
-  else startRoundStatePolling(); // teams poll for round changes
-  // Persist session state
+  else startRoundStatePolling();
   sessionStorage.setItem('as_sessionId', sessionId || '');
-  sessionStorage.setItem('as_teamId', teamId || '');
-  sessionStorage.setItem('as_roundId', roundId || '');
+  sessionStorage.setItem('as_teamId',    teamId    || '');
+  sessionStorage.setItem('as_roundId',   roundId   || '');
+  sessionStorage.setItem('as_role',      currentUser?.role      || '');
+  sessionStorage.setItem('as_tname',     currentUser?.team_name || '');
+  sessionStorage.setItem('as_color',     currentUser?.color_hex || '');
   if (sessionId && roundId) checkRoundStateOnEntry();
 }
 
@@ -4075,15 +4081,20 @@ buildBenchRows();
 
 // Restore session state if page was refreshed (only restore, don't auto-login)
 (function restoreSession() {
-  const sid = sessionStorage.getItem('as_sessionId');
-  const tid = sessionStorage.getItem('as_teamId');
-  const rid = sessionStorage.getItem('as_roundId');
+  const sid  = sessionStorage.getItem('as_sessionId');
+  const tid  = sessionStorage.getItem('as_teamId');
+  const rid  = sessionStorage.getItem('as_roundId');
+  const role = sessionStorage.getItem('as_role');
+  const tname = sessionStorage.getItem('as_tname');
+  const color = sessionStorage.getItem('as_color');
   if (sid && tid) {
     sessionId = sid;
     teamId    = tid;
     roundId   = rid || null;
-    console.log('Restored session:', sid.substring(0,8), 'team:', tid.substring(0,8));
-    // Don't auto-enter simulator — user still needs to login with PIN
+    if (role) {
+      currentUser = { role, team_name: tname || 'Instructor', color_hex: color || '#7c3aed' };
+    }
+    console.log('Restored session:', sid.substring(0,8), 'role:', role);
   }
 })();
 </script>
