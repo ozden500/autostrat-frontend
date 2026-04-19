@@ -1557,6 +1557,30 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
 
 <script>
 // ══════════════════════════════════════════
+// NAVIGATION
+// ══════════════════════════════════════════
+function nav(page, el) {
+  document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
+  document.getElementById('page-'+page).classList.add('active');
+  el.classList.add('active');
+  if(page==='market') buildMktBars();
+  if(page==='plan') loadVehiclePlan();
+  if(page==='brands') renderBrand(currentBrand);
+  if(page==='engineering') { loadBaseConfigs(currentModType); if(teamId) loadModuleLibrary(); }
+}
+
+// ══════════════════════════════════════════
+// FORM HELPERS
+// ══════════════════════════════════════════
+function sv(id,v,u){const e=document.getElementById(id);if(e)e.textContent=v+u;}
+function svf(id,v,u){const e=document.getElementById(id);if(e)e.textContent=parseFloat(v).toFixed(1)+u;}
+function svp(id,v){const e=document.getElementById(id);if(e)e.textContent='€'+parseInt(v).toLocaleString();}
+function svm(id,v){const e=document.getElementById(id);if(e)e.textContent='€'+parseInt(v)+'M';}
+function toggleChip(el){el.classList.toggle('on');}
+function setEl(id,v){const e=document.getElementById(id);if(e)e.textContent=v;}
+
+// ══════════════════════════════════════════
 // PLAN DATA (minimal — vehicles come from API)
 // ══════════════════════════════════════════
 const SEG_COLORS = {
