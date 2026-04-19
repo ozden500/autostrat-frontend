@@ -1182,6 +1182,32 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
     <div id="mod-pipeline-empty" style="color:var(--muted2);font-size:12px;padding:8px 0;">No active developments.</div>
     <div id="mod-pipeline-list"></div>
   </div>
+
+  <!-- Engineering Benchmark -->
+  <div class="card" style="margin-top:12px;">
+    <div class="card-title">ENGINEERING BENCHMARK
+      <button onclick="loadEngineeringBenchmark()" style="margin-left:auto;font-family:'DM Mono',monospace;font-size:8px;padding:3px 10px;background:transparent;border:1px solid var(--border2);color:var(--muted2);border-radius:2px;cursor:pointer;">↻ Refresh</button>
+    </div>
+    <div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap;" id="bench-filter-tabs">
+      <div class="seg-tab-eng active" onclick="setBenchFilter('all',this)" style="font-size:9px;padding:4px 10px;">All Types</div>
+      <div class="seg-tab-eng" onclick="setBenchFilter('platform',this)" style="font-size:9px;padding:4px 10px;">Platform</div>
+      <div class="seg-tab-eng" onclick="setBenchFilter('ice_pwt',this)" style="font-size:9px;padding:4px 10px;">ICE PWT</div>
+      <div class="seg-tab-eng" onclick="setBenchFilter('epwt',this)" style="font-size:9px;padding:4px 10px;">e-Motor</div>
+      <div class="seg-tab-eng" onclick="setBenchFilter('tophat',this)" style="font-size:9px;padding:4px 10px;">Top Hat</div>
+      <div class="seg-tab-eng" onclick="setBenchFilter('eands',this)" style="font-size:9px;padding:4px 10px;">E&S</div>
+    </div>
+    <div style="overflow-x:auto;">
+      <table class="tbl" id="bench-table">
+        <thead id="bench-thead"></thead>
+        <tbody id="bench-tbody">
+          <tr><td colspan="8" style="color:var(--muted2);text-align:center;padding:16px;">Click Refresh to load benchmark data.</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div style="margin-top:8px;font-family:'DM Mono',monospace;font-size:8px;color:var(--muted2);">
+      <span style="color:var(--gold)">★</span> = Your team &nbsp;·&nbsp; Competitor modules shown when visible (after round results)
+    </div>
+  </div>
 </div>
 
 <!-- ████ VEHICLE PLAN ████ -->
@@ -1812,11 +1838,65 @@ function setDevPath(path, btn) {
   }
 }
 
+function getStructuralKey(module) {
+  // Returns the structural dimension that CANNOT be changed during modification
+  // Platform: size_code portion of config_key (e.g. 'SMALL' from 'SMALL_ICE')
+  // ICE PWT: cylinder count portion (e.g. '4CYL' from '4CYL_ICE')
+  // Others: no constraint
+  if (!module.config_key) return null;
+  if (module.module_type === 'platform') {
+    // config_key format: SMALL_ICE, LARGE_BEV, COMMERCIAL_MULTI etc.
+    return module.config_key.split('_')[0]; // 'SMALL', 'LARGE', etc.
+  }
+  if (module.module_type === 'ice_pwt') {
+    // config_key format: 3CYL_ICE, 12CYL_HEV etc.
+    return module.config_key.split('_')[0]; // '3CYL', '12CYL', etc.
+  }
+  return null; // no structural constraint for epwt, tophat, eands
+}
+
+function getCurrentStructuralKey() {
+  // Structural key of the currently selected base config
+  const configKey = getSelectedConfigKey();
+  if (!configKey) return null;
+  if (currentModType === 'platform') return configKey.split('_')[0];
+  if (currentModType === 'ice_pwt')  return configKey.split('_')[0];
+  return null;
+}
+
 function populateSourceSelect() {
   const sel = document.getElementById('mod-source-select');
-  const done = teamModuleLibrary.filter(m=>m.module_type===currentModType&&m.development_status==='completed');
-  sel.innerHTML='<option value="">— select from library —</option>';
-  done.forEach(m=>{ const o=document.createElement('option'); o.value=m.id; o.textContent=m.name; sel.appendChild(o); });
+  const targetStructKey = getCurrentStructuralKey();
+
+  // Filter: same module_type + completed + structural constraint matches
+  const done = teamModuleLibrary.filter(m => {
+    if (m.module_type !== currentModType) return false;
+    if (m.development_status !== 'completed') return false;
+    if (targetStructKey) {
+      const srcKey = getStructuralKey(m);
+      if (srcKey && srcKey !== targetStructKey) return false; // different size/cylinders — blocked
+    }
+    return true;
+  });
+
+  sel.innerHTML = '<option value="">— select from library —</option>';
+
+  if (done.length === 0) {
+    const o = document.createElement('option');
+    o.disabled = true;
+    o.textContent = targetStructKey
+      ? `No completed ${currentModType === 'platform' ? targetStructKey + ' platform' : targetStructKey + ' engine'} to modify`
+      : 'No completed modules to modify';
+    sel.appendChild(o);
+    return;
+  }
+
+  done.forEach(m => {
+    const o = document.createElement('option');
+    o.value = m.id;
+    o.textContent = `${m.name} (${m.config_key})`;
+    sel.appendChild(o);
+  });
 }
 
 function buildSpecSliders(type) {
@@ -4323,6 +4403,139 @@ async function instructorNextRound() {
 
 // Module Development: load base configs on startup
 loadBaseConfigs('platform').catch(()=>{});
+
+
+// ══════════════════════════════════════════
+// ENGINEERING BENCHMARK
+// ══════════════════════════════════════════
+let benchFilter = 'all';
+let benchData   = [];
+
+function setBenchFilter(type, el) {
+  benchFilter = type;
+  document.querySelectorAll('#bench-filter-tabs .seg-tab-eng').forEach(t=>t.classList.remove('active'));
+  el.classList.add('active');
+  renderBenchmarkTable();
+}
+
+async function loadEngineeringBenchmark() {
+  if (!teamId || !sessionId) { toast('⚠ Join a session first'); return; }
+  try {
+    // Load own modules
+    const myRes  = await fetch(`${API_URL}/teams/${teamId}/modules`);
+    const myData = await myRes.json();
+    const myMods = (myData.modules||[]).filter(m=>m.development_status==='completed');
+    myMods.forEach(m=>m._isYours = true);
+
+    // Load all session vehicles to find which competitor teams exist
+    // (We show competitor modules only from session-level view if available)
+    // For now, build benchmark from own modules only + session-level if instructor
+    benchData = myMods;
+
+    // Try to get competitor data (session-level — may return empty for non-instructor)
+    try {
+      const sessRes  = await fetch(`${API_URL}/sessions/${sessionId}/modules/pipeline`);
+      // Only use if we get team data back
+    } catch(e) { /* ignore */ }
+
+    renderBenchmarkTable();
+    toast('✓ Benchmark refreshed');
+  } catch(e) { console.warn('loadEngineeringBenchmark:', e); }
+}
+
+function renderBenchmarkTable() {
+  const filtered = benchFilter === 'all'
+    ? benchData
+    : benchData.filter(m=>m.module_type===benchFilter);
+
+  const thead = document.getElementById('bench-thead');
+  const tbody = document.getElementById('bench-tbody');
+  if (!thead || !tbody) return;
+
+  if (filtered.length === 0) {
+    thead.innerHTML = '';
+    tbody.innerHTML = '<tr><td colspan="8" style="color:var(--muted2);text-align:center;padding:16px;">No completed modules to compare.</td></tr>';
+    return;
+  }
+
+  // Determine columns based on filter
+  const colDefs = getBenchColumns(benchFilter);
+
+  thead.innerHTML = `<tr>${colDefs.map(c=>`<th>${c.label}</th>`).join('')}</tr>`;
+
+  tbody.innerHTML = filtered.map(m => {
+    const specs = m.specs || {};
+    const isYours = m._isYours;
+    const rowStyle = isYours ? 'background:rgba(200,164,60,.04);' : '';
+    const youBadge = isYours ? ' <span style="color:var(--gold);font-size:9px;">★</span>' : '';
+    const statusColor = m.development_status==='completed'?'var(--green)':'var(--gold)';
+    const tpc = m.per_unit_tpc_eur ? '€'+Math.round(m.per_unit_tpc_eur).toLocaleString() : '—';
+    const wt  = m.total_weight_kg  ? Math.round(m.total_weight_kg)+'kg' : '—';
+    const qp  = m.quality_penalty_pct > 0 ? `<span style="color:var(--red)">-${m.quality_penalty_pct}%</span>` : '<span style="color:var(--green)">None</span>';
+
+    return `<tr style="${rowStyle}">
+      <td style="font-weight:600;">${m.name}${youBadge}</td>
+      <td style="font-family:'DM Mono',monospace;font-size:9px;color:var(--muted2);">${m.module_type.replace('_',' ')}</td>
+      <td style="font-family:'DM Mono',monospace;font-size:9px;">${m.config_key}</td>
+      ${colDefs.slice(3).map(c => {
+        const val = specs[c.spec];
+        if (val === undefined || val === null) return '<td style="color:var(--muted2)">—</td>';
+        const formatted = c.format ? c.format(val) : parseFloat(val).toFixed(2);
+        return `<td style="font-family:'DM Mono',monospace;font-size:10px;">${formatted}</td>`;
+      }).join('')}
+      <td style="font-family:'DM Mono',monospace;font-size:10px;color:var(--cyan);">${tpc}</td>
+      <td style="font-family:'DM Mono',monospace;font-size:10px;">${wt}</td>
+      <td>${qp}</td>
+    </tr>`;
+  }).join('');
+}
+
+function getBenchColumns(filter) {
+  const base = [
+    {label:'Module Name'},
+    {label:'Type'},
+    {label:'Config'},
+  ];
+  const byType = {
+    platform: [
+      {label:'Reliability', spec:'reliability', format:v=>(v*100).toFixed(0)+'%'},
+      {label:'Comfort',     spec:'comfort',     format:v=>(v*100).toFixed(0)+'%'},
+      {label:'Safety',      spec:'safety',      format:v=>(v*100).toFixed(0)+'%'},
+    ],
+    ice_pwt: [
+      {label:'Reliability',   spec:'reliability',   format:v=>(v*100).toFixed(0)+'%'},
+      {label:'Power (hp)',     spec:'power',         format:v=>Math.round(v)+'hp'},
+      {label:'Emission Tech',  spec:'emission_tech', format:v=>(v*100).toFixed(0)+'%'},
+    ],
+    epwt: [
+      {label:'Reliability', spec:'reliability', format:v=>(v*100).toFixed(0)+'%'},
+      {label:'Power (kW)',  spec:'power_kw',    format:v=>Math.round(v)+'kW'},
+      {label:'Efficiency',  spec:'efficiency',  format:v=>(v*100).toFixed(0)+'%'},
+    ],
+    tophat: [
+      {label:'Reliability', spec:'reliability', format:v=>(v*100).toFixed(0)+'%'},
+      {label:'Comfort',     spec:'comfort',     format:v=>(v*100).toFixed(0)+'%'},
+      {label:'Safety',      spec:'safety',      format:v=>(v*100).toFixed(0)+'%'},
+      {label:'Roominess',   spec:'roominess',   format:v=>parseFloat(v).toFixed(1)+'m³'},
+      {label:'Premiumness', spec:'premiumness', format:v=>(v*100).toFixed(0)+'%'},
+    ],
+    eands: [
+      {label:'ADAS Level', spec:'adas_level', format:v=>'Level '+Math.round(v)},
+    ],
+    all: [
+      {label:'Reliability', spec:'reliability', format:v=>v!=null?(v*100).toFixed(0)+'%':'—'},
+    ],
+  };
+  const specCols = byType[filter] || byType.all;
+  return [
+    ...base,
+    ...specCols,
+    {label:'Unit TPC'},
+    {label:'Weight'},
+    {label:'Quality Penalty'},
+  ];
+}
+
 
 // Restore session state if page was refreshed (only restore, don't auto-login)
 (function restoreSession() {
