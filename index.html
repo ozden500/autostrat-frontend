@@ -1104,10 +1104,18 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
     <div class="card" style="overflow:visible;">
       <div class="card-title"><span id="mod-config-title">PLATFORM CONFIGURATOR</span></div>
 
-      <!-- Step 1: Choose base config -->
-      <div class="ctrl" id="mod-step1">
-        <label class="ctrl-lbl-top">Base Configuration</label>
-        <select id="mod-base-select" onchange="onBaseConfigChange()">
+      <!-- Step 1a: Primary selector -->
+      <div class="ctrl" id="mod-step1a">
+        <label class="ctrl-lbl-top" id="mod-step1a-label">Platform Size</label>
+        <select id="mod-primary-select" onchange="onPrimaryChange()">
+          <option value="">— select —</option>
+        </select>
+      </div>
+
+      <!-- Step 1b: Secondary selector (shown after primary) -->
+      <div class="ctrl" id="mod-step1b" style="display:none">
+        <label class="ctrl-lbl-top" id="mod-step1b-label">PWT Compatibility</label>
+        <select id="mod-secondary-select" onchange="onBaseConfigChange()">
           <option value="">— select —</option>
         </select>
       </div>
@@ -1660,35 +1668,117 @@ async function modTab(type, el) {
   if (teamId) await loadModuleLibrary();
 }
 
+// Primary/secondary labels per module type
+const MOD_STEP_LABELS = {
+  platform: {a:'Platform Size',    b:'PWT Compatibility'},
+  ice_pwt:  {a:'Cylinder Count',   b:'Hybrid Technology'},
+  epwt:     {a:'Performance Class',b:null},
+  tophat:   {a:'Vehicle Segment',  b:'Body Type'},
+  eands:    {a:'ADAS Level',       b:null},
+};
+
+// Unique primary values per type (extracted from configs)
+function getPrimaryOptions(type, configs) {
+  if (type==='platform') return [...new Set(configs.map(c=>c.size_code))];
+  if (type==='ice_pwt')  return [...new Set(configs.map(c=>String(c.cylinders)))];
+  if (type==='epwt')     return configs.map(c=>c.epwt_class);
+  if (type==='tophat')   return [...new Set(configs.map(c=>c.segment_code))];
+  if (type==='eands')    return configs.map(c=>String(c.adas_level));
+  return [];
+}
+
+function getSecondaryOptions(type, configs, primaryVal) {
+  if (type==='platform') return configs.filter(c=>c.size_code===primaryVal).map(c=>({val:c.config_key, label:c.energy_type}));
+  if (type==='ice_pwt')  return configs.filter(c=>String(c.cylinders)===primaryVal).map(c=>({val:c.config_key, label:c.hybrid_tech}));
+  if (type==='tophat')   return configs.filter(c=>c.segment_code===primaryVal).map(c=>({val:c.config_key, label:c.body_type}));
+  return [];
+}
+
+function formatPrimaryLabel(type, val) {
+  if (type==='ice_pwt')  return `${val}-Cylinder`;
+  if (type==='epwt')     return val.replace(/_/g,'-');
+  if (type==='tophat')   return val.replace(/_/g,' ').replace(/\b\w/g,c=>c.toUpperCase());
+  return val;
+}
+
 async function loadBaseConfigs(type) {
   const ep = {platform:'platform',ice_pwt:'ice-pwt',epwt:'epwt',tophat:'tophat',eands:'eands'};
   try {
     const res = await fetch(`${API_URL}/module-configs/${ep[type]}`);
     const data = await res.json();
     currentBaseConfigs = data.configs || [];
-    const sel = document.getElementById('mod-base-select');
-    sel.innerHTML = '<option value="">— select —</option>';
-    currentBaseConfigs.forEach(cfg => {
+
+    // Set step labels
+    const labels = MOD_STEP_LABELS[type];
+    const la = document.getElementById('mod-step1a-label');
+    const lb = document.getElementById('mod-step1b-label');
+    if(la) la.textContent = labels.a;
+    if(lb && labels.b) lb.textContent = labels.b;
+
+    // Populate primary selector
+    const ps = document.getElementById('mod-primary-select');
+    ps.innerHTML = '<option value="">— select —</option>';
+    const primaryOpts = getPrimaryOptions(type, currentBaseConfigs);
+    primaryOpts.forEach(val => {
       const opt = document.createElement('option');
-      opt.value = cfg.config_key || cfg.epwt_class || String(cfg.adas_level);
-      opt.textContent = buildConfigLabel(type, cfg);
-      sel.appendChild(opt);
+      opt.value = val;
+      opt.textContent = formatPrimaryLabel(type, val);
+      ps.appendChild(opt);
     });
+
+    // Hide secondary until primary chosen
+    document.getElementById('mod-step1b').style.display = 'none';
+    resetModuleForm();
   } catch(e) { console.warn('loadBaseConfigs:', e); }
 }
 
-function buildConfigLabel(type, cfg) {
-  if (type==='platform') return `${cfg.size_code} / ${cfg.energy_type}`;
-  if (type==='ice_pwt')  return `${cfg.cylinders}-Cyl / ${cfg.hybrid_tech}`;
-  if (type==='epwt')     return (cfg.epwt_class||'').replace(/_/g,'-');
-  if (type==='tophat')   return `${(cfg.segment_code||'').replace(/_/g,' ')} / ${cfg.body_type}`;
-  if (type==='eands')    return `ADAS Level ${cfg.adas_level}`;
-  return cfg.config_key||'';
+function onPrimaryChange() {
+  const type = currentModType;
+  const primaryVal = document.getElementById('mod-primary-select').value;
+
+  // Reset downstream
+  ['mod-step1b','mod-step2','mod-source-row','mod-name-row','mod-specs-area','mod-cost-preview','mod-submit-area']
+    .forEach(id=>{ const e=document.getElementById(id); if(e) e.style.display='none'; });
+
+  if (!primaryVal) return;
+
+  const labels = MOD_STEP_LABELS[type];
+
+  // Types with no secondary: epwt and eands — go straight to config
+  if (!labels.b) {
+    // config_key = epwt_class or adas_level string
+    const cfg = currentBaseConfigs.find(c=> {
+      if(type==='epwt')  return c.epwt_class===primaryVal;
+      if(type==='eands') return String(c.adas_level)===primaryVal;
+      return false;
+    });
+    if (cfg) {
+      // Treat as if onBaseConfigChange was called with this config_key
+      window._selectedConfigKey = cfg.config_key || cfg.epwt_class || String(cfg.adas_level);
+      onBaseConfigChange();
+    }
+    return;
+  }
+
+  // Types with secondary: show secondary selector
+  const secondaryOpts = getSecondaryOptions(type, currentBaseConfigs, primaryVal);
+  const ss = document.getElementById('mod-secondary-select');
+  ss.innerHTML = '<option value="">— select —</option>';
+  secondaryOpts.forEach(({val, label}) => {
+    const opt = document.createElement('option');
+    opt.value = val;
+    opt.textContent = label;
+    ss.appendChild(opt);
+  });
+  document.getElementById('mod-step1b').style.display = 'block';
 }
 
 function onBaseConfigChange() {
-  const val = document.getElementById('mod-base-select').value;
-  if (!val) { resetModuleForm(); return; }
+  // For types with secondary, read from secondary select
+  // For types without, read from window._selectedConfigKey
+  let val = document.getElementById('mod-secondary-select')?.value || window._selectedConfigKey || '';
+  window._selectedConfigKey = null;
+  if (!val) return;
   document.getElementById('mod-step2').style.display='block';
   buildSpecSliders(currentModType);
   document.getElementById('mod-specs-area').style.display='block';
@@ -1697,6 +1787,13 @@ function onBaseConfigChange() {
   document.getElementById('mod-submit-area').style.display='block';
   setDevPath('new', document.getElementById('path-new'));
   scheduleCostCalc();
+}
+
+function getSelectedConfigKey() {
+  return document.getElementById('mod-secondary-select')?.value
+    || window._selectedConfigKey
+    || document.getElementById('mod-primary-select')?.value
+    || '';
 }
 
 function setDevPath(path, btn) {
@@ -1754,7 +1851,7 @@ function scheduleCostCalc() {
 }
 
 async function fetchCostPreview() {
-  const configKey = document.getElementById('mod-base-select').value;
+  const configKey = getSelectedConfigKey();
   if (!configKey || currentDevPath==='reuse') return;
   try {
     const res = await fetch(`${API_URL}/calculate/module-cost`, {
@@ -1779,7 +1876,7 @@ async function fetchCostPreview() {
 
 async function submitModule() {
   if (!teamId||!sessionId) { toast('⚠ Join a session first'); return; }
-  const configKey = document.getElementById('mod-base-select').value;
+  const configKey = getSelectedConfigKey();
   if (!configKey) { toast('⚠ Select a base configuration'); return; }
   const name = document.getElementById('mod-name-input').value.trim();
   if (!name) { toast('⚠ Enter a module name'); return; }
@@ -1805,8 +1902,9 @@ async function submitModule() {
 }
 
 function resetModuleForm() {
-  document.getElementById('mod-base-select').value='';
-  ['mod-step2','mod-source-row','mod-name-row','mod-specs-area','mod-cost-preview','mod-submit-area']
+  const ps=document.getElementById('mod-primary-select'); if(ps) ps.value='';
+  const ss=document.getElementById('mod-secondary-select'); if(ss) ss.value='';
+  ['mod-step1b','mod-step2','mod-source-row','mod-name-row','mod-specs-area','mod-cost-preview','mod-submit-area']
     .forEach(id=>{ const e=document.getElementById(id); if(e) e.style.display='none'; });
   const ni=document.getElementById('mod-name-input'); if(ni) ni.value='';
   const mi=document.getElementById('mod-msg'); if(mi) mi.textContent='';
