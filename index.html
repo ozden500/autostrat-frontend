@@ -2308,17 +2308,16 @@ async function loadVehiclePlan() {
 
 // ── STATUS HELPERS ─────────────────────────────────────────
 function statusBadge(status) {
-  const map = {
+  var map = {
     study:    '<span class="vstatus-study">STUDY</span>',
     plan:     '<span class="vstatus-plan">PLAN</span>',
     approved: '<span class="vstatus-approved">APPROVED</span>',
-    // legacy values kept for backward compat
     draft:    '<span class="vstatus-study">DRAFT</span>',
     planned:  '<span class="vstatus-plan">PLANNED</span>',
     on_sale:  '<span class="vstatus-approved">ON SALE</span>',
-    ended:    `<span style="font-family:'DM Mono',monospace;font-size:8px;padding:2px 8px;border-radius:2px;background:rgba(224,58,82,.1);border:1px solid rgba(224,58,82,.3);color:var(--red);">ENDED</span>`,
+    ended:    '<span style="font-size:8px;padding:2px 8px;border-radius:2px;background:rgba(224,58,82,.1);border:1px solid rgba(224,58,82,.3);color:var(--red);">ENDED</span>',
   };
- return map[status] || '<span class="vstatus-study">' + status.toUpperCase() + '</span>';
+  return map[status] || '<span class="vstatus-study">' + (status||'').toUpperCase() + '</span>';
 }
 
 function statusBarColor(status) {
@@ -2328,117 +2327,84 @@ function statusBarColor(status) {
 
 // ── KANBAN CARDS ───────────────────────────────────────────
 // ── FULL P&L BUSINESS CASE BUILDER ────────────────────────
-function buildBusinessCase(v, tpcStr, hasModules, isApproved=false) {
-  const tpcNum = v.total_unit_tpc_eur || 0;
+function buildBusinessCase(v, tpcStr, hasModules, isApproved) {
+  isApproved = !!isApproved;
+  var tpcNum = v.total_unit_tpc_eur || 0;
+  var segSize  = {a_segment:20000,b_segment:60000,c_segment:90000,d_segment:50000,e_segment:20000,f_segment:8000,mpv:15000,pickup:12000,sports:5000,c_van:30000,d_van:15000,e_van:5000};
+  var segGM    = {a_segment:0.14,b_segment:0.18,c_segment:0.20,d_segment:0.22,e_segment:0.24,f_segment:0.30,mpv:0.19,pickup:0.25,sports:0.28,c_van:0.20,d_van:0.22,e_van:0.22};
+  var segPrice = {a_segment:12000,b_segment:18000,c_segment:26000,d_segment:38000,e_segment:55000,f_segment:90000,mpv:32000,pickup:45000,sports:55000,c_van:28000,d_van:40000,e_van:55000};
 
-  // Segment size estimates (units/quarter, rough market sizing)
-  const segSize = {
-    a_segment:20000, b_segment:60000, c_segment:90000, d_segment:50000,
-    e_segment:20000, f_segment:8000,  mpv:15000, pickup:12000,
-    sports:5000,     c_van:30000,     d_van:15000, e_van:5000,
-  };
-  const segGM = {  // typical gross margin % by segment
-    a_segment:0.14, b_segment:0.18, c_segment:0.20, d_segment:0.22,
-    e_segment:0.24, f_segment:0.30, mpv:0.19, pickup:0.25,
-    sports:0.28,    c_van:0.20,     d_van:0.22, e_van:0.22,
-  };
-  const segPrice = {
-    a_segment:12000, b_segment:18000, c_segment:26000, d_segment:38000,
-    e_segment:55000, f_segment:90000, mpv:32000, pickup:45000,
-    sports:55000,    c_van:28000,     d_van:40000, e_van:55000,
-  };
+  var mktUnits   = segSize[v.segment_code]  || 20000;
+  var shareEst   = hasModules ? 0.08 : 0.04;
+  var estUnits   = Math.round(mktUnits * shareEst);
+  var avgPrice   = segPrice[v.segment_code] || 25000;
+  var gmPct      = segGM[v.segment_code]    || 0.20;
+  var revenueM   = Math.round(estUnits * avgPrice / 1e6);
+  var cogsM      = Math.round(tpcNum > 0 ? estUnits * tpcNum / 1e6 : revenueM * (1 - gmPct));
+  var grossProfM = revenueM - cogsM;
+  var gmActPct   = revenueM > 0 ? Math.round((grossProfM / revenueM) * 100) : 0;
+  var sgaM       = Math.round(revenueM * 0.06);
+  var ebitM      = grossProfM - sgaM;
+  var ebitPct    = revenueM > 0 ? Math.round((ebitM / revenueM) * 100) : 0;
+  var sopQ = (v.start_year && v.start_quarter) ? (v.start_year - 2025)*4 + v.start_quarter - 1 : 4;
+  var eopQ = (v.end_year   && v.end_quarter)   ? (v.end_year   - 2025)*4 + v.end_quarter   - 1 : 20;
+  var lifeQ      = Math.max(eopQ - sopQ, 1);
+  var totalRevM  = revenueM * lifeQ;
+  var totalEbitM = ebitM * lifeQ;
+  var rdEstM     = tpcNum > 0 ? Math.round(tpcNum * estUnits * 0.15 / 1e6) : Math.round(revenueM * 0.08);
+  var paybackQ   = ebitM > 0 ? Math.round(rdEstM / Math.max(ebitM, 1)) : null;
 
-  const mktUnits   = segSize[v.segment_code]  || 20000;
-  const shareEst   = hasModules ? 0.08 : 0.04;   // 8% if engineered, 4% if study only
-  const estUnits   = Math.round(mktUnits * shareEst);
-  const avgPrice   = segPrice[v.segment_code] || 25000;
-  const gmPct      = segGM[v.segment_code]    || 0.20;
+  function fmtM(n) {
+    return n >= 0
+      ? '€' + n + 'M'
+      : '<span style="color:var(--red)">-€' + Math.abs(n) + 'M</span>';
+  }
+  function fmtPct(n) {
+    return n >= 0
+      ? '<span style="color:var(--green)">' + n + '%</span>'
+      : '<span style="color:var(--red)">' + n + '%</span>';
+  }
 
-  // P&L per quarter
-  const revenueM   = Math.round(estUnits * avgPrice / 1e6);
-  const cogsM      = Math.round(tpcNum > 0 ? estUnits * tpcNum / 1e6 : revenueM * (1 - gmPct));
-  const grossProfM = revenueM - cogsM;
-  const gmActPct   = revenueM > 0 ? Math.round((grossProfM / revenueM) * 100) : 0;
-  const sgaM       = Math.round(revenueM * 0.06);   // 6% SG&A
-  const ebitM      = grossProfM - sgaM;
-  const ebitPct    = revenueM > 0 ? Math.round((ebitM / revenueM) * 100) : 0;
+  var border    = isApproved ? 'var(--green)' : 'var(--gold)';
+  var titleTxt  = isApproved ? '✓ APPROVED BUSINESS CASE' : 'BUSINESS CASE — FULL P&L PROJECTION';
+  var ebitCol   = totalEbitM >= 0 ? 'var(--green)' : 'var(--red)';
+  var payStr    = paybackQ !== null ? paybackQ + 'q' : '—';
+  var noteStr   = !hasModules
+    ? '<div style="margin-top:8px;font-size:8px;color:var(--gold);">⚠ No modules — segment estimates only</div>'
+    : '';
+  var approveStr = isApproved
+    ? '<div style="margin-top:8px;font-size:8px;color:var(--green);">✓ Investment committed via Financial panel</div>'
+    : '<div style="margin-top:8px;font-size:8px;color:var(--gold);">→ Submit R&D investment in Financial panel to approve</div>';
 
-  // Investment & payback
-  // Lifecycle revenue (SOP → EOP in quarters)
-  const sopQ = (v.start_year && v.start_quarter) ? (v.start_year - 2025)*4 + v.start_quarter - 1 : 4;
-  const eopQ = (v.end_year   && v.end_quarter)   ? (v.end_year   - 2025)*4 + v.end_quarter   - 1 : 20;
-  const lifeQ = Math.max(eopQ - sopQ, 1);
-  const totalRevM  = revenueM * lifeQ;
-  const totalEbitM = ebitM    * lifeQ;
+  var h = '<div class="vcard-bc" style="border-top:1px solid ' + border + '22;">';
+  h += '<div class="vcard-bc-title" style="color:' + border + ';">' + titleTxt + '</div>';
+  h += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">';
 
-  // Approx R&D from module pipeline (sum across modules if TPC set, else estimate)
-  const rdEstM = tpcNum > 0 ? Math.round(tpcNum * estUnits * 0.15 / 1e6) : Math.round(revenueM * 0.08);
-  const paybackQ = ebitM > 0 ? Math.round(rdEstM / Math.max(ebitM, 1)) : '—';
+  // Left: P&L per quarter
+  h += '<div>';
+  h += '<div style="font-size:7px;text-transform:uppercase;letter-spacing:1.5px;color:var(--muted);margin-bottom:6px;">Per Qtr (est. ' + estUnits.toLocaleString() + ' units @ ' + (shareEst*100) + '% share)</div>';
+  h += '<div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid var(--border);font-size:10px;"><span style="color:var(--muted2);">Revenue</span><span style="color:var(--cyan);">' + fmtM(revenueM) + '</span></div>';
+  h += '<div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid var(--border);font-size:10px;"><span style="color:var(--muted2);">COGS</span><span style="color:var(--red);">-' + fmtM(cogsM) + '</span></div>';
+  h += '<div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid var(--border);font-size:10px;"><span style="color:var(--muted2);">Gross Profit</span><span>' + fmtM(grossProfM) + ' ' + fmtPct(gmActPct) + '</span></div>';
+  h += '<div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid var(--border);font-size:10px;"><span style="color:var(--muted2);">SG&amp;A</span><span style="color:var(--red);">-' + fmtM(sgaM) + '</span></div>';
+  h += '<div style="display:flex;justify-content:space-between;padding:4px 0;font-size:11px;font-weight:600;"><span style="color:var(--muted);">EBIT</span><span>' + fmtM(ebitM) + ' ' + fmtPct(ebitPct) + '</span></div>';
+  h += '</div>';
 
-  const fmtM = n => n >= 0 ? `€${n}M` : `<span style="color:var(--red)">-€${Math.abs(n)}M</span>`;
-  const fmtPct = n => n >= 0
-    ? `<span style="color:var(--green)">${n}%</span>`
-    : `<span style="color:var(--red)">${n}%</span>`;
+  // Right: lifecycle summary
+  h += '<div>';
+  h += '<div style="font-size:7px;text-transform:uppercase;letter-spacing:1.5px;color:var(--muted);margin-bottom:6px;">Lifecycle (' + lifeQ + ' qtrs, ' + Math.round(lifeQ/4*10)/10 + 'yr)</div>';
+  h += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;">';
+  h += '<div class="bc-item" style="background:var(--s3);border-radius:3px;padding:6px;"><div class="bc-val" style="font-size:13px;color:var(--cyan);">€' + Math.round(totalRevM/1000) + 'B</div><div class="bc-lbl">Total Revenue</div></div>';
+  h += '<div class="bc-item" style="background:var(--s3);border-radius:3px;padding:6px;"><div class="bc-val" style="font-size:13px;color:' + ebitCol + ';">€' + Math.round(totalEbitM) + 'M</div><div class="bc-lbl">Total EBIT</div></div>';
+  h += '<div class="bc-item" style="background:var(--s3);border-radius:3px;padding:6px;"><div class="bc-val" style="font-size:13px;color:var(--gold);">€' + rdEstM + 'M</div><div class="bc-lbl">R&amp;D Invest.</div></div>';
+  h += '<div class="bc-item" style="background:var(--s3);border-radius:3px;padding:6px;"><div class="bc-val" style="font-size:13px;color:var(--white);">' + payStr + '</div><div class="bc-lbl">Payback</div></div>';
+  h += '</div>';
+  h += noteStr + approveStr;
+  h += '</div>';
 
-  const border = isApproved ? 'var(--green)' : 'var(--gold)';
-  const label  = isApproved ? '✓ APPROVED BUSINESS CASE' : 'BUSINESS CASE — FULL P&L PROJECTION';
-
-  return `<div class="vcard-bc" style="border-top:1px solid ${border}22;">
-    <div class="vcard-bc-title" style="color:${border};">${label}</div>
-
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">
-      <!-- Left: P&L per quarter -->
-      <div>
-        <div style="font-family:'DM Mono',monospace;font-size:7px;text-transform:uppercase;letter-spacing:1.5px;color:var(--muted);margin-bottom:6px;">Per Quarter (est. ${estUnits.toLocaleString()} units @ ${shareEst*100}% share)</div>
-        <div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid var(--border);font-size:10px;">
-          <span style="color:var(--muted2);">Revenue</span>
-          <span style="font-family:'DM Mono',monospace;color:var(--cyan);">${fmtM(revenueM)}</span>
-        </div>
-        <div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid var(--border);font-size:10px;">
-          <span style="color:var(--muted2);">COGS (Unit TPC×units)</span>
-          <span style="font-family:'DM Mono',monospace;color:var(--red);">-${fmtM(cogsM)}</span>
-        </div>
-        <div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid var(--border);font-size:10px;">
-          <span style="color:var(--muted2);">Gross Profit</span>
-          <span style="font-family:'DM Mono',monospace;">${fmtM(grossProfM)} ${fmtPct(gmActPct)}</span>
-        </div>
-        <div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid var(--border);font-size:10px;">
-          <span style="color:var(--muted2);">SG&A / Marketing</span>
-          <span style="font-family:'DM Mono',monospace;color:var(--red);">-${fmtM(sgaM)}</span>
-        </div>
-        <div style="display:flex;justify-content:space-between;padding:4px 0;font-size:11px;font-weight:600;">
-          <span style="color:var(--muted);">EBIT</span>
-          <span style="font-family:'DM Mono',monospace;">${fmtM(ebitM)} ${fmtPct(ebitPct)}</span>
-        </div>
-      </div>
-      <!-- Right: Lifecycle summary -->
-      <div>
-        <div style="font-family:'DM Mono',monospace;font-size:7px;text-transform:uppercase;letter-spacing:1.5px;color:var(--muted);margin-bottom:6px;">Lifecycle (${lifeQ} quarters, ${Math.round(lifeQ/4*10)/10}yr)</div>
-        <div class="bc-grid" style="grid-template-columns:1fr 1fr;gap:6px;">
-          <div class="bc-item" style="background:var(--s3);border-radius:3px;padding:6px;">
-            <div class="bc-val" style="font-size:13px;color:var(--cyan);">€${Math.round(totalRevM/1000)}B</div>
-            <div class="bc-lbl">Total Revenue</div>
-          </div>
-          <div class="bc-item" style="background:var(--s3);border-radius:3px;padding:6px;">
-            <div class="bc-val" style="font-size:13px;color:${totalEbitM>=0?'var(--green)':'var(--red)'};">€${Math.round(totalEbitM)}M</div>
-            <div class="bc-lbl">Total EBIT</div>
-          </div>
-          <div class="bc-item" style="background:var(--s3);border-radius:3px;padding:6px;">
-            <div class="bc-val" style="font-size:13px;color:var(--gold);">€${rdEstM}M</div>
-            <div class="bc-lbl">Est. R&D Invest.</div>
-          </div>
-          <div class="bc-item" style="background:var(--s3);border-radius:3px;padding:6px;">
-            <div class="bc-val" style="font-size:13px;color:var(--white);">${typeof paybackQ==='number'?paybackQ+'q':'—'}</div>
-            <div class="bc-lbl">Payback Period</div>
-          </div>
-        </div>
-        ${!hasModules ? `<div style="margin-top:8px;font-family:'DM Mono',monospace;font-size:8px;color:var(--gold);">⚠ No modules attached — costs are segment estimates only</div>` : ''}
-        ${isApproved ? `<div style="margin-top:8px;font-family:'DM Mono',monospace;font-size:8px;color:var(--green);">✓ Investment committed via Financial panel</div>` : `<div style="margin-top:8px;font-family:'DM Mono',monospace;font-size:8px;color:var(--gold);">→ Submit R&D investment in Financial panel to approve</div>`}
-      </div>
-    </div>
-  </div>`;
+  h += '</div></div>';
+  return h;
 }
-
 function buildVehicleKanban() {
   const cols  = {study:[], plan:[], approved:[]};
   const legacyMap = {draft:'study', planned:'plan', on_sale:'approved'};
