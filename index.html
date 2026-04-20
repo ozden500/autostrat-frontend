@@ -1571,6 +1571,7 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
 
           <!-- Legend -->
           <div id="radar-legend" style="margin-top:8px;display:flex;flex-wrap:wrap;gap:6px;justify-content:center;"></div>
+          <div style="margin-top:6px;font-family:'DM Mono',monospace;font-size:7px;color:var(--muted2);text-align:center;">▲ axes: bigger polygon = better (scale inverted for clarity)</div>
         </div>
 
         <!-- RIGHT: Spec table -->
@@ -2336,23 +2337,37 @@ function goToVehicleReview() {
     </div>`;
   }).join('');
 
+  // Compute derived radar specs
+  // fuel_economy: convert fuel L/100km → km/L (higher = better)
+  if (rolledSpecs.fuel != null && rolledSpecs.fuel > 0) {
+    rolledSpecs.fuel_economy = Math.round((100 / rolledSpecs.fuel) * 10) / 10;
+  } else if (rolledSpecs.fuel === 0 || rolledSpecs.energy != null) {
+    rolledSpecs.fuel_economy = 25; // BEV — assign max score
+  }
+  // _dtc: design-to-cost inverse from total TPC
+  if (totalTpc > 0) rolledSpecs._dtc = totalTpc;
+
   // Store for radar access
   window._vrCurrentSpecs   = rolledSpecs;
+  window._vrTotalTpc        = totalTpc;
   window._vrCurrentSegment = segment;
   window._vrCurrentName    = name;
 
   // Spec table
   const specDefs = [
-    {key:'reliability',  label:'Reliability',   fmt:v=>(v*100).toFixed(0)+'%',  norm:v=>v},
-    {key:'comfort',      label:'Comfort',        fmt:v=>(v*100).toFixed(0)+'%',  norm:v=>v},
-    {key:'safety',       label:'Safety',         fmt:v=>(v*100).toFixed(0)+'%',  norm:v=>v},
-    {key:'power',        label:'Power (hp)',     fmt:v=>Math.round(v)+'hp',       norm:v=>v/640},
-    {key:'power_kw',     label:'Power (kW)',     fmt:v=>Math.round(v)+'kW',       norm:v=>v/1500},
-    {key:'emission_tech',label:'Emission Tech',  fmt:v=>(v*100).toFixed(0)+'%',  norm:v=>v},
-    {key:'efficiency',   label:'e-Motor Eff.',   fmt:v=>(v*100).toFixed(0)+'%',  norm:v=>v},
-    {key:'adas_level',   label:'ADAS Level',     fmt:v=>'Level '+Math.round(v),   norm:v=>v/5},
-    {key:'roominess',    label:'Roominess',      fmt:v=>parseFloat(v).toFixed(1)+'m³', norm:v=>(v-1.5)/6},
-    {key:'premiumness',  label:'Premiumness',    fmt:v=>(v*100).toFixed(0)+'%',  norm:v=>v},
+    {key:'reliability',  label:'Reliability',              fmt:v=>(v*100).toFixed(0)+'%'},
+    {key:'comfort',      label:'Comfort',                  fmt:v=>(v*100).toFixed(0)+'%'},
+    {key:'safety',       label:'Safety',                   fmt:v=>(v*100).toFixed(0)+'%'},
+    {key:'premiumness',  label:'Premiumness',              fmt:v=>(v*100).toFixed(0)+'%'},
+    {key:'roominess',    label:'Roominess',                fmt:v=>parseFloat(v).toFixed(1)+'m³'},
+    {key:'power',        label:'ICE Power',                fmt:v=>Math.round(v)+'hp'},
+    {key:'power_kw',     label:'BEV Power',                fmt:v=>Math.round(v)+'kW'},
+    {key:'emission_tech',label:'Emission Tech',            fmt:v=>(v*100).toFixed(0)+'%'},
+    {key:'efficiency',   label:'e-Motor Efficiency',       fmt:v=>(v*100).toFixed(0)+'%'},
+    {key:'adas_level',   label:'ADAS Level',               fmt:v=>'Level '+Math.round(v)},
+    {key:'fuel_economy', label:'Fuel Economy ▲',       fmt:v=>parseFloat(v).toFixed(1)+' km/L'},
+    {key:'co2',          label:'CO₂ emissions',        fmt:v=>Math.round(v)+' mg/km'},
+    {key:'accel',        label:'0-100 km/h',               fmt:v=>parseFloat(v).toFixed(1)+' s'},
   ];
   window._vrSpecDefs = specDefs;
 
@@ -4761,20 +4776,29 @@ let _radarDatasets  = [];   // [{label, color, specs, active}]
 let _radarToggles   = {};   // {label: bool}
 
 const RADAR_AXES = [
-  {key:'reliability',  label:'Reliability',  norm:v=>v},
-  {key:'comfort',      label:'Comfort',      norm:v=>v},
-  {key:'safety',       label:'Safety',       norm:v=>v},
-  {key:'premiumness',  label:'Premiumness',  norm:v=>v},
-  {key:'roominess',    label:'Roominess',    norm:v=>(v-1.5)/6},
-  {key:'efficiency',   label:'Efficiency',   norm:v=>v},
-  {key:'power',        label:'ICE Power',    norm:v=>v/640},
-  {key:'power_kw',     label:'BEV Power',    norm:v=>v/1500},
-  {key:'emission_tech',label:'Emis. Tech',   norm:v=>v},
-  {key:'adas_level',   label:'ADAS',         norm:v=>v/5},
+  {key:'reliability',   label:'Reliability',        norm:v=>Math.min(1,v)},
+  {key:'comfort',       label:'Comfort',             norm:v=>Math.min(1,v)},
+  {key:'safety',        label:'Safety',              norm:v=>Math.min(1,v)},
+  {key:'premiumness',   label:'Premiumness',         norm:v=>Math.min(1,v)},
+  {key:'roominess',     label:'Roominess',           norm:v=>Math.min(1,(v-1.5)/6)},
+  {key:'power',         label:'ICE Power',           norm:v=>Math.min(1,v/640)},
+  {key:'power_kw',      label:'BEV Power',           norm:v=>Math.min(1,v/1500)},
+  {key:'efficiency',    label:'e-Motor Eff.',        norm:v=>Math.min(1,v)},
+  {key:'emission_tech', label:'Emis. Tech',          norm:v=>Math.min(1,v)},
+  {key:'adas_level',    label:'ADAS',                norm:v=>Math.min(1,v/5)},
+  // ▲ axes: inverted internally so bigger polygon = better
+  {key:'fuel_economy',  label:'Fuel Economy ▲',      norm:v=>Math.min(1,v/25)},
+  {key:'co2',           label:'CO₂ Clean ▲',        norm:v=>Math.min(1,Math.max(0,1-v/220)), inverted:true},
+  {key:'accel',         label:'Acceleration ▲',   norm:v=>Math.min(1,Math.max(0,1-v/18)),  inverted:true},
+  {key:'_dtc',          label:'Design-to-Cost ▲', norm:v=>Math.min(1,Math.max(0,1-v/10000)),inverted:true,derived:true},
 ];
 
-function specToRadar(specs) {
+function specToRadar(specs, tpcEur) {
   return RADAR_AXES.map(ax => {
+    if (ax.derived && ax.key === '_dtc') {
+      const v = tpcEur != null ? parseFloat(tpcEur) : 0;
+      return v > 0 ? Math.max(0, ax.norm(v)) : 0;
+    }
     const v = specs[ax.key];
     if (v == null) return 0;
     return Math.min(1, Math.max(0, ax.norm(parseFloat(v))));
@@ -4787,6 +4811,7 @@ function initRadarToggles(newVehicleName, segment, newSpecs) {
     label: newVehicleName + ' (new)',
     color: '#c8a43c',
     specs: newSpecs,
+    tpcEur: window._vrTotalTpc || 0,
     active: true,
     isNew: true,
   }];
@@ -4800,7 +4825,7 @@ function initRadarToggles(newVehicleName, segment, newSpecs) {
     const specs = v.rolled_up_specs || {};
     if (Object.keys(specs).length === 0) return;
     const label = v.name + ' (yours)';
-    _radarDatasets.push({label, color: TEAM_COLORS[i % TEAM_COLORS.length], specs, active: true, isOwn: true});
+    _radarDatasets.push({label, color: TEAM_COLORS[i % TEAM_COLORS.length], specs, tpcEur: v.total_unit_tpc_eur||0, active: true, isOwn: true});
     _radarToggles[label] = true;
   });
 
@@ -4906,7 +4931,7 @@ function drawRadar() {
 
   // ── Dataset polygons ──
   _radarDatasets.filter(ds => ds.active).forEach(ds => {
-    const vals = specToRadar(ds.specs);
+    const vals = specToRadar(ds.specs, ds.tpcEur);
     ctx.beginPath();
     angles.forEach((a, i) => {
       const r = vals[i] * R;
