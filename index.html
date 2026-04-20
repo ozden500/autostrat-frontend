@@ -1506,28 +1506,81 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
 
 <!-- VEHICLE ASSEMBLY MODAL -->
 <div class="model-modal" id="vehicleModal">
-  <div class="mm-panel" style="max-width:700px;width:90vw;">
-    <div class="mm-title">ASSEMBLE VEHICLE</div>
-    <div class="mm-sub">Combine completed modules into a vehicle configuration</div>
-    <div class="mm-grid">
-      <div class="mm-field"><label>Vehicle Name</label><input type="text" id="vm-name" placeholder="e.g. Alpha C-Hatch" maxlength="50"></div>
-      <div class="mm-field"><label>Market Segment</label><select id="vm-segment"><option value="">— loading —</option></select></div>
-      <div class="mm-field"><label>Platform Module</label><select id="vm-platform"><option value="">— none —</option></select></div>
-      <div class="mm-field"><label>ICE PWT Module</label><select id="vm-pwt"><option value="">— none —</option></select></div>
-      <div class="mm-field"><label>e-Motor Module</label><select id="vm-epwt"><option value="">— none —</option></select></div>
-      <div class="mm-field"><label>Top Hat Module</label><select id="vm-tophat"><option value="">— none —</option></select></div>
-      <div class="mm-field"><label>E&S / ADAS Module</label><select id="vm-eands"><option value="">— none —</option></select></div>
-      <div class="mm-field"><label>Battery Size</label><select id="vm-battery"><option value="">— none (ICE) —</option></select></div>
-      <div class="mm-field"><label>Cell Chemistry</label><select id="vm-chemistry"><option value="">— none —</option></select></div>
-      <div class="mm-field"><label>Start Year</label><select id="vm-start-yr"><option value="">—</option><option>2025</option><option>2026</option><option>2027</option><option>2028</option><option>2029</option><option>2030</option></select></div>
-      <div class="mm-field"><label>Start Quarter</label><select id="vm-start-qtr"><option value="">—</option><option value="1">Q1</option><option value="2">Q2</option><option value="3">Q3</option><option value="4">Q4</option></select></div>
-      <div class="mm-field"><label>End Year</label><select id="vm-end-yr"><option value="">—</option><option>2025</option><option>2026</option><option>2027</option><option>2028</option><option>2029</option><option>2030</option></select></div>
-      <div class="mm-field"><label>End Quarter</label><select id="vm-end-qtr"><option value="">—</option><option value="1">Q1</option><option value="2">Q2</option><option value="3">Q3</option><option value="4">Q4</option></select></div>
+  <div class="mm-panel" style="max-width:760px;width:92vw;max-height:88vh;overflow-y:auto;">
+
+    <!-- STEP 1: Module Selection -->
+    <div id="vm-step1">
+      <div class="mm-title">ASSEMBLE VEHICLE — Step 1 of 2</div>
+      <div class="mm-sub">Select modules &amp; schedule · Tophat filtered by selected segment</div>
+      <div class="mm-grid">
+        <div class="mm-field"><label>Vehicle Name</label><input type="text" id="vm-name" placeholder="e.g. Alpha C-Hatch" maxlength="50"></div>
+        <div class="mm-field"><label>Market Segment</label><select id="vm-segment" onchange="onVehicleSegmentChange()"><option value="">— loading —</option></select></div>
+        <div class="mm-field"><label>Platform Module</label><select id="vm-platform"><option value="">— none —</option></select></div>
+        <div class="mm-field"><label>ICE PWT Module</label><select id="vm-pwt"><option value="">— none —</option></select></div>
+        <div class="mm-field"><label>e-Motor Module</label><select id="vm-epwt"><option value="">— none —</option></select></div>
+        <div class="mm-field">
+          <label>Top Hat Module <span id="vm-tophat-hint" style="font-size:9px;color:var(--muted2);">— select segment first —</span></label>
+          <select id="vm-tophat"><option value="">— select segment first —</option></select>
+        </div>
+        <div class="mm-field"><label>E&amp;S / ADAS Module</label><select id="vm-eands"><option value="">— none —</option></select></div>
+        <div class="mm-field"><label>Battery Size</label><select id="vm-battery"><option value="">— none (ICE) —</option></select></div>
+        <div class="mm-field"><label>Cell Chemistry</label><select id="vm-chemistry"><option value="">— none —</option></select></div>
+        <div class="mm-field"><label>Start Year</label><select id="vm-start-yr"><option value="">—</option><option>2025</option><option>2026</option><option>2027</option><option>2028</option><option>2029</option><option>2030</option></select></div>
+        <div class="mm-field"><label>Start Quarter</label><select id="vm-start-qtr"><option value="">—</option><option value="1">Q1</option><option value="2">Q2</option><option value="3">Q3</option><option value="4">Q4</option></select></div>
+        <div class="mm-field"><label>End Year</label><select id="vm-end-yr"><option value="">—</option><option>2025</option><option>2026</option><option>2027</option><option>2028</option><option>2029</option><option>2030</option></select></div>
+        <div class="mm-field"><label>End Quarter</label><select id="vm-end-qtr"><option value="">—</option><option value="1">Q1</option><option value="2">Q2</option><option value="3">Q3</option><option value="4">Q4</option></select></div>
+      </div>
+      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px;">
+        <button class="btn-mm-cancel" onclick="closeVehicleModal()">CANCEL</button>
+        <button class="btn-mm-save" onclick="goToVehicleReview()">REVIEW SPECS →</button>
+      </div>
     </div>
-    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px;">
-      <button class="btn-mm-cancel" onclick="closeVehicleModal()">CANCEL</button>
-      <button class="btn-mm-save" onclick="saveVehicle()">ADD TO PLAN</button>
+
+    <!-- STEP 2: Spec Summary + Approval -->
+    <div id="vm-step2" style="display:none;">
+      <div class="mm-title">ASSEMBLE VEHICLE — Step 2 of 2</div>
+      <div class="mm-sub">Review rolled-up vehicle specifications before confirming</div>
+
+      <!-- Vehicle summary header -->
+      <div style="background:var(--s2);border:1px solid var(--border2);border-radius:3px;padding:12px 16px;margin-bottom:14px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+          <div>
+            <div style="font-family:'Orbitron',sans-serif;font-size:15px;font-weight:700;color:var(--white);" id="vr-name">—</div>
+            <div style="font-family:'DM Mono',monospace;font-size:9px;color:var(--muted2);margin-top:2px;" id="vr-segment">—</div>
+          </div>
+          <div style="text-align:right;">
+            <div style="font-family:'Orbitron',sans-serif;font-size:18px;font-weight:700;color:var(--gold);" id="vr-tpc">—</div>
+            <div style="font-family:'DM Mono',monospace;font-size:9px;color:var(--muted2);">Unit TPC (€/veh)</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Module assembly overview -->
+      <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:6px;margin-bottom:14px;" id="vr-modules"></div>
+
+      <!-- Rolled-up specs table -->
+      <div class="cost-box" style="margin-bottom:14px;">
+        <div style="font-family:'DM Mono',monospace;font-size:8px;text-transform:uppercase;letter-spacing:2px;color:var(--muted);margin-bottom:10px;">📊 Rolled-Up Vehicle Specifications</div>
+        <div id="vr-specs-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:4px 16px;"></div>
+      </div>
+
+      <!-- Total weight -->
+      <div style="display:flex;justify-content:space-between;padding:8px 0;border-top:1px solid var(--border);margin-bottom:14px;">
+        <span style="font-family:'DM Mono',monospace;font-size:10px;color:var(--muted2);">Total Vehicle Weight</span>
+        <span style="font-family:'Orbitron',monospace;font-size:12px;font-weight:700;color:var(--cyan);" id="vr-weight">—</span>
+      </div>
+
+      <!-- Quality penalty warning -->
+      <div id="vr-penalty-warn" style="display:none;background:var(--redl);border:1px solid var(--red);border-radius:3px;padding:10px 14px;margin-bottom:14px;font-size:11px;color:var(--red);">
+        ⚠ One or more modules have a quality penalty from underfunded R&D. This will reduce effective reliability on this vehicle.
+      </div>
+
+      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:4px;">
+        <button class="btn-mm-cancel" onclick="backToVehicleStep1()">← BACK</button>
+        <button class="btn-mm-save" onclick="saveVehicle()">✓ CONFIRM &amp; ADD TO PLAN</button>
+      </div>
     </div>
+
   </div>
 </div>
 
@@ -2132,8 +2185,14 @@ function openVehicleModal() {
 }
 function closeVehicleModal() { document.getElementById('vehicleModal').classList.remove('open'); }
 
+// Stores all completed modules for the modal
+let _vmAllMods = [];
+
 async function loadCompletedModulesIntoModal() {
   if (!teamId) return;
+  // Reset to step 1
+  document.getElementById('vm-step1').style.display='block';
+  document.getElementById('vm-step2').style.display='none';
   try {
     const [modRes, segRes, batRes, chemRes] = await Promise.all([
       fetch(`${API_URL}/teams/${teamId}/modules/completed`),
@@ -2141,32 +2200,170 @@ async function loadCompletedModulesIntoModal() {
       fetch(`${API_URL}/module-configs/battery-sizes`),
       fetch(`${API_URL}/module-configs/cell-chemistries`),
     ]);
-    const mods=(await modRes.json()).modules||[];
-    const segs=(await segRes.json()).segments||[];
-    const bats=(await batRes.json()).battery_sizes||[];
-    const chems=(await chemRes.json()).cell_chemistries||[];
+    _vmAllMods = (await modRes.json()).modules || [];
+    const segs  = (await segRes.json()).segments || [];
+    const bats  = (await batRes.json()).battery_sizes || [];
+    const chems = (await chemRes.json()).cell_chemistries || [];
 
-    const byType={};
-    mods.forEach(m=>{ if(!byType[m.module_type]) byType[m.module_type]=[]; byType[m.module_type].push(m); });
-    const selMap={platform:'vm-platform',ice_pwt:'vm-pwt',epwt:'vm-epwt',tophat:'vm-tophat',eands:'vm-eands'};
+    const byType = {};
+    _vmAllMods.forEach(m=>{ if(!byType[m.module_type]) byType[m.module_type]=[]; byType[m.module_type].push(m); });
+
+    // Populate non-tophat module selects
+    const selMap = {platform:'vm-platform',ice_pwt:'vm-pwt',epwt:'vm-epwt',eands:'vm-eands'};
     Object.entries(selMap).forEach(([type,selId])=>{
       const sel=document.getElementById(selId); if(!sel) return;
       sel.innerHTML='<option value="">— none —</option>';
       (byType[type]||[]).forEach(m=>{ const o=document.createElement('option'); o.value=m.id; o.textContent=`${m.name} (${m.config_key})`; sel.appendChild(o); });
     });
+
+    // Segment selector
     const segSel=document.getElementById('vm-segment');
-    if(segSel) segSel.innerHTML=segs.map(s=>`<option value="${s.code}">${s.name}</option>`).join('');
+    if(segSel) {
+      segSel.innerHTML='<option value="">— select segment —</option>'+segs.map(s=>`<option value="${s.code}">${s.name}</option>`).join('');
+    }
+
+    // Tophat: start empty — filtered on segment change
+    const thSel=document.getElementById('vm-tophat');
+    if(thSel) thSel.innerHTML='<option value="">— select segment first —</option>';
+
+    // Battery and chemistry
     const batSel=document.getElementById('vm-battery');
     if(batSel) batSel.innerHTML='<option value="">— none (ICE) —</option>'+bats.map(b=>`<option value="${b.code}">${b.name} (${b.min_capacity_kwh}–${b.max_capacity_kwh}kWh)</option>`).join('');
     const chemSel=document.getElementById('vm-chemistry');
     if(chemSel) chemSel.innerHTML='<option value="">— none —</option>'+chems.map(c=>`<option value="${c.code}">${c.code} — ${c.name}</option>`).join('');
+
   } catch(e){ console.warn('loadCompletedModulesIntoModal:',e); }
 }
 
+function onVehicleSegmentChange() {
+  const segment = document.getElementById('vm-segment').value;
+  const thSel   = document.getElementById('vm-tophat');
+  const hint    = document.getElementById('vm-tophat-hint');
+  if (!thSel) return;
+
+  if (!segment) {
+    thSel.innerHTML='<option value="">— select segment first —</option>';
+    if(hint) hint.textContent='— select segment first —';
+    return;
+  }
+
+  // Filter tophats: config_key starts with segment code prefix
+  // Tophat config_key format: B_HB, C_SEDAN, F_SUV etc.
+  // Segment code: b_segment, c_segment etc.
+  // Match: tophat segment_code from specs or from config_key prefix
+  const segPrefix = segment.split('_')[0].toUpperCase(); // 'B', 'C', 'F', 'MPV', 'PICKUP' etc.
+
+  const validTophats = _vmAllMods.filter(m => {
+    if (m.module_type !== 'tophat') return false;
+    if (m.development_status !== 'completed') return false;
+    // config_key format: B_HB, C_SEDAN, CVAN_VAN, DVAN_VAN etc.
+    const ck = (m.config_key||'').toUpperCase();
+    // For van segments: c_van→CVAN, d_van→DVAN, e_van→EVAN
+    const segMap = {
+      'A_SEGMENT':'A', 'B_SEGMENT':'B', 'C_SEGMENT':'C', 'D_SEGMENT':'D',
+      'E_SEGMENT':'E', 'F_SEGMENT':'F', 'MPV':'MPV', 'PICKUP':'PICKUP',
+      'SPORTS':'SPORTS', 'C_VAN':'CVAN', 'D_VAN':'DVAN', 'E_VAN':'EVAN'
+    };
+    const expectedPrefix = segMap[segment.toUpperCase()] || segPrefix;
+    return ck.startsWith(expectedPrefix + '_') || ck.startsWith(expectedPrefix);
+  });
+
+  thSel.innerHTML = '<option value="">— none —</option>';
+  if (validTophats.length === 0) {
+    const o = document.createElement('option');
+    o.disabled = true;
+    o.textContent = `No completed tophats for ${SEG_NAMES[segment]||segment}`;
+    thSel.appendChild(o);
+    if(hint) hint.textContent = `0 matching tophats`;
+  } else {
+    validTophats.forEach(m=>{ const o=document.createElement('option'); o.value=m.id; o.textContent=`${m.name} (${m.config_key})`; thSel.appendChild(o); });
+    if(hint) hint.textContent = `${validTophats.length} matching`;
+  }
+}
+
+function goToVehicleReview() {
+  const name    = document.getElementById('vm-name').value.trim();
+  const segment = document.getElementById('vm-segment').value;
+  if (!name)    { toast('⚠ Enter a vehicle name'); return; }
+  if (!segment) { toast('⚠ Select a market segment'); return; }
+
+  // Collect selected modules
+  const gv = id => { const e=document.getElementById(id); return e&&e.value?e.value:null; };
+  const moduleIds = [gv('vm-platform'), gv('vm-pwt'), gv('vm-epwt'), gv('vm-tophat'), gv('vm-eands')].filter(Boolean);
+
+  // Build rolled-up specs from selected modules
+  let totalTpc    = 0;
+  let totalWeight = 0;
+  const rolledSpecs = {};
+  let hasPenalty = false;
+
+  const selectedModules = moduleIds.map(id => _vmAllMods.find(m=>m.id===id)).filter(Boolean);
+  selectedModules.forEach(m => {
+    totalTpc    += parseFloat(m.per_unit_tpc_eur||0);
+    totalWeight += parseFloat(m.total_weight_kg||0);
+    if ((m.quality_penalty_pct||0) > 0) hasPenalty = true;
+    Object.assign(rolledSpecs, m.specs||{});
+  });
+
+  // Render step 2
+  document.getElementById('vr-name').textContent    = name;
+  document.getElementById('vr-segment').textContent = SEG_NAMES[segment]||segment;
+  document.getElementById('vr-tpc').textContent     = '€'+Math.round(totalTpc).toLocaleString();
+  document.getElementById('vr-weight').textContent  = Math.round(totalWeight)+'kg';
+
+  // Module cards
+  const modTypes = ['platform','ice_pwt','epwt','tophat','eands'];
+  const modIcons = {platform:'🏗',ice_pwt:'⚙',epwt:'⚡',tophat:'🚗',eands:'🤖'};
+  const modLabels= {platform:'Platform',ice_pwt:'ICE PWT',epwt:'e-Motor',tophat:'Top Hat',eands:'E&S'};
+  document.getElementById('vr-modules').innerHTML = modTypes.map(type => {
+    const mod = selectedModules.find(m=>m.module_type===type);
+    const filled = !!mod;
+    return `<div style="background:var(--s2);border:1px solid ${filled?'var(--border2)':'var(--border)'};border-radius:3px;padding:8px;text-align:center;">
+      <div style="font-size:16px;margin-bottom:4px;">${modIcons[type]}</div>
+      <div style="font-family:'DM Mono',monospace;font-size:7px;text-transform:uppercase;color:var(--muted);margin-bottom:3px;">${modLabels[type]}</div>
+      <div style="font-size:9px;font-weight:600;color:${filled?'var(--cyan)':'var(--muted2)'};">${mod?mod.name:'Not set'}</div>
+      ${mod&&mod.quality_penalty_pct>0?`<div style="font-size:8px;color:var(--red);margin-top:2px;">-${mod.quality_penalty_pct}% quality</div>`:''}
+    </div>`;
+  }).join('');
+
+  // Spec grid
+  const specDefs = [
+    {key:'reliability', label:'Reliability',    fmt:v=>(v*100).toFixed(0)+'%'},
+    {key:'comfort',     label:'Comfort',         fmt:v=>(v*100).toFixed(0)+'%'},
+    {key:'safety',      label:'Safety',          fmt:v=>(v*100).toFixed(0)+'%'},
+    {key:'power',       label:'Power (ICE hp)',  fmt:v=>Math.round(v)+'hp'},
+    {key:'power_kw',    label:'Power (BEV kW)',  fmt:v=>Math.round(v)+'kW'},
+    {key:'emission_tech',label:'Emission Tech',  fmt:v=>(v*100).toFixed(0)+'%'},
+    {key:'efficiency',  label:'e-Motor Eff.',    fmt:v=>(v*100).toFixed(0)+'%'},
+    {key:'adas_level',  label:'ADAS Level',      fmt:v=>'Level '+Math.round(v)},
+    {key:'roominess',   label:'Roominess',       fmt:v=>parseFloat(v).toFixed(1)+'m³'},
+    {key:'premiumness', label:'Premiumness',      fmt:v=>(v*100).toFixed(0)+'%'},
+  ];
+
+  const filled = specDefs.filter(s=>rolledSpecs[s.key]!=null);
+  document.getElementById('vr-specs-grid').innerHTML = filled.map(s=>`
+    <div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid var(--border);">
+      <span style="font-family:'DM Mono',monospace;font-size:9px;color:var(--muted2);">${s.label}</span>
+      <span style="font-family:'DM Mono',monospace;font-size:10px;color:var(--text);">${s.fmt(rolledSpecs[s.key])}</span>
+    </div>`).join('');
+
+  // Penalty warning
+  document.getElementById('vr-penalty-warn').style.display = hasPenalty ? 'block' : 'none';
+
+  // Switch to step 2
+  document.getElementById('vm-step1').style.display='none';
+  document.getElementById('vm-step2').style.display='block';
+}
+
+function backToVehicleStep1() {
+  document.getElementById('vm-step1').style.display='block';
+  document.getElementById('vm-step2').style.display='none';
+}
+
 async function saveVehicle() {
-  const name=document.getElementById('vm-name').value.trim();
-  const segment=document.getElementById('vm-segment').value;
-  if(!name||!segment){ toast('⚠ Name and segment required'); return; }
+  const name    = document.getElementById('vm-name').value.trim();
+  const segment = document.getElementById('vm-segment').value;
+  if (!name||!segment) { toast('⚠ Name and segment required'); return; }
   const gv=id=>{ const e=document.getElementById(id); return e&&e.value?e.value:null; };
   const gi=id=>{ const e=document.getElementById(id); return e&&e.value?parseInt(e.value):null; };
   try {
