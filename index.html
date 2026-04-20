@@ -1539,43 +1539,53 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
     <!-- STEP 2: Spec Summary + Approval -->
     <div id="vm-step2" style="display:none;">
       <div class="mm-title">ASSEMBLE VEHICLE — Step 2 of 2</div>
-      <div class="mm-sub">Review rolled-up vehicle specifications before confirming</div>
+      <div class="mm-sub">Review specs · Compare against your vehicles &amp; competitors in the same segment</div>
 
       <!-- Vehicle summary header -->
-      <div style="background:var(--s2);border:1px solid var(--border2);border-radius:3px;padding:12px 16px;margin-bottom:14px;">
-        <div style="display:flex;justify-content:space-between;align-items:center;">
-          <div>
-            <div style="font-family:'Orbitron',sans-serif;font-size:15px;font-weight:700;color:var(--white);" id="vr-name">—</div>
-            <div style="font-family:'DM Mono',monospace;font-size:9px;color:var(--muted2);margin-top:2px;" id="vr-segment">—</div>
-          </div>
-          <div style="text-align:right;">
-            <div style="font-family:'Orbitron',sans-serif;font-size:18px;font-weight:700;color:var(--gold);" id="vr-tpc">—</div>
-            <div style="font-family:'DM Mono',monospace;font-size:9px;color:var(--muted2);">Unit TPC (€/veh)</div>
-          </div>
+      <div style="background:var(--s2);border:1px solid var(--border2);border-radius:3px;padding:12px 16px;margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;">
+        <div>
+          <div style="font-family:'Orbitron',sans-serif;font-size:15px;font-weight:700;color:var(--white);" id="vr-name">—</div>
+          <div style="font-family:'DM Mono',monospace;font-size:9px;color:var(--muted2);margin-top:2px;" id="vr-segment">—</div>
+        </div>
+        <div style="display:flex;gap:20px;text-align:right;">
+          <div><div style="font-family:'Orbitron',sans-serif;font-size:16px;font-weight:700;color:var(--gold);" id="vr-tpc">—</div><div style="font-family:'DM Mono',monospace;font-size:8px;color:var(--muted2);">Unit TPC</div></div>
+          <div><div style="font-family:'Orbitron',sans-serif;font-size:16px;font-weight:700;color:var(--cyan);" id="vr-weight">—</div><div style="font-family:'DM Mono',monospace;font-size:8px;color:var(--muted2);">Weight</div></div>
         </div>
       </div>
 
-      <!-- Module assembly overview -->
-      <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:6px;margin-bottom:14px;" id="vr-modules"></div>
+      <!-- Module cards -->
+      <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:6px;margin-bottom:12px;" id="vr-modules"></div>
 
-      <!-- Rolled-up specs table -->
-      <div class="cost-box" style="margin-bottom:14px;">
-        <div style="font-family:'DM Mono',monospace;font-size:8px;text-transform:uppercase;letter-spacing:2px;color:var(--muted);margin-bottom:10px;">📊 Rolled-Up Vehicle Specifications</div>
-        <div id="vr-specs-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:4px 16px;"></div>
-      </div>
+      <!-- Main content: radar + table side by side -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px;">
 
-      <!-- Total weight -->
-      <div style="display:flex;justify-content:space-between;padding:8px 0;border-top:1px solid var(--border);margin-bottom:14px;">
-        <span style="font-family:'DM Mono',monospace;font-size:10px;color:var(--muted2);">Total Vehicle Weight</span>
-        <span style="font-family:'Orbitron',monospace;font-size:12px;font-weight:700;color:var(--cyan);" id="vr-weight">—</span>
+        <!-- LEFT: Radar chart -->
+        <div style="background:var(--s1);border:1px solid var(--border);border-radius:3px;padding:12px;">
+          <div style="font-family:'DM Mono',monospace;font-size:8px;text-transform:uppercase;letter-spacing:2px;color:var(--muted);margin-bottom:8px;">Spec Radar</div>
+
+          <!-- Toggle switches -->
+          <div style="display:flex;flex-direction:column;gap:5px;margin-bottom:10px;" id="radar-toggles"></div>
+
+          <!-- Canvas -->
+          <canvas id="vr-radar-canvas" width="280" height="280" style="display:block;margin:0 auto;"></canvas>
+
+          <!-- Legend -->
+          <div id="radar-legend" style="margin-top:8px;display:flex;flex-wrap:wrap;gap:6px;justify-content:center;"></div>
+        </div>
+
+        <!-- RIGHT: Spec table -->
+        <div style="background:var(--s1);border:1px solid var(--border);border-radius:3px;padding:12px;">
+          <div style="font-family:'DM Mono',monospace;font-size:8px;text-transform:uppercase;letter-spacing:2px;color:var(--muted);margin-bottom:8px;">Specification Detail</div>
+          <div id="vr-specs-grid" style="font-size:10px;"></div>
+        </div>
       </div>
 
       <!-- Quality penalty warning -->
-      <div id="vr-penalty-warn" style="display:none;background:var(--redl);border:1px solid var(--red);border-radius:3px;padding:10px 14px;margin-bottom:14px;font-size:11px;color:var(--red);">
+      <div id="vr-penalty-warn" style="display:none;background:var(--redl);border:1px solid var(--red);border-radius:3px;padding:10px 14px;margin-bottom:12px;font-size:11px;color:var(--red);">
         ⚠ One or more modules have a quality penalty from underfunded R&D. This will reduce effective reliability on this vehicle.
       </div>
 
-      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:4px;">
+      <div style="display:flex;gap:8px;justify-content:flex-end;">
         <button class="btn-mm-cancel" onclick="backToVehicleStep1()">← BACK</button>
         <button class="btn-mm-save" onclick="saveVehicle()">✓ CONFIRM &amp; ADD TO PLAN</button>
       </div>
@@ -2326,23 +2336,29 @@ function goToVehicleReview() {
     </div>`;
   }).join('');
 
-  // Spec grid
+  // Store for radar access
+  window._vrCurrentSpecs   = rolledSpecs;
+  window._vrCurrentSegment = segment;
+  window._vrCurrentName    = name;
+
+  // Spec table
   const specDefs = [
-    {key:'reliability', label:'Reliability',    fmt:v=>(v*100).toFixed(0)+'%'},
-    {key:'comfort',     label:'Comfort',         fmt:v=>(v*100).toFixed(0)+'%'},
-    {key:'safety',      label:'Safety',          fmt:v=>(v*100).toFixed(0)+'%'},
-    {key:'power',       label:'Power (ICE hp)',  fmt:v=>Math.round(v)+'hp'},
-    {key:'power_kw',    label:'Power (BEV kW)',  fmt:v=>Math.round(v)+'kW'},
-    {key:'emission_tech',label:'Emission Tech',  fmt:v=>(v*100).toFixed(0)+'%'},
-    {key:'efficiency',  label:'e-Motor Eff.',    fmt:v=>(v*100).toFixed(0)+'%'},
-    {key:'adas_level',  label:'ADAS Level',      fmt:v=>'Level '+Math.round(v)},
-    {key:'roominess',   label:'Roominess',       fmt:v=>parseFloat(v).toFixed(1)+'m³'},
-    {key:'premiumness', label:'Premiumness',      fmt:v=>(v*100).toFixed(0)+'%'},
+    {key:'reliability',  label:'Reliability',   fmt:v=>(v*100).toFixed(0)+'%',  norm:v=>v},
+    {key:'comfort',      label:'Comfort',        fmt:v=>(v*100).toFixed(0)+'%',  norm:v=>v},
+    {key:'safety',       label:'Safety',         fmt:v=>(v*100).toFixed(0)+'%',  norm:v=>v},
+    {key:'power',        label:'Power (hp)',     fmt:v=>Math.round(v)+'hp',       norm:v=>v/640},
+    {key:'power_kw',     label:'Power (kW)',     fmt:v=>Math.round(v)+'kW',       norm:v=>v/1500},
+    {key:'emission_tech',label:'Emission Tech',  fmt:v=>(v*100).toFixed(0)+'%',  norm:v=>v},
+    {key:'efficiency',   label:'e-Motor Eff.',   fmt:v=>(v*100).toFixed(0)+'%',  norm:v=>v},
+    {key:'adas_level',   label:'ADAS Level',     fmt:v=>'Level '+Math.round(v),   norm:v=>v/5},
+    {key:'roominess',    label:'Roominess',      fmt:v=>parseFloat(v).toFixed(1)+'m³', norm:v=>(v-1.5)/6},
+    {key:'premiumness',  label:'Premiumness',    fmt:v=>(v*100).toFixed(0)+'%',  norm:v=>v},
   ];
+  window._vrSpecDefs = specDefs;
 
   const filled = specDefs.filter(s=>rolledSpecs[s.key]!=null);
   document.getElementById('vr-specs-grid').innerHTML = filled.map(s=>`
-    <div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid var(--border);">
+    <div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid var(--border);">
       <span style="font-family:'DM Mono',monospace;font-size:9px;color:var(--muted2);">${s.label}</span>
       <span style="font-family:'DM Mono',monospace;font-size:10px;color:var(--text);">${s.fmt(rolledSpecs[s.key])}</span>
     </div>`).join('');
@@ -2353,6 +2369,9 @@ function goToVehicleReview() {
   // Switch to step 2
   document.getElementById('vm-step1').style.display='none';
   document.getElementById('vm-step2').style.display='block';
+
+  // Build radar after a brief paint delay
+  setTimeout(()=>initRadarToggles(name, segment, rolledSpecs), 80);
 }
 
 function backToVehicleStep1() {
@@ -4731,6 +4750,196 @@ function getBenchColumns(filter) {
     {label:'Weight'},
     {label:'Quality Penalty'},
   ];
+}
+
+
+
+// ══════════════════════════════════════════
+// RADAR CHART ENGINE
+// ══════════════════════════════════════════
+let _radarDatasets  = [];   // [{label, color, specs, active}]
+let _radarToggles   = {};   // {label: bool}
+
+const RADAR_AXES = [
+  {key:'reliability',  label:'Reliability',  norm:v=>v},
+  {key:'comfort',      label:'Comfort',      norm:v=>v},
+  {key:'safety',       label:'Safety',       norm:v=>v},
+  {key:'premiumness',  label:'Premiumness',  norm:v=>v},
+  {key:'roominess',    label:'Roominess',    norm:v=>(v-1.5)/6},
+  {key:'efficiency',   label:'Efficiency',   norm:v=>v},
+  {key:'power',        label:'ICE Power',    norm:v=>v/640},
+  {key:'power_kw',     label:'BEV Power',    norm:v=>v/1500},
+  {key:'emission_tech',label:'Emis. Tech',   norm:v=>v},
+  {key:'adas_level',   label:'ADAS',         norm:v=>v/5},
+];
+
+function specToRadar(specs) {
+  return RADAR_AXES.map(ax => {
+    const v = specs[ax.key];
+    if (v == null) return 0;
+    return Math.min(1, Math.max(0, ax.norm(parseFloat(v))));
+  });
+}
+
+function initRadarToggles(newVehicleName, segment, newSpecs) {
+  // Always include the new vehicle being assembled
+  _radarDatasets = [{
+    label: newVehicleName + ' (new)',
+    color: '#c8a43c',
+    specs: newSpecs,
+    active: true,
+    isNew: true,
+  }];
+  _radarToggles = {};
+  _radarToggles[newVehicleName + ' (new)'] = true;
+
+  // Add own team's existing vehicles in same segment
+  const sameSegVehicles = activeVehicles.filter(v => v.segment_code === segment);
+  const TEAM_COLORS = ['#4a8ce0','#38d486','#a058d8','#d87830','#e03a52','#30c8d8'];
+  sameSegVehicles.forEach((v, i) => {
+    const specs = v.rolled_up_specs || {};
+    if (Object.keys(specs).length === 0) return;
+    const label = v.name + ' (yours)';
+    _radarDatasets.push({label, color: TEAM_COLORS[i % TEAM_COLORS.length], specs, active: true, isOwn: true});
+    _radarToggles[label] = true;
+  });
+
+  // Build toggle UI
+  buildRadarToggleUI();
+  drawRadar();
+}
+
+function buildRadarToggleUI() {
+  const container = document.getElementById('radar-toggles');
+  if (!container) return;
+  container.innerHTML = _radarDatasets.map((ds, i) => {
+    const badge = ds.isNew ? '🆕' : ds.isOwn ? '★' : '⬡';
+    return `<label style="display:flex;align-items:center;gap:7px;cursor:pointer;font-size:10px;">
+      <div style="position:relative;width:32px;height:16px;flex-shrink:0;">
+        <input type="checkbox" id="rt-${i}" ${ds.active?'checked':''} onchange="toggleRadarLayer(${i},this.checked)"
+          style="opacity:0;width:0;height:0;position:absolute;">
+        <div id="rt-track-${i}" style="position:absolute;inset:0;border-radius:8px;background:${ds.active?ds.color:'var(--border2)'};transition:background .2s;cursor:pointer;" onclick="document.getElementById('rt-${i}').click()">
+          <div style="position:absolute;top:2px;left:${ds.active?'18':'2'}px;width:12px;height:12px;border-radius:50%;background:white;transition:left .2s;"></div>
+        </div>
+      </div>
+      <span style="color:${ds.active?ds.color:'var(--muted2)'};" id="rt-label-${i}">${badge} ${ds.label}</span>
+    </label>`;
+  }).join('');
+
+  // Legend
+  const legend = document.getElementById('radar-legend');
+  if (legend) {
+    legend.innerHTML = _radarDatasets.filter(d=>d.active).map(d=>
+      `<span style="font-family:'DM Mono',monospace;font-size:8px;display:flex;align-items:center;gap:4px;">
+        <span style="width:10px;height:2px;background:${d.color};display:inline-block;border-radius:1px;"></span>
+        ${d.label}
+      </span>`
+    ).join('');
+  }
+}
+
+function toggleRadarLayer(idx, active) {
+  _radarDatasets[idx].active = active;
+  // Update track color and label color
+  const track = document.getElementById(`rt-track-${idx}`);
+  const label = document.getElementById(`rt-label-${idx}`);
+  const ds = _radarDatasets[idx];
+  if (track) {
+    track.style.background = active ? ds.color : 'var(--border2)';
+    // move thumb
+    track.innerHTML = `<div style="position:absolute;top:2px;left:${active?'18':'2'}px;width:12px;height:12px;border-radius:50%;background:white;transition:left .2s;"></div>`;
+  }
+  if (label) label.style.color = active ? ds.color : 'var(--muted2)';
+  buildRadarToggleUI();
+  drawRadar();
+}
+
+function drawRadar() {
+  const canvas = document.getElementById('vr-radar-canvas');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  const W = canvas.width, H = canvas.height;
+  ctx.clearRect(0, 0, W, H);
+
+  const cx = W / 2, cy = H / 2;
+  const R  = Math.min(W, H) / 2 - 32;
+  const N  = RADAR_AXES.length;
+  const angles = RADAR_AXES.map((_, i) => (i / N) * 2 * Math.PI - Math.PI / 2);
+
+  // ── Background grid ──
+  const gridLevels = [0.2, 0.4, 0.6, 0.8, 1.0];
+  gridLevels.forEach(lvl => {
+    ctx.beginPath();
+    angles.forEach((a, i) => {
+      const x = cx + Math.cos(a) * R * lvl;
+      const y = cy + Math.sin(a) * R * lvl;
+      i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+    });
+    ctx.closePath();
+    ctx.strokeStyle = lvl === 1.0 ? 'rgba(255,255,255,0.12)' : 'rgba(255,255,255,0.06)';
+    ctx.lineWidth = lvl === 1.0 ? 1.5 : 1;
+    ctx.stroke();
+    // Level label
+    ctx.fillStyle = 'rgba(90,104,126,0.8)';
+    ctx.font = '8px DM Mono, monospace';
+    ctx.fillText((lvl * 100).toFixed(0) + '%', cx + 3, cy - R * lvl + 4);
+  });
+
+  // ── Axis spokes ──
+  angles.forEach((a, i) => {
+    ctx.beginPath();
+    ctx.moveTo(cx, cy);
+    ctx.lineTo(cx + Math.cos(a) * R, cy + Math.sin(a) * R);
+    ctx.strokeStyle = 'rgba(255,255,255,0.08)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    // Axis labels
+    const lx = cx + Math.cos(a) * (R + 16);
+    const ly = cy + Math.sin(a) * (R + 16);
+    ctx.fillStyle = 'rgba(86,96,112,1)';
+    ctx.font = '8px DM Mono, monospace';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(RADAR_AXES[i].label, lx, ly);
+  });
+
+  // ── Dataset polygons ──
+  _radarDatasets.filter(ds => ds.active).forEach(ds => {
+    const vals = specToRadar(ds.specs);
+    ctx.beginPath();
+    angles.forEach((a, i) => {
+      const r = vals[i] * R;
+      const x = cx + Math.cos(a) * r;
+      const y = cy + Math.sin(a) * r;
+      i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+    });
+    ctx.closePath();
+
+    // Fill
+    ctx.fillStyle = ds.color + '28';
+    ctx.fill();
+
+    // Stroke
+    ctx.strokeStyle = ds.color;
+    ctx.lineWidth = ds.isNew ? 2.5 : 1.5;
+    if (!ds.isNew) {
+      ctx.setLineDash([4, 3]);
+    } else {
+      ctx.setLineDash([]);
+    }
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // Dots
+    angles.forEach((a, i) => {
+      const r = vals[i] * R;
+      ctx.beginPath();
+      ctx.arc(cx + Math.cos(a) * r, cy + Math.sin(a) * r, ds.isNew ? 3.5 : 2.5, 0, 2 * Math.PI);
+      ctx.fillStyle = ds.color;
+      ctx.fill();
+    });
+  });
 }
 
 
