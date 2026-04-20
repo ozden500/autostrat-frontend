@@ -275,6 +275,58 @@ input[type=text]:focus,input[type=number]:focus{outline:none;border-color:var(--
 .psf-btn.on{border-color:var(--border2);color:var(--text);background:var(--s3);}
 
 /* GANTT */
+/* ══════════ VEHICLE PLAN STATUS ══════════ */
+.vstatus-study    {font-family:'DM Mono',monospace;font-size:8px;letter-spacing:1px;padding:2px 8px;border-radius:2px;
+  background:rgba(86,96,112,.18);border:1px solid rgba(86,96,112,.35);color:#7a8899;}
+.vstatus-plan     {font-family:'DM Mono',monospace;font-size:8px;letter-spacing:1px;padding:2px 8px;border-radius:2px;
+  background:rgba(200,164,60,.14);border:1px solid rgba(200,164,60,.35);color:var(--gold);}
+.vstatus-approved {font-family:'DM Mono',monospace;font-size:8px;letter-spacing:1px;padding:2px 8px;border-radius:2px;
+  background:rgba(56,212,134,.14);border:1px solid rgba(56,212,134,.35);color:var(--green);}
+
+/* vehicle card in the plan grid */
+.vcard{background:var(--s1);border:1px solid var(--border);border-radius:4px;overflow:hidden;margin-bottom:8px;transition:border-color .15s;}
+.vcard:hover{border-color:var(--border2);}
+.vcard.vc-study   {border-left:3px solid #4a5568;}
+.vcard.vc-plan    {border-left:3px solid var(--gold);}
+.vcard.vc-approved{border-left:3px solid var(--green);}
+.vcard-head{display:flex;align-items:center;gap:10px;padding:10px 14px;}
+.vcard-name{font-weight:600;font-size:13px;color:var(--white);flex:1;}
+.vcard-seg{font-family:'DM Mono',monospace;font-size:8px;color:var(--muted2);}
+.vcard-body{padding:0 14px 10px;display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start;}
+.vcard-meta{font-family:'DM Mono',monospace;font-size:9px;color:var(--muted2);}
+.vcard-meta span{color:var(--text);display:block;font-size:10px;margin-top:1px;}
+.vcard-actions{margin-left:auto;display:flex;gap:6px;align-items:center;padding-right:14px;padding-bottom:10px;}
+.vact-btn{font-family:'DM Mono',monospace;font-size:8px;letter-spacing:.5px;padding:4px 10px;border-radius:2px;
+  cursor:pointer;border:1px solid;transition:all .12s;}
+.vact-promote{background:var(--goldl);border-color:rgba(200,164,60,.4);color:var(--gold);}
+.vact-promote:hover{background:rgba(200,164,60,.25);}
+.vact-approve{background:var(--greenl);border-color:rgba(56,212,134,.4);color:var(--green);}
+.vact-approve:hover{background:rgba(56,212,134,.25);}
+.vact-delete{background:var(--redl);border-color:rgba(224,58,82,.35);color:var(--red);}
+.vact-delete:hover{background:rgba(224,58,82,.2);}
+.vact-edit{background:var(--s2);border-color:var(--border2);color:var(--muted2);}
+.vact-edit:hover{color:var(--text);}
+
+/* business case panel (slides open under a PLAN-status card) */
+.vcard-bc{padding:12px 14px;border-top:1px solid var(--border);background:var(--s2);}
+.vcard-bc-title{font-family:'DM Mono',monospace;font-size:7px;text-transform:uppercase;letter-spacing:2px;
+  color:var(--gold);margin-bottom:10px;display:flex;align-items:center;gap:6px;}
+.vcard-bc-title::after{content:'';flex:1;height:1px;background:var(--border2);}
+.bc-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;}
+.bc-item{text-align:center;}
+.bc-val{font-family:'Orbitron',sans-serif;font-size:14px;font-weight:700;color:var(--white);}
+.bc-lbl{font-family:'DM Mono',monospace;font-size:8px;color:var(--muted2);margin-top:3px;}
+
+/* study modal — lightweight */
+.study-modal{display:none;position:fixed;inset:0;z-index:900;background:rgba(0,0,0,.72);align-items:center;justify-content:center;}
+.study-modal.open{display:flex;}
+.study-panel{background:var(--s1);border:1px solid var(--border2);border-radius:6px;padding:24px;width:480px;max-width:92vw;}
+.study-title{font-family:'Orbitron',sans-serif;font-size:14px;font-weight:700;letter-spacing:2px;color:var(--white);margin-bottom:4px;}
+.study-sub{font-size:10px;color:var(--muted2);margin-bottom:18px;}
+.study-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px;}
+.study-field label{display:block;font-family:'DM Mono',monospace;font-size:8px;text-transform:uppercase;letter-spacing:1px;
+  color:var(--muted2);margin-bottom:4px;}
+
 .gantt-wrap{background:var(--s1);border:1px solid var(--border);border-radius:3px;overflow:hidden;margin-bottom:14px;}
 .gantt-header{display:grid;background:var(--s2);border-bottom:1px solid var(--border);}
 .gantt-row{display:grid;border-bottom:1px solid var(--border);transition:background .1s;}
@@ -1213,9 +1265,21 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
 <!-- ████ VEHICLE PLAN ████ -->
 <div class="page" id="page-plan">
   <div class="pg-title">VEHICLE PLAN</div>
-  <div class="pg-sub">Assemble vehicles from completed modules · 5-year portfolio roadmap · 2025–2030</div>
+  <div class="pg-sub">Product lifecycle · Study → Plan → Approved · 5-year portfolio roadmap 2025–2030</div>
 
-  <div class="plan-toolbar">
+  <!-- Status legend + toolbar -->
+  <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap;">
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+      <span class="vstatus-study">STUDY</span>
+      <span style="font-size:9px;color:var(--muted2);">intent, no modules needed</span>
+      <span style="color:var(--border2);margin:0 4px;">|</span>
+      <span class="vstatus-plan">PLAN</span>
+      <span style="font-size:9px;color:var(--muted2);">business case ready</span>
+      <span style="color:var(--border2);margin:0 4px;">|</span>
+      <span class="vstatus-approved">APPROVED</span>
+      <span style="font-size:9px;color:var(--muted2);">investment committed</span>
+    </div>
+    <div style="flex:1;"></div>
     <div class="plan-year-select" id="plan-yr-tabs">
       <div class="plan-yr active" onclick="planYr('all',this)">ALL</div>
       <div class="plan-yr" onclick="planYr('2025',this)">2025</div>
@@ -1225,18 +1289,49 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
       <div class="plan-yr" onclick="planYr('2029',this)">2029</div>
       <div class="plan-yr" onclick="planYr('2030',this)">2030</div>
     </div>
-    <div style="flex:1"></div>
-    <button class="btn-add-model" onclick="openVehicleModal()">＋ Assemble Vehicle</button>
+    <button class="btn-add-model" onclick="openStudyModal()">＋ New Product Study</button>
+    <button class="btn-add-model" style="background:var(--cyanl);border-color:rgba(50,204,192,.4);color:var(--cyan);" onclick="openVehicleModal()">⚙ Assemble Vehicle</button>
   </div>
 
   <!-- Gantt chart -->
-  <div class="gantt-wrap" id="gantt-wrap"><div style="padding:24px;color:var(--muted2);font-size:12px;">No vehicles in plan yet. Assemble a vehicle from completed modules.</div></div>
+  <div class="gantt-wrap" id="gantt-wrap"><div style="padding:24px;color:var(--muted2);font-size:12px;">No vehicles in plan yet.</div></div>
 
-  <!-- Summary table -->
+  <!-- Vehicle cards by status — 3-column Kanban -->
+  <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:16px;">
+    <div>
+      <div style="font-family:'DM Mono',monospace;font-size:8px;text-transform:uppercase;letter-spacing:2px;color:#7a8899;margin-bottom:8px;display:flex;align-items:center;gap:6px;">
+        <span style="width:7px;height:7px;border-radius:50%;background:#4a5568;display:inline-block;flex-shrink:0;"></span>
+        STUDY <span id="plan-count-study" style="margin-left:auto;background:rgba(86,96,112,.18);border-radius:2px;padding:1px 6px;">0</span>
+      </div>
+      <div id="plan-col-study"></div>
+    </div>
+    <div>
+      <div style="font-family:'DM Mono',monospace;font-size:8px;text-transform:uppercase;letter-spacing:2px;color:var(--gold);margin-bottom:8px;display:flex;align-items:center;gap:6px;">
+        <span style="width:7px;height:7px;border-radius:50%;background:var(--gold);display:inline-block;flex-shrink:0;"></span>
+        PLAN <span id="plan-count-plan" style="margin-left:auto;background:var(--goldl);border-radius:2px;padding:1px 6px;">0</span>
+      </div>
+      <div id="plan-col-plan"></div>
+    </div>
+    <div>
+      <div style="font-family:'DM Mono',monospace;font-size:8px;text-transform:uppercase;letter-spacing:2px;color:var(--green);margin-bottom:8px;display:flex;align-items:center;gap:6px;">
+        <span style="width:7px;height:7px;border-radius:50%;background:var(--green);display:inline-block;flex-shrink:0;"></span>
+        APPROVED <span id="plan-count-approved" style="margin-left:auto;background:var(--greenl);border-radius:2px;padding:1px 6px;">0</span>
+      </div>
+      <div id="plan-col-approved"></div>
+    </div>
+  </div>
+
+  <!-- Portfolio summary table -->
   <div class="card">
     <div class="card-title">Portfolio Summary</div>
     <table class="tbl">
-      <thead><tr><th>Vehicle</th><th>Segment</th><th>Platform</th><th>PWT</th><th>Start</th><th>End</th><th>Unit TPC</th><th>Weight</th><th>Status</th></tr></thead>
+      <thead><tr>
+        <th style="text-align:left;">Vehicle</th>
+        <th style="text-align:left;">Segment</th>
+        <th style="text-align:left;">Brand</th>
+        <th style="text-align:left;">PWT</th>
+        <th>SOP</th><th>EOP</th><th>Unit TPC</th><th>Status</th><th></th>
+      </tr></thead>
       <tbody id="plan-tbl-body"><tr><td colspan="9" style="color:var(--muted2);text-align:center;padding:16px;">No vehicles defined yet.</td></tr></tbody>
     </table>
   </div>
@@ -1505,6 +1600,90 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
 </div>
 
 <!-- VEHICLE ASSEMBLY MODAL -->
+<!-- ████ STUDY MODAL ████ -->
+<div class="study-modal" id="studyModal">
+  <div class="study-panel">
+    <div class="study-title">NEW PRODUCT STUDY</div>
+    <div class="study-sub">Define product intent · Modules assigned later in Plan phase</div>
+    <div class="study-grid">
+      <div class="study-field" style="grid-column:1/-1;">
+        <label>Study Name</label>
+        <input type="text" id="st-name" placeholder="e.g. Alpha C-Segment SUV Study" maxlength="60" style="width:100%;">
+      </div>
+      <div class="study-field">
+        <label>Market Segment</label>
+        <select id="st-segment" style="width:100%;"><option value="">— loading —</option></select>
+      </div>
+      <div class="study-field">
+        <label>Body Type</label>
+        <select id="st-body" style="width:100%;">
+          <option value="HB">Hatchback</option>
+          <option value="SEDAN">Sedan</option>
+          <option value="SUV">SUV / Crossover</option>
+          <option value="COUPE">Coupé</option>
+          <option value="ESTATE">Estate / Wagon</option>
+          <option value="CONVERTIBLE">Convertible</option>
+          <option value="VAN">Van / MPV</option>
+          <option value="PICKUP">Pickup</option>
+        </select>
+      </div>
+      <div class="study-field">
+        <label>Brand</label>
+        <select id="st-brand" style="width:100%;">
+          <option value="alpha">Alpha — Core Volume</option>
+          <option value="apex">Apex — Premium</option>
+          <option value="arrow">Arrow — EV Specialist</option>
+        </select>
+      </div>
+      <div class="study-field">
+        <label>Powertrain Type</label>
+        <select id="st-pwt" style="width:100%;">
+          <option value="ICE">ICE — Internal Combustion</option>
+          <option value="HEV">HEV — Full Hybrid</option>
+          <option value="PHEV">PHEV — Plug-in Hybrid</option>
+          <option value="REEV">REEV — Range Extender EV</option>
+          <option value="BEV">BEV — Battery Electric</option>
+          <option value="FCEV">FCEV — Fuel Cell</option>
+        </select>
+      </div>
+      <div class="study-field">
+        <label>Start of Production (SOP)</label>
+        <select id="st-start-yr" style="width:100%;margin-bottom:4px;">
+          <option value="">Year —</option>
+          <option>2025</option><option>2026</option><option>2027</option>
+          <option>2028</option><option>2029</option><option>2030</option>
+        </select>
+        <select id="st-start-qtr" style="width:100%;">
+          <option value="">Qtr —</option>
+          <option value="1">Q1</option><option value="2">Q2</option>
+          <option value="3">Q3</option><option value="4">Q4</option>
+        </select>
+      </div>
+      <div class="study-field">
+        <label>End of Production (EOP)</label>
+        <select id="st-end-yr" style="width:100%;margin-bottom:4px;">
+          <option value="">Year —</option>
+          <option>2025</option><option>2026</option><option>2027</option>
+          <option>2028</option><option>2029</option><option>2030</option>
+        </select>
+        <select id="st-end-qtr" style="width:100%;">
+          <option value="">Qtr —</option>
+          <option value="1">Q1</option><option value="2">Q2</option>
+          <option value="3">Q3</option><option value="4">Q4</option>
+        </select>
+      </div>
+      <div class="study-field" style="grid-column:1/-1;">
+        <label>Study Notes (optional)</label>
+        <input type="text" id="st-notes" placeholder="Key objectives, target markets, constraints…" maxlength="200" style="width:100%;">
+      </div>
+    </div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;">
+      <button class="btn-mm-cancel" onclick="closeStudyModal()">CANCEL</button>
+      <button class="btn-mm-save" onclick="saveStudy()">＋ CREATE STUDY</button>
+    </div>
+  </div>
+</div>
+
 <div class="model-modal" id="vehicleModal">
   <div class="mm-panel" style="max-width:760px;width:92vw;max-height:88vh;overflow-y:auto;">
 
@@ -2121,24 +2300,278 @@ async function loadVehiclePlan() {
     const res=await fetch(`${API_URL}/teams/${teamId}/vehicles`);
     const data=await res.json();
     activeVehicles=data.vehicles||[];
-    buildVehicleGantt(); buildVehicleTable();
+    buildVehicleGantt();
+    buildVehicleKanban();
+    buildVehicleTable();
   } catch(e){ console.warn('loadVehiclePlan:',e); }
 }
 
+// ── STATUS HELPERS ─────────────────────────────────────────
+function statusBadge(status) {
+  const map = {
+    study:    '<span class="vstatus-study">STUDY</span>',
+    plan:     '<span class="vstatus-plan">PLAN</span>',
+    approved: '<span class="vstatus-approved">APPROVED</span>',
+    // legacy values kept for backward compat
+    draft:    '<span class="vstatus-study">DRAFT</span>',
+    planned:  '<span class="vstatus-plan">PLANNED</span>',
+    on_sale:  '<span class="vstatus-approved">ON SALE</span>',
+    ended:    '<span style="font-family:'DM Mono',monospace;font-size:8px;padding:2px 8px;border-radius:2px;background:rgba(224,58,82,.1);border:1px solid rgba(224,58,82,.3);color:var(--red);">ENDED</span>',
+  };
+  return map[status] || `<span class="vstatus-study">${status.toUpperCase()}</span>`;
+}
+
+function statusBarColor(status) {
+  return {study:'#4a5568', plan:'var(--gold)', approved:'var(--green)',
+          draft:'#4a5568', planned:'var(--gold)', on_sale:'var(--green)', ended:'var(--red)'}[status] || '#4a5568';
+}
+
+// ── KANBAN CARDS ───────────────────────────────────────────
+// ── FULL P&L BUSINESS CASE BUILDER ────────────────────────
+function buildBusinessCase(v, tpcStr, hasModules, isApproved=false) {
+  const tpcNum = v.total_unit_tpc_eur || 0;
+
+  // Segment size estimates (units/quarter, rough market sizing)
+  const segSize = {
+    a_segment:20000, b_segment:60000, c_segment:90000, d_segment:50000,
+    e_segment:20000, f_segment:8000,  mpv:15000, pickup:12000,
+    sports:5000,     c_van:30000,     d_van:15000, e_van:5000,
+  };
+  const segGM = {  // typical gross margin % by segment
+    a_segment:0.14, b_segment:0.18, c_segment:0.20, d_segment:0.22,
+    e_segment:0.24, f_segment:0.30, mpv:0.19, pickup:0.25,
+    sports:0.28,    c_van:0.20,     d_van:0.22, e_van:0.22,
+  };
+  const segPrice = {
+    a_segment:12000, b_segment:18000, c_segment:26000, d_segment:38000,
+    e_segment:55000, f_segment:90000, mpv:32000, pickup:45000,
+    sports:55000,    c_van:28000,     d_van:40000, e_van:55000,
+  };
+
+  const mktUnits   = segSize[v.segment_code]  || 20000;
+  const shareEst   = hasModules ? 0.08 : 0.04;   // 8% if engineered, 4% if study only
+  const estUnits   = Math.round(mktUnits * shareEst);
+  const avgPrice   = segPrice[v.segment_code] || 25000;
+  const gmPct      = segGM[v.segment_code]    || 0.20;
+
+  // P&L per quarter
+  const revenueM   = Math.round(estUnits * avgPrice / 1e6);
+  const cogsM      = Math.round(tpcNum > 0 ? estUnits * tpcNum / 1e6 : revenueM * (1 - gmPct));
+  const grossProfM = revenueM - cogsM;
+  const gmActPct   = revenueM > 0 ? Math.round((grossProfM / revenueM) * 100) : 0;
+  const sgaM       = Math.round(revenueM * 0.06);   // 6% SG&A
+  const ebitM      = grossProfM - sgaM;
+  const ebitPct    = revenueM > 0 ? Math.round((ebitM / revenueM) * 100) : 0;
+
+  // Investment & payback
+  // Lifecycle revenue (SOP → EOP in quarters)
+  const sopQ = (v.start_year && v.start_quarter) ? (v.start_year - 2025)*4 + v.start_quarter - 1 : 4;
+  const eopQ = (v.end_year   && v.end_quarter)   ? (v.end_year   - 2025)*4 + v.end_quarter   - 1 : 20;
+  const lifeQ = Math.max(eopQ - sopQ, 1);
+  const totalRevM  = revenueM * lifeQ;
+  const totalEbitM = ebitM    * lifeQ;
+
+  // Approx R&D from module pipeline (sum across modules if TPC set, else estimate)
+  const rdEstM = tpcNum > 0 ? Math.round(tpcNum * estUnits * 0.15 / 1e6) : Math.round(revenueM * 0.08);
+  const paybackQ = ebitM > 0 ? Math.round(rdEstM / Math.max(ebitM, 1)) : '—';
+
+  const fmtM = n => n >= 0 ? `€${n}M` : `<span style="color:var(--red)">-€${Math.abs(n)}M</span>`;
+  const fmtPct = n => n >= 0
+    ? `<span style="color:var(--green)">${n}%</span>`
+    : `<span style="color:var(--red)">${n}%</span>`;
+
+  const border = isApproved ? 'var(--green)' : 'var(--gold)';
+  const label  = isApproved ? '✓ APPROVED BUSINESS CASE' : 'BUSINESS CASE — FULL P&L PROJECTION';
+
+  return `<div class="vcard-bc" style="border-top:1px solid ${border}22;">
+    <div class="vcard-bc-title" style="color:${border};">${label}</div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">
+      <!-- Left: P&L per quarter -->
+      <div>
+        <div style="font-family:'DM Mono',monospace;font-size:7px;text-transform:uppercase;letter-spacing:1.5px;color:var(--muted);margin-bottom:6px;">Per Quarter (est. ${estUnits.toLocaleString()} units @ ${shareEst*100}% share)</div>
+        <div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid var(--border);font-size:10px;">
+          <span style="color:var(--muted2);">Revenue</span>
+          <span style="font-family:'DM Mono',monospace;color:var(--cyan);">${fmtM(revenueM)}</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid var(--border);font-size:10px;">
+          <span style="color:var(--muted2);">COGS (Unit TPC×units)</span>
+          <span style="font-family:'DM Mono',monospace;color:var(--red);">-${fmtM(cogsM)}</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid var(--border);font-size:10px;">
+          <span style="color:var(--muted2);">Gross Profit</span>
+          <span style="font-family:'DM Mono',monospace;">${fmtM(grossProfM)} ${fmtPct(gmActPct)}</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid var(--border);font-size:10px;">
+          <span style="color:var(--muted2);">SG&A / Marketing</span>
+          <span style="font-family:'DM Mono',monospace;color:var(--red);">-${fmtM(sgaM)}</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;padding:4px 0;font-size:11px;font-weight:600;">
+          <span style="color:var(--muted);">EBIT</span>
+          <span style="font-family:'DM Mono',monospace;">${fmtM(ebitM)} ${fmtPct(ebitPct)}</span>
+        </div>
+      </div>
+      <!-- Right: Lifecycle summary -->
+      <div>
+        <div style="font-family:'DM Mono',monospace;font-size:7px;text-transform:uppercase;letter-spacing:1.5px;color:var(--muted);margin-bottom:6px;">Lifecycle (${lifeQ} quarters, ${Math.round(lifeQ/4*10)/10}yr)</div>
+        <div class="bc-grid" style="grid-template-columns:1fr 1fr;gap:6px;">
+          <div class="bc-item" style="background:var(--s3);border-radius:3px;padding:6px;">
+            <div class="bc-val" style="font-size:13px;color:var(--cyan);">€${Math.round(totalRevM/1000)}B</div>
+            <div class="bc-lbl">Total Revenue</div>
+          </div>
+          <div class="bc-item" style="background:var(--s3);border-radius:3px;padding:6px;">
+            <div class="bc-val" style="font-size:13px;color:${totalEbitM>=0?'var(--green)':'var(--red)'};">€${Math.round(totalEbitM)}M</div>
+            <div class="bc-lbl">Total EBIT</div>
+          </div>
+          <div class="bc-item" style="background:var(--s3);border-radius:3px;padding:6px;">
+            <div class="bc-val" style="font-size:13px;color:var(--gold);">€${rdEstM}M</div>
+            <div class="bc-lbl">Est. R&D Invest.</div>
+          </div>
+          <div class="bc-item" style="background:var(--s3);border-radius:3px;padding:6px;">
+            <div class="bc-val" style="font-size:13px;color:var(--white);">${typeof paybackQ==='number'?paybackQ+'q':'—'}</div>
+            <div class="bc-lbl">Payback Period</div>
+          </div>
+        </div>
+        ${!hasModules ? '<div style="margin-top:8px;font-family:'DM Mono',monospace;font-size:8px;color:var(--gold);">⚠ No modules attached — costs are segment estimates only</div>' : ''}
+        ${isApproved ? '<div style="margin-top:8px;font-family:'DM Mono',monospace;font-size:8px;color:var(--green);">✓ Investment committed via Financial panel</div>' : '<div style="margin-top:8px;font-family:'DM Mono',monospace;font-size:8px;color:var(--gold);">→ Submit R&D investment in Financial panel to approve</div>'}
+      </div>
+    </div>
+  </div>`;
+}
+
+function buildVehicleKanban() {
+  const cols  = {study:[], plan:[], approved:[]};
+  const legacyMap = {draft:'study', planned:'plan', on_sale:'approved'};
+  activeVehicles.forEach(v => {
+    const s = legacyMap[v.status] || v.status;
+    if (cols[s]) cols[s].push(v); else cols.study.push(v);
+  });
+
+  Object.entries(cols).forEach(([status, vehicles]) => {
+    const col = document.getElementById('plan-col-'+status);
+    const cnt = document.getElementById('plan-count-'+status);
+    if (!col) return;
+    cnt.textContent = vehicles.length;
+    if (vehicles.length === 0) {
+      col.innerHTML = `<div style="border:1px dashed var(--border2);border-radius:4px;padding:16px;text-align:center;font-family:'DM Mono',monospace;font-size:9px;color:var(--muted);">No vehicles</div>`;
+      return;
+    }
+    col.innerHTML = vehicles.map(v => buildVCard(v, status)).join('');
+  });
+}
+
+function buildVCard(v, normStatus) {
+  const sc   = SEG_COLORS[v.segment_code] || 'var(--muted)';
+  const sn   = SEG_NAMES[v.segment_code]  || v.segment_code;
+  const start= v.start_year ? `Q${v.start_quarter} ${v.start_year}` : '—';
+  const end  = v.end_year   ? `Q${v.end_quarter} ${v.end_year}`   : '—';
+  const tpc  = v.total_unit_tpc_eur ? '€'+Math.round(v.total_unit_tpc_eur).toLocaleString() : '—';
+  const brand= v.brand_id ? (BRAND_DATA[v.brand_id]?.name || v.brand_id) : '—';
+  const hasModules = !!(v.platform_module_id || v.pwt_module_id || v.tophat_module_id);
+
+  // Action buttons vary by status
+  // Study: edit dates / delete only — promotion is AUTOMATIC when modules are assembled
+  // Plan:  no manual approve — approval is AUTOMATIC when investment submitted in Financial panel
+  // Approved: can revise back to Plan
+  let actions = '';
+  if (normStatus === 'study') {
+    actions = `
+      <span style="font-family:'DM Mono',monospace;font-size:8px;color:var(--muted2);">Assemble modules to promote →</span>
+      <button class="vact-btn vact-delete" onclick="deleteVehicle('${v.id}')">✕</button>`;
+  } else if (normStatus === 'plan') {
+    actions = `
+      <span style="font-family:'DM Mono',monospace;font-size:8px;color:var(--gold);">Invest via Financial panel to approve →</span>
+      <button class="vact-btn vact-delete" onclick="deleteVehicle('${v.id}')">✕</button>`;
+  } else if (normStatus === 'approved') {
+    actions = `
+      <button class="vact-btn vact-edit" onclick="promoteVehicle('${v.id}','plan')">← Revise</button>`;
+  }
+
+  // Business case panel — full P&L projection for PLAN status
+  let bcPanel = '';
+  if (normStatus === 'plan') {
+    bcPanel = buildBusinessCase(v, tpc, hasModules);
+  } else if (normStatus === 'approved') {
+    bcPanel = buildBusinessCase(v, tpc, hasModules, true);
+  }
+
+  return `<div class="vcard vc-${normStatus}">
+    <div class="vcard-head">
+      <div class="gantt-seg-dot" style="background:${sc}"></div>
+      <div style="flex:1;">
+        <div class="vcard-name">${v.name}</div>
+        <div class="vcard-seg">${sn} · ${brand}</div>
+      </div>
+      ${statusBadge(v.status)}
+    </div>
+    <div class="vcard-body">
+      <div class="vcard-meta">PWT<span>${v.pwt_module_id ? '✓ Set' : (v.rolled_up_specs?.pwt_type || '—')}</span></div>
+      <div class="vcard-meta">SOP<span>${start}</span></div>
+      <div class="vcard-meta">EOP<span>${end}</span></div>
+      <div class="vcard-meta">Unit TPC<span style="color:var(--gold);">${tpc}</span></div>
+      <div class="vcard-actions">${actions}</div>
+    </div>
+    ${bcPanel}
+  </div>`;
+}
+
+async function promoteVehicle(vehicleId, newStatus) {
+  try {
+    const res = await fetch(`${API_URL}/vehicles/${vehicleId}`, {
+      method: 'PATCH', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({status: newStatus})
+    });
+    const data = await res.json();
+    if (data.success) {
+      toast(`✓ Status updated to ${newStatus.toUpperCase()}`);
+      await loadVehiclePlan();
+    } else toast('⚠ '+(data.detail||'Error'));
+  } catch(e){ toast('⚠ '+e.message); }
+}
+
+async function deleteVehicle(vehicleId) {
+  if (!confirm('Delete this vehicle? This cannot be undone.')) return;
+  try {
+    const res = await fetch(`${API_URL}/vehicles/${vehicleId}`, {method:'DELETE'});
+    const data = await res.json();
+    if (data.success) { toast('✓ Vehicle deleted'); await loadVehiclePlan(); }
+    else toast('⚠ '+(data.detail||'Error'));
+  } catch(e){ toast('⚠ '+e.message); }
+}
+
+// ── GANTT CHART ────────────────────────────────────────────
 function buildVehicleGantt() {
   const wrap=document.getElementById('gantt-wrap'); if(!wrap) return;
-  if(activeVehicles.length===0){ wrap.innerHTML='<div style="padding:24px;color:var(--muted2);font-size:12px;">No vehicles yet.</div>'; return; }
-  const colsTemplate='180px 90px 1fr';
+
+  // Apply year filter
+  const activeYrBtn = document.querySelector('#plan-yr-tabs .plan-yr.active');
+  const filterYr = activeYrBtn ? activeYrBtn.textContent : 'all';
+  let vehicles = activeVehicles;
+  if (filterYr !== 'ALL' && filterYr !== 'all') {
+    vehicles = activeVehicles.filter(v =>
+      (v.start_year && String(v.start_year) === filterYr) ||
+      (v.end_year   && String(v.end_year)   === filterYr) ||
+      (v.start_year <= parseInt(filterYr) && v.end_year >= parseInt(filterYr))
+    );
+  }
+
+  if(vehicles.length===0){ wrap.innerHTML='<div style="padding:24px;color:var(--muted2);font-size:12px;">No vehicles match the selected filter.</div>'; return; }
+  const colsTemplate='180px 80px 90px 1fr';
   const totalQ=QUARTERS.length;
   const todayPct=(CURRENT_QI/totalQ)*100;
   let html=`<div class="gantt-header" style="grid-template-columns:${colsTemplate};">
-    <div class="gantt-cell gh">Vehicle</div><div class="gantt-cell gh">Status</div>
+    <div class="gantt-cell gh">Vehicle</div>
+    <div class="gantt-cell gh">Brand</div>
+    <div class="gantt-cell gh">Status</div>
     <div class="gantt-cell gh" style="padding:0;"><div style="display:grid;grid-template-columns:repeat(6,1fr);width:100%;">
       ${['2025','2026','2027','2028','2029','2030'].map(y=>`<div style="padding:7px 0;text-align:center;font-family:'DM Mono',monospace;font-size:8px;color:var(--muted);border-left:1px solid var(--border);">${y}</div>`).join('')}
     </div></div></div>`;
-  activeVehicles.forEach(v=>{
-    const sc=SEG_COLORS[v.segment_code]||'var(--text)';
-    const sn=SEG_NAMES[v.segment_code]||v.segment_code;
+
+  vehicles.forEach(v=>{
+    const sc  = SEG_COLORS[v.segment_code]||'var(--muted)';
+    const sn  = SEG_NAMES[v.segment_code] ||v.segment_code;
+    const bc  = statusBarColor(v.status);
+    const brand = v.brand_id ? (BRAND_DATA[v.brand_id]?.name||v.brand_id) : '—';
     let barHtml='';
     if(v.start_year&&v.start_quarter){
       const sq=`Q${v.start_quarter} ${v.start_year}`, eq=v.end_year?`Q${v.end_quarter} ${v.end_year}`:'Q4 2030';
@@ -2146,47 +2579,169 @@ function buildVehicleGantt() {
       if(si>=0&&ei>=0){
         const lp=(si/totalQ)*100, wp=((ei-si+1)/totalQ)*100;
         const active=si<=CURRENT_QI&&ei>=CURRENT_QI;
+        // Pattern: study=dashed, plan=solid dim, approved=solid bright
+        const opacity = v.status==='approved'?1:(v.status==='plan'?0.7:0.4);
+        const dashStyle= v.status==='study'?'repeating-linear-gradient(90deg,'+bc+' 0,'+bc+' 8px,transparent 8px,transparent 14px)':'';
+        const bg = v.status==='study'?dashStyle:bc;
         barHtml=`<div class="gantt-bar-track"><div class="gantt-today" style="left:${todayPct}%"></div>
-          <div class="gantt-bar${active?' active-bar':''}" style="left:${lp}%;width:${wp}%;background:${sc};opacity:${active?1:0.5};">${sq}→${eq}</div></div>`;
+          <div class="gantt-bar${active?' active-bar':''}" style="left:${lp}%;width:${wp}%;background:${bg};opacity:${opacity};">${sq}→${eq}</div></div>`;
       }
     } else {
-      barHtml='<div style="height:22px;background:var(--s3);border-radius:2px;display:flex;align-items:center;padding:0 8px;"><span style=\'font-size:9px;color:var(--muted2)\'>No dates set</span></div>';
+      barHtml='<div style="height:22px;background:var(--s3);border-radius:2px;display:flex;align-items:center;padding:0 8px;"><span style='font-size:9px;color:var(--muted2)'>No dates set</span></div>';
     }
-    const stc=v.status==='on_sale'?'var(--green)':v.status==='planned'?'var(--gold)':'var(--muted2)';
     html+=`<div class="gantt-row" style="grid-template-columns:${colsTemplate};">
       <div class="gantt-cell"><div class="gantt-seg-dot" style="background:${sc}"></div>
         <div><div class="gantt-model-name">${v.name}</div><div style="font-family:'DM Mono',monospace;font-size:8px;color:var(--muted2);">${sn}</div></div></div>
-      <div class="gantt-cell" style="font-family:'DM Mono',monospace;font-size:9px;color:${stc};">${v.status}</div>
+      <div class="gantt-cell" style="font-family:'DM Mono',monospace;font-size:9px;color:var(--muted2);">${brand}</div>
+      <div class="gantt-cell">${statusBadge(v.status)}</div>
       <div class="gantt-bar-cell">${barHtml}</div></div>`;
   });
   wrap.innerHTML=html;
 }
 
+// ── SUMMARY TABLE ──────────────────────────────────────────
 function buildVehicleTable() {
   const tbody=document.getElementById('plan-tbl-body'); if(!tbody) return;
   if(activeVehicles.length===0){ tbody.innerHTML='<tr><td colspan="9" style="color:var(--muted2);text-align:center;padding:16px;">No vehicles defined yet.</td></tr>'; return; }
+  const legacyMap = {draft:'study', planned:'plan', on_sale:'approved'};
   tbody.innerHTML=activeVehicles.map(v=>{
-    const sc=SEG_COLORS[v.segment_code]||'var(--text)', sn=SEG_NAMES[v.segment_code]||v.segment_code;
-    const tpc=v.total_unit_tpc_eur?'€'+Math.round(v.total_unit_tpc_eur).toLocaleString():'—';
-    const wt=v.total_weight_kg?Math.round(v.total_weight_kg)+'kg':'—';
-    const start=v.start_year?`Q${v.start_quarter} ${v.start_year}`:'—';
-    const end=v.end_year?`Q${v.end_quarter} ${v.end_year}`:'—';
-    const stc=v.status==='on_sale'?'var(--green)':v.status==='planned'?'var(--gold)':'var(--muted2)';
+    const sc  = SEG_COLORS[v.segment_code]||'var(--muted)', sn=SEG_NAMES[v.segment_code]||v.segment_code;
+    const tpc = v.total_unit_tpc_eur?'€'+Math.round(v.total_unit_tpc_eur).toLocaleString():'—';
+    const start= v.start_year?`Q${v.start_quarter} ${v.start_year}`:'—';
+    const end  = v.end_year  ?`Q${v.end_quarter} ${v.end_year}`  :'—';
+    const brand= v.brand_id?(BRAND_DATA[v.brand_id]?.name||v.brand_id):'—';
+    const normStatus = legacyMap[v.status]||v.status;
+    const pwtLabel = v.pwt_module_id?'✓':( v.rolled_up_specs?.pwt_type||'—');
     return `<tr>
-      <td style="font-weight:500;">${v.name}</td><td style="color:${sc};font-size:10px;">${sn}</td>
-      <td style="font-family:'DM Mono',monospace;font-size:9px;color:var(--muted2);">${v.platform_module_id?'✓':'—'}</td>
-      <td style="font-family:'DM Mono',monospace;font-size:9px;color:var(--muted2);">${v.pwt_module_id?'✓':'—'}</td>
+      <td style="font-weight:500;text-align:left;">${v.name}</td>
+      <td style="color:${sc};font-size:10px;text-align:left;">${sn}</td>
+      <td style="font-size:10px;text-align:left;">${brand}</td>
+      <td style="font-family:'DM Mono',monospace;font-size:9px;text-align:left;">${pwtLabel}</td>
       <td style="font-family:'DM Mono',monospace;font-size:10px;">${start}</td>
       <td style="font-family:'DM Mono',monospace;font-size:10px;">${end}</td>
-      <td style="font-family:'DM Mono',monospace;text-align:right;">${tpc}</td>
-      <td style="font-family:'DM Mono',monospace;text-align:right;">${wt}</td>
-      <td style="font-family:'DM Mono',monospace;font-size:9px;color:${stc};">${v.status}</td></tr>`;
+      <td style="font-family:'DM Mono',monospace;">${tpc}</td>
+      <td>${statusBadge(v.status)}</td>
+      <td style="text-align:right;">
+        <button class="vact-btn vact-delete" style="font-size:8px;padding:2px 7px;" onclick="deleteVehicle('${v.id}')">✕</button>
+      </td></tr>`;
   }).join('');
 }
 
 function planYr(yr, el) {
   document.querySelectorAll('#plan-yr-tabs .plan-yr').forEach(b=>b.classList.remove('active'));
-  el.classList.add('active'); buildVehicleGantt();
+  el.classList.add('active');
+  buildVehicleGantt();
+}
+
+// ── AUTO-TRANSITION HELPERS ──────────────────────────────
+
+// Called after a vehicle is assembled: promotes any Study in the same segment to Plan
+async function autoPromoteStudyForSegment(segmentCode, newVehicleId) {
+  if (!teamId) return;
+  try {
+    const res  = await fetch(`${API_URL}/teams/${teamId}/vehicles`);
+    const data = await res.json();
+    const studies = (data.vehicles || []).filter(v =>
+      (v.status === 'study' || v.status === 'draft') &&
+      v.segment_code === segmentCode &&
+      v.id !== newVehicleId
+    );
+    for (const s of studies) {
+      await fetch(`${API_URL}/vehicles/${s.id}`, {
+        method: 'PATCH', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({status: 'plan'})
+      });
+      console.log(`[AutoPromote] Study "${s.name}" promoted to Plan`);
+    }
+    if (studies.length > 0) {
+      toast(`✓ ${studies.length} Study→Plan auto-promoted for ${SEG_NAMES[segmentCode]||segmentCode}`);
+    }
+  } catch(e){ console.warn('autoPromoteStudyForSegment:', e); }
+}
+
+// Called after financial submission with investment > 0: approves all Plan vehicles
+async function autoApprovePlanVehicles(totalInvestmentM) {
+  if (!teamId) return;
+  try {
+    const res  = await fetch(`${API_URL}/teams/${teamId}/vehicles`);
+    const data = await res.json();
+    const plans = (data.vehicles || []).filter(v =>
+      v.status === 'plan' || v.status === 'planned'
+    );
+    if (plans.length === 0) return;
+    let approved = 0;
+    for (const p of plans) {
+      await fetch(`${API_URL}/vehicles/${p.id}`, {
+        method: 'PATCH', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({status: 'approved'})
+      });
+      approved++;
+    }
+    toast(`✓ ${approved} vehicle${approved>1?'s':''} APPROVED — investment committed (€${Math.round(totalInvestmentM)}M)`);
+  } catch(e){ console.warn('autoApprovePlanVehicles:', e); }
+}
+
+// ── STUDY MODAL ────────────────────────────────────────────
+async function openStudyModal() {
+  if (!teamId) { toast('⚠ Join a session first'); return; }
+  // Populate segment selector
+  try {
+    const res = await fetch(`${API_URL}/product-segments`);
+    const data = await res.json();
+    const segs = data.segments || [];
+    const sel = document.getElementById('st-segment');
+    if (sel) sel.innerHTML = '<option value="">— select —</option>' + segs.map(s=>`<option value="${s.code}">${s.name}</option>`).join('');
+  } catch(e){}
+  document.getElementById('studyModal').classList.add('open');
+}
+
+function closeStudyModal() {
+  document.getElementById('studyModal').classList.remove('open');
+}
+
+async function saveStudy() {
+  const name    = (document.getElementById('st-name')?.value||'').trim();
+  const segment = document.getElementById('st-segment')?.value;
+  if (!name)    { toast('⚠ Enter a study name'); return; }
+  if (!segment) { toast('⚠ Select a market segment'); return; }
+
+  const gi = id => { const e=document.getElementById(id); return e&&e.value?parseInt(e.value):null; };
+  const gv = id => { const e=document.getElementById(id); return e?.value||null; };
+
+  // Store extra study metadata in the vehicle record
+  // We use rolled_up_specs to carry body_type, brand, pwt_type, notes for Study-phase vehicles
+  const studyMeta = {
+    body_type: gv('st-body'),
+    pwt_type:  gv('st-pwt'),
+    notes:     gv('st-notes'),
+    is_study:  true,
+  };
+
+  try {
+    const res = await fetch(`${API_URL}/teams/${teamId}/vehicles`, {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({
+        team_id:      teamId,
+        session_id:   sessionId,
+        name,
+        segment_code: segment,
+        brand_id:     gv('st-brand'),
+        start_year:   gi('st-start-yr'),
+        start_quarter:gi('st-start-qtr'),
+        end_year:     gi('st-end-yr'),
+        end_quarter:  gi('st-end-qtr'),
+        status:       'study',
+      })
+    });
+    const data = await res.json();
+    if (data.success) {
+      toast(`✓ Study "${name}" created`);
+      closeStudyModal();
+      // Clear form
+      ['st-name','st-notes'].forEach(id=>{ const e=document.getElementById(id); if(e) e.value=''; });
+      await loadVehiclePlan();
+    } else toast('⚠ '+(data.detail||'Error saving study'));
+  } catch(e){ toast('⚠ '+e.message); }
 }
 
 function openVehicleModal() {
@@ -2408,10 +2963,17 @@ async function saveVehicle() {
         tophat_module_id:gv('vm-tophat'), eands_module_id:gv('vm-eands'),
         battery_size_code:gv('vm-battery'), cell_chemistry_code:gv('vm-chemistry'),
         start_year:gi('vm-start-yr'), start_quarter:gi('vm-start-qtr'),
-        end_year:gi('vm-end-yr'), end_quarter:gi('vm-end-qtr'), status:'planned'})
+        end_year:gi('vm-end-yr'), end_quarter:gi('vm-end-qtr'), status:'plan'})
     });
     const data=await res.json();
-    if(data.success){ toast(`✓ ${name} added to plan`); closeVehicleModal(); await loadVehiclePlan(); }
+    if(data.success){
+      toast(`✓ ${name} assembled — status set to PLAN`);
+      closeVehicleModal();
+      // Auto-promote: if a Study exists with the same segment, link assembled vehicle to it
+      // by promoting any study-status vehicles in the same segment to plan
+      await autoPromoteStudyForSegment(segment, data.vehicle?.id);
+      await loadVehiclePlan();
+    }
     else toast('⚠ '+(data.detail||'Error'));
   } catch(e){ toast('⚠ '+e.message); }
 }
@@ -2926,6 +3488,12 @@ async function submitRound() {
     document.getElementById('submitBtn').classList.add('done');
     document.getElementById('sb-stat').innerHTML = '✓ <strong>Decisions submitted</strong> — waiting for instructor to close round';
     toast('Decisions submitted ✓');
+    // Auto-approve: if R&D or capex investment > 0, approve all Plan vehicles
+    const rdVal    = d.financial.rd_spend_m         || 0;
+    const capexVal = d.financial.capex_investment_m  || 0;
+    if (rdVal > 0 || capexVal > 0) {
+      await autoApprovePlanVehicles(rdVal + capexVal);
+    }
     // Show results button immediately so team can check anytime
     const rb = document.getElementById('resultsBtn');
     if (rb) { rb.style.display = 'inline-block'; rb.textContent = '⏳ Awaiting Results'; rb.style.background = '#334155'; rb.style.color = '#94a3b8'; }
