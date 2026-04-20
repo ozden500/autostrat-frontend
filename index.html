@@ -2316,7 +2316,7 @@ function statusBadge(status) {
     draft:    '<span class="vstatus-study">DRAFT</span>',
     planned:  '<span class="vstatus-plan">PLANNED</span>',
     on_sale:  '<span class="vstatus-approved">ON SALE</span>',
-    ended:    '<span style="font-family:'DM Mono',monospace;font-size:8px;padding:2px 8px;border-radius:2px;background:rgba(224,58,82,.1);border:1px solid rgba(224,58,82,.3);color:var(--red);">ENDED</span>',
+    ended:    `<span style="font-family:'DM Mono',monospace;font-size:8px;padding:2px 8px;border-radius:2px;background:rgba(224,58,82,.1);border:1px solid rgba(224,58,82,.3);color:var(--red);">ENDED</span>`,
   };
   return map[status] || `<span class="vstatus-study">${status.toUpperCase()}</span>`;
 }
@@ -2432,8 +2432,8 @@ function buildBusinessCase(v, tpcStr, hasModules, isApproved=false) {
             <div class="bc-lbl">Payback Period</div>
           </div>
         </div>
-        ${!hasModules ? '<div style="margin-top:8px;font-family:'DM Mono',monospace;font-size:8px;color:var(--gold);">⚠ No modules attached — costs are segment estimates only</div>' : ''}
-        ${isApproved ? '<div style="margin-top:8px;font-family:'DM Mono',monospace;font-size:8px;color:var(--green);">✓ Investment committed via Financial panel</div>' : '<div style="margin-top:8px;font-family:'DM Mono',monospace;font-size:8px;color:var(--gold);">→ Submit R&D investment in Financial panel to approve</div>'}
+        ${!hasModules ? `<div style="margin-top:8px;font-family:'DM Mono',monospace;font-size:8px;color:var(--gold);">⚠ No modules attached — costs are segment estimates only</div>` : ''}
+        ${isApproved ? `<div style="margin-top:8px;font-family:'DM Mono',monospace;font-size:8px;color:var(--green);">✓ Investment committed via Financial panel</div>` : `<div style="margin-top:8px;font-family:'DM Mono',monospace;font-size:8px;color:var(--gold);">→ Submit R&D investment in Financial panel to approve</div>`}
       </div>
     </div>
   </div>`;
@@ -2587,7 +2587,7 @@ function buildVehicleGantt() {
           <div class="gantt-bar${active?' active-bar':''}" style="left:${lp}%;width:${wp}%;background:${bg};opacity:${opacity};">${sq}→${eq}</div></div>`;
       }
     } else {
-      barHtml='<div style="height:22px;background:var(--s3);border-radius:2px;display:flex;align-items:center;padding:0 8px;"><span style='font-size:9px;color:var(--muted2)'>No dates set</span></div>';
+      barHtml='<div style="height:22px;background:var(--s3);border-radius:2px;display:flex;align-items:center;padding:0 8px;"><span style="font-size:9px;color:var(--muted2)">No dates set</span></div>';
     }
     html+=`<div class="gantt-row" style="grid-template-columns:${colsTemplate};">
       <div class="gantt-cell"><div class="gantt-seg-dot" style="background:${sc}"></div>
