@@ -2432,7 +2432,7 @@ function buildVCard(v, normStatus) {
   const start= v.start_year ? `Q${v.start_quarter} ${v.start_year}` : '—';
   const end  = v.end_year   ? `Q${v.end_quarter} ${v.end_year}`   : '—';
   const tpc  = v.total_unit_tpc_eur ? '€'+Math.round(v.total_unit_tpc_eur).toLocaleString() : '—';
-  const brand= v.brand_id ? (BRAND_DATA[v.brand_id]?.name || v.brand_id) : '—';
+  const brand= v.brand_id ? (BRAND_DATA[v.brand_id]?.name || v.brand_id) : (v.rolled_up_specs?.brand_name || '—');
   const hasModules = !!(v.platform_module_id || v.pwt_module_id || v.tophat_module_id);
 
   // Action buttons vary by status
@@ -2691,7 +2691,14 @@ async function saveStudy() {
         session_id:   sessionId,
         name,
         segment_code: segment,
-        brand_id:     gv('st-brand'),
+        brand_id:     null,
+        rolled_up_specs: {
+          brand_name: gv('st-brand'),
+          body_type:  gv('st-body'),
+          pwt_type:   gv('st-pwt'),
+          notes:      gv('st-notes'),
+          is_study:   true,
+        },
         start_year:   gi('st-start-yr'),
         start_quarter:gi('st-start-qtr'),
         end_year:     gi('st-end-yr'),
