@@ -366,6 +366,34 @@ input[type=text]:focus,input[type=number]:focus{outline:none;border-color:var(--
   border:1px solid rgba(224,58,82,.35);background:rgba(224,58,82,.08);color:var(--red);cursor:pointer;}
 .plan-act-del:hover{background:rgba(224,58,82,.2);}
 
+/* ══════════ PRODUCT STUDIES PANEL (Engineering Lab) ══════════ */
+.study-panel-table{width:100%;border-collapse:collapse;}
+.study-panel-th{font-family:'DM Mono',monospace;font-size:8px;text-transform:uppercase;
+  letter-spacing:1px;color:var(--muted);font-weight:400;padding:7px 10px;
+  background:var(--s2);border-bottom:1px solid var(--border);white-space:nowrap;text-align:left;}
+.study-panel-td{padding:8px 10px;font-size:11px;border-bottom:1px solid var(--border);
+  vertical-align:middle;}
+.study-panel-td.mono{font-family:'DM Mono',monospace;font-size:10px;}
+.study-panel-tr:last-child .study-panel-td{border-bottom:none;}
+.study-panel-tr:hover .study-panel-td{background:var(--s2);}
+.study-mod-sel{width:100%;background:var(--s3);border:1px solid var(--border2);
+  color:var(--text);padding:4px 6px;border-radius:2px;font-size:10px;
+  font-family:'DM Mono',monospace;cursor:pointer;}
+.study-mod-sel:focus{outline:none;border-color:var(--gold);}
+.study-mod-badge{font-family:'DM Mono',monospace;font-size:8px;padding:2px 6px;
+  border-radius:2px;margin-left:4px;}
+.study-mod-ok{background:var(--greenl);color:var(--green);}
+.study-mod-dev{background:var(--goldl);color:var(--gold);}
+.study-mod-late{background:var(--redl);color:var(--red);}
+.study-mod-none{background:var(--s3);color:var(--muted2);}
+.study-submit-btn{font-family:'DM Mono',monospace;font-size:8px;padding:4px 12px;
+  border-radius:2px;border:1px solid rgba(56,212,134,.4);
+  background:rgba(56,212,134,.08);color:var(--green);cursor:pointer;white-space:nowrap;}
+.study-submit-btn:hover{background:rgba(56,212,134,.22);}
+.study-submit-btn:disabled{opacity:.35;cursor:not-allowed;}
+.study-readiness{display:flex;gap:3px;align-items:center;}
+.study-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;}
+
 /* ══════════ VEHICLE PLAN STATUS ══════════ */
 .vstatus-study    {font-family:'DM Mono',monospace;font-size:8px;letter-spacing:1px;padding:2px 8px;border-radius:2px;
   background:rgba(86,96,112,.18);border:1px solid rgba(86,96,112,.35);color:#7a8899;}
@@ -1326,6 +1354,23 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
     <div id="mod-pipeline-list"></div>
   </div>
 
+  <!-- Product Studies — module assignment panel -->
+  <div class="card" style="margin-top:12px;padding:0;overflow:hidden;" id="product-studies-card">
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid var(--border);">
+      <div class="card-title" style="margin:0;">
+        PRODUCT STUDIES
+        <span id="study-count-badge" style="margin-left:8px;background:rgba(86,96,112,.2);border-radius:2px;padding:1px 7px;font-size:9px;color:#7a8899;">0</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;">
+        <span style="font-family:'DM Mono',monospace;font-size:8px;color:var(--muted2);">Assign modules to each study · Submit to promote to PLAN</span>
+        <button onclick="loadProductStudies()" style="font-family:'DM Mono',monospace;font-size:8px;padding:3px 10px;background:transparent;border:1px solid var(--border2);color:var(--muted2);border-radius:2px;cursor:pointer;">↻ Refresh</button>
+      </div>
+    </div>
+    <div id="product-studies-body">
+      <div style="padding:24px;text-align:center;color:var(--muted2);font-size:12px;">Loading studies...</div>
+    </div>
+  </div>
+
   <!-- Engineering Benchmark -->
   <div class="card" style="margin-top:12px;">
     <div class="card-title">ENGINEERING BENCHMARK
@@ -2048,7 +2093,7 @@ function nav(page, el) {
   if(page==='market') buildMktBars();
   if(page==='plan') loadVehiclePlan();
   if(page==='brands') renderBrand(currentBrand);
-  if(page==='engineering') { loadBaseConfigs(currentModType); if(teamId) loadModuleLibrary(); }
+  if(page==='engineering') { loadBaseConfigs(currentModType); if(teamId) { loadModuleLibrary(); loadProductStudies(); } }
 }
 
 // ══════════════════════════════════════════
@@ -3105,10 +3150,11 @@ document.addEventListener('click', function(e) {
   var vid    = btn.getAttribute('data-vid');
   var action = btn.getAttribute('data-action');
   if (!vid || !action) return;
-  if (action === 'bc')      { openBCModal(vid); }
-  if (action === 'approve') { promoteVehicle(vid, 'approved'); }
-  if (action === 'revise')  { promoteVehicle(vid, 'plan'); }
-  if (action === 'delete')  { deleteVehicle(vid); }
+  if (action === 'bc')           { openBCModal(vid); }
+  if (action === 'approve')      { promoteVehicle(vid, 'approved'); }
+  if (action === 'revise')       { promoteVehicle(vid, 'plan'); }
+  if (action === 'delete')       { deleteVehicle(vid); }
+  if (action === 'study-submit') { submitStudyProposal(vid); }
 });
 
 
@@ -5689,6 +5735,203 @@ async function instructorNextRound() {
 
 // Module Development: load base configs on startup
 loadBaseConfigs('platform').catch(()=>{});
+
+
+// ══════════════════════════════════════════
+// PRODUCT STUDIES — Engineering Lab
+// ══════════════════════════════════════════
+
+// Stores per-study module selections: { vehicleId: { platform, ice_pwt, epwt, tophat, eands } }
+var _studyModuleSelections = {};
+
+async function loadProductStudies() {
+  if (!teamId) return;
+  const bodyEl   = document.getElementById('product-studies-body');
+  const countEl  = document.getElementById('study-count-badge');
+  if (!bodyEl) return;
+
+  try {
+    // Load studies + all team modules in parallel
+    const [vRes, mRes] = await Promise.all([
+      fetch(API_URL + '/teams/' + teamId + '/vehicles'),
+      fetch(API_URL + '/teams/' + teamId + '/modules'),
+    ]);
+    const vehicles = ((await vRes.json()).vehicles || [])
+      .filter(function(v) { return v.status === 'study' || v.status === 'draft'; });
+    const allMods  = (await mRes.json()).modules || [];
+
+    if (countEl) countEl.textContent = vehicles.length;
+
+    if (vehicles.length === 0) {
+      bodyEl.innerHTML = '<div style="padding:24px;text-align:center;color:var(--muted2);font-size:12px;">No product studies yet. Create one from the Vehicle Plan page.</div>';
+      return;
+    }
+
+    // Organise modules by type
+    var byType = { platform:[], ice_pwt:[], epwt:[], tophat:[], eands:[] };
+    allMods.forEach(function(m) {
+      if (byType[m.module_type]) byType[m.module_type].push(m);
+    });
+
+    // Build table
+    var html = '<div style="overflow-x:auto;"><table class="study-panel-table">';
+    html += '<thead><tr>'
+      + '<th class="study-panel-th" style="min-width:140px;">Study Name</th>'
+      + '<th class="study-panel-th">Segment</th>'
+      + '<th class="study-panel-th">Body</th>'
+      + '<th class="study-panel-th">PWT Intent</th>'
+      + '<th class="study-panel-th">SOP</th>'
+      + '<th class="study-panel-th" style="min-width:160px;">Platform</th>'
+      + '<th class="study-panel-th" style="min-width:160px;">ICE / e-PWT</th>'
+      + '<th class="study-panel-th" style="min-width:160px;">Top Hat</th>'
+      + '<th class="study-panel-th" style="min-width:140px;">E&amp;S / ADAS</th>'
+      + '<th class="study-panel-th">Readiness</th>'
+      + '<th class="study-panel-th">Action</th>'
+      + '</tr></thead><tbody>';
+
+    vehicles.forEach(function(v) {
+      var sn    = SEG_NAMES[v.segment_code]  || v.segment_code;
+      var sc    = SEG_COLORS[v.segment_code] || 'var(--muted)';
+      var rs    = v.rolled_up_specs || {};
+      var body  = rs.body_type  || '—';
+      var pwt   = rs.pwt_type   || '—';
+      var sop   = v.start_year  ? 'Q'+v.start_quarter+' '+v.start_year : '—';
+      var sopNum = v.start_year ? v.start_year * 10 + (v.start_quarter||0) : 99999;
+      var vid   = v.id;
+
+      if (!_studyModuleSelections[vid]) _studyModuleSelections[vid] = {};
+      var sel = _studyModuleSelections[vid];
+
+      // Build select for each module type
+      function modSelect(type, selectId) {
+        var mods = byType[type] || [];
+        var opts = '<option value="">— none —</option>';
+        // Group: completed, in_development, then others
+        var completed = mods.filter(function(m){ return m.development_status==='completed'; });
+        var inDev     = mods.filter(function(m){ return m.development_status==='in_development'; });
+        if (completed.length) {
+          opts += '<optgroup label="✓ Completed">';
+          completed.forEach(function(m) {
+            opts += '<option value="'+m.id+'"'+(sel[type]===m.id?' selected':'')+'>'+m.name+' ('+m.config_key+')</option>';
+          });
+          opts += '</optgroup>';
+        }
+        if (inDev.length) {
+          opts += '<optgroup label="⏳ In Development">';
+          inDev.forEach(function(m) {
+            opts += '<option value="'+m.id+'"'+(sel[type]===m.id?' selected':'')+'>'+m.name+' ('+m.config_key+')</option>';
+          });
+          opts += '</optgroup>';
+        }
+        return '<select class="study-mod-sel" id="'+selectId+'" '
+          + 'data-vid="'+vid+'" data-mtype="'+type+'" '
+          + 'onchange="onStudyModuleChange(this)">'
+          + opts + '</select>';
+      }
+
+      // Readiness check: for each selected module, is it ready before SOP?
+      function readiness(type) {
+        var mid = sel[type];
+        if (!mid) return 'none';
+        var mod = allMods.find(function(m){ return m.id===mid; });
+        if (!mod) return 'none';
+        if (mod.development_status === 'completed') return 'ok';
+        // In development — check pipeline readiness vs SOP
+        // We'll check in the JS via pipeline data; for now flag as 'dev'
+        return 'dev';
+      }
+
+      function readinessDot(type) {
+        var r = readiness(type);
+        var col = r==='ok'?'var(--green)':r==='dev'?'var(--gold)':'#4a5568';
+        var tip = r==='ok'?'Completed':r==='dev'?'In development':'Not assigned';
+        return '<div class="study-dot" style="background:'+col+';" title="'+type+': '+tip+'"></div>';
+      }
+
+      var allAssigned = sel.platform && sel.ice_pwt && sel.tophat && sel.eands;
+      var submitDisabled = allAssigned ? '' : ' disabled';
+
+      html += '<tr class="study-panel-tr">'
+        + '<td class="study-panel-td" style="font-weight:600;color:var(--white);">'+v.name+'</td>'
+        + '<td class="study-panel-td"><span style="color:'+sc+';font-size:10px;">'+sn+'</span></td>'
+        + '<td class="study-panel-td mono">'+body+'</td>'
+        + '<td class="study-panel-td mono">'+pwt+'</td>'
+        + '<td class="study-panel-td mono">'+sop+'</td>'
+        + '<td class="study-panel-td">'+modSelect('platform','sms-'+vid+'-platform')+'</td>'
+        + '<td class="study-panel-td">'+modSelect('ice_pwt','sms-'+vid+'-ice_pwt')
+            +'<div style="margin-top:3px;">'+modSelect('epwt','sms-'+vid+'-epwt')+'</div></td>'
+        + '<td class="study-panel-td">'+modSelect('tophat','sms-'+vid+'-tophat')+'</td>'
+        + '<td class="study-panel-td">'+modSelect('eands','sms-'+vid+'-eands')+'</td>'
+        + '<td class="study-panel-td"><div class="study-readiness">'
+            + readinessDot('platform') + readinessDot('ice_pwt')
+            + readinessDot('tophat')   + readinessDot('eands')
+          + '</div></td>'
+        + '<td class="study-panel-td">'
+          + '<button class="study-submit-btn" data-vid="'+vid+'" data-action="study-submit"'
+          + submitDisabled + '>&#10003; Submit Proposal</button>'
+          + '</td>'
+        + '</tr>';
+    });
+
+    html += '</tbody></table></div>';
+    bodyEl.innerHTML = html;
+
+  } catch(e) {
+    console.warn('loadProductStudies:', e);
+    if (bodyEl) bodyEl.innerHTML = '<div style="padding:16px;color:var(--red);">Error loading studies.</div>';
+  }
+}
+
+function onStudyModuleChange(sel) {
+  var vid   = sel.getAttribute('data-vid');
+  var mtype = sel.getAttribute('data-mtype');
+  var val   = sel.value;
+  if (!_studyModuleSelections[vid]) _studyModuleSelections[vid] = {};
+  _studyModuleSelections[vid][mtype] = val || null;
+  // Re-check submit button enablement
+  var s = _studyModuleSelections[vid];
+  var allAssigned = s.platform && (s.ice_pwt || s.epwt) && s.tophat && s.eands;
+  // Find this row's submit button
+  var btn = document.querySelector('.study-submit-btn[data-vid="'+vid+'"]');
+  if (btn) btn.disabled = !allAssigned;
+}
+
+async function submitStudyProposal(vid) {
+  var sel = _studyModuleSelections[vid] || {};
+  var pwtMod = sel.ice_pwt || sel.epwt || null;
+
+  if (!sel.platform || !pwtMod || !sel.tophat || !sel.eands) {
+    toast('\u26a0 Assign all 4 modules before submitting');
+    return;
+  }
+
+  try {
+    // 1. Update vehicle with selected modules + promote to plan
+    const res = await fetch(API_URL + '/vehicles/' + vid, {
+      method: 'PATCH',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({
+        platform_module_id: sel.platform,
+        pwt_module_id:      pwtMod,
+        tophat_module_id:   sel.tophat,
+        eands_module_id:    sel.eands,
+        status:             'plan',
+      })
+    });
+    const data = await res.json();
+    if (data.success) {
+      toast('\u2713 Proposal submitted \u2014 vehicle promoted to PLAN');
+      delete _studyModuleSelections[vid];
+      await loadProductStudies();
+      // Also refresh vehicle plan if cached
+      if (typeof loadVehiclePlan === 'function') activeVehicles = [];
+    } else {
+      toast('\u26a0 ' + (data.detail || 'Error submitting proposal'));
+    }
+  } catch(e) {
+    toast('\u26a0 ' + e.message);
+  }
+}
 
 
 // ══════════════════════════════════════════
