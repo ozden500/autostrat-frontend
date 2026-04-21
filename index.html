@@ -1744,8 +1744,22 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
         <div style="font-family:'DM Mono',monospace;font-size:9px;color:var(--muted2);margin-top:2px;" id="bc-modal-sub">—</div>
       </div>
       <div id="bc-modal-status"></div>
-      <button onclick="closeBCModal()" style="background:var(--s3);border:1px solid var(--border2);
-        color:var(--muted2);border-radius:4px;padding:6px 12px;cursor:pointer;font-size:13px;">✕ Close</button>
+      <div style="display:flex;gap:8px;align-items:center;">
+        <button id="bc-approve-btn" onclick="approveBCVehicle()"
+          style="display:none;font-family:'DM Mono',monospace;font-size:10px;font-weight:700;
+          padding:7px 16px;border-radius:3px;border:1px solid rgba(56,212,134,.5);
+          background:rgba(56,212,134,.12);color:var(--green);cursor:pointer;letter-spacing:.5px;">
+          ✓ APPROVE VEHICLE
+        </button>
+        <button id="bc-revise-btn" onclick="reviseBCVehicle()"
+          style="display:none;font-family:'DM Mono',monospace;font-size:10px;
+          padding:7px 14px;border-radius:3px;border:1px solid var(--border2);
+          background:var(--s2);color:var(--muted2);cursor:pointer;">
+          ← Revise
+        </button>
+        <button onclick="closeBCModal()" style="background:var(--s3);border:1px solid var(--border2);
+          color:var(--muted2);border-radius:4px;padding:6px 12px;cursor:pointer;font-size:13px;">✕ Close</button>
+      </div>
     </div>
 
     <div class="bc-modal-body">
@@ -2700,6 +2714,12 @@ function openBCModal(vehicleId) {
   document.getElementById('bc-rate-slider').value = SESSION_DISCOUNT_RATE;
   document.getElementById('bc-rate-val').textContent = SESSION_DISCOUNT_RATE.toFixed(1)+'%';
 
+  // Show Approve button only for Plan status, Revise only for Approved
+  var approveBtn = document.getElementById('bc-approve-btn');
+  var reviseBtn  = document.getElementById('bc-revise-btn');
+  if (approveBtn) approveBtn.style.display = v.status === 'plan'     ? 'block' : 'none';
+  if (reviseBtn)  reviseBtn.style.display  = v.status === 'approved' ? 'block' : 'none';
+
   document.getElementById('bcModal').classList.add('open');
   recalcBC();
 }
@@ -2707,6 +2727,42 @@ function openBCModal(vehicleId) {
 function closeBCModal() {
   document.getElementById('bcModal').classList.remove('open');
   _bcVehicle = null;
+}
+
+async function approveBCVehicle() {
+  if (!_bcVehicle) return;
+  var vid  = _bcVehicle.id;
+  var name = _bcVehicle.name;
+  try {
+    const res = await fetch(API_URL + '/vehicles/' + vid, {
+      method: 'PATCH', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({status: 'approved'})
+    });
+    const data = await res.json();
+    if (data.success) {
+      toast('\u2713 ' + name + ' APPROVED');
+      closeBCModal();
+      await loadVehiclePlan();
+    } else toast('\u26a0 ' + (data.detail || 'Error'));
+  } catch(e) { toast('\u26a0 ' + e.message); }
+}
+
+async function reviseBCVehicle() {
+  if (!_bcVehicle) return;
+  var vid  = _bcVehicle.id;
+  var name = _bcVehicle.name;
+  try {
+    const res = await fetch(API_URL + '/vehicles/' + vid, {
+      method: 'PATCH', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({status: 'plan'})
+    });
+    const data = await res.json();
+    if (data.success) {
+      toast('\u2190 ' + name + ' returned to PLAN');
+      closeBCModal();
+      await loadVehiclePlan();
+    } else toast('\u26a0 ' + (data.detail || 'Error'));
+  } catch(e) { toast('\u26a0 ' + e.message); }
 }
 
 function recalcBC() {
@@ -3115,11 +3171,9 @@ function buildVehicleTable() {
     var bcBtn = (v._normStatus === 'plan' || v._normStatus === 'approved')
       ? '<button class="plan-act-bc" data-vid="'+vid+'" data-action="bc">BC →</button>'
       : '';
-    var statusBtn = v._normStatus === 'study'
-      ? ''
-      : v._normStatus === 'plan'
-        ? '<button class="plan-act-approve" data-vid="'+vid+'" data-action="approve">✓ Approve</button>'
-        : '<button class="plan-act-revise"  data-vid="'+vid+'" data-action="revise">← Revise</button>';
+    var statusBtn = v._normStatus === 'approved'
+      ? '<button class="plan-act-revise" data-vid="'+vid+'" data-action="revise">← Revise</button>'
+      : '';  // Approval only via Business Case modal
     var delBtn = '<button class="plan-act-del" data-vid="'+vid+'" data-action="delete">✕</button>';
 
     return '<tr class="plan-tr">'
@@ -3190,27 +3244,8 @@ async function autoPromoteStudyForSegment(segmentCode, newVehicleId) {
   } catch(e){ console.warn('autoPromoteStudyForSegment:', e); }
 }
 
-// Called after financial submission with investment > 0: approves all Plan vehicles
-async function autoApprovePlanVehicles(totalInvestmentM) {
-  if (!teamId) return;
-  try {
-    const res  = await fetch(`${API_URL}/teams/${teamId}/vehicles`);
-    const data = await res.json();
-    const plans = (data.vehicles || []).filter(v =>
-      v.status === 'plan' || v.status === 'planned'
-    );
-    if (plans.length === 0) return;
-    let approved = 0;
-    for (const p of plans) {
-      await fetch(`${API_URL}/vehicles/${p.id}`, {
-        method: 'PATCH', headers: {'Content-Type':'application/json'},
-        body: JSON.stringify({status: 'approved'})
-      });
-      approved++;
-    }
-    toast(`✓ ${approved} vehicle${approved>1?'s':''} APPROVED — investment committed (€${Math.round(totalInvestmentM)}M)`);
-  } catch(e){ console.warn('autoApprovePlanVehicles:', e); }
-}
+// autoApprovePlanVehicles removed — approval is via BC modal only
+
 
 // ── STUDY MODAL ────────────────────────────────────────────
 async function openStudyModal() {
