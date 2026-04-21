@@ -275,6 +275,58 @@ input[type=text]:focus,input[type=number]:focus{outline:none;border-color:var(--
 .psf-btn.on{border-color:var(--border2);color:var(--text);background:var(--s3);}
 
 /* GANTT */
+/* ══════════ BUSINESS CASE MODAL ══════════ */
+.bc-modal-overlay{display:none;position:fixed;inset:0;z-index:1100;background:rgba(0,0,0,.82);
+  align-items:center;justify-content:center;}
+.bc-modal-overlay.open{display:flex;}
+.bc-modal-panel{background:var(--s1);border:1px solid var(--border2);border-radius:6px;
+  width:900px;max-width:96vw;max-height:92vh;overflow-y:auto;display:flex;flex-direction:column;}
+.bc-modal-header{display:flex;align-items:center;gap:12px;padding:16px 20px;
+  border-bottom:1px solid var(--border);background:var(--s2);position:sticky;top:0;z-index:10;}
+.bc-modal-title{font-family:'Orbitron',sans-serif;font-size:14px;font-weight:700;
+  letter-spacing:2px;color:var(--white);flex:1;}
+.bc-modal-body{padding:20px;flex:1;}
+.bc-section{margin-bottom:18px;}
+.bc-section-title{font-family:'DM Mono',monospace;font-size:8px;text-transform:uppercase;
+  letter-spacing:2px;color:var(--muted);margin-bottom:10px;display:flex;align-items:center;gap:8px;}
+.bc-section-title::after{content:'';flex:1;height:1px;background:var(--border);}
+/* Headline KPIs */
+.bc-kpi-row{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:18px;}
+.bc-kpi{background:var(--s2);border:1px solid var(--border);border-radius:4px;padding:12px 14px;
+  position:relative;overflow:hidden;}
+.bc-kpi::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;}
+.bc-kpi.npv::before{background:linear-gradient(90deg,var(--cyan),transparent);}
+.bc-kpi.irr::before{background:linear-gradient(90deg,var(--green),transparent);}
+.bc-kpi.payback::before{background:linear-gradient(90deg,var(--gold),transparent);}
+.bc-kpi.ebit::before{background:linear-gradient(90deg,var(--purple),transparent);}
+.bc-kpi-label{font-family:'DM Mono',monospace;font-size:7px;text-transform:uppercase;
+  letter-spacing:1.5px;color:var(--muted);margin-bottom:6px;}
+.bc-kpi-value{font-family:'Orbitron',sans-serif;font-size:22px;font-weight:700;line-height:1;}
+.bc-kpi-sub{font-family:'DM Mono',monospace;font-size:9px;color:var(--muted2);margin-top:4px;}
+/* Inputs row */
+.bc-inputs{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;
+  background:var(--s2);border:1px solid var(--border);border-radius:4px;padding:14px;margin-bottom:18px;}
+.bc-input-group label{display:block;font-family:'DM Mono',monospace;font-size:8px;
+  text-transform:uppercase;letter-spacing:1px;color:var(--muted2);margin-bottom:5px;}
+.bc-input-group input[type=range]{width:100%;}
+.bc-input-val{font-family:'DM Mono',monospace;font-size:11px;color:var(--gold);
+  margin-top:3px;text-align:right;}
+/* Waterfall table */
+.bc-waterfall{width:100%;border-collapse:collapse;}
+.bc-waterfall td,.bc-waterfall th{padding:5px 10px;font-size:11px;border-bottom:1px solid var(--border);}
+.bc-waterfall th{font-family:'DM Mono',monospace;font-size:7px;text-transform:uppercase;
+  letter-spacing:1px;color:var(--muted);font-weight:400;background:var(--s2);}
+.bc-waterfall td:first-child{color:var(--text);}
+.bc-waterfall td:not(:first-child){font-family:'DM Mono',monospace;text-align:right;}
+.bc-waterfall tr.subtotal td{color:var(--gold);border-top:1px solid var(--border2);font-weight:600;}
+.bc-waterfall tr.total td{color:var(--cyan);border-top:2px solid var(--border2);font-weight:700;}
+.bc-waterfall tr.npv-row td{color:var(--cyan);font-family:'Orbitron',sans-serif;font-size:13px;}
+.bc-waterfall tr.neg td:not(:first-child){color:var(--red);}
+.bc-waterfall tr:hover td{background:var(--s2);}
+/* Volume curve chart */
+.bc-curve-wrap{background:var(--s2);border:1px solid var(--border);border-radius:4px;
+  padding:12px;margin-bottom:18px;}
+
 /* ══════════ VEHICLE PLAN STATUS ══════════ */
 .vstatus-study    {font-family:'DM Mono',monospace;font-size:8px;letter-spacing:1px;padding:2px 8px;border-radius:2px;
   background:rgba(86,96,112,.18);border:1px solid rgba(86,96,112,.35);color:#7a8899;}
@@ -1600,6 +1652,121 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
 </div>
 
 <!-- VEHICLE ASSEMBLY MODAL -->
+<!-- ████ BUSINESS CASE MODAL ████ -->
+<div class="bc-modal-overlay" id="bcModal">
+  <div class="bc-modal-panel">
+    <!-- Header -->
+    <div class="bc-modal-header">
+      <div>
+        <div class="bc-modal-title" id="bc-modal-title">BUSINESS CASE</div>
+        <div style="font-family:'DM Mono',monospace;font-size:9px;color:var(--muted2);margin-top:2px;" id="bc-modal-sub">—</div>
+      </div>
+      <div id="bc-modal-status"></div>
+      <button onclick="closeBCModal()" style="background:var(--s3);border:1px solid var(--border2);
+        color:var(--muted2);border-radius:4px;padding:6px 12px;cursor:pointer;font-size:13px;">✕ Close</button>
+    </div>
+
+    <div class="bc-modal-body">
+
+      <!-- Headline KPIs -->
+      <div class="bc-kpi-row">
+        <div class="bc-kpi npv">
+          <div class="bc-kpi-label">Net Present Value</div>
+          <div class="bc-kpi-value" id="bc-npv" style="color:var(--cyan);">—</div>
+          <div class="bc-kpi-sub" id="bc-npv-sub">at 8% discount rate</div>
+        </div>
+        <div class="bc-kpi irr">
+          <div class="bc-kpi-label">IRR (est.)</div>
+          <div class="bc-kpi-value" id="bc-irr" style="color:var(--green);">—</div>
+          <div class="bc-kpi-sub">internal rate of return</div>
+        </div>
+        <div class="bc-kpi payback">
+          <div class="bc-kpi-label">Payback Period</div>
+          <div class="bc-kpi-value" id="bc-payback" style="color:var(--gold);">—</div>
+          <div class="bc-kpi-sub">quarters to recover investment</div>
+        </div>
+        <div class="bc-kpi ebit">
+          <div class="bc-kpi-label">Avg EBIT Margin</div>
+          <div class="bc-kpi-value" id="bc-ebit-pct" style="color:var(--purple);">—</div>
+          <div class="bc-kpi-sub">over lifecycle</div>
+        </div>
+      </div>
+
+      <!-- Inputs -->
+      <div class="bc-section-title">Assumptions</div>
+      <div class="bc-inputs">
+        <div class="bc-input-group">
+          <label>Selling Price (€k)</label>
+          <input type="range" id="bc-price-slider" min="8" max="200" step="1" value="25"
+            oninput="document.getElementById('bc-price-val').textContent='€'+this.value+'k'; recalcBC();">
+          <div class="bc-input-val" id="bc-price-val">€25k</div>
+        </div>
+        <div class="bc-input-group">
+          <label>Peak Volume (units/qtr)</label>
+          <input type="range" id="bc-vol-slider" min="500" max="80000" step="500" value="8000"
+            oninput="document.getElementById('bc-vol-val').textContent=parseInt(this.value).toLocaleString(); recalcBC();">
+          <div class="bc-input-val" id="bc-vol-val">8,000</div>
+        </div>
+        <div class="bc-input-group">
+          <label>Extra Capex (€M)</label>
+          <input type="range" id="bc-capex-slider" min="0" max="2000" step="50" value="0"
+            oninput="document.getElementById('bc-capex-val').textContent='€'+this.value+'M'; recalcBC();">
+          <div class="bc-input-val" id="bc-capex-val">€0M</div>
+        </div>
+        <div class="bc-input-group">
+          <label>Discount Rate</label>
+          <input type="range" id="bc-rate-slider" min="4" max="20" step="0.5" value="8"
+            oninput="document.getElementById('bc-rate-val').textContent=parseFloat(this.value).toFixed(1)+'%'; recalcBC();">
+          <div class="bc-input-val" id="bc-rate-val">8.0%</div>
+        </div>
+      </div>
+
+      <!-- Volume Curve Chart -->
+      <div class="bc-section-title">Volume Curve</div>
+      <div class="bc-curve-wrap">
+        <svg id="bc-curve-svg" width="100%" height="80" style="display:block;"></svg>
+      </div>
+
+      <!-- P&L Waterfall Table -->
+      <div class="bc-section-title">Full P&L Waterfall — Per Quarter Average</div>
+      <table class="bc-waterfall">
+        <thead>
+          <tr>
+            <th style="text-align:left;width:200px;">Line Item</th>
+            <th>Per Unit (€)</th>
+            <th>Avg Qtr (€M)</th>
+            <th>Lifecycle Total (€M)</th>
+          </tr>
+        </thead>
+        <tbody id="bc-waterfall-body">
+          <tr><td colspan="4" style="color:var(--muted2);text-align:center;padding:20px;">Loading...</td></tr>
+        </tbody>
+      </table>
+
+      <!-- Investment summary -->
+      <div class="bc-section-title" style="margin-top:18px;">Investment Summary</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;">
+        <div style="background:var(--s2);border:1px solid var(--border);border-radius:4px;padding:12px;">
+          <div style="font-family:'DM Mono',monospace;font-size:8px;color:var(--muted);margin-bottom:4px;">R&D INVESTMENT</div>
+          <div style="font-family:'Orbitron',monospace;font-size:16px;font-weight:700;color:var(--gold);" id="bc-rd-total">—</div>
+          <div style="font-family:'DM Mono',monospace;font-size:9px;color:var(--muted2);margin-top:3px;">from module pipeline</div>
+        </div>
+        <div style="background:var(--s2);border:1px solid var(--border);border-radius:4px;padding:12px;">
+          <div style="font-family:'DM Mono',monospace;font-size:8px;color:var(--muted);margin-bottom:4px;">EXTRA CAPEX</div>
+          <div style="font-family:'Orbitron',monospace;font-size:16px;font-weight:700;color:var(--orange);" id="bc-capex-total">€0M</div>
+          <div style="font-family:'DM Mono',monospace;font-size:9px;color:var(--muted2);margin-top:3px;">tooling, launch costs</div>
+        </div>
+        <div style="background:var(--s2);border:1px solid var(--border2);border-radius:4px;padding:12px;">
+          <div style="font-family:'DM Mono',monospace;font-size:8px;color:var(--muted);margin-bottom:4px;">TOTAL INVESTMENT</div>
+          <div style="font-family:'Orbitron',monospace;font-size:16px;font-weight:700;color:var(--white);" id="bc-invest-total">—</div>
+          <div style="font-family:'DM Mono',monospace;font-size:9px;color:var(--muted2);margin-top:3px;">NPV hurdle to overcome</div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
 <!-- ████ STUDY MODAL ████ -->
 <div class="study-modal" id="studyModal">
   <div class="study-panel">
@@ -2326,85 +2493,318 @@ function statusBarColor(status) {
 }
 
 // ── KANBAN CARDS ───────────────────────────────────────────
-// ── FULL P&L BUSINESS CASE BUILDER ────────────────────────
+// ── COMPACT BUSINESS CASE SUMMARY (on card) ─────────────────
+// Full BC opens in modal via openBCModal()
 function buildBusinessCase(v, tpcStr, hasModules, isApproved) {
   isApproved = !!isApproved;
-  var tpcNum = v.total_unit_tpc_eur || 0;
-  var segSize  = {a_segment:20000,b_segment:60000,c_segment:90000,d_segment:50000,e_segment:20000,f_segment:8000,mpv:15000,pickup:12000,sports:5000,c_van:30000,d_van:15000,e_van:5000};
-  var segGM    = {a_segment:0.14,b_segment:0.18,c_segment:0.20,d_segment:0.22,e_segment:0.24,f_segment:0.30,mpv:0.19,pickup:0.25,sports:0.28,c_van:0.20,d_van:0.22,e_van:0.22};
-  var segPrice = {a_segment:12000,b_segment:18000,c_segment:26000,d_segment:38000,e_segment:55000,f_segment:90000,mpv:32000,pickup:45000,sports:55000,c_van:28000,d_van:40000,e_van:55000};
+  var tpcNum   = v.total_unit_tpc_eur || 0;
+  var border   = isApproved ? 'var(--green)' : 'var(--gold)';
+  var titleTxt = isApproved ? '✓ APPROVED' : 'PLAN';
 
-  var mktUnits   = segSize[v.segment_code]  || 20000;
-  var shareEst   = hasModules ? 0.08 : 0.04;
-  var estUnits   = Math.round(mktUnits * shareEst);
-  var avgPrice   = segPrice[v.segment_code] || 25000;
-  var gmPct      = segGM[v.segment_code]    || 0.20;
-  var revenueM   = Math.round(estUnits * avgPrice / 1e6);
-  var cogsM      = Math.round(tpcNum > 0 ? estUnits * tpcNum / 1e6 : revenueM * (1 - gmPct));
-  var grossProfM = revenueM - cogsM;
-  var gmActPct   = revenueM > 0 ? Math.round((grossProfM / revenueM) * 100) : 0;
-  var sgaM       = Math.round(revenueM * 0.06);
-  var ebitM      = grossProfM - sgaM;
-  var ebitPct    = revenueM > 0 ? Math.round((ebitM / revenueM) * 100) : 0;
-  var sopQ = (v.start_year && v.start_quarter) ? (v.start_year - 2025)*4 + v.start_quarter - 1 : 4;
-  var eopQ = (v.end_year   && v.end_quarter)   ? (v.end_year   - 2025)*4 + v.end_quarter   - 1 : 20;
-  var lifeQ      = Math.max(eopQ - sopQ, 1);
-  var totalRevM  = revenueM * lifeQ;
-  var totalEbitM = ebitM * lifeQ;
-  var rdEstM     = tpcNum > 0 ? Math.round(tpcNum * estUnits * 0.15 / 1e6) : Math.round(revenueM * 0.08);
-  var paybackQ   = ebitM > 0 ? Math.round(rdEstM / Math.max(ebitM, 1)) : null;
+  // Quick estimates for the compact summary
+  var segPrice = {a_segment:12,b_segment:18,c_segment:26,d_segment:38,e_segment:55,
+    f_segment:90,mpv:32,pickup:45,sports:55,c_van:28,d_van:40,e_van:55};
+  var priceK   = segPrice[v.segment_code] || 25;
+  var unitsQ   = 8000;
+  var revM     = Math.round(unitsQ * priceK * 1000 / 1e6);
+  var cogsM    = tpcNum > 0 ? Math.round(unitsQ * tpcNum / 1e6) : Math.round(revM * 0.72);
+  var gpM      = revM - cogsM;
+  var gpPct    = revM > 0 ? Math.round(gpM/revM*100) : 0;
+  var rdM      = tpcNum > 0 ? Math.round(tpcNum * unitsQ * 0.15 / 1e6) : 50;
+  var sopQ = (v.start_year && v.start_quarter) ? (v.start_year-2025)*4+v.start_quarter-1 : 4;
+  var eopQ = (v.end_year   && v.end_quarter)   ? (v.end_year  -2025)*4+v.end_quarter  -1 : 20;
+  var lifeQ    = Math.max(eopQ-sopQ, 1);
+  // Quick NPV estimate (flat cash flows, 8% annual = 1.94% quarterly)
+  var r        = 0.0194;
+  var fcfQ     = gpM - Math.round(revM*0.06);
+  var pvFCF    = 0;
+  for (var t = 1; t <= lifeQ; t++) pvFCF += fcfQ / Math.pow(1+r, t);
+  var npvEst   = Math.round(pvFCF - rdM);
+  var npvColor = npvEst >= 0 ? 'var(--cyan)' : 'var(--red)';
+  var tpc      = tpcNum > 0 ? '€'+Math.round(tpcNum).toLocaleString() : '—';
 
-  function fmtM(n) {
-    return n >= 0
-      ? '€' + n + 'M'
-      : '<span style="color:var(--red)">-€' + Math.abs(n) + 'M</span>';
-  }
-  function fmtPct(n) {
-    return n >= 0
-      ? '<span style="color:var(--green)">' + n + '%</span>'
-      : '<span style="color:var(--red)">' + n + '%</span>';
-  }
-
-  var border    = isApproved ? 'var(--green)' : 'var(--gold)';
-  var titleTxt  = isApproved ? '✓ APPROVED BUSINESS CASE' : 'BUSINESS CASE — FULL P&L PROJECTION';
-  var ebitCol   = totalEbitM >= 0 ? 'var(--green)' : 'var(--red)';
-  var payStr    = paybackQ !== null ? paybackQ + 'q' : '—';
-  var noteStr   = !hasModules
-    ? '<div style="margin-top:8px;font-size:8px;color:var(--gold);">⚠ No modules — segment estimates only</div>'
-    : '';
-  var approveStr = isApproved
-    ? '<div style="margin-top:8px;font-size:8px;color:var(--green);">✓ Investment committed via Financial panel</div>'
-    : '<div style="margin-top:8px;font-size:8px;color:var(--gold);">→ Click ✓ Approve above, or submit R&D investment in Financial panel</div>';
-
-  var h = '<div class="vcard-bc" style="border-top:1px solid ' + border + '22;">';
-  h += '<div class="vcard-bc-title" style="color:' + border + ';">' + titleTxt + '</div>';
-  h += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">';
-
-  // Left: P&L per quarter
-  h += '<div>';
-  h += '<div style="font-size:7px;text-transform:uppercase;letter-spacing:1.5px;color:var(--muted);margin-bottom:6px;">Per Qtr (est. ' + estUnits.toLocaleString() + ' units @ ' + (shareEst*100) + '% share)</div>';
-  h += '<div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid var(--border);font-size:10px;"><span style="color:var(--muted2);">Revenue</span><span style="color:var(--cyan);">' + fmtM(revenueM) + '</span></div>';
-  h += '<div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid var(--border);font-size:10px;"><span style="color:var(--muted2);">COGS</span><span style="color:var(--red);">-' + fmtM(cogsM) + '</span></div>';
-  h += '<div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid var(--border);font-size:10px;"><span style="color:var(--muted2);">Gross Profit</span><span>' + fmtM(grossProfM) + ' ' + fmtPct(gmActPct) + '</span></div>';
-  h += '<div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid var(--border);font-size:10px;"><span style="color:var(--muted2);">SG&amp;A</span><span style="color:var(--red);">-' + fmtM(sgaM) + '</span></div>';
-  h += '<div style="display:flex;justify-content:space-between;padding:4px 0;font-size:11px;font-weight:600;"><span style="color:var(--muted);">EBIT</span><span>' + fmtM(ebitM) + ' ' + fmtPct(ebitPct) + '</span></div>';
-  h += '</div>';
-
-  // Right: lifecycle summary
-  h += '<div>';
-  h += '<div style="font-size:7px;text-transform:uppercase;letter-spacing:1.5px;color:var(--muted);margin-bottom:6px;">Lifecycle (' + lifeQ + ' qtrs, ' + Math.round(lifeQ/4*10)/10 + 'yr)</div>';
-  h += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;">';
-  h += '<div class="bc-item" style="background:var(--s3);border-radius:3px;padding:6px;"><div class="bc-val" style="font-size:13px;color:var(--cyan);">€' + Math.round(totalRevM/1000) + 'B</div><div class="bc-lbl">Total Revenue</div></div>';
-  h += '<div class="bc-item" style="background:var(--s3);border-radius:3px;padding:6px;"><div class="bc-val" style="font-size:13px;color:' + ebitCol + ';">€' + Math.round(totalEbitM) + 'M</div><div class="bc-lbl">Total EBIT</div></div>';
-  h += '<div class="bc-item" style="background:var(--s3);border-radius:3px;padding:6px;"><div class="bc-val" style="font-size:13px;color:var(--gold);">€' + rdEstM + 'M</div><div class="bc-lbl">R&amp;D Invest.</div></div>';
-  h += '<div class="bc-item" style="background:var(--s3);border-radius:3px;padding:6px;"><div class="bc-val" style="font-size:13px;color:var(--white);">' + payStr + '</div><div class="bc-lbl">Payback</div></div>';
-  h += '</div>';
-  h += noteStr + approveStr;
-  h += '</div>';
-
+  var h = '<div class="vcard-bc" style="border-top:1px solid '+border+'22;">';
+  h += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">';
+  h += '<div class="vcard-bc-title" style="color:'+border+';margin-bottom:0;">'+titleTxt+' — BUSINESS CASE</div>';
+  h += '<button onclick="openBCModal(&quot;'+v.id+'&quot;)" style="font-size:8px;';
+  h += 'padding:3px 10px;border-radius:2px;border:1px solid '+border+'66;background:'+border+'11;';
+  h += 'color:'+border+';cursor:pointer;">OPEN FULL BC →</button></div>';
+  // 4 quick KPIs
+  h += '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;">';
+  h += '<div style="background:var(--s3);border-radius:3px;padding:8px;text-align:center;">';
+  h += '<div style="font-family:inherit;font-size:13px;font-weight:700;color:'+npvColor+';">';
+  h += (npvEst>=0?'€':'-€')+Math.abs(npvEst)+'M</div>';
+  h += '<div style="font-size:inherit;font-size:7px;color:var(--muted2);margin-top:2px;">NPV (est.)</div></div>';
+  h += '<div style="background:var(--s3);border-radius:3px;padding:8px;text-align:center;">';
+  h += '<div style="font-family:inherit;font-size:13px;font-weight:700;color:var(--gold);">'+gpPct+'%</div>';
+  h += '<div style="font-size:inherit;font-size:7px;color:var(--muted2);margin-top:2px;">Gross Margin</div></div>';
+  h += '<div style="background:var(--s3);border-radius:3px;padding:8px;text-align:center;">';
+  h += '<div style="font-family:inherit;font-size:13px;font-weight:700;color:var(--text);">'+tpc+'</div>';
+  h += '<div style="font-size:inherit;font-size:7px;color:var(--muted2);margin-top:2px;">Unit TPC</div></div>';
+  h += '<div style="background:var(--s3);border-radius:3px;padding:8px;text-align:center;">';
+  h += '<div style="font-family:inherit;font-size:13px;font-weight:700;color:var(--white);">'+lifeQ+'q</div>';
+  h += '<div style="font-size:inherit;font-size:7px;color:var(--muted2);margin-top:2px;">Lifecycle</div></div>';
   h += '</div></div>';
   return h;
 }
+
+// ── SESSION DISCOUNT RATE (shared state) ────────────────────
+var SESSION_DISCOUNT_RATE = 8.0; // % annual, instructor-configurable
+
+// ── NPV ENGINE ──────────────────────────────────────────────
+function calcNPV(fcfByQuarter, investmentM, annualRateP) {
+  var r = Math.pow(1 + annualRateP/100, 0.25) - 1; // quarterly rate
+  var pv = 0;
+  for (var t = 0; t < fcfByQuarter.length; t++) {
+    pv += fcfByQuarter[t] / Math.pow(1+r, t+1);
+  }
+  return pv - investmentM;
+}
+
+function calcIRR(fcfByQuarter, investmentM) {
+  // Binary search IRR — annual rate where NPV=0
+  var lo = -0.5, hi = 5.0; // -50% to 500% annual
+  for (var i = 0; i < 50; i++) {
+    var mid = (lo+hi)/2;
+    var npv = calcNPV(fcfByQuarter, investmentM, mid*100);
+    if (Math.abs(npv) < 0.01) break;
+    if (npv > 0) lo = mid; else hi = mid;
+  }
+  return ((lo+hi)/2)*100; // annual %
+}
+
+function buildVolumeCurve(peakUnits, lifeQ) {
+  // Ramp: 20%→40%→65%→85%→100% (over first 4 quarters)
+  // Peak: middle quarters at 100%
+  // Decline: mirror of ramp in last 4 quarters
+  var ramp = [0.20, 0.40, 0.65, 0.85];
+  var curve = [];
+  for (var t = 0; t < lifeQ; t++) {
+    var fromEnd = lifeQ - 1 - t;
+    var rampIdx = Math.min(t, ramp.length-1);
+    var decIdx  = Math.min(fromEnd, ramp.length-1);
+    var factor  = Math.min(ramp[rampIdx], ramp[decIdx]);
+    curve.push(Math.round(peakUnits * factor));
+  }
+  return curve;
+}
+
+// ── BC MODAL OPEN/CLOSE ──────────────────────────────────────
+var _bcVehicle = null;
+
+function openBCModal(vehicleId) {
+  var v = activeVehicles.find(function(x){ return x.id === vehicleId; });
+  if (!v) { toast('⚠ Vehicle not found'); return; }
+  _bcVehicle = v;
+
+  var sn = SEG_NAMES[v.segment_code] || v.segment_code;
+  var brand = v.brand_id ? (BRAND_DATA[v.brand_id]||{}).name||v.brand_id
+            : (v.rolled_up_specs && v.rolled_up_specs.brand_name) || '—';
+  var start = v.start_year ? 'Q'+v.start_quarter+' '+v.start_year : '—';
+  var end   = v.end_year   ? 'Q'+v.end_quarter+' '+v.end_year     : '—';
+
+  document.getElementById('bc-modal-title').textContent = v.name;
+  document.getElementById('bc-modal-sub').textContent   =
+    sn + ' · ' + brand + ' · ' + start + ' → ' + end;
+  document.getElementById('bc-modal-status').innerHTML  = statusBadge(v.status);
+
+  // Set price slider default from segment benchmark
+  var segPriceK = {a_segment:12,b_segment:18,c_segment:26,d_segment:38,e_segment:55,
+    f_segment:90,mpv:32,pickup:45,sports:55,c_van:28,d_van:40,e_van:55};
+  var defPrice = segPriceK[v.segment_code] || 25;
+  document.getElementById('bc-price-slider').value = defPrice;
+  document.getElementById('bc-price-val').textContent = '€'+defPrice+'k';
+
+  // Set discount rate from session default
+  document.getElementById('bc-rate-slider').value = SESSION_DISCOUNT_RATE;
+  document.getElementById('bc-rate-val').textContent = SESSION_DISCOUNT_RATE.toFixed(1)+'%';
+
+  document.getElementById('bcModal').classList.add('open');
+  recalcBC();
+}
+
+function closeBCModal() {
+  document.getElementById('bcModal').classList.remove('open');
+  _bcVehicle = null;
+}
+
+function recalcBC() {
+  var v = _bcVehicle;
+  if (!v) return;
+
+  var priceK   = parseFloat(document.getElementById('bc-price-slider').value);
+  var peakVol  = parseInt(document.getElementById('bc-vol-slider').value);
+  var extraCap = parseFloat(document.getElementById('bc-capex-slider').value);
+  var rateP    = parseFloat(document.getElementById('bc-rate-slider').value);
+  var tpcNum   = v.total_unit_tpc_eur || 0;
+
+  // Update capex display
+  document.getElementById('bc-capex-total').textContent = '€'+extraCap+'M';
+
+  // Lifecycle
+  var sopQ = (v.start_year && v.start_quarter) ? (v.start_year-2025)*4+v.start_quarter-1 : 4;
+  var eopQ = (v.end_year   && v.end_quarter)   ? (v.end_year  -2025)*4+v.end_quarter  -1 : 20;
+  var lifeQ = Math.max(eopQ-sopQ, 1);
+
+  // Volume curve
+  var volCurve = buildVolumeCurve(peakVol, lifeQ);
+
+  // R&D from modules (use module rd_spend if available, else estimate)
+  var rdM = tpcNum > 0 ? Math.round(tpcNum * peakVol * 0.15 / 1e6) : 80;
+  var totalInvM = rdM + extraCap;
+
+  // P&L per quarter
+  var priceEur  = priceK * 1000;
+  var taxRate   = 0.25;
+  var sgaPct    = 0.06;
+  var rdPct     = 0.04; // ongoing R&D as % revenue
+  var fcfCurve  = [];
+  var revCurve  = [], cogsCurve = [], gpCurve = [], ebitCurve = [], fcfRaw = [];
+  var cumFCF    = 0;
+  var paybackQ  = null;
+  var cumStart  = -totalInvM;
+
+  for (var t = 0; t < lifeQ; t++) {
+    var units  = volCurve[t];
+    var rev    = units * priceEur / 1e6;
+    var cogs   = tpcNum > 0 ? units * tpcNum / 1e6 : rev * 0.72;
+    var gp     = rev - cogs;
+    var sga    = rev * sgaPct;
+    var rd     = rev * rdPct;
+    var ebit   = gp - sga - rd;
+    var tax    = Math.max(ebit * taxRate, 0);
+    var fcf    = ebit - tax;
+
+    revCurve.push(rev);
+    cogsCurve.push(cogs);
+    gpCurve.push(gp);
+    ebitCurve.push(ebit);
+    fcfRaw.push(fcf);
+    fcfCurve.push(fcf);
+
+    // Payback (cumulative undiscounted)
+    cumStart += fcf;
+    if (paybackQ === null && cumStart >= 0) paybackQ = t+1;
+  }
+
+  // NPV & IRR
+  var npv = calcNPV(fcfCurve, totalInvM, rateP);
+  var irr = totalInvM > 0 && fcfCurve.some(function(f){return f>0;})
+            ? calcIRR(fcfCurve, totalInvM) : null;
+
+  // Averages
+  var avgRev   = revCurve.reduce(function(a,b){return a+b;},0)/lifeQ;
+  var avgCogs  = cogsCurve.reduce(function(a,b){return a+b;},0)/lifeQ;
+  var avgGP    = gpCurve.reduce(function(a,b){return a+b;},0)/lifeQ;
+  var avgSGA   = avgRev * sgaPct;
+  var avgRD    = avgRev * rdPct;
+  var avgEBIT  = ebitCurve.reduce(function(a,b){return a+b;},0)/lifeQ;
+  var avgTax   = Math.max(avgEBIT*taxRate, 0);
+  var avgFCF   = fcfRaw.reduce(function(a,b){return a+b;},0)/lifeQ;
+  var totalRev = revCurve.reduce(function(a,b){return a+b;},0);
+  var totalFCF = fcfRaw.reduce(function(a,b){return a+b;},0);
+  var avgEBITPct = avgRev > 0 ? avgEBIT/avgRev*100 : 0;
+  var avgGPPct   = avgRev > 0 ? avgGP/avgRev*100 : 0;
+
+  function fm(n, dec) {
+    dec = dec||0;
+    var abs = Math.abs(n);
+    var str = dec>0 ? abs.toFixed(dec) : Math.round(abs).toLocaleString();
+    return (n<0?'-':'')+'€'+str+'M';
+  }
+  function fp(n) { return n.toFixed(1)+'%'; }
+  function fu(n) { return Math.round(n).toLocaleString(); }
+
+  // ── Update headline KPIs ──
+  var npvEl = document.getElementById('bc-npv');
+  npvEl.textContent = fm(npv);
+  npvEl.style.color = npv >= 0 ? 'var(--cyan)' : 'var(--red)';
+  document.getElementById('bc-npv-sub').textContent = 'at '+rateP.toFixed(1)+'% discount rate';
+  document.getElementById('bc-irr').textContent = irr !== null ? fp(irr) : '—';
+  document.getElementById('bc-irr').style.color = irr !== null && irr > rateP ? 'var(--green)' : 'var(--red)';
+  document.getElementById('bc-payback').textContent = paybackQ ? paybackQ+'q' : '>'+lifeQ+'q';
+  document.getElementById('bc-ebit-pct').textContent = fp(avgEBITPct);
+  document.getElementById('bc-ebit-pct').style.color = avgEBITPct > 5 ? 'var(--purple)' : 'var(--red)';
+
+  // ── Investment summary ──
+  document.getElementById('bc-rd-total').textContent = '€'+rdM+'M';
+  document.getElementById('bc-invest-total').textContent = '€'+Math.round(totalInvM)+'M';
+
+  // ── Waterfall table ──
+  var tpcStr = tpcNum > 0 ? '€'+Math.round(tpcNum).toLocaleString() : '—';
+  var rows = [
+    ['Revenue', '€'+Math.round(priceEur/1000)+'k ASP', fm(avgRev), fm(totalRev), false],
+    ['— COGS (Unit TPC × units)', tpcStr, fm(-avgCogs), fm(-revCurve.reduce(function(a,b){return a+b;},0)*avgCogs/avgRev), true],
+    ['Gross Profit', '€'+Math.round((priceEur-tpcNum)/1000,1)+'k/unit', fm(avgGP), fm(totalRev-revCurve.reduce(function(a,b){return a+b;},0)*(1-avgGPPct/100)), false, 'subtotal'],
+    ['— SG&A / Marketing (6%)', '', fm(-avgSGA), fm(-totalRev*sgaPct), true],
+    ['— Ongoing R&D (4%)', '', fm(-avgRD), fm(-totalRev*rdPct), true],
+    ['EBIT', '', fm(avgEBIT), fm(totalFCF/(1-taxRate)*avgEBITPct/100), false, avgEBITPct>0?'subtotal':'neg subtotal'],
+    ['— Tax (25%)', '', fm(-avgTax), fm(-Math.max(totalFCF/(1-taxRate)*avgEBITPct/100*taxRate,0)), true],
+    ['Free Cash Flow (FCF)', '', fm(avgFCF), fm(totalFCF), false, 'subtotal'],
+    ['Investment (R&D + Capex)', '', '€'+Math.round(totalInvM)+'M', '€'+Math.round(totalInvM)+'M (upfront)', true],
+    ['NPV @ '+rateP.toFixed(1)+'%', '', '', fm(npv), false, 'total npv-row'],
+  ];
+
+  var tbody = document.getElementById('bc-waterfall-body');
+  tbody.innerHTML = rows.map(function(r) {
+    var cls = r[5] || (r[4]?'neg':'');
+    return '<tr class="'+cls+'"><td>'+r[0]+'</td><td>'+r[1]+'</td><td>'+r[2]+'</td><td style="color:'+(r[5]&&r[5].indexOf('npv')>=0?(npv>=0?'var(--cyan)':'var(--red)'):'inherit')+'">'+r[3]+'</td></tr>';
+  }).join('');
+
+  // ── Volume curve SVG ──
+  drawBCCurve(volCurve, peakVol, revCurve);
+}
+
+function drawBCCurve(volCurve, peakVol, revCurve) {
+  var svg = document.getElementById('bc-curve-svg');
+  if (!svg) return;
+  var W = svg.parentElement.clientWidth || 800;
+  var H = 80;
+  svg.setAttribute('viewBox', '0 0 '+W+' '+H);
+  var pad = {l:40,r:10,t:8,b:20};
+  var cw = W-pad.l-pad.r, ch = H-pad.t-pad.b;
+  var n = volCurve.length;
+  if (n === 0) return;
+
+  var maxV = Math.max.apply(null, volCurve) || 1;
+
+  function xp(i) { return pad.l + (n===1?cw/2:i*cw/(n-1)); }
+  function yp(v) { return pad.t + ch - (v/maxV)*ch; }
+
+  var pathD = volCurve.map(function(v,i){ return (i===0?'M':'L')+xp(i).toFixed(1)+','+yp(v).toFixed(1); }).join(' ');
+  var areaD = pathD + ' L'+xp(n-1).toFixed(1)+','+(pad.t+ch)+' L'+pad.l+','+(pad.t+ch)+' Z';
+
+  var out = '<defs><linearGradient id="bcgrad" x1="0" y1="0" x2="0" y2="1">'
+    + '<stop offset="0%" stop-color="#32ccc0" stop-opacity="0.3"/>'
+    + '<stop offset="100%" stop-color="#32ccc0" stop-opacity="0.03"/>'
+    + '</linearGradient></defs>';
+
+  // Grid
+  out += '<line x1="'+pad.l+'" y1="'+pad.t+'" x2="'+pad.l+'" y2="'+(pad.t+ch)+'" stroke="#1a2034" stroke-width="1"/>';
+  out += '<line x1="'+pad.l+'" y1="'+(pad.t+ch)+'" x2="'+(W-pad.r)+'" y2="'+(pad.t+ch)+'" stroke="#1a2034" stroke-width="1"/>';
+
+  // Y labels
+  out += '<text x="'+(pad.l-3)+'" y="'+(pad.t+4)+'" text-anchor="end" font-size="8" fill="#3a4860">'+Math.round(maxV/1000)+'k</text>';
+  out += '<text x="'+(pad.l-3)+'" y="'+(pad.t+ch)+'" text-anchor="end" font-size="8" fill="#3a4860">0</text>';
+
+  // Quarter labels (show start, mid, end)
+  var midI = Math.floor((n-1)/2);
+  out += '<text x="'+xp(0)+'" y="'+(H-4)+'" text-anchor="middle" font-size="8" fill="#3a4860">Q1</text>';
+  if (n>4) out += '<text x="'+xp(midI)+'" y="'+(H-4)+'" text-anchor="middle" font-size="8" fill="#3a4860">Q'+Math.round(n/2)+'</text>';
+  out += '<text x="'+xp(n-1)+'" y="'+(H-4)+'" text-anchor="middle" font-size="8" fill="#3a4860">Q'+n+'</text>';
+
+  // Area + line
+  out += '<path d="'+areaD+'" fill="url(#bcgrad)"/>';
+  out += '<path d="'+pathD+'" fill="none" stroke="#32ccc0" stroke-width="2" stroke-linejoin="round"/>';
+
+  // Peak dot
+  var peakIdx = volCurve.indexOf(Math.max.apply(null,volCurve));
+  out += '<circle cx="'+xp(peakIdx).toFixed(1)+'" cy="'+yp(volCurve[peakIdx]).toFixed(1)+'" r="3.5" fill="#32ccc0"/>';
+
+  svg.innerHTML = out;
+}
+
+
 function buildVehicleKanban() {
   const cols  = {study:[], plan:[], approved:[]};
   const legacyMap = {draft:'study', planned:'plan', on_sale:'approved'};
