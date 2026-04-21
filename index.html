@@ -2374,7 +2374,7 @@ function buildBusinessCase(v, tpcStr, hasModules, isApproved) {
     : '';
   var approveStr = isApproved
     ? '<div style="margin-top:8px;font-size:8px;color:var(--green);">✓ Investment committed via Financial panel</div>'
-    : '<div style="margin-top:8px;font-size:8px;color:var(--gold);">→ Submit R&D investment in Financial panel to approve</div>';
+    : '<div style="margin-top:8px;font-size:8px;color:var(--gold);">→ Click ✓ Approve above, or submit R&D investment in Financial panel</div>';
 
   var h = '<div class="vcard-bc" style="border-top:1px solid ' + border + '22;">';
   h += '<div class="vcard-bc-title" style="color:' + border + ';">' + titleTxt + '</div>';
@@ -2446,8 +2446,8 @@ function buildVCard(v, normStatus) {
       <button class="vact-btn vact-delete" onclick="deleteVehicle('${v.id}')">✕</button>`;
   } else if (normStatus === 'plan') {
     actions = `
-      <span style="font-family:'DM Mono',monospace;font-size:8px;color:var(--gold);">Invest via Financial panel to approve →</span>
-      <button class="vact-btn vact-delete" onclick="deleteVehicle('${v.id}')">✕</button>`;
+      <button class="vact-btn vact-approve" onclick="promoteVehicle('${v.id}','approved')">✓ Approve</button>
+      <button class="vact-btn vact-delete"  onclick="deleteVehicle('${v.id}')">✕</button>`;
   } else if (normStatus === 'approved') {
     actions = `
       <button class="vact-btn vact-edit" onclick="promoteVehicle('${v.id}','plan')">← Revise</button>`;
@@ -3461,12 +3461,7 @@ async function submitRound() {
     document.getElementById('submitBtn').classList.add('done');
     document.getElementById('sb-stat').innerHTML = '✓ <strong>Decisions submitted</strong> — waiting for instructor to close round';
     toast('Decisions submitted ✓');
-    // Auto-approve: if R&D or capex investment > 0, approve all Plan vehicles
-    const rdVal    = d.financial.rd_spend_m         || 0;
-    const capexVal = d.financial.capex_investment_m  || 0;
-    if (rdVal > 0 || capexVal > 0) {
-      await autoApprovePlanVehicles(rdVal + capexVal);
-    }
+    // Approval is manual — team clicks Approve on each Plan vehicle card
     // Show results button immediately so team can check anytime
     const rb = document.getElementById('resultsBtn');
     if (rb) { rb.style.display = 'inline-block'; rb.textContent = '⏳ Awaiting Results'; rb.style.background = '#334155'; rb.style.color = '#94a3b8'; }
