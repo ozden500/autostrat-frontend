@@ -3457,7 +3457,9 @@ document.addEventListener('click', function(e) {
   if (!btn) return;
   var vid    = btn.getAttribute('data-vid');
   var action = btn.getAttribute('data-action');
-  if (!vid || !action) return;
+  if (!action) return;
+  // vid is only required for vehicle-specific actions
+  if (!vid && ['bc','approve','revise','delete','study-submit'].indexOf(action) >= 0) return;
   if (action === 'bc')           { openBCModal(vid); }
   if (action === 'approve')      { promoteVehicle(vid, 'approved'); }
   if (action === 'revise')       { promoteVehicle(vid, 'plan'); }
