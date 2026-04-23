@@ -3482,6 +3482,9 @@ document.addEventListener('click', function(e) {
     var nf3 = btn.getAttribute('data-nextfn');
     if (nf3 && window[nf3]) window[nf3]();
   }
+  if (action === 'prop-spec-slide') {
+    onPropSpecSlide(btn);
+  }
 });
 
 
@@ -6226,11 +6229,51 @@ function buildModuleSection(secNum, modType, propKey, contentElId, nextFn) {
   el.innerHTML = buildContextBanner() + buildModuleOptions(modType, propKey, nextFn);
 }
 
+var PROP_SPEC_DEFS = {
+  'platform': [
+    {key:'reliability',label:'Reliability',unit:'%',min:0,max:1,step:0.01,def:0.5,fmt:'pct'},
+    {key:'comfort',label:'Comfort',unit:'%',min:0,max:1,step:0.01,def:0.5,fmt:'pct'},
+    {key:'safety',label:'Safety',unit:'%',min:0,max:1,step:0.01,def:0.5,fmt:'pct'},
+  ],
+  'ice_pwt': [
+    {key:'reliability',label:'Reliability',unit:'%',min:0,max:1,step:0.01,def:0.5,fmt:'pct'},
+    {key:'power',label:'Power',unit:'hp',min:60,max:640,step:10,def:100,fmt:'num'},
+    {key:'emission_tech',label:'Emission Tech',unit:'%',min:0,max:1,step:0.01,def:0.1,fmt:'pct'},
+  ],
+  'epwt': [
+    {key:'reliability',label:'Reliability',unit:'%',min:0,max:1,step:0.01,def:0.5,fmt:'pct'},
+    {key:'power_kw',label:'Power',unit:'kW',min:30,max:1500,step:10,def:150,fmt:'num'},
+    {key:'efficiency',label:'Efficiency',unit:'%',min:0,max:1,step:0.01,def:0.7,fmt:'pct'},
+  ],
+  'tophat': [
+    {key:'reliability',label:'Reliability',unit:'%',min:0,max:1,step:0.01,def:0.5,fmt:'pct'},
+    {key:'comfort',label:'Comfort',unit:'%',min:0,max:1,step:0.01,def:0.5,fmt:'pct'},
+    {key:'safety',label:'Safety',unit:'%',min:0,max:1,step:0.01,def:0.5,fmt:'pct'},
+    {key:'roominess',label:'Roominess',unit:'m³',min:1.5,max:7.5,step:0.1,def:2.5,fmt:'num1'},
+    {key:'premiumness',label:'Premiumness',unit:'%',min:0,max:1,step:0.01,def:0.3,fmt:'pct'},
+  ],
+  'eands': [
+    {key:'adas_level',label:'ADAS Level',unit:'',min:0,max:5,step:1,def:1,fmt:'level'},
+  ],
+};
+
+function propFmtSpec(key, val, fmt) {
+  if (val == null || val === '') return '—';
+  var v = parseFloat(val);
+  if (fmt === 'pct')   return Math.round(v*100) + '%';
+  if (fmt === 'num')   return Math.round(v) + '';
+  if (fmt === 'num1')  return v.toFixed(1);
+  if (fmt === 'level') return 'Level ' + Math.round(v);
+  return v;
+}
+
 function buildModuleOptions(modType, propKey, nextFn) {
   var mods      = _prop.modules.filter(function(m){ return m.module_type === modType; });
   var completed = mods.filter(function(m){ return m.development_status==='completed'; });
   var currentSel= _prop[propKey];
+  var specDefs  = PROP_SPEC_DEFS[modType] || [];
 
+  // ── Mode selector cards ──
   var html = '<div class="prop-mod-options">';
   ['reuse','modify','new'].forEach(function(mode) {
     var icons = {reuse:'♻️', modify:'✏️', 'new':'🆕'};
@@ -6238,7 +6281,7 @@ function buildModuleOptions(modType, propKey, nextFn) {
     var descs = {
       reuse:'Use a completed module · Zero R&D cost · Instant',
       modify:'Evolve an existing module · Reduced cost & time',
-      'new':'Full R&D from scratch · Maximum flexibility'
+      'new':'Full R&D from scratch · Configure target specs'
     };
     var sel = currentSel && currentSel.mode===mode ? ' selected' : '';
     html += '<div class="prop-mod-option' + sel + '" ' +
@@ -6250,51 +6293,226 @@ function buildModuleOptions(modType, propKey, nextFn) {
   });
   html += '</div>';
 
-  // Module picker
+  // ── Reuse / Modify: side-by-side comparison table ──
   if (currentSel && (currentSel.mode==='reuse' || currentSel.mode==='modify')) {
     var list = currentSel.mode==='reuse' ? completed : mods;
-    html += '<div class="prop-mod-select-wrap">';
-    html += '<div style="font-family:DM Mono,monospace;font-size:8px;text-transform:uppercase;' +
-      'letter-spacing:1px;color:var(--muted);margin-bottom:8px;">Select module:</div>';
     if (list.length === 0) {
-      html += '<div style="color:var(--muted2);font-size:11px;padding:10px 0;">No ' +
-        (currentSel.mode==='reuse'?'completed':'') + ' modules available. Switch to New Development.</div>';
+      html += '<div style="color:var(--muted2);font-size:11px;padding:12px;background:var(--s3);border-radius:3px;">' +
+        'No ' + (currentSel.mode==='reuse'?'completed ':'') + 'modules available. Switch to New Development.</div>';
     } else {
-      html += '<div class="prop-mod-existing-list">';
-      list.forEach(function(m) {
-        var isSel = currentSel.module && currentSel.module.id===m.id;
-        var stCol = m.development_status==='completed' ? 'var(--green)' : 'var(--gold)';
-        var stLbl = m.development_status==='completed' ? '\u2713 Done' : '\u23f3 In Dev';
-        var tpc   = m.per_unit_tpc_eur ? '\u20ac'+Math.round(m.per_unit_tpc_eur)+'/veh' : '';
-        html += '<div class="prop-mod-row' + (isSel?' selected':'') + '" ' +
-          'data-action="prop-mod-select" data-propkey="' + propKey + '" ' +
-          'data-modid="' + m.id + '" data-nextfn="' + nextFn + '">' +
-          '<div class="prop-mod-row-name">' + m.name + '</div>' +
-          '<div class="prop-mod-row-meta">' + m.config_key + (tpc?' &nbsp;\u00b7&nbsp; '+tpc:'') + '</div>' +
-          '<span class="prop-mod-status-badge" style="background:' + stCol + '22;color:' + stCol + ';">' + stLbl + '</span>' +
-          '</div>';
+      // Table header
+      html += '<div style="overflow-x:auto;margin-top:10px;">';
+      html += '<table style="width:100%;border-collapse:collapse;min-width:500px;">';
+      html += '<thead><tr>';
+      html += '<th style="font-family:DM Mono,monospace;font-size:8px;text-transform:uppercase;letter-spacing:1px;' +
+        'color:var(--muted);padding:7px 10px;text-align:left;background:var(--s2);border-bottom:1px solid var(--border);min-width:140px;">Module</th>';
+      html += '<th style="font-family:DM Mono,monospace;font-size:8px;text-transform:uppercase;letter-spacing:1px;' +
+        'color:var(--muted);padding:7px 10px;text-align:center;background:var(--s2);border-bottom:1px solid var(--border);">Config</th>';
+      specDefs.forEach(function(s) {
+        html += '<th style="font-family:DM Mono,monospace;font-size:8px;text-transform:uppercase;letter-spacing:1px;' +
+          'color:var(--muted);padding:7px 10px;text-align:center;background:var(--s2);border-bottom:1px solid var(--border);">' +
+          s.label + (s.unit?' ('+s.unit+')':'') + '</th>';
       });
-      html += '</div>';
+      html += '<th style="font-family:DM Mono,monospace;font-size:8px;text-transform:uppercase;letter-spacing:1px;' +
+        'color:var(--muted);padding:7px 10px;text-align:right;background:var(--s2);border-bottom:1px solid var(--border);">Unit TPC</th>';
+      html += '<th style="font-family:DM Mono,monospace;font-size:8px;text-transform:uppercase;letter-spacing:1px;' +
+        'color:var(--muted);padding:7px 10px;text-align:center;background:var(--s2);border-bottom:1px solid var(--border);">Status</th>';
+      html += '<th style="background:var(--s2);border-bottom:1px solid var(--border);padding:7px 10px;"></th>';
+      html += '</tr></thead><tbody>';
+
+      // Find max spec values for bar colouring
+      var specMaxes = {};
+      specDefs.forEach(function(s) {
+        var vals = list.map(function(m){ return parseFloat((m.specs||{})[s.key]||0); });
+        specMaxes[s.key] = Math.max.apply(null, vals) || 1;
+      });
+
+      list.forEach(function(m) {
+        var isSel  = currentSel.module && currentSel.module.id === m.id;
+        var stCol  = m.development_status==='completed' ? 'var(--green)' : 'var(--gold)';
+        var stLbl  = m.development_status==='completed' ? '\u2713 Done' : '\u23f3 In Dev';
+        var tpc    = m.per_unit_tpc_eur ? '\u20ac'+Math.round(m.per_unit_tpc_eur).toLocaleString() : '\u2014';
+        var rowBg  = isSel ? 'background:var(--goldl);' : '';
+        var rowBdr = isSel ? 'border-left:3px solid var(--gold);' : 'border-left:3px solid transparent;';
+
+        html += '<tr style="border-bottom:1px solid var(--border);cursor:pointer;' + rowBg + rowBdr + '" ' +
+          'data-action="prop-mod-select" data-propkey="' + propKey + '" ' +
+          'data-modid="' + m.id + '" data-nextfn="' + nextFn + '">';
+        html += '<td style="padding:8px 10px;font-weight:600;font-size:11px;color:var(--white);">' + m.name + '</td>';
+        html += '<td style="padding:8px 10px;font-family:DM Mono,monospace;font-size:9px;color:var(--muted2);text-align:center;">' + m.config_key + '</td>';
+
+        specDefs.forEach(function(s) {
+          var val  = (m.specs||{})[s.key];
+          var disp = propFmtSpec(s.key, val, s.fmt);
+          var pct  = val != null ? parseFloat(val)/s.max*100 : 0;
+          var barCol = pct > 70 ? 'var(--green)' : pct > 40 ? 'var(--gold)' : 'var(--blue)';
+          html += '<td style="padding:6px 10px;text-align:center;">' +
+            '<div style="font-family:DM Mono,monospace;font-size:10px;color:var(--text);margin-bottom:3px;">' + disp + '</div>' +
+            '<div style="height:3px;background:var(--border2);border-radius:2px;overflow:hidden;">' +
+              '<div style="height:100%;width:' + Math.round(pct) + '%;background:' + barCol + ';border-radius:2px;"></div>' +
+            '</div></td>';
+        });
+
+        html += '<td style="padding:8px 10px;font-family:DM Mono,monospace;font-size:10px;color:var(--gold);text-align:right;">' + tpc + '</td>';
+        html += '<td style="padding:8px 10px;text-align:center;"><span style="font-family:DM Mono,monospace;font-size:8px;padding:2px 6px;border-radius:2px;background:' + stCol + '22;color:' + stCol + ';">' + stLbl + '</span></td>';
+        html += '<td style="padding:8px 10px;text-align:center;">' +
+          (isSel ? '<span style="color:var(--gold);font-size:14px;">\u2713</span>' :
+            '<span style="color:var(--muted2);font-size:10px;">Select</span>') + '</td>';
+        html += '</tr>';
+      });
+
+      html += '</tbody></table></div>';
+
+      // Selected module confirmation
+      if (currentSel.module) {
+        html += '<div style="margin-top:10px;padding:10px 14px;background:var(--s2);border-radius:3px;' +
+          'border:1px solid rgba(200,164,60,.3);display:flex;align-items:center;gap:12px;">' +
+          '<span style="color:var(--gold);font-size:16px;">\u2713</span>' +
+          '<div style="flex:1;font-size:11px;color:var(--text);">Selected: <strong>' + currentSel.module.name + '</strong></div>' +
+          '<button data-action="prop-continue" data-nextfn="' + nextFn + '" ' +
+          'style="font-family:DM Mono,monospace;font-size:9px;padding:5px 14px;border-radius:2px;' +
+          'border:1px solid rgba(200,164,60,.4);background:var(--goldl);color:var(--gold);cursor:pointer;">' +
+          'Continue \u2192</button></div>';
+      }
     }
-    html += '</div>';
-  } else if (currentSel && currentSel.mode==='new') {
-    html += '<div style="padding:12px;background:var(--s3);border-radius:3px;border:1px solid var(--border2);">' +
-      '<div style="font-family:DM Mono,monospace;font-size:9px;color:var(--gold);margin-bottom:6px;">NEW DEVELOPMENT \u2014 R&D initiated after proposal approval</div>' +
-      '<div style="font-size:11px;color:var(--muted2);">Configure exact specs in Engineering Lab after this proposal is submitted.</div>' +
-      '<div style="margin-top:10px;">' +
-        '<button data-action="prop-continue" data-nextfn="' + nextFn + '" ' +
-        'style="font-family:DM Mono,monospace;font-size:9px;padding:5px 14px;border-radius:2px;' +
-        'border:1px solid rgba(200,164,60,.4);background:var(--goldl);color:var(--gold);cursor:pointer;">' +
-        'Continue \u2192</button>' +
-      '</div></div>';
   }
+
+  // ── New Development: spec sliders + live cost preview ──
+  else if (currentSel && currentSel.mode==='new') {
+    var sliderId = 'prop-new-' + propKey;
+    if (!currentSel.specs) currentSel.specs = {};
+    // Set defaults
+    specDefs.forEach(function(s) {
+      if (currentSel.specs[s.key] == null) currentSel.specs[s.key] = s.def;
+    });
+
+    html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:12px;">';
+
+    // Left: sliders
+    html += '<div><div style="font-family:DM Mono,monospace;font-size:8px;text-transform:uppercase;' +
+      'letter-spacing:1px;color:var(--gold);margin-bottom:12px;">Target Specifications</div>';
+    specDefs.forEach(function(s) {
+      var val  = currentSel.specs[s.key] != null ? currentSel.specs[s.key] : s.def;
+      var disp = propFmtSpec(s.key, val, s.fmt);
+      html += '<div style="margin-bottom:12px;">' +
+        '<div style="display:flex;justify-content:space-between;margin-bottom:4px;font-size:10px;">' +
+          '<span style="color:var(--muted2);">' + s.label + '</span>' +
+          '<span style="font-family:DM Mono,monospace;color:var(--gold);" id="' + sliderId + '-' + s.key + '-val">' + disp + '</span>' +
+        '</div>' +
+        '<input type="range" min="' + s.min + '" max="' + s.max + '" step="' + s.step + '" value="' + val + '" ' +
+        'id="' + sliderId + '-' + s.key + '" ' +
+        'data-propkey="' + propKey + '" data-speckey="' + s.key + '" data-specfmt="' + s.fmt + '" ' +
+        'data-action="prop-spec-slide" ' +
+        'oninput="onPropSpecSlide(this)" ' +
+        'style="width:100%;height:3px;border-radius:2px;-webkit-appearance:none;background:var(--border2);cursor:pointer;">' +
+      '</div>';
+    });
+    html += '</div>';
+
+    // Right: cost preview
+    html += '<div><div style="font-family:DM Mono,monospace;font-size:8px;text-transform:uppercase;' +
+      'letter-spacing:1px;color:var(--gold);margin-bottom:12px;">R&D Cost Estimate</div>' +
+      '<div style="background:var(--s3);border:1px solid var(--border2);border-radius:3px;padding:14px;" id="' + sliderId + '-cost">' +
+        '<div style="color:var(--muted2);font-size:11px;">Adjust sliders to see cost estimate</div>' +
+      '</div></div>';
+
+    html += '</div>';
+
+    html += '<div style="margin-top:14px;">' +
+      '<button data-action="prop-continue" data-nextfn="' + nextFn + '" ' +
+      'style="font-family:DM Mono,monospace;font-size:9px;padding:6px 16px;border-radius:2px;' +
+      'border:1px solid rgba(200,164,60,.4);background:var(--goldl);color:var(--gold);cursor:pointer;">' +
+      'Continue \u2192</button>' +
+      '<span style="font-family:DM Mono,monospace;font-size:8px;color:var(--muted2);margin-left:10px;">Exact specs configurable in Engineering Lab after approval</span>' +
+    '</div>';
+
+    // Trigger initial cost fetch after render
+    setTimeout(function(){ fetchPropNewCost(propKey, sliderId); }, 100);
+  }
+
   return html;
 }
+
+function onPropSpecSlide(input) {
+  var pk      = input.getAttribute('data-propkey');
+  var specKey = input.getAttribute('data-speckey');
+  var fmt     = input.getAttribute('data-specfmt');
+  var val     = parseFloat(input.value);
+  if (!_prop[pk]) _prop[pk] = {};
+  if (!_prop[pk].specs) _prop[pk].specs = {};
+  _prop[pk].specs[specKey] = val;
+  // Update display value
+  var sliderId = 'prop-new-' + pk;
+  var valEl = document.getElementById(sliderId + '-' + specKey + '-val');
+  if (valEl) valEl.textContent = propFmtSpec(specKey, val, fmt);
+  // Debounce cost fetch
+  clearTimeout(_propCostTimer);
+  _propCostTimer = setTimeout(function(){ fetchPropNewCost(pk, sliderId); }, 500);
+}
+
+var _propCostTimer = null;
+var _propConfigKeyMap = {
+  platform: 'SMALL_ICE', ice_pwt: '3CYL_ICE', epwt: 'MAINSTREAM',
+  tophat: 'C_HB', eands: '2'
+};
+
+async function fetchPropNewCost(propKey, sliderId) {
+  if (!_prop[propKey] || !_prop[propKey].specs) return;
+  var modTypeMap = {platform:'platform', pwt:'ice_pwt', epwt:'epwt', tophat:'tophat', eands:'eands'};
+  var modType    = modTypeMap[propKey] || propKey;
+  var configKey  = _propConfigKeyMap[modType] || 'SMALL_ICE';
+  var costEl     = document.getElementById(sliderId + '-cost');
+  if (!costEl) return;
+
+  try {
+    var res  = await fetch(API_URL + '/calculate/module-cost', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({
+        module_type: modType,
+        config_key:  configKey,
+        specs:       _prop[propKey].specs,
+        session_id:  sessionId || null
+      })
+    });
+    var data = await res.json();
+    if (data.success && data.cost) {
+      var c    = data.cost;
+      var perQ = (c.total_spend_m / Math.max(c.lead_time_quarters, 1)).toFixed(1);
+      costEl.innerHTML =
+        '<div style="display:flex;flex-direction:column;gap:8px;">' +
+          costRow('Unit TPC', '\u20ac' + Math.round(c.total_tpc_eur).toLocaleString() + '/veh', 'var(--gold)') +
+          costRow('R&D Investment', '\u20ac' + c.total_spend_m.toFixed(1) + 'M', 'var(--cyan)') +
+          costRow('FTE-months', Math.round(c.total_fte) + ' months', 'var(--text)') +
+          costRow('Lead Time', c.lead_time_quarters + ' quarters', 'var(--text)') +
+          costRow('Budget / Quarter', '\u20ac' + perQ + 'M', 'var(--orange)') +
+          costRow('Module Weight', Math.round(c.total_weight_kg) + ' kg', 'var(--text)') +
+        '</div>';
+    }
+  } catch(e) {
+    if (costEl) costEl.innerHTML = '<div style="color:var(--muted2);font-size:10px;">Cost estimate unavailable</div>';
+  }
+}
+
+function costRow(label, val, col) {
+  return '<div style="display:flex;justify-content:space-between;padding:5px 0;' +
+    'border-bottom:1px solid var(--border);font-size:11px;">' +
+    '<span style="color:var(--muted2);">' + label + '</span>' +
+    '<span style="font-family:DM Mono,monospace;color:' + col + ';">' + val + '</span></div>';
+}
+
 
 function setPropModMode(propKey, mode, nextFn) {
   if (!_prop[propKey]) _prop[propKey] = {};
   _prop[propKey].mode   = mode;
   _prop[propKey].module = null;
+  // Preserve specs when switching modes, initialise if missing
+  if (!_prop[propKey].specs) _prop[propKey].specs = {};
+  var modTypeMap = {platform:'platform', pwt:'ice_pwt', epwt:'epwt', tophat:'tophat', eands:'eands'};
+  var modType = modTypeMap[propKey] || propKey;
+  var specDefs = PROP_SPEC_DEFS[modType] || [];
+  specDefs.forEach(function(s) {
+    if (_prop[propKey].specs[s.key] == null) _prop[propKey].specs[s.key] = s.def;
+  });
   // Re-render the section
   var secMap = {platform:2, pwt:3, tophat:4, eands:5};
   var modMap = {platform:'platform', pwt:'ice_pwt', tophat:'tophat', eands:'eands'};
