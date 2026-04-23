@@ -990,6 +990,7 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
       <div class="nav-item" onclick="navInstr('instr-monitor',this)"><span class="nav-icon">👁</span> Team Monitor</div>
       <div class="nav-item" onclick="navInstr('instr-footprint',this)"><span class="nav-icon">🏭</span> Footprint Manager</div>
       <div class="nav-item" onclick="navInstr('instr-events',this)"><span class="nav-icon">⚠</span> Event Injector</div>
+      <div class="nav-item" onclick="navInstr('instr-demand',this)"><span class="nav-icon">📊</span> Demand Model</div>
     </div>
     <div class="sb-sec" style="flex:1">
       <div class="sb-lbl" style="color:#a78bfa">Session</div>
@@ -1688,6 +1689,57 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
   </div>
 </div>
 
+
+<div class="instr-page" id="page-instr-demand">
+  <div class="pg-title" style="color:#a78bfa">DEMAND MODEL</div>
+  <div class="pg-sub">Purchase reason weights per segment · Session-specific overrides · Must sum to 100% per row</div>
+
+  <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap;">
+    <div style="font-family:'DM Mono',monospace;font-size:9px;color:#a78bfa;">
+      Discount Rate: <input type="number" id="demand-discount-rate" value="8" min="1" max="30" step="0.5"
+        style="width:60px;background:var(--s2);border:1px solid #4c1d95;border-radius:3px;
+        color:#c4b5fd;padding:3px 6px;font-family:'DM Mono',monospace;font-size:10px;"
+        onchange="saveDemandDiscountRate()"> % annual
+    </div>
+    <div style="flex:1;"></div>
+    <button onclick="resetDemandWeights()" style="font-family:'DM Mono',monospace;font-size:9px;
+      padding:5px 12px;border-radius:3px;border:1px solid #4c1d95;background:transparent;
+      color:#a78bfa;cursor:pointer;">↺ Reset to Global Defaults</button>
+    <button onclick="loadDemandModel()" style="font-family:'DM Mono',monospace;font-size:9px;
+      padding:5px 12px;border-radius:3px;border:1px solid #4c1d95;background:transparent;
+      color:#a78bfa;cursor:pointer;">↻ Refresh</button>
+  </div>
+
+  <!-- Purchase Weights Grid -->
+  <div class="card" style="padding:0;overflow:hidden;margin-bottom:16px;">
+    <div style="padding:10px 16px;border-bottom:1px solid var(--border);background:var(--s2);
+      font-family:'DM Mono',monospace;font-size:8px;text-transform:uppercase;letter-spacing:2px;color:#a78bfa;">
+      Purchase Reason Weights by Segment (%) — click any cell to edit
+    </div>
+    <div style="overflow-x:auto;">
+      <div id="demand-grid-wrap">
+        <div style="padding:24px;color:var(--muted2);font-size:12px;text-align:center;">
+          Loading demand model...
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Spec → Reason Matrix -->
+  <div class="card" style="padding:0;overflow:hidden;">
+    <div style="padding:10px 16px;border-bottom:1px solid var(--border);background:var(--s2);
+      font-family:'DM Mono',monospace;font-size:8px;text-transform:uppercase;letter-spacing:2px;color:#a78bfa;">
+      Spec → Purchase Reason Influence Matrix (read-only · how vehicle specs drive purchase reasons)
+    </div>
+    <div style="overflow-x:auto;">
+      <div id="spec-reason-grid-wrap">
+        <div style="padding:24px;color:var(--muted2);font-size:12px;text-align:center;">
+          Loading matrix...
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
 
 </div>
 
@@ -4600,6 +4652,7 @@ function navInstr(page, el) {
   if (page === 'instr-monitor')   loadTeamMonitor();
   if (page === 'instr-footprint') loadFootprintManager();
   if (page === 'instr-results')   loadAnalystRounds();
+  if (page === 'instr-demand')    loadDemandModel();
 }
 
 function copySessionId() {
@@ -5967,6 +6020,265 @@ async function submitStudyProposal(vid) {
     toast('\u26a0 ' + e.message);
   }
 }
+
+
+// ══════════════════════════════════════════
+// DEMAND MODEL — Purchase Reasons
+// ══════════════════════════════════════════
+
+var _demandReasons  = [];   // [{code, name}]
+var _demandWeights  = [];   // [{segment_code, reason_code, weight_pct}]
+var _specReasonMatrix = []; // [{spec_code, reason_code, influence}]
+var _demandDirty    = {};   // {segment_code+'|'+reason_code: new_value}
+
+async function loadDemandModel() {
+  if (!sessionId) return;
+  try {
+    const [rRes, wRes, mRes] = await Promise.all([
+      fetch(API_URL + '/purchase-reasons'),
+      fetch(API_URL + '/sessions/' + sessionId + '/purchase-weights'),
+      fetch(API_URL + '/spec-reason-matrix'),
+    ]);
+    _demandReasons      = (await rRes.json()).reasons  || [];
+    _demandWeights      = (await wRes.json()).weights  || [];
+    _specReasonMatrix   = (await mRes.json()).matrix   || [];
+    _demandDirty        = {};
+    buildDemandGrid();
+    buildSpecReasonGrid();
+  } catch(e) {
+    console.warn('loadDemandModel:', e);
+  }
+}
+
+function buildDemandGrid() {
+  const wrap = document.getElementById('demand-grid-wrap');
+  if (!wrap || !_demandReasons.length || !_demandWeights.length) return;
+
+  // Get unique segments in order
+  const segOrder = ['a_segment','b_segment','c_segment','d_segment','e_segment','f_segment',
+    'mpv','pickup','sports','c_van','d_van','e_van'];
+  const segNames = {a_segment:'A',b_segment:'B',c_segment:'C',d_segment:'D',
+    e_segment:'E',f_segment:'F',mpv:'MPV',pickup:'Pickup',sports:'Sports',
+    c_van:'C-Van',d_van:'D-Van',e_van:'E-Van'};
+
+  // Build weight lookup
+  const wMap = {};
+  _demandWeights.forEach(function(w) {
+    wMap[w.segment_code + '|' + w.reason_code] = w.weight_pct;
+  });
+
+  // Build segment totals
+  function segTotal(seg) {
+    return _demandReasons.reduce(function(sum, r) {
+      return sum + parseFloat(wMap[seg+'|'+r.code] || 0);
+    }, 0);
+  }
+
+  var html = '<table style="border-collapse:collapse;width:100%;min-width:900px;">';
+
+  // Header: reason names
+  html += '<thead><tr>';
+  html += '<th style="font-family:DM Mono,monospace;font-size:8px;color:var(--muted);' +
+    'padding:8px 12px;text-align:left;background:var(--s2);border-bottom:1px solid var(--border);' +
+    'position:sticky;left:0;z-index:2;min-width:80px;">Segment</th>';
+  _demandReasons.forEach(function(r) {
+    html += '<th style="font-family:DM Mono,monospace;font-size:8px;color:var(--muted);' +
+      'padding:8px 8px;text-align:center;background:var(--s2);border-bottom:1px solid var(--border);' +
+      'min-width:90px;white-space:normal;line-height:1.3;">' + r.name + '</th>';
+  });
+  html += '<th style="font-family:DM Mono,monospace;font-size:8px;color:var(--muted);' +
+    'padding:8px;text-align:center;background:var(--s2);border-bottom:1px solid var(--border);">Total</th>';
+  html += '</tr></thead><tbody>';
+
+  // One row per segment
+  segOrder.forEach(function(seg) {
+    var total = segTotal(seg);
+    var totalOk = Math.abs(total - 100) < 0.5;
+    var totalCol = totalOk ? 'var(--green)' : 'var(--red)';
+
+    html += '<tr id="demand-row-' + seg + '">';
+    // Segment label — sticky
+    html += '<td style="font-family:DM Mono,monospace;font-size:10px;font-weight:600;' +
+      'color:var(--white);padding:6px 12px;border-bottom:1px solid var(--border);' +
+      'background:var(--s1);position:sticky;left:0;z-index:1;">' + (segNames[seg]||seg) + '</td>';
+
+    // Weight cells — editable
+    _demandReasons.forEach(function(r) {
+      var key = seg + '|' + r.code;
+      var val = parseFloat(wMap[key] || 0);
+      var bgColor = val >= 20 ? 'rgba(56,212,134,.12)' :
+                    val >= 10 ? 'rgba(200,164,60,.08)' :
+                    val <= 2  ? 'rgba(224,58,82,.06)' : 'transparent';
+      html += '<td style="padding:3px 4px;border-bottom:1px solid var(--border);' +
+        'text-align:center;background:' + bgColor + ';">' +
+        '<input type="number" min="0" max="100" step="1" value="' + val.toFixed(0) + '"' +
+        ' data-seg="' + seg + '" data-reason="' + r.code + '"' +
+        ' onchange="onDemandWeightChange(this)"' +
+        ' style="width:52px;background:transparent;border:1px solid transparent;' +
+        'border-radius:2px;color:var(--text);font-family:DM Mono,monospace;font-size:11px;' +
+        'text-align:center;padding:3px 2px;cursor:pointer;"' +
+        ' onfocus="this.style.borderColor=&quot;var(--gold)&quot;;this.style.background=&quot;var(--s2)&quot;"' +
+        ' onblur="this.style.borderColor=&quot;transparent&quot;;this.style.background=&quot;transparent&quot;"' +
+        '></td>';
+    });
+
+    // Total
+    html += '<td id="demand-total-' + seg + '" style="font-family:DM Mono,monospace;' +
+      'font-size:11px;font-weight:700;text-align:center;padding:6px 8px;' +
+      'border-bottom:1px solid var(--border);color:' + totalCol + ';">' +
+      total.toFixed(0) + '%</td>';
+    html += '</tr>';
+  });
+
+  html += '</tbody></table>';
+
+  html += '<div style="padding:10px 14px;font-family:DM Mono,monospace;font-size:9px;' +
+    'color:var(--muted2);border-top:1px solid var(--border);">' +
+    '<span style="color:var(--green);">■</span> ≥20% &nbsp;' +
+    '<span style="color:var(--gold);">■</span> 10–19% &nbsp;' +
+    '<span style="color:var(--muted2);">■</span> 3–9% &nbsp;' +
+    '<span style="color:var(--red);">■</span> ≤2% &nbsp;·&nbsp; ' +
+    '<span style="color:var(--red);">Red total</span> = row does not sum to 100%' +
+    '</div>';
+
+  html += '<div style="padding:8px 14px;display:flex;gap:10px;border-top:1px solid var(--border);">';
+  html += '<button onclick="saveDemandWeights()" style="font-family:DM Mono,monospace;' +
+    'font-size:9px;padding:5px 16px;border-radius:3px;border:1px solid rgba(56,212,134,.4);' +
+    'background:rgba(56,212,134,.08);color:var(--green);cursor:pointer;">✓ Save All Changes</button>';
+  html += '<div id="demand-save-msg" style="font-family:DM Mono,monospace;font-size:9px;' +
+    'color:var(--muted2);padding:5px 0;"></div></div>';
+
+  wrap.innerHTML = html;
+}
+
+function onDemandWeightChange(input) {
+  var seg    = input.getAttribute('data-seg');
+  var reason = input.getAttribute('data-reason');
+  var val    = parseFloat(input.value) || 0;
+  _demandDirty[seg + '|' + reason] = val;
+
+  // Recalc row total
+  var segOrder = ['a_segment','b_segment','c_segment','d_segment','e_segment','f_segment',
+    'mpv','pickup','sports','c_van','d_van','e_van'];
+  var row = document.getElementById('demand-row-' + seg);
+  if (!row) return;
+  var inputs = row.querySelectorAll('input[type=number]');
+  var total  = 0;
+  inputs.forEach(function(inp) { total += parseFloat(inp.value)||0; });
+  var totalEl = document.getElementById('demand-total-' + seg);
+  if (totalEl) {
+    var ok = Math.abs(total - 100) < 0.5;
+    totalEl.textContent = total.toFixed(0) + '%';
+    totalEl.style.color = ok ? 'var(--green)' : 'var(--red)';
+  }
+}
+
+async function saveDemandWeights() {
+  if (!sessionId || Object.keys(_demandDirty).length === 0) return;
+  var msgEl = document.getElementById('demand-save-msg');
+  if (msgEl) msgEl.textContent = 'Saving...';
+
+  var entries = Object.entries(_demandDirty);
+  var errors  = 0;
+  for (var i = 0; i < entries.length; i++) {
+    var parts = entries[i][0].split('|');
+    var seg   = parts[0], reason = parts[1], val = entries[i][1];
+    try {
+      await fetch(API_URL + '/sessions/' + sessionId + '/purchase-weights', {
+        method: 'POST', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({segment_code: seg, reason_code: reason, weight_pct: val})
+      });
+    } catch(e) { errors++; }
+  }
+  _demandDirty = {};
+  if (msgEl) {
+    msgEl.textContent = errors ? ('⚠ ' + errors + ' errors') : '✓ Saved';
+    msgEl.style.color = errors ? 'var(--red)' : 'var(--green)';
+    setTimeout(function(){ if(msgEl) msgEl.textContent=''; }, 3000);
+  }
+  toast(errors ? '⚠ Some weights failed to save' : '✓ Demand weights saved');
+}
+
+async function resetDemandWeights() {
+  if (!sessionId) return;
+  if (!confirm('Reset all demand weights to global defaults? This cannot be undone.')) return;
+  try {
+    await fetch(API_URL + '/sessions/' + sessionId + '/purchase-weights', {method:'DELETE'});
+    toast('✓ Reset to global defaults');
+    await loadDemandModel();
+  } catch(e) { toast('⚠ ' + e.message); }
+}
+
+function saveDemandDiscountRate() {
+  var el  = document.getElementById('demand-discount-rate');
+  var val = parseFloat(el ? el.value : 8);
+  if (val < 1 || val > 30) { toast('⚠ Discount rate must be 1–30%'); return; }
+  SESSION_DISCOUNT_RATE = val;
+  toast('✓ Discount rate set to ' + val.toFixed(1) + '% — applies to all BC calculations');
+}
+
+function buildSpecReasonGrid() {
+  var wrap = document.getElementById('spec-reason-grid-wrap');
+  if (!wrap || !_specReasonMatrix.length || !_demandReasons.length) return;
+
+  var specs = ['reliability','comfort','safety','premiumness','roominess',
+    'power','power_kw','emission_tech','efficiency','adas_level','fuel','energy','co2','accel'];
+  var specLabels = {reliability:'Reliability',comfort:'Comfort',safety:'Safety',
+    premiumness:'Premiumness',roominess:'Roominess',power:'ICE Power',power_kw:'BEV Power',
+    emission_tech:'Emission Tech',efficiency:'e-Motor Eff.',adas_level:'ADAS Level',
+    fuel:'Fuel Consumption',energy:'Energy Consumption',co2:'CO2 Emissions',accel:'Acceleration'};
+
+  // Build lookup
+  var mMap = {};
+  _specReasonMatrix.forEach(function(m) { mMap[m.spec_code+'|'+m.reason_code] = m.influence; });
+
+  var html = '<table style="border-collapse:collapse;width:100%;min-width:900px;">';
+  html += '<thead><tr>';
+  html += '<th style="font-family:DM Mono,monospace;font-size:8px;color:var(--muted);' +
+    'padding:8px 12px;text-align:left;background:var(--s2);border-bottom:1px solid var(--border);' +
+    'position:sticky;left:0;min-width:120px;">Spec</th>';
+  _demandReasons.forEach(function(r) {
+    html += '<th style="font-family:DM Mono,monospace;font-size:8px;color:var(--muted);' +
+      'padding:8px 6px;text-align:center;background:var(--s2);border-bottom:1px solid var(--border);' +
+      'min-width:85px;white-space:normal;line-height:1.3;">' + r.name + '</th>';
+  });
+  html += '</tr></thead><tbody>';
+
+  specs.forEach(function(spec) {
+    html += '<tr>';
+    html += '<td style="font-family:DM Mono,monospace;font-size:10px;color:var(--text);' +
+      'padding:5px 12px;border-bottom:1px solid var(--border);background:var(--s1);' +
+      'position:sticky;left:0;">' + (specLabels[spec]||spec) + '</td>';
+    _demandReasons.forEach(function(r) {
+      var inf = parseFloat(mMap[spec+'|'+r.code] || 0);
+      var pct = Math.round(inf * 100);
+      var bg  = inf >= 0.7 ? 'rgba(56,212,134,.18)' :
+                inf >= 0.4 ? 'rgba(200,164,60,.12)' :
+                inf > 0    ? 'rgba(68,128,224,.08)' : 'transparent';
+      var col = inf >= 0.7 ? 'var(--green)' : inf >= 0.4 ? 'var(--gold)' :
+                inf > 0    ? 'var(--blue)'  : 'var(--border2)';
+      html += '<td style="padding:5px 4px;border-bottom:1px solid var(--border);' +
+        'text-align:center;background:' + bg + ';">' +
+        (inf > 0 ? '<span style="font-family:DM Mono,monospace;font-size:10px;color:'+col+';">' +
+          pct + '%</span>' : '<span style="color:var(--border2);font-size:10px;">·</span>') +
+        '</td>';
+    });
+    html += '</tr>';
+  });
+
+  html += '</tbody></table>';
+  html += '<div style="padding:8px 14px;font-family:DM Mono,monospace;font-size:9px;' +
+    'color:var(--muted2);border-top:1px solid var(--border);">' +
+    '<span style="color:var(--green);">■</span> High (≥70%) &nbsp;' +
+    '<span style="color:var(--gold);">■</span> Medium (40–69%) &nbsp;' +
+    '<span style="color:var(--blue);">■</span> Low (&lt;40%) &nbsp;' +
+    '<span style="color:var(--border2);">·</span> No influence</div>';
+
+  wrap.innerHTML = html;
+}
+
+// Load demand model when instructor navigates to the page
+var _origNavInstr = window.navInstr || null;
 
 
 // ══════════════════════════════════════════
