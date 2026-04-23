@@ -1479,6 +1479,9 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
     <div class="prop-step" id="pstep-4">4 · Top Hat</div>
     <div class="prop-step" id="pstep-5">5 · E&amp;S</div>
     <div class="prop-step" id="pstep-6">6 · Review</div>
+    <div class="prop-step" id="pstep-7">7 · Commercial</div>
+    <div class="prop-step" id="pstep-8">8 · Operations</div>
+    <div class="prop-step" id="pstep-9">9 · Business Case</div>
   </div>
 
   <!-- SECTION 1: Study Selection -->
@@ -1581,15 +1584,88 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
         </div>
       </div>
 
-      <!-- Confirm bar -->
-      <div style="margin-top:20px;padding:16px;background:var(--s2);border-radius:4px;border:1px solid var(--border2);display:flex;align-items:center;gap:16px;">
-        <div style="flex:1;">
-          <div style="font-size:13px;font-weight:600;color:var(--white);" id="prop-confirm-title">Ready to submit proposal?</div>
-          <div style="font-family:'DM Mono',monospace;font-size:9px;color:var(--muted2);margin-top:3px;">
-            Submitting will move the study to PLAN status and open footprint configuration
-          </div>
+      <!-- Continue to step 7 -->
+      <div style="margin-top:20px;padding:14px 16px;background:var(--s2);border-radius:4px;border:1px solid var(--border2);display:flex;align-items:center;gap:16px;">
+        <div style="flex:1;font-family:'DM Mono',monospace;font-size:9px;color:var(--muted2);">
+          Specs look good? Continue to define the commercial plan.
         </div>
         <button onclick="goBackToEditProposal()" style="font-family:'DM Mono',monospace;font-size:10px;padding:8px 16px;border-radius:3px;border:1px solid var(--border2);background:var(--s1);color:var(--muted2);cursor:pointer;">← Edit Modules</button>
+        <button onclick="advanceToCommercial()"
+          style="font-family:'DM Mono',monospace;font-size:11px;font-weight:700;padding:10px 24px;
+          border-radius:3px;border:1px solid rgba(200,164,60,.5);background:var(--goldl);
+          color:var(--gold);cursor:pointer;letter-spacing:.5px;">Continue → Commercial Plan</button>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- SECTION 7: Commercial Plan -->
+  <div class="prop-section" id="prop-sec-7">
+    <div class="prop-sec-header" onclick="togglePropSection(7)">
+      <div class="prop-sec-num">07</div>
+      <div class="prop-sec-title">COMMERCIAL PLAN</div>
+      <div class="prop-sec-status" id="prop-sec-7-status">— not configured</div>
+      <div class="prop-sec-chevron" id="prop-chev-7">▼</div>
+    </div>
+    <div class="prop-sec-body" id="prop-sec-7-body" style="display:none;">
+      <div id="prop-commercial-content"></div>
+    </div>
+  </div>
+
+  <!-- SECTION 8: Industrial Operations -->
+  <div class="prop-section" id="prop-sec-8">
+    <div class="prop-sec-header" onclick="togglePropSection(8)">
+      <div class="prop-sec-num">08</div>
+      <div class="prop-sec-title">INDUSTRIAL OPERATIONS</div>
+      <div class="prop-sec-status" id="prop-sec-8-status">— not configured</div>
+      <div class="prop-sec-chevron" id="prop-chev-8">▼</div>
+    </div>
+    <div class="prop-sec-body" id="prop-sec-8-body" style="display:none;">
+      <div id="prop-operations-content"></div>
+    </div>
+  </div>
+
+  <!-- SECTION 9: Business Case Summary -->
+  <div class="prop-section" id="prop-sec-9">
+    <div class="prop-sec-header" onclick="togglePropSection(9)">
+      <div class="prop-sec-num">09</div>
+      <div class="prop-sec-title">BUSINESS CASE SUMMARY</div>
+      <div class="prop-sec-status" id="prop-sec-9-status">— complete steps 7 &amp; 8 first</div>
+      <div class="prop-sec-chevron" id="prop-chev-9">▼</div>
+    </div>
+    <div class="prop-sec-body" id="prop-sec-9-body" style="display:none;">
+      <!-- 4 headline KPI cards -->
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px;">
+        <div class="bc-kpi npv">
+          <div class="bc-kpi-label">Net Present Value</div>
+          <div class="bc-kpi-value" id="prop-bc-npv" style="color:var(--cyan);">—</div>
+          <div class="bc-kpi-sub" id="prop-bc-npv-sub">lifecycle</div>
+        </div>
+        <div class="bc-kpi irr">
+          <div class="bc-kpi-label">IRR (est.)</div>
+          <div class="bc-kpi-value" id="prop-bc-irr" style="color:var(--green);">—</div>
+          <div class="bc-kpi-sub">internal rate of return</div>
+        </div>
+        <div class="bc-kpi payback">
+          <div class="bc-kpi-label">Payback Period</div>
+          <div class="bc-kpi-value" id="prop-bc-payback" style="color:var(--gold);">—</div>
+          <div class="bc-kpi-sub">quarters to recover invest.</div>
+        </div>
+        <div class="bc-kpi ebit">
+          <div class="bc-kpi-label">Avg EBIT Margin</div>
+          <div class="bc-kpi-value" id="prop-bc-ebit" style="color:var(--purple);">—</div>
+          <div class="bc-kpi-sub">over lifecycle</div>
+        </div>
+      </div>
+
+      <!-- Final submit -->
+      <div style="padding:16px;background:var(--s2);border-radius:4px;border:1px solid var(--border2);display:flex;align-items:center;gap:16px;">
+        <div style="flex:1;">
+          <div style="font-size:13px;font-weight:600;color:var(--white);">Ready to submit proposal?</div>
+          <div style="font-family:'DM Mono',monospace;font-size:9px;color:var(--muted2);margin-top:3px;">
+            Vehicle moves to PLAN status · Commercial &amp; operations data saved to business case
+          </div>
+        </div>
         <button onclick="confirmProposal()" id="prop-confirm-btn"
           style="font-family:'DM Mono',monospace;font-size:11px;font-weight:700;padding:10px 24px;
           border-radius:3px;border:1px solid rgba(56,212,134,.5);background:rgba(56,212,134,.12);
@@ -3482,9 +3558,10 @@ document.addEventListener('click', function(e) {
     var nf3 = btn.getAttribute('data-nextfn');
     if (nf3 && window[nf3]) window[nf3]();
   }
-  if (action === 'prop-spec-slide') {
-    onPropSpecSlide(btn);
-  }
+  if (action === 'prop-spec-slide') { onPropSpecSlide(btn); }
+  if (action === 'prop-com-input')  { onPropComInput(btn); }
+  if (action === 'prop-ops-input')  { onPropOpsInput(btn); }
+  if (action === 'prop-ops-auto')   { onPropOpsAuto(btn); }
 });
 
 
@@ -6124,7 +6201,7 @@ function togglePropSection(n) {
 function setPropStep(n) {
   _prop.currentSec = n;
   // Update progress bar
-  for (var i = 1; i <= 6; i++) {
+  for (var i = 1; i <= 9; i++) {
     var el = document.getElementById('pstep-' + i);
     if (!el) continue;
     el.classList.remove('active','done');
@@ -6132,7 +6209,7 @@ function setPropStep(n) {
     else if (i === n) el.classList.add('active');
   }
   // Open target section, collapse others
-  for (var j = 1; j <= 6; j++) {
+  for (var j = 1; j <= 9; j++) {
     var body = document.getElementById('prop-sec-' + j + '-body');
     var sec  = document.getElementById('prop-sec-' + j);
     var chev = document.getElementById('prop-chev-' + j);
@@ -6779,6 +6856,400 @@ function drawProposalRadar(specs, tpcEur) {
 }
 
 // ── Confirm ────────────────────────────────────────────────
+// ══ STEP 7: COMMERCIAL PLAN ═══════════════════════════════
+
+// _prop.commercial = { years: [{year, price, volume, discount}] }
+
+function advanceToCommercial() {
+  var s6 = document.getElementById('prop-sec-6-status');
+  if (s6) s6.textContent = '\u2713 Specs reviewed';
+  setPropStep(7);
+  buildCommercialSection();
+}
+
+function buildCommercialSection() {
+  var el = document.getElementById('prop-commercial-content');
+  if (!el) return;
+
+  // Determine lifecycle years from study SOP/EOP
+  var v    = _prop.study;
+  var sopY = v && v.start_year ? v.start_year : 2025;
+  var eopY = v && v.end_year   ? v.end_year   : 2029;
+  var years = [];
+  for (var y = sopY; y <= eopY; y++) years.push(y);
+
+  // Init commercial data
+  if (!_prop.commercial) _prop.commercial = {};
+  if (!_prop.commercial.years) {
+    _prop.commercial.years = years.map(function(y, i) {
+      // Default: ramp volume, flat price at segment benchmark
+      var segPriceK = {a_segment:12,b_segment:18,c_segment:26,d_segment:38,
+        e_segment:55,f_segment:90,mpv:32,pickup:45,sports:55,c_van:28,d_van:40,e_van:55};
+      var defPriceK = segPriceK[(v&&v.segment_code)||'c_segment'] || 26;
+      var ramp = [0.3, 0.65, 0.85, 1.0, 0.9, 0.7];
+      return {year:y, price:defPriceK, volume:Math.round(8000*(ramp[i]||0.7)), discount:5};
+    });
+  }
+
+  var html = '<div style="margin-bottom:12px;font-size:11px;color:var(--muted2);">Set selling price (€k), annual sales volume and dealer discount % for each year of the vehicle lifecycle.</div>';
+  html += '<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;min-width:600px;">';
+  html += '<thead><tr>' +
+    '<th style="font-family:DM Mono,monospace;font-size:8px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);padding:8px 12px;background:var(--s2);border-bottom:1px solid var(--border);text-align:left;">Year</th>' +
+    '<th style="font-family:DM Mono,monospace;font-size:8px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);padding:8px 12px;background:var(--s2);border-bottom:1px solid var(--border);text-align:center;">Selling Price (€k)</th>' +
+    '<th style="font-family:DM Mono,monospace;font-size:8px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);padding:8px 12px;background:var(--s2);border-bottom:1px solid var(--border);text-align:center;">Annual Volume (units)</th>' +
+    '<th style="font-family:DM Mono,monospace;font-size:8px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);padding:8px 12px;background:var(--s2);border-bottom:1px solid var(--border);text-align:center;">Dealer Discount (%)</th>' +
+    '<th style="font-family:DM Mono,monospace;font-size:8px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);padding:8px 12px;background:var(--s2);border-bottom:1px solid var(--border);text-align:right;">Net Revenue (€M)</th>' +
+    '</tr></thead><tbody>';
+
+  _prop.commercial.years.forEach(function(row, i) {
+    var netRev = Math.round(row.volume * row.price * 1000 * (1 - row.discount/100) / 1e6);
+    html += '<tr style="border-bottom:1px solid var(--border);">' +
+      '<td style="padding:8px 12px;font-family:DM Mono,monospace;font-size:11px;font-weight:700;color:var(--white);">' + row.year + '</td>' +
+      '<td style="padding:6px 8px;text-align:center;">' +
+        '<input type="number" min="5" max="500" step="0.5" value="' + row.price + '" ' +
+        'data-action="prop-com-input" data-idx="' + i + '" data-field="price" ' +
+        'oninput="onPropComInput(this)" ' +
+        'style="width:80px;background:var(--s2);border:1px solid var(--border2);border-radius:2px;' +
+        'color:var(--gold);font-family:DM Mono,monospace;font-size:11px;text-align:center;padding:4px 6px;">' +
+      '</td>' +
+      '<td style="padding:6px 8px;text-align:center;">' +
+        '<input type="number" min="0" max="200000" step="500" value="' + row.volume + '" ' +
+        'data-action="prop-com-input" data-idx="' + i + '" data-field="volume" ' +
+        'oninput="onPropComInput(this)" ' +
+        'style="width:100px;background:var(--s2);border:1px solid var(--border2);border-radius:2px;' +
+        'color:var(--text);font-family:DM Mono,monospace;font-size:11px;text-align:center;padding:4px 6px;">' +
+      '</td>' +
+      '<td style="padding:6px 8px;text-align:center;">' +
+        '<input type="number" min="0" max="30" step="0.5" value="' + row.discount + '" ' +
+        'data-action="prop-com-input" data-idx="' + i + '" data-field="discount" ' +
+        'oninput="onPropComInput(this)" ' +
+        'style="width:60px;background:var(--s2);border:1px solid var(--border2);border-radius:2px;' +
+        'color:var(--text);font-family:DM Mono,monospace;font-size:11px;text-align:center;padding:4px 6px;">' +
+      '</td>' +
+      '<td style="padding:8px 12px;font-family:DM Mono,monospace;font-size:11px;color:var(--cyan);text-align:right;" id="prop-com-rev-' + i + '">' +
+        '\u20ac' + netRev + 'M' +
+      '</td>' +
+      '</tr>';
+  });
+
+  // Totals row
+  var totalVol = _prop.commercial.years.reduce(function(s,r){return s+r.volume;},0);
+  var totalRev = _prop.commercial.years.reduce(function(s,r){
+    return s + Math.round(r.volume*r.price*1000*(1-r.discount/100)/1e6);
+  },0);
+  html += '<tr style="background:var(--s2);">' +
+    '<td style="padding:8px 12px;font-family:DM Mono,monospace;font-size:9px;color:var(--muted);">TOTAL</td>' +
+    '<td></td>' +
+    '<td style="padding:8px 12px;font-family:DM Mono,monospace;font-size:11px;color:var(--text);text-align:center;" id="prop-com-vol-total">' + totalVol.toLocaleString() + ' units</td>' +
+    '<td></td>' +
+    '<td style="padding:8px 12px;font-family:DM Mono,monospace;font-size:12px;font-weight:700;color:var(--cyan);text-align:right;" id="prop-com-rev-total">\u20ac' + totalRev + 'M</td>' +
+  '</tr>';
+  html += '</tbody></table></div>';
+
+  html += '<div style="margin-top:14px;display:flex;justify-content:flex-end;">' +
+    '<button onclick="advanceToOperations()" style="font-family:DM Mono,monospace;font-size:10px;' +
+    'padding:8px 18px;border-radius:3px;border:1px solid rgba(200,164,60,.4);' +
+    'background:var(--goldl);color:var(--gold);cursor:pointer;">Continue \u2192 Operations</button></div>';
+
+  el.innerHTML = html;
+}
+
+function onPropComInput(input) {
+  var idx   = parseInt(input.getAttribute('data-idx'));
+  var field = input.getAttribute('data-field');
+  var val   = parseFloat(input.value) || 0;
+  if (!_prop.commercial || !_prop.commercial.years) return;
+  _prop.commercial.years[idx][field] = val;
+  // Update net revenue for this row
+  var row    = _prop.commercial.years[idx];
+  var netRev = Math.round(row.volume * row.price * 1000 * (1-row.discount/100) / 1e6);
+  var revEl  = document.getElementById('prop-com-rev-' + idx);
+  if (revEl) revEl.textContent = '\u20ac' + netRev + 'M';
+  // Update totals
+  var totalVol = _prop.commercial.years.reduce(function(s,r){return s+r.volume;},0);
+  var totalRev = _prop.commercial.years.reduce(function(s,r){
+    return s+Math.round(r.volume*r.price*1000*(1-r.discount/100)/1e6);
+  },0);
+  var vt = document.getElementById('prop-com-vol-total');
+  var rt = document.getElementById('prop-com-rev-total');
+  if (vt) vt.textContent = totalVol.toLocaleString() + ' units';
+  if (rt) rt.textContent = '\u20ac' + totalRev + 'M';
+}
+
+// ══ STEP 8: INDUSTRIAL OPERATIONS ═════════════════════════
+
+// _prop.operations = { plants: [{plant_id, plant_name, alloc_pct, automation}] }
+
+var AUTOMATION_LEVELS = [
+  {level:1, label:'Manual',         inv_factor:0.6, labour_factor:1.4},
+  {level:2, label:'Semi-automated', inv_factor:1.0, labour_factor:1.0},
+  {level:3, label:'Automated',      inv_factor:1.6, labour_factor:0.65},
+  {level:4, label:'Highly automated',inv_factor:2.4, labour_factor:0.35},
+];
+
+function advanceToOperations() {
+  var s7 = document.getElementById('prop-sec-7-status');
+  if (s7) {
+    var totalVol = (_prop.commercial && _prop.commercial.years)
+      ? _prop.commercial.years.reduce(function(s,r){return s+r.volume;},0) : 0;
+    s7.textContent = '\u2713 ' + totalVol.toLocaleString() + ' units lifecycle';
+  }
+  setPropStep(8);
+  buildOperationsSection();
+}
+
+async function buildOperationsSection() {
+  var el = document.getElementById('prop-operations-content');
+  if (!el) return;
+  el.innerHTML = '<div style="color:var(--muted2);font-size:11px;padding:12px;">Loading plants...</div>';
+
+  // Load team plants
+  var plants = [];
+  try {
+    var res  = await fetch(API_URL + '/teams/' + teamId + '/plants');
+    var data = await res.json();
+    plants   = (data.plants || []).filter(function(p){ return p.status === 'active' && p.type === 'vehicle'; });
+  } catch(e) {}
+
+  if (!_prop.operations) _prop.operations = {plants:[]};
+  // Init with first plant if empty
+  if (_prop.operations.plants.length === 0 && plants.length > 0) {
+    _prop.operations.plants = [{
+      plant_id:   plants[0].id,
+      plant_name: plants[0].name,
+      region:     plants[0].region,
+      capacity_k: plants[0].capacity_k,
+      alloc_pct:  30,
+      automation: 2
+    }];
+  }
+
+  if (plants.length === 0) {
+    el.innerHTML = '<div style="color:var(--muted2);font-size:11px;padding:16px;background:var(--s3);border-radius:3px;">' +
+      '\u26a0 No active vehicle plants found. Go to Industrial Operations to set up your plant footprint first.</div>' +
+      '<div style="margin-top:12px;"><button onclick="advanceToBizCase()" style="font-family:DM Mono,monospace;font-size:9px;padding:5px 14px;border-radius:2px;border:1px solid rgba(200,164,60,.4);background:var(--goldl);color:var(--gold);cursor:pointer;">Skip \u2192 Business Case</button></div>';
+    return;
+  }
+
+  var html = '<div style="margin-bottom:12px;font-size:11px;color:var(--muted2);">Allocate production capacity from your active vehicle plants. Automation level affects tooling investment and labour requirements.</div>';
+
+  // Plant allocation table
+  html += '<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;">';
+  html += '<thead><tr>' +
+    '<th style="font-family:DM Mono,monospace;font-size:8px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);padding:8px 12px;background:var(--s2);border-bottom:1px solid var(--border);text-align:left;">Plant</th>' +
+    '<th style="font-family:DM Mono,monospace;font-size:8px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);padding:8px 12px;background:var(--s2);border-bottom:1px solid var(--border);text-align:center;">Region</th>' +
+    '<th style="font-family:DM Mono,monospace;font-size:8px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);padding:8px 12px;background:var(--s2);border-bottom:1px solid var(--border);text-align:center;">Total Capacity</th>' +
+    '<th style="font-family:DM Mono,monospace;font-size:8px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);padding:8px 12px;background:var(--s2);border-bottom:1px solid var(--border);text-align:center;">Allocation %</th>' +
+    '<th style="font-family:DM Mono,monospace;font-size:8px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);padding:8px 12px;background:var(--s2);border-bottom:1px solid var(--border);text-align:center;">Automation Level</th>' +
+    '<th style="font-family:DM Mono,monospace;font-size:8px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);padding:8px 12px;background:var(--s2);border-bottom:1px solid var(--border);text-align:right;">Tooling Invest.</th>' +
+    '</tr></thead><tbody>';
+
+  plants.forEach(function(p, i) {
+    var existing = _prop.operations.plants.find(function(x){return x.plant_id===p.id;});
+    var alloc    = existing ? existing.alloc_pct : 0;
+    var auto     = existing ? existing.automation : 2;
+    var autoLvl  = AUTOMATION_LEVELS.find(function(a){return a.level===auto;}) || AUTOMATION_LEVELS[1];
+    var allocCap = Math.round(p.capacity_k * alloc / 100);
+    var toolingM = Math.round(allocCap * 5 * autoLvl.inv_factor); // €5M per 1k capacity × factor
+
+    html += '<tr style="border-bottom:1px solid var(--border);">' +
+      '<td style="padding:8px 12px;font-weight:600;font-size:11px;color:var(--white);">' + p.name + '</td>' +
+      '<td style="padding:8px 12px;font-family:DM Mono,monospace;font-size:10px;color:var(--muted2);text-align:center;">' + (p.region||'—') + '</td>' +
+      '<td style="padding:8px 12px;font-family:DM Mono,monospace;font-size:10px;text-align:center;">' + p.capacity_k + 'k/yr</td>' +
+      '<td style="padding:8px 12px;text-align:center;">' +
+        '<div style="display:flex;align-items:center;gap:6px;justify-content:center;">' +
+          '<input type="range" min="0" max="100" step="5" value="' + alloc + '" ' +
+          'id="prop-ops-alloc-' + p.id + '" ' +
+          'data-plantid="' + p.id + '" data-plantname="' + p.name + '" ' +
+          'data-region="' + (p.region||'') + '" data-capacity="' + p.capacity_k + '" ' +
+          'data-action="prop-ops-input" ' +
+          'oninput="onPropOpsInput(this)" ' +
+          'style="width:80px;height:3px;border-radius:2px;-webkit-appearance:none;background:var(--border2);cursor:pointer;">' +
+          '<span style="font-family:DM Mono,monospace;font-size:11px;color:var(--gold);min-width:32px;" id="prop-ops-alloc-val-' + p.id + '">' + alloc + '%</span>' +
+        '</div>' +
+        '<div style="font-family:DM Mono,monospace;font-size:9px;color:var(--muted2);margin-top:2px;" id="prop-ops-alloc-cap-' + p.id + '">' + allocCap + 'k units/yr</div>' +
+      '</td>' +
+      '<td style="padding:8px 12px;text-align:center;">' +
+        '<select id="prop-ops-auto-' + p.id + '" ' +
+        'data-plantid="' + p.id + '" data-action="prop-ops-auto" ' +
+        'onchange="onPropOpsAuto(this)" ' +
+        'style="background:var(--s2);border:1px solid var(--border2);color:var(--text);border-radius:2px;padding:4px 6px;font-size:10px;font-family:DM Mono,monospace;">' +
+        AUTOMATION_LEVELS.map(function(a) {
+          return '<option value="' + a.level + '"' + (a.level===auto?' selected':'') + '>' +
+            a.level + ' — ' + a.label + '</option>';
+        }).join('') +
+        '</select>' +
+        '<div style="font-family:DM Mono,monospace;font-size:8px;color:var(--muted2);margin-top:3px;" id="prop-ops-auto-lbl-' + p.id + '">' +
+          'Labour: ' + autoLvl.labour_factor + '× base' +
+        '</div>' +
+      '</td>' +
+      '<td style="padding:8px 12px;font-family:DM Mono,monospace;font-size:11px;color:var(--orange);text-align:right;" id="prop-ops-tooling-' + p.id + '">' +
+        '\u20ac' + toolingM + 'M' +
+      '</td>' +
+      '</tr>';
+  });
+  html += '</tbody></table></div>';
+
+  html += '<div style="margin-top:14px;display:flex;justify-content:flex-end;">' +
+    '<button onclick="advanceToBizCase()" style="font-family:DM Mono,monospace;font-size:10px;' +
+    'padding:8px 18px;border-radius:3px;border:1px solid rgba(200,164,60,.4);' +
+    'background:var(--goldl);color:var(--gold);cursor:pointer;">Continue \u2192 Business Case</button></div>';
+
+  el.innerHTML = html;
+}
+
+function onPropOpsInput(input) {
+  var pid    = input.getAttribute('data-plantid');
+  var name   = input.getAttribute('data-plantname');
+  var region = input.getAttribute('data-region');
+  var capK   = parseInt(input.getAttribute('data-capacity')) || 0;
+  var alloc  = parseInt(input.value);
+  // Update display
+  var valEl  = document.getElementById('prop-ops-alloc-val-' + pid);
+  var capEl  = document.getElementById('prop-ops-alloc-cap-' + pid);
+  if (valEl) valEl.textContent = alloc + '%';
+  if (capEl) capEl.textContent = Math.round(capK*alloc/100) + 'k units/yr';
+  // Save to state
+  updatePropOpsPlant(pid, name, region, capK, alloc, null);
+  updatePropOpsTooling(pid);
+}
+
+function onPropOpsAuto(sel) {
+  var pid    = sel.getAttribute('data-plantid');
+  var auto   = parseInt(sel.value);
+  var autoLvl= AUTOMATION_LEVELS.find(function(a){return a.level===auto;}) || AUTOMATION_LEVELS[1];
+  var lblEl  = document.getElementById('prop-ops-auto-lbl-' + pid);
+  if (lblEl) lblEl.textContent = 'Labour: ' + autoLvl.labour_factor + '\u00d7 base';
+  updatePropOpsPlant(pid, null, null, null, null, auto);
+  updatePropOpsTooling(pid);
+}
+
+function updatePropOpsPlant(pid, name, region, capK, alloc, auto) {
+  if (!_prop.operations) _prop.operations = {plants:[]};
+  var existing = _prop.operations.plants.find(function(x){return x.plant_id===pid;});
+  if (existing) {
+    if (alloc !== null) existing.alloc_pct  = alloc;
+    if (auto  !== null) existing.automation = auto;
+  } else {
+    var newEntry = {plant_id:pid, plant_name:name, region:region,
+      capacity_k:capK, alloc_pct:alloc||0, automation:auto||2};
+    _prop.operations.plants.push(newEntry);
+  }
+}
+
+function updatePropOpsTooling(pid) {
+  var plant  = _prop.operations && _prop.operations.plants.find(function(x){return x.plant_id===pid;});
+  if (!plant) return;
+  var autoLvl = AUTOMATION_LEVELS.find(function(a){return a.level===plant.automation;}) || AUTOMATION_LEVELS[1];
+  var toolingM = Math.round(plant.capacity_k * plant.alloc_pct/100 * 5 * autoLvl.inv_factor);
+  var el = document.getElementById('prop-ops-tooling-' + pid);
+  if (el) el.textContent = '\u20ac' + toolingM + 'M';
+}
+
+// ══ STEP 9: BUSINESS CASE KPIs ════════════════════════════
+
+function advanceToBizCase() {
+  var s8 = document.getElementById('prop-sec-8-status');
+  if (s8) {
+    var plants = (_prop.operations && _prop.operations.plants) || [];
+    var allocated = plants.filter(function(p){return p.alloc_pct>0;});
+    s8.textContent = '\u2713 ' + allocated.length + ' plant' + (allocated.length!==1?'s':'') + ' allocated';
+  }
+  setPropStep(9);
+  calcPropBizCase();
+}
+
+function calcPropBizCase() {
+  // Gather all inputs
+  var comYears  = (_prop.commercial && _prop.commercial.years) || [];
+  var plants    = (_prop.operations && _prop.operations.plants) || [];
+  var tpcNum    = 0;
+  // Get TPC from selected modules
+  ['platform','pwt','epwt','tophat','eands'].forEach(function(k) {
+    var p = _prop[k];
+    if (p && p.module) tpcNum += parseFloat(p.module.per_unit_tpc_eur||0);
+  });
+
+  // Build quarterly FCF
+  var fcfArr = [];
+  comYears.forEach(function(row) {
+    for (var q = 0; q < 4; q++) {
+      var unitsQ   = Math.round(row.volume / 4);
+      var priceEur = row.price * 1000 * (1 - row.discount/100);
+      var revM     = unitsQ * priceEur / 1e6;
+      var cogsM    = tpcNum > 0 ? unitsQ * tpcNum / 1e6 : revM * 0.70;
+      var gpM      = revM - cogsM;
+      var sgaM     = revM * 0.06;
+      var rdM      = revM * 0.04;
+      var ebitM    = gpM - sgaM - rdM;
+      var fcfM     = ebitM * 0.75; // after 25% tax
+      fcfArr.push({rev:revM, cogs:cogsM, gp:gpM, ebit:ebitM, fcf:fcfM});
+    }
+  });
+
+  // Total investment: R&D + tooling capex
+  var rdM = 0;
+  ['platform','pwt','epwt','tophat','eands'].forEach(function(k) {
+    var p = _prop[k];
+    if (p && p.module) rdM += parseFloat(p.module.total_rd_spend_m||0);
+  });
+  var toolingM = 0;
+  plants.forEach(function(pl) {
+    var autoLvl = AUTOMATION_LEVELS.find(function(a){return a.level===pl.automation;}) || AUTOMATION_LEVELS[1];
+    toolingM += Math.round(pl.capacity_k * pl.alloc_pct/100 * 5 * autoLvl.inv_factor);
+  });
+  var totalInvM = rdM + toolingM;
+
+  // NPV
+  var rateP    = SESSION_DISCOUNT_RATE || 8;
+  var fcfOnly  = fcfArr.map(function(f){return f.fcf;});
+  var npv      = calcNPV(fcfOnly, totalInvM, rateP);
+
+  // IRR
+  var irr = fcfOnly.some(function(f){return f>0;}) && totalInvM > 0
+    ? calcIRR(fcfOnly, totalInvM) : null;
+
+  // Payback
+  var cum = -totalInvM, paybackQ = null;
+  for (var t = 0; t < fcfOnly.length; t++) {
+    cum += fcfOnly[t];
+    if (cum >= 0 && paybackQ === null) paybackQ = t+1;
+  }
+
+  // Avg EBIT margin
+  var totalRev  = fcfArr.reduce(function(s,f){return s+f.rev;},0);
+  var totalEbit = fcfArr.reduce(function(s,f){return s+f.ebit;},0);
+  var avgEbitPct = totalRev > 0 ? totalEbit/totalRev*100 : 0;
+
+  // Update KPI cards
+  var npvEl = document.getElementById('prop-bc-npv');
+  if (npvEl) {
+    npvEl.textContent = (npv>=0?'\u20ac':'-\u20ac') + Math.abs(Math.round(npv)) + 'M';
+    npvEl.style.color = npv >= 0 ? 'var(--cyan)' : 'var(--red)';
+  }
+  var npvSub = document.getElementById('prop-bc-npv-sub');
+  if (npvSub) npvSub.textContent = 'at ' + rateP.toFixed(1) + '% discount rate';
+
+  var irrEl = document.getElementById('prop-bc-irr');
+  if (irrEl) {
+    irrEl.textContent = irr !== null ? irr.toFixed(1) + '%' : '\u2014';
+    irrEl.style.color = irr !== null && irr > rateP ? 'var(--green)' : 'var(--red)';
+  }
+
+  var pbEl = document.getElementById('prop-bc-payback');
+  if (pbEl) pbEl.textContent = paybackQ ? paybackQ + 'q' : '>' + fcfOnly.length + 'q';
+
+  var ebitEl = document.getElementById('prop-bc-ebit');
+  if (ebitEl) {
+    ebitEl.textContent = avgEbitPct.toFixed(1) + '%';
+    ebitEl.style.color = avgEbitPct > 8 ? 'var(--purple)' : avgEbitPct > 0 ? 'var(--gold)' : 'var(--red)';
+  }
+
+  var s9 = document.getElementById('prop-sec-9-status');
+  if (s9) s9.textContent = 'NPV: ' + (npv>=0?'\u20ac':'-\u20ac') + Math.abs(Math.round(npv)) + 'M';
+}
+
+
 async function confirmProposal() {
   if (!_prop.study) { toast('\u26a0 No study selected'); return; }
   var vid = _prop.study.id;
