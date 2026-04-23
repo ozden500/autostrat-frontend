@@ -394,6 +394,72 @@ input[type=text]:focus,input[type=number]:focus{outline:none;border-color:var(--
 .study-readiness{display:flex;gap:3px;align-items:center;}
 .study-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;}
 
+/* ══════════ VEHICLE PROPOSAL WIZARD ══════════ */
+.prop-step{flex:1;padding:8px 6px;text-align:center;font-family:'DM Mono',monospace;
+  font-size:8px;letter-spacing:.5px;color:var(--muted2);background:var(--s2);
+  border-right:1px solid var(--border);transition:all .15s;}
+.prop-step:last-child{border-right:none;}
+.prop-step.active{background:var(--goldl);color:var(--gold);}
+.prop-step.done{background:rgba(56,212,134,.08);color:var(--green);}
+
+.prop-section{background:var(--s1);border:1px solid var(--border);border-radius:4px;
+  margin-bottom:8px;overflow:hidden;transition:border-color .15s;}
+.prop-section.prop-active{border-color:var(--border2);}
+.prop-section.prop-done{border-color:rgba(56,212,134,.3);}
+.prop-sec-header{display:flex;align-items:center;gap:12px;padding:12px 16px;
+  cursor:pointer;transition:background .1s;}
+.prop-sec-header:hover{background:var(--s2);}
+.prop-sec-num{font-family:'Orbitron',sans-serif;font-size:18px;font-weight:700;
+  color:var(--border2);min-width:28px;}
+.prop-section.prop-active .prop-sec-num{color:var(--gold);}
+.prop-section.prop-done   .prop-sec-num{color:var(--green);}
+.prop-sec-title{font-family:'DM Mono',monospace;font-size:9px;text-transform:uppercase;
+  letter-spacing:2px;color:var(--muted);flex:1;}
+.prop-section.prop-active .prop-sec-title{color:var(--text);}
+.prop-section.prop-done   .prop-sec-title{color:var(--green);}
+.prop-sec-status{font-family:'DM Mono',monospace;font-size:9px;color:var(--muted2);}
+.prop-sec-chevron{color:var(--muted);font-size:10px;transition:transform .2s;}
+.prop-sec-body{padding:0 16px 16px;}
+.prop-sec-body.collapsed{display:none;}
+
+/* Module option cards */
+.prop-mod-options{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:14px;}
+.prop-mod-option{background:var(--s2);border:2px solid var(--border);border-radius:4px;
+  padding:12px;cursor:pointer;transition:all .15s;text-align:center;}
+.prop-mod-option:hover{border-color:var(--border2);}
+.prop-mod-option.selected{border-color:var(--gold);background:var(--goldl);}
+.prop-mod-option-icon{font-size:22px;margin-bottom:6px;}
+.prop-mod-option-title{font-family:'DM Mono',monospace;font-size:9px;text-transform:uppercase;
+  letter-spacing:1px;color:var(--text);margin-bottom:4px;}
+.prop-mod-option-desc{font-size:10px;color:var(--muted2);}
+
+/* Study card in proposal selector */
+.prop-study-card{background:var(--s2);border:2px solid var(--border);border-radius:4px;
+  padding:12px 14px;cursor:pointer;transition:all .15s;margin-bottom:8px;
+  display:flex;align-items:center;gap:12px;}
+.prop-study-card:hover{border-color:var(--border2);}
+.prop-study-card.selected{border-color:var(--gold);background:var(--goldl);}
+.prop-study-card-name{font-weight:600;font-size:13px;color:var(--white);margin-bottom:2px;}
+.prop-study-card-meta{font-family:'DM Mono',monospace;font-size:9px;color:var(--muted2);}
+
+/* Context banner */
+.prop-context-banner{background:var(--s3);border:1px solid var(--border2);border-radius:3px;
+  padding:10px 14px;margin-bottom:12px;display:flex;gap:16px;flex-wrap:wrap;}
+.prop-ctx-item{font-family:'DM Mono',monospace;font-size:9px;color:var(--muted2);}
+.prop-ctx-item span{color:var(--gold);display:block;font-size:10px;margin-top:2px;}
+
+/* Module selector within proposal */
+.prop-mod-select-wrap{margin-top:10px;}
+.prop-mod-existing-list{display:flex;flex-direction:column;gap:6px;max-height:220px;overflow-y:auto;}
+.prop-mod-row{display:flex;align-items:center;gap:10px;padding:8px 10px;
+  background:var(--s2);border:1px solid var(--border);border-radius:3px;cursor:pointer;
+  transition:all .12s;}
+.prop-mod-row:hover{border-color:var(--border2);}
+.prop-mod-row.selected{border-color:var(--gold);background:var(--goldl);}
+.prop-mod-row-name{font-weight:600;font-size:11px;color:var(--white);flex:1;}
+.prop-mod-row-meta{font-family:'DM Mono',monospace;font-size:9px;color:var(--muted2);}
+.prop-mod-status-badge{font-family:'DM Mono',monospace;font-size:8px;padding:2px 6px;border-radius:2px;}
+
 /* ══════════ VEHICLE PLAN STATUS ══════════ */
 .vstatus-study    {font-family:'DM Mono',monospace;font-size:8px;letter-spacing:1px;padding:2px 8px;border-radius:2px;
   background:rgba(86,96,112,.18);border:1px solid rgba(86,96,112,.35);color:#7a8899;}
@@ -953,6 +1019,7 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
     <div class="nav-item" onclick="nav('commercial',this)"><span class="nav-icon">◎</span> Commercial</div>
     <div class="nav-item" onclick="nav('financial',this)"><span class="nav-icon">$</span> Financial</div>
     <div class="nav-item" onclick="nav('engineering',this)"><span class="nav-icon">⚗</span> Engineering Lab <span class="nav-badge">14 specs</span></div>
+    <div class="nav-item" onclick="nav('proposal',this)" id="nav-proposal"><span class="nav-icon">🚗</span> Vehicle Proposal</div>
     <div class="nav-item" onclick="nav('plan',this)"><span class="nav-icon">📅</span> Product Plan <span class="nav-badge">5yr</span></div>
     <div class="nav-item" onclick="nav('brands',this)"><span class="nav-icon">◆</span> Brand Mgmt <span class="nav-badge">3</span></div>
     <div class="nav-item" onclick="nav('market',this)"><span class="nav-icon">≋</span> Market Intel</div>
@@ -1265,7 +1332,7 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
     <div class="seg-tab-eng active" onclick="modTab('platform',this)"><div class="sdot" style="background:var(--gold)"></div>Platform</div>
     <div class="seg-tab-eng" onclick="modTab('ice_pwt',this)"><div class="sdot" style="background:var(--orange)"></div>ICE PWT</div>
     <div class="seg-tab-eng" onclick="modTab('epwt',this)"><div class="sdot" style="background:var(--cyan)"></div>e-Motor</div>
-    <div class="seg-tab-eng" onclick="modTab('tophat',this)"><div class="sdot" style="background:var(--purple)"></div>Top Hat</div>
+    <div class="seg-tab-eng" id="tophat-tab" onclick="modTabTopHat(this)" style="opacity:.45;cursor:not-allowed;" title="Top Hat requires an open study request"><div class="sdot" style="background:var(--purple)"></div>Top Hat <span style="font-family:'DM Mono',monospace;font-size:7px;margin-left:4px;color:var(--muted);">study required</span></div>
     <div class="seg-tab-eng" onclick="modTab('eands',this)"><div class="sdot" style="background:var(--blue)"></div>E&S / ADAS</div>
   </div>
 
@@ -1397,6 +1464,140 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
       <span style="color:var(--gold)">★</span> = Your team &nbsp;·&nbsp; Competitor modules shown when visible (after round results)
     </div>
   </div>
+</div>
+
+<!-- ████ VEHICLE PROPOSAL ████ -->
+<div class="page" id="page-proposal">
+  <div class="pg-title">VEHICLE PROPOSAL</div>
+  <div class="pg-sub">Convert a study request into a full technical proposal · Assign modules · Review specs</div>
+
+  <!-- Step progress bar -->
+  <div style="display:flex;gap:0;margin-bottom:20px;border-radius:4px;overflow:hidden;border:1px solid var(--border);">
+    <div class="prop-step" id="pstep-1" style="background:var(--goldl);border-color:var(--gold);color:var(--gold);">1 · Study</div>
+    <div class="prop-step" id="pstep-2">2 · Platform</div>
+    <div class="prop-step" id="pstep-3">3 · PWT</div>
+    <div class="prop-step" id="pstep-4">4 · Top Hat</div>
+    <div class="prop-step" id="pstep-5">5 · E&amp;S</div>
+    <div class="prop-step" id="pstep-6">6 · Review</div>
+  </div>
+
+  <!-- SECTION 1: Study Selection -->
+  <div class="prop-section" id="prop-sec-1">
+    <div class="prop-sec-header" onclick="togglePropSection(1)">
+      <div class="prop-sec-num">01</div>
+      <div class="prop-sec-title">SELECT STUDY REQUEST</div>
+      <div class="prop-sec-status" id="prop-sec-1-status">— not selected</div>
+      <div class="prop-sec-chevron" id="prop-chev-1">▼</div>
+    </div>
+    <div class="prop-sec-body" id="prop-sec-1-body">
+      <div id="prop-studies-list" style="padding:8px 0;">
+        <div style="color:var(--muted2);font-size:12px;">Loading studies...</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- SECTION 2: Platform -->
+  <div class="prop-section" id="prop-sec-2">
+    <div class="prop-sec-header" onclick="togglePropSection(2)">
+      <div class="prop-sec-num">02</div>
+      <div class="prop-sec-title">PLATFORM MODULE</div>
+      <div class="prop-sec-status" id="prop-sec-2-status">— not configured</div>
+      <div class="prop-sec-chevron" id="prop-chev-2">▼</div>
+    </div>
+    <div class="prop-sec-body" id="prop-sec-2-body" style="display:none;">
+      <div id="prop-study-context" style="display:none;margin-bottom:12px;"></div>
+      <div id="prop-platform-content"></div>
+    </div>
+  </div>
+
+  <!-- SECTION 3: Powertrain -->
+  <div class="prop-section" id="prop-sec-3">
+    <div class="prop-sec-header" onclick="togglePropSection(3)">
+      <div class="prop-sec-num">03</div>
+      <div class="prop-sec-title">POWERTRAIN MODULE (ICE / e-MOTOR)</div>
+      <div class="prop-sec-status" id="prop-sec-3-status">— not configured</div>
+      <div class="prop-sec-chevron" id="prop-chev-3">▼</div>
+    </div>
+    <div class="prop-sec-body" id="prop-sec-3-body" style="display:none;">
+      <div id="prop-pwt-content"></div>
+    </div>
+  </div>
+
+  <!-- SECTION 4: Top Hat -->
+  <div class="prop-section" id="prop-sec-4">
+    <div class="prop-sec-header" onclick="togglePropSection(4)">
+      <div class="prop-sec-num">04</div>
+      <div class="prop-sec-title">TOP HAT MODULE</div>
+      <div class="prop-sec-status" id="prop-sec-4-status">— not configured</div>
+      <div class="prop-sec-chevron" id="prop-chev-4">▼</div>
+    </div>
+    <div class="prop-sec-body" id="prop-sec-4-body" style="display:none;">
+      <div id="prop-tophat-content"></div>
+    </div>
+  </div>
+
+  <!-- SECTION 5: E&S / ADAS -->
+  <div class="prop-section" id="prop-sec-5">
+    <div class="prop-sec-header" onclick="togglePropSection(5)">
+      <div class="prop-sec-num">05</div>
+      <div class="prop-sec-title">E&amp;S / ADAS MODULE</div>
+      <div class="prop-sec-status" id="prop-sec-5-status">— not configured</div>
+      <div class="prop-sec-chevron" id="prop-chev-5">▼</div>
+    </div>
+    <div class="prop-sec-body" id="prop-sec-5-body" style="display:none;">
+      <div id="prop-eands-content"></div>
+    </div>
+  </div>
+
+  <!-- SECTION 6: Review + Radar -->
+  <div class="prop-section" id="prop-sec-6">
+    <div class="prop-sec-header" onclick="togglePropSection(6)">
+      <div class="prop-sec-num">06</div>
+      <div class="prop-sec-title">REVIEW &amp; CONFIRM</div>
+      <div class="prop-sec-status" id="prop-sec-6-status">— complete all steps first</div>
+      <div class="prop-sec-chevron" id="prop-chev-6">▼</div>
+    </div>
+    <div class="prop-sec-body" id="prop-sec-6-body" style="display:none;">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+
+        <!-- Left: spec summary table -->
+        <div>
+          <div class="card-title" style="margin-bottom:10px;">Proposed Vehicle Specs</div>
+          <div id="prop-spec-table"></div>
+          <div style="margin-top:14px;">
+            <div class="card-title" style="margin-bottom:8px;">Investment Summary</div>
+            <div id="prop-invest-table"></div>
+          </div>
+        </div>
+
+        <!-- Right: radar chart -->
+        <div>
+          <div class="card-title" style="margin-bottom:10px;">Spec Radar — vs Segment Benchmark</div>
+          <div style="display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap;" id="prop-radar-legend"></div>
+          <canvas id="prop-radar-canvas" width="380" height="320" style="display:block;margin:0 auto;"></canvas>
+          <div style="margin-top:6px;font-family:'DM Mono',monospace;font-size:7px;color:var(--muted2);text-align:center;">
+            ▲ axes: bigger = better · dashed = segment benchmark
+          </div>
+        </div>
+      </div>
+
+      <!-- Confirm bar -->
+      <div style="margin-top:20px;padding:16px;background:var(--s2);border-radius:4px;border:1px solid var(--border2);display:flex;align-items:center;gap:16px;">
+        <div style="flex:1;">
+          <div style="font-size:13px;font-weight:600;color:var(--white);" id="prop-confirm-title">Ready to submit proposal?</div>
+          <div style="font-family:'DM Mono',monospace;font-size:9px;color:var(--muted2);margin-top:3px;">
+            Submitting will move the study to PLAN status and open footprint configuration
+          </div>
+        </div>
+        <button onclick="goBackToEditProposal()" style="font-family:'DM Mono',monospace;font-size:10px;padding:8px 16px;border-radius:3px;border:1px solid var(--border2);background:var(--s1);color:var(--muted2);cursor:pointer;">← Edit Modules</button>
+        <button onclick="confirmProposal()" id="prop-confirm-btn"
+          style="font-family:'DM Mono',monospace;font-size:11px;font-weight:700;padding:10px 24px;
+          border-radius:3px;border:1px solid rgba(56,212,134,.5);background:rgba(56,212,134,.12);
+          color:var(--green);cursor:pointer;letter-spacing:.5px;">✓ SUBMIT PROPOSAL</button>
+      </div>
+    </div>
+  </div>
+
 </div>
 
 <!-- ████ VEHICLE PLAN ████ -->
@@ -2158,6 +2359,7 @@ function nav(page, el) {
   el.classList.add('active');
   if(page==='market') buildMktBars();
   if(page==='plan') loadVehiclePlan();
+  if(page==='proposal') loadVehicleProposal();
   if(page==='brands') renderBrand(currentBrand);
   if(page==='engineering') { loadBaseConfigs(currentModType); if(teamId) { loadModuleLibrary(); loadProductStudies(); } }
 }
@@ -3260,7 +3462,24 @@ document.addEventListener('click', function(e) {
   if (action === 'approve')      { promoteVehicle(vid, 'approved'); }
   if (action === 'revise')       { promoteVehicle(vid, 'plan'); }
   if (action === 'delete')       { deleteVehicle(vid); }
-  if (action === 'study-submit') { submitStudyProposal(vid); }
+  if (action === 'study-submit')       { submitStudyProposal(vid); }
+  if (action === 'prop-select-study') { selectStudy(vid); }
+  if (action === 'prop-mod-mode') {
+    var pk = btn.getAttribute('data-propkey');
+    var mo = btn.getAttribute('data-mode');
+    var nf = btn.getAttribute('data-nextfn');
+    setPropModMode(pk, mo, nf);
+  }
+  if (action === 'prop-mod-select') {
+    var pk2  = btn.getAttribute('data-propkey');
+    var mid  = btn.getAttribute('data-modid');
+    var nf2  = btn.getAttribute('data-nextfn');
+    selectPropModule(pk2, mid, nf2);
+  }
+  if (action === 'prop-continue') {
+    var nf3 = btn.getAttribute('data-nextfn');
+    if (nf3 && window[nf3]) window[nf3]();
+  }
 });
 
 
@@ -5823,6 +6042,582 @@ async function instructorNextRound() {
 
 // Module Development: load base configs on startup
 loadBaseConfigs('platform').catch(()=>{});
+
+
+// ══════════════════════════════════════════
+// VEHICLE PROPOSAL WIZARD
+// ══════════════════════════════════════════
+
+var _prop = {
+  study:       null,   // selected study vehicle object
+  modules:     [],     // all team modules
+  platform:    null,   // {mode:'reuse'|'new'|'modify', module:obj, specs:{}}
+  pwt:         null,   // {mode, type:'ice_pwt'|'epwt', module, specs}
+  tophat:      null,   // {mode, module, specs}
+  eands:       null,   // {mode, module, specs}
+  currentSec:  1,
+};
+
+// ── Top Hat tab guard ──────────────────────────────────────
+async function modTabTopHat(el) {
+  if (!teamId) { toast('\u26a0 Join a session first'); return; }
+  try {
+    const res  = await fetch(API_URL + '/teams/' + teamId + '/vehicles');
+    const data = await res.json();
+    const studies = (data.vehicles || []).filter(function(v) {
+      return v.status === 'study' || v.status === 'draft';
+    });
+    if (studies.length === 0) {
+      toast('\u26a0 Top Hat requires an open study request. Create one in Vehicle Plan first.');
+      return;
+    }
+    // Studies exist — unlock and switch to proposal page
+    toast('\u2192 Go to Vehicle Proposal to configure Top Hat for a study');
+    // Navigate to proposal page
+    var proposalNavEl = document.getElementById('nav-proposal');
+    if (proposalNavEl) {
+      document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+      proposalNavEl.classList.add('active');
+      document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+      document.getElementById('page-proposal').classList.add('active');
+      loadVehicleProposal();
+    }
+  } catch(e) { toast('\u26a0 ' + e.message); }
+}
+
+// ── Main loader ────────────────────────────────────────────
+async function loadVehicleProposal() {
+  if (!teamId) return;
+  try {
+    const [vRes, mRes] = await Promise.all([
+      fetch(API_URL + '/teams/' + teamId + '/vehicles'),
+      fetch(API_URL + '/teams/' + teamId + '/modules'),
+    ]);
+    const vehicles = (await vRes.json()).vehicles || [];
+    _prop.modules  = (await mRes.json()).modules  || [];
+    const studies  = vehicles.filter(function(v) {
+      return v.status === 'study' || v.status === 'draft';
+    });
+    renderStudyList(studies);
+    // Reset if no study selected yet
+    if (!_prop.study) {
+      setPropStep(1);
+    }
+  } catch(e) { console.warn('loadVehicleProposal:', e); }
+}
+
+// ── Section toggle ─────────────────────────────────────────
+function togglePropSection(n) {
+  var body = document.getElementById('prop-sec-' + n + '-body');
+  var chev = document.getElementById('prop-chev-' + n);
+  if (!body) return;
+  var collapsed = body.style.display === 'none';
+  body.style.display = collapsed ? 'block' : 'none';
+  if (chev) chev.textContent = collapsed ? '▲' : '▼';
+}
+
+function setPropStep(n) {
+  _prop.currentSec = n;
+  // Update progress bar
+  for (var i = 1; i <= 6; i++) {
+    var el = document.getElementById('pstep-' + i);
+    if (!el) continue;
+    el.classList.remove('active','done');
+    if (i < n) el.classList.add('done');
+    else if (i === n) el.classList.add('active');
+  }
+  // Open target section, collapse others
+  for (var j = 1; j <= 6; j++) {
+    var body = document.getElementById('prop-sec-' + j + '-body');
+    var sec  = document.getElementById('prop-sec-' + j);
+    var chev = document.getElementById('prop-chev-' + j);
+    if (!body || !sec) continue;
+    if (j === n) {
+      body.style.display = 'block';
+      sec.classList.add('prop-active');
+      sec.classList.remove('prop-done');
+      if (chev) chev.textContent = '▲';
+    } else if (j < n) {
+      body.style.display = 'none';
+      sec.classList.remove('prop-active');
+      sec.classList.add('prop-done');
+      if (chev) chev.textContent = '▼';
+    } else {
+      body.style.display = 'none';
+      sec.classList.remove('prop-active','prop-done');
+      if (chev) chev.textContent = '▼';
+    }
+  }
+}
+
+// ── Step 1: Study list ─────────────────────────────────────
+function renderStudyList(studies) {
+  var el = document.getElementById('prop-studies-list');
+  if (!el) return;
+  if (studies.length === 0) {
+    el.innerHTML = '<div style="padding:16px;color:var(--muted2);font-size:12px;text-align:center;">No open studies found. Go to <strong style="color:var(--gold);">Vehicle Plan</strong> and create a Product Study first.</div>';
+    return;
+  }
+  el.innerHTML = studies.map(function(v) {
+    var rs   = v.rolled_up_specs || {};
+    var sn   = SEG_NAMES[v.segment_code]  || v.segment_code;
+    var sc   = SEG_COLORS[v.segment_code] || 'var(--muted)';
+    var body = rs.body_type || '—';
+    var pwt  = rs.pwt_type  || '—';
+    var sop  = v.start_year ? 'Q'+v.start_quarter+' '+v.start_year : '—';
+    var eop  = v.end_year   ? 'Q'+v.end_quarter  +' '+v.end_year   : '—';
+    var sel  = _prop.study && _prop.study.id === v.id ? ' selected' : '';
+    return '<div class="prop-study-card' + sel + '" data-vid="' + v.id + '" data-action="prop-select-study">' +
+      '<div class="gantt-seg-dot" style="background:' + sc + ';width:10px;height:10px;border-radius:2px;flex-shrink:0;"></div>' +
+      '<div style="flex:1;">' +
+        '<div class="prop-study-card-name">' + v.name + '</div>' +
+        '<div class="prop-study-card-meta">' + sn + ' &nbsp;&#183;&nbsp; ' + body + ' &nbsp;&#183;&nbsp; ' + pwt + ' &nbsp;&#183;&nbsp; ' + sop + ' &#8594; ' + eop + '</div>' +
+      '</div>' +
+      '<div>' + statusBadge(v.status) + '</div>' +
+    '</div>';
+  }).join('');
+}
+
+function selectStudy(vid) {
+  var allVehicles = _prop.modules ? [] : [];
+  // Find study from DOM data — reload from API to be safe
+  fetch(API_URL + '/teams/' + teamId + '/vehicles').then(function(r){ return r.json(); })
+  .then(function(data) {
+    var v = (data.vehicles || []).find(function(x){ return x.id === vid; });
+    if (!v) return;
+    _prop.study = v;
+    // Mark selected
+    document.querySelectorAll('.prop-study-card').forEach(function(el) {
+      el.classList.toggle('selected', el.getAttribute('data-vid') === vid);
+    });
+    // Update status
+    var sn = SEG_NAMES[v.segment_code] || v.segment_code;
+    var statusEl = document.getElementById('prop-sec-1-status');
+    if (statusEl) statusEl.textContent = '✓ ' + v.name + ' · ' + sn;
+    // Advance to step 2
+    setTimeout(function(){ setPropStep(2); buildPlatformSection(); }, 300);
+  });
+}
+
+// ── Context banner ─────────────────────────────────────────
+function buildContextBanner() {
+  if (!_prop.study) return '';
+  var v   = _prop.study;
+  var rs  = v.rolled_up_specs || {};
+  var sn  = SEG_NAMES[v.segment_code] || v.segment_code;
+  var sop = v.start_year ? 'Q'+v.start_quarter+' '+v.start_year : '—';
+  var eop = v.end_year   ? 'Q'+v.end_quarter  +' '+v.end_year   : '—';
+  return '<div class="prop-context-banner">' +
+    '<div class="prop-ctx-item">STUDY<span>' + v.name + '</span></div>' +
+    '<div class="prop-ctx-item">SEGMENT<span>' + sn + '</span></div>' +
+    '<div class="prop-ctx-item">BODY TYPE<span>' + (rs.body_type||'—') + '</span></div>' +
+    '<div class="prop-ctx-item">PWT INTENT<span>' + (rs.pwt_type||'—') + '</span></div>' +
+    '<div class="prop-ctx-item">SOP<span>' + sop + '</span></div>' +
+    '<div class="prop-ctx-item">EOP<span>' + eop + '</span></div>' +
+  '</div>';
+}
+
+// ── Generic module section builder ─────────────────────────
+function buildModuleSection(secNum, modType, propKey, contentElId, nextFn) {
+  var el = document.getElementById(contentElId);
+  if (!el) return;
+  el.innerHTML = buildContextBanner() + buildModuleOptions(modType, propKey, nextFn);
+}
+
+function buildModuleOptions(modType, propKey, nextFn) {
+  var mods      = _prop.modules.filter(function(m){ return m.module_type === modType; });
+  var completed = mods.filter(function(m){ return m.development_status==='completed'; });
+  var currentSel= _prop[propKey];
+
+  var html = '<div class="prop-mod-options">';
+  ['reuse','modify','new'].forEach(function(mode) {
+    var icons = {reuse:'♻️', modify:'✏️', 'new':'🆕'};
+    var titles= {reuse:'Reuse', modify:'Modify', 'new':'New Development'};
+    var descs = {
+      reuse:'Use a completed module · Zero R&D cost · Instant',
+      modify:'Evolve an existing module · Reduced cost & time',
+      'new':'Full R&D from scratch · Maximum flexibility'
+    };
+    var sel = currentSel && currentSel.mode===mode ? ' selected' : '';
+    html += '<div class="prop-mod-option' + sel + '" ' +
+      'data-action="prop-mod-mode" data-propkey="' + propKey + '" ' +
+      'data-mode="' + mode + '" data-nextfn="' + nextFn + '">' +
+      '<div class="prop-mod-option-icon">' + icons[mode] + '</div>' +
+      '<div class="prop-mod-option-title">' + titles[mode] + '</div>' +
+      '<div class="prop-mod-option-desc">' + descs[mode] + '</div></div>';
+  });
+  html += '</div>';
+
+  // Module picker
+  if (currentSel && (currentSel.mode==='reuse' || currentSel.mode==='modify')) {
+    var list = currentSel.mode==='reuse' ? completed : mods;
+    html += '<div class="prop-mod-select-wrap">';
+    html += '<div style="font-family:DM Mono,monospace;font-size:8px;text-transform:uppercase;' +
+      'letter-spacing:1px;color:var(--muted);margin-bottom:8px;">Select module:</div>';
+    if (list.length === 0) {
+      html += '<div style="color:var(--muted2);font-size:11px;padding:10px 0;">No ' +
+        (currentSel.mode==='reuse'?'completed':'') + ' modules available. Switch to New Development.</div>';
+    } else {
+      html += '<div class="prop-mod-existing-list">';
+      list.forEach(function(m) {
+        var isSel = currentSel.module && currentSel.module.id===m.id;
+        var stCol = m.development_status==='completed' ? 'var(--green)' : 'var(--gold)';
+        var stLbl = m.development_status==='completed' ? '\u2713 Done' : '\u23f3 In Dev';
+        var tpc   = m.per_unit_tpc_eur ? '\u20ac'+Math.round(m.per_unit_tpc_eur)+'/veh' : '';
+        html += '<div class="prop-mod-row' + (isSel?' selected':'') + '" ' +
+          'data-action="prop-mod-select" data-propkey="' + propKey + '" ' +
+          'data-modid="' + m.id + '" data-nextfn="' + nextFn + '">' +
+          '<div class="prop-mod-row-name">' + m.name + '</div>' +
+          '<div class="prop-mod-row-meta">' + m.config_key + (tpc?' &nbsp;\u00b7&nbsp; '+tpc:'') + '</div>' +
+          '<span class="prop-mod-status-badge" style="background:' + stCol + '22;color:' + stCol + ';">' + stLbl + '</span>' +
+          '</div>';
+      });
+      html += '</div>';
+    }
+    html += '</div>';
+  } else if (currentSel && currentSel.mode==='new') {
+    html += '<div style="padding:12px;background:var(--s3);border-radius:3px;border:1px solid var(--border2);">' +
+      '<div style="font-family:DM Mono,monospace;font-size:9px;color:var(--gold);margin-bottom:6px;">NEW DEVELOPMENT \u2014 R&D initiated after proposal approval</div>' +
+      '<div style="font-size:11px;color:var(--muted2);">Configure exact specs in Engineering Lab after this proposal is submitted.</div>' +
+      '<div style="margin-top:10px;">' +
+        '<button data-action="prop-continue" data-nextfn="' + nextFn + '" ' +
+        'style="font-family:DM Mono,monospace;font-size:9px;padding:5px 14px;border-radius:2px;' +
+        'border:1px solid rgba(200,164,60,.4);background:var(--goldl);color:var(--gold);cursor:pointer;">' +
+        'Continue \u2192</button>' +
+      '</div></div>';
+  }
+  return html;
+}
+
+function setPropModMode(propKey, mode, nextFn) {
+  if (!_prop[propKey]) _prop[propKey] = {};
+  _prop[propKey].mode   = mode;
+  _prop[propKey].module = null;
+  // Re-render the section
+  var secMap = {platform:2, pwt:3, tophat:4, eands:5};
+  var modMap = {platform:'platform', pwt:'ice_pwt', tophat:'tophat', eands:'eands'};
+  var elMap  = {platform:'prop-platform-content', pwt:'prop-pwt-content',
+                tophat:'prop-tophat-content', eands:'prop-eands-content'};
+  buildModuleSection(secMap[propKey], modMap[propKey], propKey, elMap[propKey], nextFn);
+}
+
+function selectPropModule(propKey, moduleId, nextFn) {
+  if (!_prop[propKey]) _prop[propKey] = {};
+  var mod = _prop.modules.find(function(m){ return m.id === moduleId; });
+  _prop[propKey].module = mod || null;
+  _prop[propKey].specs  = mod ? (mod.specs || {}) : {};
+  // Update status label
+  var secMap    = {platform:2, pwt:3, tophat:4, eands:5};
+  var secNum    = secMap[propKey];
+  var statusEl  = document.getElementById('prop-sec-' + secNum + '-status');
+  if (statusEl && mod) statusEl.textContent = '\u2713 ' + mod.name + ' (' + mod.config_key + ')';
+  // Advance after brief delay
+  setTimeout(function(){ window[nextFn] && window[nextFn](); }, 200);
+}
+
+// ── Step builders ──────────────────────────────────────────
+function buildPlatformSection() {
+  buildModuleSection(2, 'platform', 'platform', 'prop-platform-content', 'advanceToPWT');
+}
+function advanceToPWT() {
+  var s2 = document.getElementById('prop-sec-2-status');
+  if (s2 && _prop.platform) {
+    if (_prop.platform.mode === 'new') s2.textContent = '\u2713 New development';
+    else if (!_prop.platform.module) return; // must select
+  }
+  setPropStep(3);
+  buildPWTSection();
+}
+function buildPWTSection() {
+  var el = document.getElementById('prop-pwt-content');
+  if (!el) return;
+  // PWT: show both ICE PWT and e-Motor options
+  var rs  = (_prop.study && _prop.study.rolled_up_specs) || {};
+  var pwtIntent = rs.pwt_type || '';
+  var showICE   = ['ICE','HEV','PHEV','REEV'].indexOf(pwtIntent) >= 0 || !pwtIntent;
+  var showEV    = ['BEV','FCEV','REEV'].indexOf(pwtIntent) >= 0 || !pwtIntent;
+
+  var html = buildContextBanner();
+  html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">';
+
+  // ICE PWT
+  html += '<div><div style="font-family:DM Mono,monospace;font-size:8px;text-transform:uppercase;' +
+    'letter-spacing:1px;color:var(--orange);margin-bottom:8px;">⚙ ICE / HYBRID POWERTRAIN</div>' +
+    buildModuleOptions('ice_pwt', 'pwt', 'advanceToTopHat') + '</div>';
+
+  // e-Motor
+  html += '<div><div style="font-family:DM Mono,monospace;font-size:8px;text-transform:uppercase;' +
+    'letter-spacing:1px;color:var(--cyan);margin-bottom:8px;">⚡ e-MOTOR</div>' +
+    buildModuleOptions('epwt', 'epwt', 'advanceToTopHat') + '</div>';
+
+  html += '</div>';
+  html += '<div style="margin-top:12px;"><button onclick="advanceToTopHat()" style="' +
+    'font-family:DM Mono,monospace;font-size:9px;padding:5px 14px;border-radius:2px;' +
+    'border:1px solid rgba(200,164,60,.4);background:var(--goldl);color:var(--gold);cursor:pointer;">' +
+    'Continue \u2192</button></div>';
+  el.innerHTML = html;
+
+  // Update status if already selected
+  if (!_prop.pwt) _prop.pwt = {};
+  if (!_prop.epwt) _prop.epwt = {};
+}
+
+function advanceToTopHat() {
+  var s3 = document.getElementById('prop-sec-3-status');
+  if (s3) {
+    var pwtName  = _prop.pwt  && _prop.pwt.module  ? _prop.pwt.module.name  : (_prop.pwt&&_prop.pwt.mode==='new'?'New ICE':'—');
+    var epwtName = _prop.epwt && _prop.epwt.module ? _prop.epwt.module.name : (_prop.epwt&&_prop.epwt.mode==='new'?'New e-Motor':'—');
+    s3.textContent = '\u2713 ' + pwtName + ' / ' + epwtName;
+  }
+  setPropStep(4);
+  buildTopHatSection();
+}
+
+function buildTopHatSection() {
+  buildModuleSection(4, 'tophat', 'tophat', 'prop-tophat-content', 'advanceToEandS');
+}
+function advanceToEandS() {
+  var s4 = document.getElementById('prop-sec-4-status');
+  if (s4 && _prop.tophat) {
+    if (_prop.tophat.mode==='new') s4.textContent = '\u2713 New development';
+    else if (!_prop.tophat.module) return;
+  }
+  setPropStep(5);
+  buildEandSSection();
+}
+function buildEandSSection() {
+  buildModuleSection(5, 'eands', 'eands', 'prop-eands-content', 'advanceToReview');
+}
+function advanceToReview() {
+  var s5 = document.getElementById('prop-sec-5-status');
+  if (s5 && _prop.eands) {
+    if (_prop.eands.mode==='new') s5.textContent = '\u2713 New development';
+    else if (!_prop.eands.module) return;
+  }
+  setPropStep(6);
+  buildReviewSection();
+}
+
+// ── Step 6: Review + Radar ─────────────────────────────────
+function buildReviewSection() {
+  // Roll up specs from selected modules
+  var rolled = {};
+  ['platform','pwt','epwt','tophat','eands'].forEach(function(key) {
+    var p = _prop[key];
+    if (p && p.module && p.module.specs) Object.assign(rolled, p.module.specs);
+  });
+
+  // Investment summary
+  var totalTpc = 0, totalRd = 0, totalFte = 0;
+  ['platform','pwt','epwt','tophat','eands'].forEach(function(key) {
+    var p = _prop[key];
+    if (!p) return;
+    if (p.module) {
+      totalTpc += parseFloat(p.module.per_unit_tpc_eur  || 0);
+      totalRd  += parseFloat(p.module.total_rd_spend_m  || 0);
+      totalFte += parseFloat(p.module.total_rd_fte      || 0);
+    }
+  });
+
+  // Spec table
+  var specDefs = [
+    {key:'reliability',  label:'Reliability',       fmt:function(v){return (v*100).toFixed(0)+'%';}},
+    {key:'comfort',      label:'Comfort',           fmt:function(v){return (v*100).toFixed(0)+'%';}},
+    {key:'safety',       label:'Safety',            fmt:function(v){return (v*100).toFixed(0)+'%';}},
+    {key:'premiumness',  label:'Premiumness',       fmt:function(v){return (v*100).toFixed(0)+'%';}},
+    {key:'roominess',    label:'Roominess',         fmt:function(v){return parseFloat(v).toFixed(1)+'m\u00b3';}},
+    {key:'power',        label:'ICE Power',         fmt:function(v){return Math.round(v)+'hp';}},
+    {key:'power_kw',     label:'BEV Power',         fmt:function(v){return Math.round(v)+'kW';}},
+    {key:'emission_tech',label:'Emission Tech',     fmt:function(v){return (v*100).toFixed(0)+'%';}},
+    {key:'efficiency',   label:'e-Motor Eff.',      fmt:function(v){return (v*100).toFixed(0)+'%';}},
+    {key:'adas_level',   label:'ADAS Level',        fmt:function(v){return 'Level '+Math.round(v);}},
+  ];
+  var filled = specDefs.filter(function(s){ return rolled[s.key] != null; });
+  var specHtml = '<table style="width:100%;border-collapse:collapse;">' +
+    filled.map(function(s) {
+      return '<tr style="border-bottom:1px solid var(--border);">' +
+        '<td style="font-family:DM Mono,monospace;font-size:9px;color:var(--muted2);padding:5px 0;">' + s.label + '</td>' +
+        '<td style="font-family:DM Mono,monospace;font-size:10px;color:var(--text);text-align:right;padding:5px 0;">' + s.fmt(rolled[s.key]) + '</td>' +
+      '</tr>';
+    }).join('') +
+    (filled.length===0?'<tr><td colspan="2" style="color:var(--muted2);text-align:center;padding:12px;">No module specs yet — select completed modules</td></tr>':'') +
+    '</table>';
+  var stEl = document.getElementById('prop-spec-table');
+  if (stEl) stEl.innerHTML = specHtml;
+
+  // Investment table
+  var invHtml = '<table style="width:100%;border-collapse:collapse;">' +
+    '<tr style="border-bottom:1px solid var(--border);"><td style="font-family:DM Mono,monospace;font-size:9px;color:var(--muted2);padding:5px 0;">Unit TPC (\u20ac/vehicle)</td><td style="font-family:DM Mono,monospace;font-size:10px;color:var(--gold);text-align:right;padding:5px 0;">\u20ac'+Math.round(totalTpc).toLocaleString()+'</td></tr>' +
+    '<tr style="border-bottom:1px solid var(--border);"><td style="font-family:DM Mono,monospace;font-size:9px;color:var(--muted2);padding:5px 0;">R&D Investment</td><td style="font-family:DM Mono,monospace;font-size:10px;color:var(--text);text-align:right;padding:5px 0;">\u20ac'+Math.round(totalRd)+'M</td></tr>' +
+    '<tr><td style="font-family:DM Mono,monospace;font-size:9px;color:var(--muted2);padding:5px 0;">Engineering FTE</td><td style="font-family:DM Mono,monospace;font-size:10px;color:var(--text);text-align:right;padding:5px 0;">'+Math.round(totalFte)+' months</td></tr>' +
+    '</table>';
+  var invEl = document.getElementById('prop-invest-table');
+  if (invEl) invEl.innerHTML = invHtml;
+
+  // Radar chart
+  drawProposalRadar(rolled, totalTpc);
+
+  // Update status
+  var s6 = document.getElementById('prop-sec-6-status');
+  if (s6) s6.textContent = totalTpc > 0 ? '\u20ac'+Math.round(totalTpc)+'/veh TPC' : '\u2713 Ready to confirm';
+}
+
+function drawProposalRadar(specs, tpcEur) {
+  var canvas = document.getElementById('prop-radar-canvas');
+  if (!canvas) return;
+  var ctx = canvas.getContext('2d');
+  var W = canvas.width, H = canvas.height;
+  ctx.clearRect(0, 0, W, H);
+  var cx = W/2, cy = H/2, R = Math.min(W,H)/2 - 36;
+  var axes = RADAR_AXES;
+  var N = axes.length;
+  var angles = axes.map(function(_,i){ return (i/N)*2*Math.PI - Math.PI/2; });
+
+  // Segment benchmark: average of existing team vehicles in same segment
+  var segVehicles = activeVehicles.filter(function(v){
+    return _prop.study && v.segment_code === _prop.study.segment_code &&
+           v.status !== 'study' && v.rolled_up_specs;
+  });
+  var benchSpecs = null;
+  if (segVehicles.length > 0) {
+    benchSpecs = {};
+    axes.forEach(function(ax) {
+      var vals = segVehicles.map(function(v){ return parseFloat((v.rolled_up_specs||{})[ax.key]||0); });
+      benchSpecs[ax.key] = vals.reduce(function(a,b){return a+b;},0) / vals.length;
+    });
+  }
+
+  // Grid
+  [0.2,0.4,0.6,0.8,1.0].forEach(function(lvl) {
+    ctx.beginPath();
+    angles.forEach(function(a,i) {
+      var x = cx + Math.cos(a)*R*lvl, y = cy + Math.sin(a)*R*lvl;
+      i===0 ? ctx.moveTo(x,y) : ctx.lineTo(x,y);
+    });
+    ctx.closePath();
+    ctx.strokeStyle = lvl===1.0?'rgba(255,255,255,.12)':'rgba(255,255,255,.05)';
+    ctx.lineWidth = 1; ctx.stroke();
+  });
+
+  // Spokes + labels
+  angles.forEach(function(a,i) {
+    ctx.beginPath(); ctx.moveTo(cx,cy);
+    ctx.lineTo(cx+Math.cos(a)*R, cy+Math.sin(a)*R);
+    ctx.strokeStyle='rgba(255,255,255,.07)'; ctx.lineWidth=1; ctx.stroke();
+    ctx.fillStyle='rgba(86,96,112,.9)'; ctx.font='8px DM Mono,monospace';
+    ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.fillText(axes[i].label, cx+Math.cos(a)*(R+18), cy+Math.sin(a)*(R+18));
+  });
+
+  // Benchmark polygon
+  if (benchSpecs) {
+    ctx.beginPath();
+    angles.forEach(function(a,i) {
+      var v = axes[i].norm ? Math.min(1,Math.max(0,axes[i].norm(parseFloat(benchSpecs[axes[i].key]||0)))) : 0;
+      var x = cx+Math.cos(a)*R*v, y = cy+Math.sin(a)*R*v;
+      i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);
+    });
+    ctx.closePath();
+    ctx.fillStyle='rgba(68,128,224,.08)'; ctx.fill();
+    ctx.strokeStyle='rgba(68,128,224,.5)'; ctx.lineWidth=1.5;
+    ctx.setLineDash([4,3]); ctx.stroke(); ctx.setLineDash([]);
+  }
+
+  // New vehicle polygon
+  var vals = axes.map(function(ax) {
+    if (ax.derived && ax.key==='_dtc') return tpcEur>0?Math.max(0,ax.norm(tpcEur)):0;
+    var v = specs[ax.key];
+    return v!=null ? Math.min(1,Math.max(0,ax.norm(parseFloat(v)))) : 0;
+  });
+  ctx.beginPath();
+  angles.forEach(function(a,i) {
+    var x = cx+Math.cos(a)*R*vals[i], y = cy+Math.sin(a)*R*vals[i];
+    i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);
+  });
+  ctx.closePath();
+  ctx.fillStyle='rgba(200,164,60,.18)'; ctx.fill();
+  ctx.strokeStyle='var(--gold)'; ctx.lineWidth=2.5; ctx.stroke();
+  // Dots
+  angles.forEach(function(a,i) {
+    ctx.beginPath();
+    ctx.arc(cx+Math.cos(a)*R*vals[i], cy+Math.sin(a)*R*vals[i], 3.5, 0, 2*Math.PI);
+    ctx.fillStyle='var(--gold)'; ctx.fill();
+  });
+
+  // Legend
+  var legEl = document.getElementById('prop-radar-legend');
+  if (legEl) {
+    legEl.innerHTML =
+      '<span style="display:flex;align-items:center;gap:5px;font-family:DM Mono,monospace;font-size:9px;color:var(--gold);">' +
+        '<span style="width:14px;height:2px;background:var(--gold);display:inline-block;"></span>Proposed Vehicle' +
+      '</span>' +
+      (benchSpecs ?
+      '<span style="display:flex;align-items:center;gap:5px;font-family:DM Mono,monospace;font-size:9px;color:var(--blue);">' +
+        '<span style="width:14px;height:2px;border-top:2px dashed rgba(68,128,224,.7);display:inline-block;"></span>Segment Benchmark (' + segVehicles.length + ' vehicles)' +
+      '</span>' : '<span style="font-family:DM Mono,monospace;font-size:9px;color:var(--muted2);">No benchmark — no existing vehicles in segment</span>');
+  }
+}
+
+// ── Confirm ────────────────────────────────────────────────
+async function confirmProposal() {
+  if (!_prop.study) { toast('\u26a0 No study selected'); return; }
+  var vid = _prop.study.id;
+
+  // Collect module IDs
+  var pwtId  = (_prop.pwt  && _prop.pwt.module)  ? _prop.pwt.module.id  : null;
+  var epwtId = (_prop.epwt && _prop.epwt.module) ? _prop.epwt.module.id : null;
+  var patch  = {
+    status:            'plan',
+    platform_module_id: (_prop.platform && _prop.platform.module) ? _prop.platform.module.id : null,
+    pwt_module_id:      pwtId || epwtId || null,
+    tophat_module_id:   (_prop.tophat && _prop.tophat.module) ? _prop.tophat.module.id : null,
+    eands_module_id:    (_prop.eands  && _prop.eands.module)  ? _prop.eands.module.id  : null,
+  };
+
+  try {
+    var btn = document.getElementById('prop-confirm-btn');
+    if (btn) { btn.disabled = true; btn.textContent = 'Submitting...'; }
+
+    const res  = await fetch(API_URL + '/vehicles/' + vid, {
+      method: 'PATCH', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify(patch)
+    });
+    const data = await res.json();
+
+    if (data.success) {
+      toast('\u2713 Proposal submitted \u2014 vehicle moved to PLAN');
+      // Reset proposal state
+      _prop.study = null; _prop.platform = null; _prop.pwt = null;
+      _prop.epwt  = null; _prop.tophat   = null; _prop.eands = null;
+      // Navigate to Vehicle Plan
+            var planNav = null; // navigation handled below
+      activeVehicles = [];
+      // Show footprint config toast
+      setTimeout(function() {
+        toast('\u2192 Next: configure plant allocation in Industrial Operations');
+      }, 1500);
+      // Go to plan page
+      document.querySelectorAll('.page').forEach(function(p){ p.classList.remove('active'); });
+      document.getElementById('page-plan').classList.add('active');
+      document.querySelectorAll('.nav-item').forEach(function(n){ n.classList.remove('active'); });
+      var planNavEl = document.querySelector('.nav-item[onclick*="plan"]');
+      if (planNavEl) planNavEl.classList.add('active');
+      await loadVehiclePlan();
+    } else {
+      toast('\u26a0 ' + (data.detail || 'Error submitting proposal'));
+      if (btn) { btn.disabled = false; btn.textContent = '\u2713 SUBMIT PROPOSAL'; }
+    }
+  } catch(e) {
+    toast('\u26a0 ' + e.message);
+    var btn = document.getElementById('prop-confirm-btn');
+    if (btn) { btn.disabled = false; btn.textContent = '\u2713 SUBMIT PROPOSAL'; }
+  }
+}
+
+function goBackToEditProposal() {
+  setPropStep(2);
+  buildPlatformSection();
+}
 
 
 // ══════════════════════════════════════════
