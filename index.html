@@ -4332,7 +4332,7 @@ async function loadSession() {
     const rRes  = await fetch(`${API_URL}/sessions/${sessionId}/rounds`);
     const rData = await rRes.json();
     if (rData.rounds.length > 0) {
-      const latest = rData.rounds[rData.rounds.length-1];
+      const latest = (rData.rounds||[]).filter(r=>!r.is_historical&&r.round_number>0).slice(-1)[0];
       roundId = latest.id;
       updateRoundDisplay(latest);
     }
@@ -4361,7 +4361,7 @@ async function teamJoinSession() {
     const rRes  = await fetch(`${API_URL}/sessions/${sessionId}/rounds`);
     const rData = await rRes.json();
     if (rData.rounds.length > 0) {
-      const latest = rData.rounds[rData.rounds.length-1];
+      const latest = (rData.rounds||[]).filter(r=>!r.is_historical&&r.round_number>0).slice(-1)[0];
       roundId = latest.id;
       updateRoundDisplay(latest);
     }
@@ -4403,7 +4403,7 @@ async function checkRoundStateOnEntry() {
     const rData = await rRes.json();
     const rounds = rData.rounds || [];
     if (rounds.length === 0) return;
-    const latest = rounds[rounds.length - 1];
+    const latest = rounds.filter(r=>!r.is_historical&&r.round_number>0).slice(-1)[0];
 
     // Always use the latest round
     if (latest.id !== roundId) {
@@ -4883,7 +4883,7 @@ function startRoundStatePolling() {
       const rData = await rRes.json();
       const rounds = rData.rounds || [];
       if (rounds.length === 0) return;
-      const latest = rounds[rounds.length - 1];
+      const latest = rounds.filter(r=>!r.is_historical&&r.round_number>0).slice(-1)[0];
 
       // New round opened by instructor
       if (latest.id !== roundId && latest.phase === 'decision') {
@@ -5163,8 +5163,8 @@ async function refreshInstructorHub() {
     const teams  = (tData.teams || []).filter(t => t.name !== 'Instructor');
     const humanTeams = teams.filter(t => t.team_type === 'human');
     const aiTeams    = teams.filter(t => t.team_type === 'ai');
-    const rounds = rData.rounds || [];
-    const latest = rounds[rounds.length - 1];
+    const rounds = (rData.rounds || []).filter(r => !r.is_historical && r.round_number > 0);
+    const latest = rounds.filter(r=>!r.is_historical&&r.round_number>0).slice(-1)[0];
 
     // Update round display
     if (latest) {
@@ -6190,7 +6190,7 @@ async function refreshInstructorPanel() {
     const rRes  = await fetch(`${API_URL}/sessions/${sessionId}/rounds`);
     const rData = await rRes.json();
     const rounds = rData.rounds || [];
-    const latestRound = rounds[rounds.length - 1];
+    const latestRound = rounds.filter(r=>!r.is_historical&&r.round_number>0).slice(-1)[0];
 
     // Get submissions for current round
     let submittedTeamIds = new Set();
