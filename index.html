@@ -8302,13 +8302,12 @@ async function fetchMIData(key) {
       }
     }
     if (key === 'share') {
-      // Load both current round share AND historical trend
-      var [shareRes, histRes] = await Promise.all([
-        fetch(API_URL + '/sessions/' + sessionId + '/market-share'),
-        fetch(API_URL + '/sessions/' + sessionId + '/historical-rounds'),
-      ]);
-      _mi.data.share    = await shareRes.json();
-      _mi.data.hist     = await histRes.json();
+      var isInstr = currentUser && currentUser.role === 'instructor';
+      var fetches = [fetch(API_URL + '/sessions/' + sessionId + '/market-share')];
+      if (isInstr) fetches.push(fetch(API_URL + '/sessions/' + sessionId + '/historical-rounds'));
+      var results = await Promise.all(fetches);
+      _mi.data.share = await results[0].json();
+      _mi.data.hist  = isInstr ? await results[1].json() : {rounds:[], outcomes:[], seg_outcomes:[]};
     }
     if (key === 'reasons') {
       var res  = await fetch(API_URL + '/sessions/' + sessionId + '/purchase-weights');
@@ -8316,13 +8315,14 @@ async function fetchMIData(key) {
       _mi.data.reasons = data.weights || [];
     }
     if (key === 'tech') {
-      var [vRes, histRes] = await Promise.all([
-        fetch(API_URL + '/sessions/' + sessionId + '/vehicles'),
-        fetch(API_URL + '/sessions/' + sessionId + '/historical-rounds'),
-      ]);
-      var vData = await vRes.json();
+      var isInstr2 = currentUser && currentUser.role === 'instructor';
+      var fetches2 = [fetch(API_URL + '/sessions/' + sessionId + '/vehicles')];
+      if (isInstr2 && !_mi.data.hist) fetches2.push(fetch(API_URL + '/sessions/' + sessionId + '/historical-rounds'));
+      var results2 = await Promise.all(fetches2);
+      var vData = await results2[0].json();
       _mi.data.tech = vData.vehicles || [];
-      if (!_mi.data.hist) _mi.data.hist = await histRes.json();
+      if (isInstr2 && results2[1] && !_mi.data.hist) _mi.data.hist = await results2[1].json();
+      if (!_mi.data.hist) _mi.data.hist = {rounds:[], outcomes:[], seg_outcomes:[]};
     }
     if (key === 'elasticity') {
       // Elasticity is derived from demand model — synthetic data
@@ -8521,7 +8521,8 @@ function miFilterSeg(seg, btn) {
 // ── REPORT 2: Market Share ─────────────────────────────────
 // ── REPORT 2: Market Share ─────────────────────────────────
 function renderMarketShare() {
-  var hist     = _mi.data.hist || {};
+  var isInstr  = currentUser && currentUser.role === 'instructor';
+  var hist     = (isInstr && _mi.data.hist) ? _mi.data.hist : {rounds:[], outcomes:[], seg_outcomes:[]};
   var rounds   = (hist.rounds   || []).sort(function(a,b){return a.round_number-b.round_number;});
   var outcomes = hist.outcomes  || [];
   var colors   = ['var(--cyan)','var(--gold)','var(--green)','var(--purple)','var(--orange)',
@@ -8530,8 +8531,22 @@ function renderMarketShare() {
   // Get unique OEMs
   var oems = [...new Set(outcomes.map(function(o){return o.team_name;}))].sort();
 
+  // For teams: show simple current-round share without historical trend
   if (oems.length === 0) {
-    return '<div style="padding:24px;color:var(--muted2);text-align:center;">No historical data available. Generate history in the Instructor panel first.</div>';
+    var currentData = _mi.data.share || {};
+    var byOEM = currentData.by_oem || [];
+    if (byOEM.length === 0) return '<div style="padding:24px;color:var(--muted2);text-align:center;">No market share data available yet. Complete a simulation round first.</div>';
+    var cols = ['var(--cyan)','var(--gold)','var(--green)','var(--purple)','var(--orange)','var(--blue)','var(--red)'];
+    var h = '<div style="font-family:DM Mono,monospace;font-size:8px;text-transform:uppercase;letter-spacing:1.5px;color:var(--muted);margin-bottom:12px;">Volume Market Share — Current Round</div>';
+    byOEM.sort(function(a,b){return b.share_pct-a.share_pct;}).forEach(function(row,i){
+      var col=cols[i%cols.length];
+      h += '<div style="margin-bottom:8px;">' +
+        '<div style="display:flex;justify-content:space-between;font-size:10px;margin-bottom:3px;">' +
+          '<span>'+row.team_name+'</span><span style="color:'+col+';">'+row.share_pct+'%</span></div>' +
+        '<div style="height:8px;background:var(--border2);border-radius:4px;overflow:hidden;">' +
+          '<div style="height:100%;width:'+row.share_pct+'%;background:'+col+';border-radius:4px;"></div></div></div>';
+    });
+    return h;
   }
 
   // Build volume lookup: oem → [q1,q2,...q8]
@@ -8789,8 +8804,9 @@ function renderTechTrends() {
 
   var html = '';
 
-  // ── Historical revenue trend by segment ──
-  if (rounds.length > 0 && seg_outs.length > 0) {
+  // ── Historical revenue trend by segment (instructor only) ──
+  var isInstr3 = currentUser && currentUser.role === 'instructor';
+  if (isInstr3 && rounds.length > 0 && seg_outs.length > 0) {
     html += '<div style="font-family:DM Mono,monospace;font-size:8px;text-transform:uppercase;letter-spacing:1.5px;color:var(--muted);margin-bottom:10px;">Revenue by Segment — 8 Quarter Trend (€M total market)</div>';
     html += '<div style="background:var(--s2);border:1px solid var(--border);border-radius:4px;padding:12px;margin-bottom:16px;">';
 
