@@ -8302,9 +8302,13 @@ async function fetchMIData(key) {
       }
     }
     if (key === 'share') {
-      var res  = await fetch(API_URL + '/sessions/' + sessionId + '/market-share');
-      var data = await res.json();
-      _mi.data.share = data;
+      // Load both current round share AND historical trend
+      var [shareRes, histRes] = await Promise.all([
+        fetch(API_URL + '/sessions/' + sessionId + '/market-share'),
+        fetch(API_URL + '/sessions/' + sessionId + '/historical-rounds'),
+      ]);
+      _mi.data.share    = await shareRes.json();
+      _mi.data.hist     = await histRes.json();
     }
     if (key === 'reasons') {
       var res  = await fetch(API_URL + '/sessions/' + sessionId + '/purchase-weights');
@@ -8312,9 +8316,13 @@ async function fetchMIData(key) {
       _mi.data.reasons = data.weights || [];
     }
     if (key === 'tech') {
-      var res  = await fetch(API_URL + '/sessions/' + sessionId + '/vehicles');
-      var data = await res.json();
-      _mi.data.tech = data.vehicles || [];
+      var [vRes, histRes] = await Promise.all([
+        fetch(API_URL + '/sessions/' + sessionId + '/vehicles'),
+        fetch(API_URL + '/sessions/' + sessionId + '/historical-rounds'),
+      ]);
+      var vData = await vRes.json();
+      _mi.data.tech = vData.vehicles || [];
+      if (!_mi.data.hist) _mi.data.hist = await histRes.json();
     }
     if (key === 'elasticity') {
       // Elasticity is derived from demand model — synthetic data
@@ -8511,66 +8519,142 @@ function miFilterSeg(seg, btn) {
 
 
 // ── REPORT 2: Market Share ─────────────────────────────────
+// ── REPORT 2: Market Share ─────────────────────────────────
 function renderMarketShare() {
-  var data = _mi.data.share || {};
-  var byOEM = data.by_oem || [];
-  if (byOEM.length === 0) {
-    // Build from session vehicles as fallback
-    var vehicles = _mi.data.segment || [];
-    var teamVols = {};
-    vehicles.forEach(function(v) {
-      var key = v.team_name || 'OEM';
-      if (!teamVols[key]) teamVols[key] = 0;
-      teamVols[key] += 1; // proxy: count of vehicles
-    });
-    byOEM = Object.entries(teamVols).map(function(e) {
-      return {team_name:e[0], volume:e[1]*5000, share_pct: 0};
-    });
-    var total = byOEM.reduce(function(s,r){return s+r.volume;},0)||1;
-    byOEM.forEach(function(r){ r.share_pct = Math.round(r.volume/total*100); });
-  }
-
-  var colors = ['var(--cyan)','var(--gold)','var(--green)','var(--purple)','var(--orange)',
+  var hist     = _mi.data.hist || {};
+  var rounds   = (hist.rounds   || []).sort(function(a,b){return a.round_number-b.round_number;});
+  var outcomes = hist.outcomes  || [];
+  var colors   = ['var(--cyan)','var(--gold)','var(--green)','var(--purple)','var(--orange)',
     'var(--blue)','var(--red)','#a78bfa','#f472b6','#34d399','#fb923c','#60a5fa'];
 
-  var html = '<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">';
+  // Get unique OEMs
+  var oems = [...new Set(outcomes.map(function(o){return o.team_name;}))].sort();
 
-  // Left: bar chart
-  html += '<div><div style="font-family:DM Mono,monospace;font-size:8px;text-transform:uppercase;letter-spacing:1.5px;color:var(--muted);margin-bottom:12px;">Volume Market Share by OEM</div>';
-  byOEM.sort(function(a,b){return b.share_pct-a.share_pct;}).forEach(function(row, i) {
-    var col = colors[i%colors.length];
-    html += '<div style="margin-bottom:8px;">' +
-      '<div style="display:flex;justify-content:space-between;font-size:10px;margin-bottom:3px;">' +
-        '<span style="color:var(--text);">' + row.team_name + '</span>' +
-        '<span style="font-family:DM Mono,monospace;color:'+col+';">' + row.share_pct + '%</span>' +
-      '</div>' +
-      '<div style="height:8px;background:var(--border2);border-radius:4px;overflow:hidden;">' +
-        '<div style="height:100%;width:'+row.share_pct+'%;background:'+col+';border-radius:4px;transition:width .5s;"></div>' +
-      '</div></div>';
+  if (oems.length === 0) {
+    return '<div style="padding:24px;color:var(--muted2);text-align:center;">No historical data available. Generate history in the Instructor panel first.</div>';
+  }
+
+  // Build volume lookup: oem → [q1,q2,...q8]
+  var roundIds = rounds.map(function(r){return r.id;});
+  var volByOEM = {};
+  var revByOEM = {};
+  oems.forEach(function(oem) {
+    volByOEM[oem] = roundIds.map(function(rid) {
+      var o = outcomes.find(function(x){return x.team_name===oem && x.round_id===rid;});
+      return o ? Math.round(o.total_units_sold/1000) : 0;
+    });
+    revByOEM[oem] = roundIds.map(function(rid) {
+      var o = outcomes.find(function(x){return x.team_name===oem && x.round_id===rid;});
+      return o ? Math.round(o.revenue_m) : 0;
+    });
   });
+
+  // Last quarter totals for share calc
+  var lastRid  = roundIds[roundIds.length-1];
+  var lastVols = oems.map(function(oem) {
+    var o = outcomes.find(function(x){return x.team_name===oem && x.round_id===lastRid;});
+    return {oem:oem, vol: o ? o.total_units_sold : 0, rev: o ? Math.round(o.revenue_m) : 0,
+            ebit: o ? Math.round(o.ebit_m) : 0};
+  }).sort(function(a,b){return b.vol-a.vol;});
+  var totalVol = lastVols.reduce(function(s,r){return s+r.vol;},0)||1;
+
+  var html = '<div style="margin-bottom:16px;">';
+
+  // ── Header KPIs ──
+  html += '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:16px;">';
+  html += kpiCard('Total Market Volume', Math.round(totalVol/1000)+'k units', 'var(--cyan)', 'Q4 2024');
+  html += kpiCard('Market Leaders', lastVols.slice(0,2).map(function(r){return r.oem;}).join(', '), 'var(--gold)', 'top 2 OEMs');
+  html += kpiCard('Quarters of Data', rounds.length+'', 'var(--text)', 'Q1 2023 → Q4 2024');
   html += '</div>';
 
-  // Right: table
-  html += '<div><div style="font-family:DM Mono,monospace;font-size:8px;text-transform:uppercase;letter-spacing:1.5px;color:var(--muted);margin-bottom:12px;">OEM Ranking</div>';
-  html += '<table class="mi-tbl"><thead><tr>' +
-    '<th class="mi-th">#</th><th class="mi-th">OEM</th>' +
-    '<th class="mi-th" style="text-align:right;">Volume</th>' +
-    '<th class="mi-th" style="text-align:right;">Share</th>' +
+  // ── Trend chart (SVG sparklines) ──
+  html += '<div style="font-family:DM Mono,monospace;font-size:8px;text-transform:uppercase;letter-spacing:1.5px;color:var(--muted);margin-bottom:10px;">Volume Trend — All OEMs (units k/quarter)</div>';
+  html += '<div style="background:var(--s2);border:1px solid var(--border);border-radius:4px;padding:12px;margin-bottom:16px;">';
+
+  // SVG trend chart
+  var svgW = 700, svgH = 160, padL = 80, padR = 10, padT = 10, padB = 30;
+  var cw = svgW-padL-padR, ch = svgH-padT-padB;
+  var nQ = rounds.length;
+  var allVols = [];
+  oems.forEach(function(oem){ volByOEM[oem].forEach(function(v){allVols.push(v);}); });
+  var maxV = Math.max.apply(null, allVols) || 1;
+
+  html += '<svg viewBox="0 0 '+svgW+' '+svgH+'" style="width:100%;display:block;">';
+  // Grid lines
+  [0,0.25,0.5,0.75,1].forEach(function(f) {
+    var y = padT + ch*(1-f);
+    html += '<line x1="'+padL+'" y1="'+y+'" x2="'+(svgW-padR)+'" y2="'+y+'" stroke="rgba(255,255,255,0.05)" stroke-width="1"/>';
+    html += '<text x="'+(padL-4)+'" y="'+(y+3)+'" text-anchor="end" font-size="8" fill="#3a4860">'+Math.round(maxV*f)+'k</text>';
+  });
+  // Quarter labels
+  rounds.forEach(function(r, i) {
+    var x = padL + (nQ===1?cw/2:i*cw/(nQ-1));
+    if (i%2===0 || i===nQ-1) {
+      html += '<text x="'+x+'" y="'+(svgH-8)+'" text-anchor="middle" font-size="8" fill="#3a4860">'+(r.label||r.round_number)+'</text>';
+    }
+  });
+  // OEM lines
+  oems.forEach(function(oem, oi) {
+    var col = colors[oi%colors.length];
+    var pts = volByOEM[oem].map(function(v,i) {
+      var x = padL + (nQ===1?cw/2:i*cw/(nQ-1));
+      var y = padT + ch*(1 - v/maxV);
+      return x.toFixed(1)+','+y.toFixed(1);
+    }).join(' ');
+    html += '<polyline points="'+pts+'" fill="none" stroke="'+col+'" stroke-width="2" stroke-linejoin="round" opacity="0.85"/>';
+    // Last point dot
+    var lx = padL + cw; var lv = volByOEM[oem][nQ-1]||0;
+    var ly = padT + ch*(1-lv/maxV);
+    html += '<circle cx="'+lx.toFixed(1)+'" cy="'+ly.toFixed(1)+'" r="3" fill="'+col+'"/>';
+    html += '<text x="'+(lx+4)+'" y="'+(ly+3)+'" font-size="8" fill="'+col+'">'+oem.split(' ')[0]+'</text>';
+  });
+  html += '</svg></div>';
+
+  // ── OEM detail table ──
+  html += '<div style="font-family:DM Mono,monospace;font-size:8px;text-transform:uppercase;letter-spacing:1.5px;color:var(--muted);margin-bottom:10px;">OEM Performance — Q4 2024 (Latest Quarter)</div>';
+  html += '<div style="overflow-x:auto;"><table class="mi-tbl"><thead><tr>' +
+    '<th class="mi-th">#</th>' +
+    '<th class="mi-th">OEM</th>' +
+    '<th class="mi-th" style="text-align:right;">Q4 2024 Vol</th>' +
+    '<th class="mi-th" style="text-align:right;">Market Share</th>' +
+    '<th class="mi-th" style="text-align:right;">Revenue €M</th>' +
+    '<th class="mi-th" style="text-align:right;">EBIT €M</th>' +
+    '<th class="mi-th" style="text-align:center;min-width:120px;">8Q Volume Trend</th>' +
     '</tr></thead><tbody>';
-  byOEM.forEach(function(row, i) {
-    var col = colors[i%colors.length];
+
+  lastVols.forEach(function(row, i) {
+    var col      = colors[i%colors.length];
+    var sharePct = Math.round(row.vol/totalVol*100);
+    var vols     = volByOEM[row.oem] || [];
+    var maxSpark = Math.max.apply(null, vols)||1;
+    // Mini sparkline SVG
+    var spW=120, spH=28;
+    var sparkPts = vols.map(function(v,j){
+      var x = spW/(vols.length-1||1)*j;
+      var y = spH - (v/maxSpark)*(spH-4) - 2;
+      return x.toFixed(1)+','+y.toFixed(1);
+    }).join(' ');
+    var trend = vols.length>1 ? (vols[vols.length-1]-vols[0]) : 0;
+    var tCol  = trend>=0?'var(--green)':'var(--red)';
+    var spark = '<svg viewBox="0 0 '+spW+' '+spH+'" style="width:120px;height:28px;">' +
+      '<polyline points="'+sparkPts+'" fill="none" stroke="'+col+'" stroke-width="1.5" stroke-linejoin="round"/>' +
+      '</svg>';
     html += '<tr class="mi-tr">' +
-      '<td class="mi-td" style="color:var(--muted2);">' + (i+1) + '</td>' +
+      '<td class="mi-td" style="color:var(--muted2);">'+(i+1)+'</td>' +
       '<td class="mi-td" style="font-weight:600;display:flex;align-items:center;gap:6px;">' +
-        '<span style="width:8px;height:8px;border-radius:50%;background:'+col+';display:inline-block;flex-shrink:0;"></span>' +
-        row.team_name + '</td>' +
-      '<td class="mi-td mono" style="text-align:right;">' + (row.volume||0).toLocaleString() + '</td>' +
-      '<td class="mi-td mono" style="text-align:right;color:'+col+';">' + row.share_pct + '%</td>' +
+        '<span style="width:8px;height:8px;border-radius:50%;background:'+col+';display:inline-block;flex-shrink:0;"></span>'+row.oem+'</td>' +
+      '<td class="mi-td mono" style="text-align:right;">'+Math.round(row.vol/1000)+'k</td>' +
+      '<td class="mi-td mono" style="text-align:right;color:'+col+';">'+sharePct+'%</td>' +
+      '<td class="mi-td mono" style="text-align:right;">€'+row.rev+'M</td>' +
+      '<td class="mi-td mono" style="text-align:right;color:'+(row.ebit>=0?'var(--green)':'var(--red)')+';">€'+row.ebit+'M</td>' +
+      '<td class="mi-td" style="text-align:center;">'+spark+
+        '<span style="font-family:DM Mono,monospace;font-size:8px;color:'+tCol+';">'+(trend>=0?'+':'')+trend+'k</span></td>' +
     '</tr>';
   });
   html += '</tbody></table></div></div>';
   return html;
 }
+
 
 // ── REPORT 3: Consumer Insights ────────────────────────────
 function renderConsumerInsights() {
@@ -8682,50 +8766,102 @@ function renderElasticity() {
 
 // ── REPORT 5: Tech Trends ──────────────────────────────────
 function renderTechTrends() {
+  var hist     = _mi.data.hist || {};
+  var rounds   = (hist.rounds   || []).sort(function(a,b){return a.round_number-b.round_number;});
+  var seg_outs = hist.seg_outcomes || [];
   var vehicles = _mi.data.tech || [];
-  var total    = vehicles.length || 1;
 
-  // Count PWT types
+  // Current vehicle portfolio analysis
+  var total  = vehicles.length || 1;
   var pwtCounts = {};
-  var adasSum   = 0, adasCount = 0;
-  var bevCount  = 0, icePwtCount = 0;
-
+  var adasSum = 0, adasCount = 0, bevCount = 0;
   vehicles.forEach(function(v) {
     var rs  = v.rolled_up_specs || {};
     var pwt = rs.pwt_type || 'Unknown';
-    pwtCounts[pwt] = (pwtCounts[pwt]||0) + 1;
-    if (['BEV','FCEV'].indexOf(pwt) >= 0) bevCount++;
-    else icePwtCount++;
-    if (rs.adas_level != null) { adasSum += parseFloat(rs.adas_level); adasCount++; }
+    pwtCounts[pwt] = (pwtCounts[pwt]||0)+1;
+    if (['BEV','FCEV'].indexOf(pwt)>=0) bevCount++;
+    if (rs.adas_level!=null){adasSum+=parseFloat(rs.adas_level);adasCount++;}
   });
-
   var evPct   = Math.round(bevCount/total*100);
-  var avgAdas = adasCount > 0 ? (adasSum/adasCount).toFixed(1) : '—';
-
-  var colors = ['var(--cyan)','var(--gold)','var(--green)','var(--purple)','var(--orange)','var(--blue)','var(--red)'];
+  var avgAdas = adasCount>0?(adasSum/adasCount).toFixed(1):'—';
+  var colors  = ['var(--cyan)','var(--gold)','var(--green)','var(--purple)','var(--orange)','var(--blue)','var(--red)'];
   var pwtKeys = Object.keys(pwtCounts).sort(function(a,b){return pwtCounts[b]-pwtCounts[a];});
 
-  var html = '<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">';
+  var html = '';
 
-  // Left: KPI cards
-  html += '<div>';
-  html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px;">';
-  html += kpiCard('EV Penetration', evPct+'%', 'var(--cyan)', 'BEV + FCEV vehicles in portfolio');
+  // ── Historical revenue trend by segment ──
+  if (rounds.length > 0 && seg_outs.length > 0) {
+    html += '<div style="font-family:DM Mono,monospace;font-size:8px;text-transform:uppercase;letter-spacing:1.5px;color:var(--muted);margin-bottom:10px;">Revenue by Segment — 8 Quarter Trend (€M total market)</div>';
+    html += '<div style="background:var(--s2);border:1px solid var(--border);border-radius:4px;padding:12px;margin-bottom:16px;">';
+
+    // Aggregate revenue per segment per quarter
+    var segs = [...new Set(seg_outs.map(function(s){return s.segment_code;}))];
+    var segCols = {a_segment:'var(--cyan)',b_segment:'var(--gold)',c_segment:'var(--green)',
+      d_segment:'var(--purple)',e_segment:'var(--orange)',f_segment:'var(--blue)',
+      mpv:'#f472b6',pickup:'#34d399',sports:'#fb923c',c_van:'#60a5fa',d_van:'#a78bfa',e_van:'#fbbf24'};
+    var segRevByQtr = {};
+    segs.forEach(function(seg) {
+      segRevByQtr[seg] = rounds.map(function(r) {
+        return seg_outs.filter(function(s){return s.segment_code===seg&&s.round_id===r.id;})
+          .reduce(function(sum,s){return sum+(parseFloat(s.revenue_m)||0);},0);
+      });
+    });
+
+    var svgW=700,svgH=140,padL=50,padR=10,padT=8,padB=24;
+    var cw=svgW-padL-padR, ch=svgH-padT-padB, nQ=rounds.length;
+    var allRevs=[];
+    segs.forEach(function(seg){segRevByQtr[seg].forEach(function(v){allRevs.push(v);});});
+    var maxR=Math.max.apply(null,allRevs)||1;
+
+    html += '<svg viewBox="0 0 '+svgW+' '+svgH+'" style="width:100%;display:block;">';
+    [0,0.5,1].forEach(function(f){
+      var y=padT+ch*(1-f);
+      html+='<line x1="'+padL+'" y1="'+y+'" x2="'+(svgW-padR)+'" y2="'+y+'" stroke="rgba(255,255,255,0.05)" stroke-width="1"/>';
+      html+='<text x="'+(padL-3)+'" y="'+(y+3)+'" text-anchor="end" font-size="8" fill="#3a4860">€'+Math.round(maxR*f)+'M</text>';
+    });
+    rounds.forEach(function(r,i){
+      if(i%2===0||i===nQ-1){
+        var x=padL+(nQ===1?cw/2:i*cw/(nQ-1));
+        html+='<text x="'+x+'" y="'+(svgH-6)+'" text-anchor="middle" font-size="8" fill="#3a4860">'+(r.label||r.round_number)+'</text>';
+      }
+    });
+    segs.slice(0,6).forEach(function(seg,si) {
+      var col=segCols[seg]||colors[si%colors.length];
+      var pts=segRevByQtr[seg].map(function(v,i){
+        var x=padL+(nQ===1?cw/2:i*cw/(nQ-1));
+        var y=padT+ch*(1-v/maxR);
+        return x.toFixed(1)+','+y.toFixed(1);
+      }).join(' ');
+      html+='<polyline points="'+pts+'" fill="none" stroke="'+col+'" stroke-width="1.5" opacity="0.8"/>';
+    });
+    html+='</svg>';
+
+    // Segment legend
+    html+='<div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:6px;">';
+    segs.slice(0,6).forEach(function(seg,si){
+      var col=segCols[seg]||colors[si%colors.length];
+      html+='<span style="font-family:DM Mono,monospace;font-size:8px;display:flex;align-items:center;gap:4px;color:var(--muted2);">' +
+        '<span style="width:12px;height:2px;background:'+col+';display:inline-block;"></span>'+(SEG_NAMES&&SEG_NAMES[seg]?SEG_NAMES[seg]:seg)+'</span>';
+    });
+    html+='</div></div>';
+  }
+
+  // ── Current portfolio KPIs ──
+  html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">';
+
+  // Left: PWT mix
+  html += '<div><div style="font-family:DM Mono,monospace;font-size:8px;text-transform:uppercase;letter-spacing:1.5px;color:var(--muted);margin-bottom:10px;">Current Powertrain Mix</div>';
+  html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px;">';
+  html += kpiCard('EV Penetration', evPct+'%', 'var(--cyan)', 'BEV+FCEV in portfolio');
   html += kpiCard('Avg ADAS Level', avgAdas+'/5', 'var(--green)', 'across all vehicles');
-  html += kpiCard('Total Vehicles', vehicles.length, 'var(--gold)', 'in active portfolio');
-  html += kpiCard('ICE / Hybrid', icePwtCount, 'var(--orange)', 'ICE, HEV, PHEV, REEV');
   html += '</div>';
-
-  // PWT breakdown
-  html += '<div style="font-family:DM Mono,monospace;font-size:8px;text-transform:uppercase;letter-spacing:1.5px;color:var(--muted);margin-bottom:10px;">Powertrain Mix</div>';
-  pwtKeys.forEach(function(pwt, i) {
-    var cnt  = pwtCounts[pwt];
-    var pct  = Math.round(cnt/total*100);
-    var col  = colors[i%colors.length];
-    html += '<div style="margin-bottom:7px;">' +
+  pwtKeys.forEach(function(pwt,i){
+    var cnt=pwtCounts[pwt]; var pct=Math.round(cnt/total*100);
+    var col=colors[i%colors.length];
+    html+='<div style="margin-bottom:7px;">' +
       '<div style="display:flex;justify-content:space-between;font-size:10px;margin-bottom:3px;">' +
-        '<span style="color:var(--text);">' + pwt + '</span>' +
-        '<span style="font-family:DM Mono,monospace;color:'+col+';">' + pct + '% (' + cnt + ')</span>' +
+        '<span style="color:var(--text);">'+pwt+'</span>' +
+        '<span style="font-family:DM Mono,monospace;color:'+col+';">'+pct+'% ('+cnt+')</span>' +
       '</div>' +
       '<div style="height:6px;background:var(--border2);border-radius:3px;overflow:hidden;">' +
         '<div style="height:100%;width:'+pct+'%;background:'+col+';border-radius:3px;"></div>' +
@@ -8733,30 +8869,26 @@ function renderTechTrends() {
   });
   html += '</div>';
 
-  // Right: ADAS breakdown
+  // Right: ADAS levels
   html += '<div><div style="font-family:DM Mono,monospace;font-size:8px;text-transform:uppercase;letter-spacing:1.5px;color:var(--muted);margin-bottom:10px;">ADAS Level Distribution</div>';
-  for (var lvl = 0; lvl <= 5; lvl++) {
-    var cnt = vehicles.filter(function(v){
-      return parseFloat((v.rolled_up_specs||{}).adas_level||0) === lvl;
-    }).length;
-    var pct = Math.round(cnt/total*100);
-    var labels = ['0: No Assist','1: Basic Driver Assist','2: Partial Automation',
-      '3: Conditional Automation','4: High Automation','5: Full Automation'];
-    var col = lvl===0?'var(--muted2)':lvl<=2?'var(--gold)':lvl<=3?'var(--cyan)':'var(--green)';
-    html += '<div style="margin-bottom:8px;">' +
-      '<div style="display:flex;justify-content:space-between;font-size:10px;margin-bottom:3px;">' +
-        '<span style="color:var(--text);font-size:9px;">' + labels[lvl] + '</span>' +
-        '<span style="font-family:DM Mono,monospace;color:'+col+';">' + pct + '%</span>' +
+  var adasLabels=['0: No Assist','1: Basic Assist','2: Partial Auto','3: Conditional Auto','4: High Auto','5: Full Auto'];
+  for(var lvl=0;lvl<=5;lvl++){
+    var cnt=vehicles.filter(function(v){return parseFloat((v.rolled_up_specs||{}).adas_level||0)===lvl;}).length;
+    var pct=Math.round(cnt/total*100);
+    var col=lvl===0?'var(--muted2)':lvl<=2?'var(--gold)':lvl<=3?'var(--cyan)':'var(--green)';
+    html+='<div style="margin-bottom:8px;">' +
+      '<div style="display:flex;justify-content:space-between;font-size:9px;margin-bottom:3px;">' +
+        '<span style="color:var(--text);">'+adasLabels[lvl]+'</span>' +
+        '<span style="font-family:DM Mono,monospace;color:'+col+';">'+pct+'%</span>' +
       '</div>' +
       '<div style="height:5px;background:var(--border2);border-radius:3px;overflow:hidden;">' +
         '<div style="height:100%;width:'+pct+'%;background:'+col+';border-radius:3px;"></div>' +
       '</div></div>';
   }
-  html += '</div>';
-
-  html += '</div>';
+  html += '</div></div>';
   return html;
 }
+
 
 function kpiCard(label, val, col, sub) {
   return '<div style="background:var(--s2);border:1px solid var(--border);border-radius:4px;padding:10px 12px;">' +
