@@ -1090,6 +1090,7 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
       <div class="nav-item" onclick="navInstr('instr-footprint',this)"><span class="nav-icon">🏭</span> Footprint Manager</div>
       <div class="nav-item" onclick="navInstr('instr-events',this)"><span class="nav-icon">⚠</span> Event Injector</div>
       <div class="nav-item" onclick="navInstr('instr-demand',this)"><span class="nav-icon">📊</span> Demand Model</div>
+      <div class="nav-item" onclick="navInstr('instr-history',this)"><span class="nav-icon">📅</span> Historical Data</div>
     </div>
     <div class="sb-sec" style="flex:1">
       <div class="sb-lbl" style="color:#a78bfa">Session</div>
@@ -2091,6 +2092,52 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
 </div>
 
 
+<div class="instr-page" id="page-instr-history">
+  <div class="pg-title" style="color:#a78bfa">HISTORICAL DATA</div>
+  <div class="pg-sub">Generate 8 quarters of synthetic baseline data (Q1 2023 – Q4 2024) for all teams</div>
+
+  <div class="card" style="margin-bottom:14px;">
+    <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;">
+      <div>
+        <div style="font-size:12px;color:var(--text);margin-bottom:4px;">Generate synthetic historical performance data for all session OEMs.</div>
+        <div style="font-family:'DM Mono',monospace;font-size:9px;color:var(--muted2);">
+          Each team gets a strategy archetype (Volume Leader, Premium Player, EV Pioneer, Cost Cutter, Balanced, Niche Specialist)
+          that shapes their 2023–2024 market position. Run once at session start.
+        </div>
+      </div>
+      <div style="flex:1;"></div>
+      <button onclick="generateHistory()" id="btn-gen-history"
+        style="font-family:'DM Mono',monospace;font-size:10px;font-weight:700;padding:10px 20px;
+        border-radius:3px;border:1px solid rgba(167,139,250,.5);background:rgba(167,139,250,.1);
+        color:#a78bfa;cursor:pointer;letter-spacing:.5px;">⚡ GENERATE 8 QUARTERS HISTORY</button>
+    </div>
+  </div>
+
+  <!-- Archetype assignment preview -->
+  <div class="card" style="margin-bottom:14px;padding:0;overflow:hidden;">
+    <div style="padding:10px 16px;border-bottom:1px solid var(--border);background:var(--s2);
+      font-family:'DM Mono',monospace;font-size:8px;text-transform:uppercase;letter-spacing:2px;color:#a78bfa;">
+      Strategy Archetypes — Auto-assigned to teams
+    </div>
+    <div id="hist-archetype-table" style="padding:14px;">
+      <div style="color:var(--muted2);font-size:11px;">Load session teams to preview archetype assignments</div>
+    </div>
+  </div>
+
+  <!-- Historical data preview -->
+  <div class="card" style="padding:0;overflow:hidden;">
+    <div style="padding:10px 16px;border-bottom:1px solid var(--border);background:var(--s2);
+      font-family:'DM Mono',monospace;font-size:8px;text-transform:uppercase;letter-spacing:2px;color:#a78bfa;">
+      Historical Data Preview — Last 8 Quarters
+    </div>
+    <div id="hist-data-preview" style="overflow-x:auto;">
+      <div style="padding:24px;color:var(--muted2);font-size:12px;text-align:center;">
+        Generate history to see preview
+      </div>
+    </div>
+  </div>
+</div>
+
 <div class="instr-page" id="page-instr-demand">
   <div class="pg-title" style="color:#a78bfa">DEMAND MODEL</div>
   <div class="pg-sub">Purchase reason weights per segment · Session-specific overrides · Must sum to 100% per row</div>
@@ -2560,6 +2607,7 @@ function nav(page, el) {
   if(page==='market') buildMktBars();
   if(page==='plan') loadVehiclePlan();
   if(page==='proposal') loadVehicleProposal();
+  if(page==='dashboard') loadTeamHistoricalSummary();
   if(page==='market-intel') loadMarketIntel();
   if(page==='brands') renderBrand(currentBrand);
   if(page==='engineering') { loadBaseConfigs(currentModType); if(teamId) { loadModuleLibrary(); loadProductStudies(); } }
@@ -3686,7 +3734,11 @@ document.addEventListener('click', function(e) {
   if (action === 'prop-spec-slide') { onPropSpecSlide(btn); }
   if (action === 'mi-filter') { miFilterSeg(btn.getAttribute('data-seg'), btn); }
   if (action === 'mi-show')   { showMIReport(btn.getAttribute('data-key')); }
-  if (action === 'mi-seg-sort'){ miSegSort(btn.getAttribute('data-col')); }
+  if (action === 'mi-seg-sort')   { miSegSort(btn.getAttribute('data-col')); }
+  if (action === 'mi-seg-refresh') {
+    delete _mi.data.segment;
+    showMIReport('segment');
+  }
   if (action === 'prop-com-input')  { onPropComInput(btn); }
   if (action === 'prop-ops-input')  { onPropOpsInput(btn); }
   if (action === 'prop-ops-auto')   { onPropOpsAuto(btn); }
@@ -5082,6 +5134,7 @@ function navInstr(page, el) {
   if (page === 'instr-footprint') loadFootprintManager();
   if (page === 'instr-results')   loadAnalystRounds();
   if (page === 'instr-demand')    loadDemandModel();
+  if (page === 'instr-history')   loadInstrHistory();
 }
 
 function copySessionId() {
@@ -7637,6 +7690,222 @@ async function submitStudyProposal(vid) {
 
 
 // ══════════════════════════════════════════
+// HISTORICAL DATA
+// ══════════════════════════════════════════
+
+var ARCHETYPE_CYCLE = [
+  'Volume Leader','Premium Player','EV Pioneer',
+  'Cost Cutter','Balanced','Niche Specialist',
+  'Volume Leader','Premium Player','EV Pioneer',
+  'Cost Cutter','Balanced','Niche Specialist',
+];
+var ARCHETYPE_COLORS = {
+  'Volume Leader':'var(--cyan)','Premium Player':'var(--gold)',
+  'EV Pioneer':'var(--green)','Cost Cutter':'var(--orange)',
+  'Balanced':'var(--text)','Niche Specialist':'var(--purple)',
+};
+var ARCHETYPE_DESC = {
+  'Volume Leader':  'High volume, competitive price, mass & SUV focus',
+  'Premium Player': 'Low volume, premium price, luxury & EV focus',
+  'EV Pioneer':     'EV-first, tech-forward, higher investment',
+  'Cost Cutter':    'Lean ops, lowest price, high mass market share',
+  'Balanced':       'Diversified across all segments, average metrics',
+  'Niche Specialist':'Boutique volumes, high margin, selective segments',
+};
+
+var _histData = null;
+
+async function loadInstrHistory() {
+  if (!sessionId) return;
+  // Load teams for archetype preview
+  try {
+    const res  = await fetch(API_URL + '/sessions/' + sessionId + '/teams');
+    const data = await res.json();
+    const teams = data.teams || [];
+    renderArchetypeTable(teams);
+  } catch(e) { console.warn('loadInstrHistory:', e); }
+
+  // Load existing historical data if any
+  await loadHistoricalPreview();
+}
+
+function renderArchetypeTable(teams) {
+  var el = document.getElementById('hist-archetype-table');
+  if (!el || teams.length === 0) return;
+  var html = '<table style="width:100%;border-collapse:collapse;">';
+  html += '<thead><tr>' +
+    '<th style="font-family:DM Mono,monospace;font-size:8px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);padding:6px 10px;text-align:left;background:var(--s2);border-bottom:1px solid var(--border);">Team</th>' +
+    '<th style="font-family:DM Mono,monospace;font-size:8px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);padding:6px 10px;text-align:left;background:var(--s2);border-bottom:1px solid var(--border);">Type</th>' +
+    '<th style="font-family:DM Mono,monospace;font-size:8px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);padding:6px 10px;text-align:left;background:var(--s2);border-bottom:1px solid var(--border);">Archetype</th>' +
+    '<th style="font-family:DM Mono,monospace;font-size:8px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);padding:6px 10px;text-align:left;background:var(--s2);border-bottom:1px solid var(--border);">Profile</th>' +
+    '</tr></thead><tbody>';
+  teams.forEach(function(team, i) {
+    var arch = ARCHETYPE_CYCLE[i % ARCHETYPE_CYCLE.length];
+    var col  = ARCHETYPE_COLORS[arch] || 'var(--text)';
+    var isAI = team.team_type === 'ai';
+    html += '<tr style="border-bottom:1px solid var(--border);">' +
+      '<td style="padding:7px 10px;font-weight:600;font-size:11px;">' + team.name + '</td>' +
+      '<td style="padding:7px 10px;font-family:DM Mono,monospace;font-size:9px;color:var(--muted2);">' + (isAI ? 'AI' : 'Human') + '</td>' +
+      '<td style="padding:7px 10px;"><span style="font-family:DM Mono,monospace;font-size:9px;padding:2px 8px;border-radius:2px;background:' + col + '22;color:' + col + ';">' + arch + '</span></td>' +
+      '<td style="padding:7px 10px;font-size:10px;color:var(--muted2);">' + (ARCHETYPE_DESC[arch]||'') + '</td>' +
+    '</tr>';
+  });
+  html += '</tbody></table>';
+  el.innerHTML = html;
+}
+
+async function generateHistory() {
+  if (!sessionId) { toast('\u26a0 No session selected'); return; }
+  var btn = document.getElementById('btn-gen-history');
+  if (btn) { btn.disabled = true; btn.textContent = '\u23f3 Generating...'; }
+
+  try {
+    const res  = await fetch(API_URL + '/sessions/' + sessionId + '/generate-history', {method:'POST'});
+    const data = await res.json();
+    if (data.success) {
+      toast('\u2713 ' + data.quarters + ' quarters generated for ' + data.teams + ' teams');
+      await loadHistoricalPreview();
+    } else if (data.status === 'already_exists') {
+      toast('\u2139 Historical data already exists (' + data.quarters + ' quarters)');
+      await loadHistoricalPreview();
+    } else {
+      toast('\u26a0 ' + (data.detail || 'Error generating history'));
+    }
+  } catch(e) { toast('\u26a0 ' + e.message); }
+  finally {
+    if (btn) { btn.disabled = false; btn.textContent = '\u26a1 GENERATE 8 QUARTERS HISTORY'; }
+  }
+}
+
+async function loadHistoricalPreview() {
+  var el = document.getElementById('hist-data-preview');
+  if (!el || !sessionId) return;
+  try {
+    const res  = await fetch(API_URL + '/sessions/' + sessionId + '/historical-rounds');
+    const data = await res.json();
+    if (!data.rounds || data.rounds.length === 0) {
+      el.innerHTML = '<div style="padding:24px;color:var(--muted2);font-size:12px;text-align:center;">No historical data yet. Click Generate above.</div>';
+      _histData = null;
+      return;
+    }
+    _histData = data;
+    renderHistoricalTable(data);
+  } catch(e) {
+    el.innerHTML = '<div style="padding:16px;color:var(--muted2);">Error loading historical data.</div>';
+  }
+}
+
+function renderHistoricalTable(data) {
+  var el = document.getElementById('hist-data-preview');
+  if (!el) return;
+
+  var rounds   = data.rounds.sort(function(a,b){return a.round_number-b.round_number;});
+  var outcomes = data.outcomes || [];
+  var teams    = [...new Set(outcomes.map(function(o){return o.team_name;}))].sort();
+
+  // Build lookup: team_name → round_id → outcome
+  var lookup = {};
+  outcomes.forEach(function(o) {
+    if (!lookup[o.team_name]) lookup[o.team_name] = {};
+    lookup[o.team_name][o.round_id] = o;
+  });
+
+  var html = '<table style="width:100%;border-collapse:collapse;min-width:900px;"><thead>';
+  // Quarter headers
+  html += '<tr><th style="font-family:DM Mono,monospace;font-size:8px;color:var(--muted);padding:7px 10px;text-align:left;background:var(--s2);border-bottom:1px solid var(--border);position:sticky;left:0;">OEM</th>';
+  rounds.forEach(function(r) {
+    html += '<th colspan="2" style="font-family:DM Mono,monospace;font-size:8px;color:var(--muted);padding:7px 10px;text-align:center;background:var(--s2);border-bottom:1px solid var(--border);border-left:1px solid var(--border);">' + (r.label||r.round_number) + '</th>';
+  });
+  html += '</tr>';
+  // Sub-headers
+  html += '<tr><th style="background:var(--s2);border-bottom:1px solid var(--border);position:sticky;left:0;"></th>';
+  rounds.forEach(function() {
+    html += '<th style="font-family:DM Mono,monospace;font-size:7px;color:var(--muted2);padding:4px 8px;text-align:right;background:var(--s2);border-bottom:1px solid var(--border);border-left:1px solid var(--border);">Units k</th>';
+    html += '<th style="font-family:DM Mono,monospace;font-size:7px;color:var(--muted2);padding:4px 8px;text-align:right;background:var(--s2);border-bottom:1px solid var(--border);">Rev €M</th>';
+  });
+  html += '</tr></thead><tbody>';
+
+  teams.forEach(function(teamName) {
+    html += '<tr style="border-bottom:1px solid var(--border);">';
+    html += '<td style="padding:7px 10px;font-weight:600;font-size:11px;background:var(--s1);position:sticky;left:0;">' + teamName + '</td>';
+    rounds.forEach(function(r) {
+      var o = (lookup[teamName]||{})[r.id];
+      var units  = o ? Math.round(o.total_units_sold/1000) : '—';
+      var rev    = o ? Math.round(o.revenue_m) : '—';
+      var ebitPct= o && o.revenue_m > 0 ? Math.round(o.ebit_m/o.revenue_m*100) : null;
+      var ebitCol= ebitPct !== null ? (ebitPct>15?'var(--green)':ebitPct>5?'var(--gold)':'var(--red)') : 'var(--muted2)';
+      html += '<td style="padding:7px 8px;font-family:DM Mono,monospace;font-size:10px;text-align:right;border-left:1px solid var(--border);">' + units + 'k</td>';
+      html += '<td style="padding:7px 8px;font-family:DM Mono,monospace;font-size:10px;text-align:right;color:var(--cyan);">€' + rev + '</td>';
+    });
+    html += '</tr>';
+  });
+
+  html += '</tbody></table>';
+  html += '<div style="padding:8px 12px;font-family:DM Mono,monospace;font-size:8px;color:var(--muted2);border-top:1px solid var(--border);">' +
+    data.quarters + ' quarters · ' + teams.length + ' OEMs · Synthetic baseline data</div>';
+  el.innerHTML = html;
+}
+
+// ── Historical data available to team dashboard ────────────
+async function loadTeamHistoricalSummary() {
+  if (!sessionId || !teamId) return;
+  try {
+    const res  = await fetch(API_URL + '/sessions/' + sessionId + '/historical-rounds');
+    const data = await res.json();
+    if (!data.rounds || data.rounds.length === 0) return;
+    _histData = data;
+    renderTeamHistoricalKPIs(data);
+  } catch(e) { console.warn('loadTeamHistoricalSummary:', e); }
+}
+
+function renderTeamHistoricalKPIs(data) {
+  // Find this team's historical outcomes
+  var myOutcomes = (data.outcomes || []).filter(function(o){ return o.team_id === teamId; })
+    .sort(function(a,b){
+      var ra = data.rounds.find(function(r){return r.id===a.round_id;})||{};
+      var rb = data.rounds.find(function(r){return r.id===b.round_id;})||{};
+      return ra.round_number - rb.round_number;
+    });
+  if (myOutcomes.length === 0) return;
+
+  // Last quarter actuals
+  var last = myOutcomes[myOutcomes.length-1];
+  var prev = myOutcomes.length > 1 ? myOutcomes[myOutcomes.length-2] : null;
+  var lastRound = data.rounds.find(function(r){return r.id===last.round_id;});
+
+  // Update dashboard KPI tiles if they exist
+  var histEl = document.getElementById('hist-kpi-strip');
+  if (!histEl) return;
+
+  function delta(cur, prv, field) {
+    if (!prv) return '';
+    var d = cur[field] - prv[field];
+    var pct = prv[field] > 0 ? (d/prv[field]*100).toFixed(1) : 0;
+    var col = d >= 0 ? 'var(--green)' : 'var(--red)';
+    var arrow = d >= 0 ? '\u25b2' : '\u25bc';
+    return '<span style="font-size:9px;color:' + col + ';">' + arrow + ' ' + Math.abs(pct) + '%</span>';
+  }
+
+  histEl.innerHTML = '<div style="font-family:DM Mono,monospace;font-size:7px;text-transform:uppercase;letter-spacing:2px;color:var(--muted2);margin-bottom:8px;padding:0 2px;">' +
+    'LAST ACTUAL — ' + (lastRound ? lastRound.label : 'Q4 2024') + '</div>' +
+    '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;">' +
+    histKpiCard('Revenue', '\u20ac' + Math.round(last.revenue_m) + 'M', 'var(--cyan)', delta(last,prev,'revenue_m')) +
+    histKpiCard('EBIT', '\u20ac' + Math.round(last.ebit_m) + 'M', last.ebit_m>=0?'var(--green)':'var(--red)', delta(last,prev,'ebit_m')) +
+    histKpiCard('Units Sold', Math.round(last.total_units_sold/1000) + 'k', 'var(--gold)', delta(last,prev,'total_units_sold')) +
+    histKpiCard('EBIT Margin', (last.revenue_m>0?Math.round(last.ebit_m/last.revenue_m*100):0) + '%', 'var(--purple)', '') +
+    '</div>';
+}
+
+function histKpiCard(label, val, col, deltaHtml) {
+  return '<div style="background:var(--s2);border:1px solid var(--border);border-radius:3px;padding:8px 10px;">' +
+    '<div style="font-family:DM Mono,monospace;font-size:7px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:4px;">' + label + '</div>' +
+    '<div style="font-family:Orbitron,sans-serif;font-size:14px;font-weight:700;color:' + col + ';">' + val + '</div>' +
+    (deltaHtml ? '<div style="margin-top:2px;">' + deltaHtml + ' vs prev qtr</div>' : '') +
+  '</div>';
+}
+
+
+// ══════════════════════════════════════════
 // DEMAND MODEL — Purchase Reasons
 // ══════════════════════════════════════════
 
@@ -8010,10 +8279,20 @@ async function showMIReport(key) {
 async function fetchMIData(key) {
   try {
     if (key === 'segment') {
-      // Load all vehicles with their specs across all teams in session
-      var res  = await fetch(API_URL + '/sessions/' + sessionId + '/vehicles');
-      var data = await res.json();
-      _mi.data.segment = data.vehicles || [];
+      // Load all vehicles with specs across all teams in session
+      // Falls back to team-only if session endpoint not available
+      try {
+        var res  = await fetch(API_URL + '/sessions/' + sessionId + '/vehicles');
+        if (!res.ok) throw new Error('Session endpoint returned ' + res.status);
+        var data = await res.json();
+        _mi.data.segment = data.vehicles || [];
+        console.log('[MI] Loaded', _mi.data.segment.length, 'vehicles from session endpoint');
+      } catch(e) {
+        console.warn('[MI] Session endpoint failed, falling back to team endpoint:', e);
+        var res2 = await fetch(API_URL + '/teams/' + teamId + '/vehicles');
+        var data2 = await res2.json();
+        _mi.data.segment = data2.vehicles || [];
+      }
     }
     if (key === 'share') {
       var res  = await fetch(API_URL + '/sessions/' + sessionId + '/market-share');
@@ -8057,7 +8336,9 @@ var _segFilter  = 'all';
 
 function renderSegmentAnalysis() {
   var vehicles = (_mi.data.segment || []).filter(function(v) {
-    return v.status === 'approved' || v.status === 'plan';
+    // Show all vehicles so teams can see full competitive landscape
+    // Status shown as a column so teams know maturity level
+    return v.status !== null;
   });
 
   if (vehicles.length === 0) {
@@ -8081,6 +8362,7 @@ function renderSegmentAnalysis() {
     {key:'roominess',      label:'Roominess (m³)',     align:'center',fmt:'num1'},
     {key:'volume_last_qtr',label:'Vol Last Qtr',       align:'right', fmt:'vol'},
     {key:'volume_last_yr', label:'Vol Last Year',      align:'right', fmt:'vol'},
+    {key:'status',         label:'Status',             align:'center',fmt:'status'},
   ];
 
   // Enrich vehicles with derived fields
@@ -8127,7 +8409,14 @@ function renderSegmentAnalysis() {
 
   // Segment filter tabs
   var uniqueSegs = [...new Set(vehicles.map(function(v){return v.segment_code;}))];
-  var html = '<div style="margin-bottom:10px;display:flex;gap:4px;flex-wrap:wrap;" id="mi-seg-filter">';
+  // Cache bust button
+  var html = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">' +
+    '<div style="font-family:DM Mono,monospace;font-size:9px;color:var(--muted2);">' +
+    vehicles.length + ' vehicles across all OEMs in session</div>' +
+    '<button data-action="mi-seg-refresh" style="font-family:DM Mono,monospace;font-size:8px;' +
+    'padding:3px 10px;border-radius:2px;border:1px solid var(--border2);background:var(--s2);' +
+    'color:var(--muted2);cursor:pointer;">↻ Refresh Data</button></div>';
+  html += '<div style="margin-bottom:10px;display:flex;gap:4px;flex-wrap:wrap;" id="mi-seg-filter">';
   html += '<button class="mi-tab' + (_segFilter==='all'?' active':'') + '" data-action="mi-filter" data-seg="all">All</button>';
   segOrder.forEach(function(seg) {
     if (uniqueSegs.indexOf(seg) < 0) return;
@@ -8176,6 +8465,12 @@ function renderSegmentAnalysis() {
         cell = '<span style="font-family:DM Mono,monospace;color:var(--gold);">€' + (val||'—') + 'k</span>';
       } else if (col.fmt === 'num1') {
         cell = val > 0 ? '<span style="font-family:DM Mono,monospace;">' + parseFloat(val).toFixed(1) + '</span>' : '<span style="color:var(--muted2);">—</span>';
+      } else if (col.fmt === 'status') {
+        var stMap = {approved:'var(--green)',plan:'var(--gold)',study:'#4a5568',draft:'#4a5568'};
+        var stLbl = {approved:'APPROVED',plan:'PLAN',study:'STUDY',draft:'STUDY'};
+        var stC = stMap[val] || 'var(--muted2)';
+        cell = '<span style="font-family:DM Mono,monospace;font-size:8px;padding:2px 6px;' +
+          'border-radius:2px;background:' + stC + '22;color:' + stC + ';">' + (stLbl[val]||val||'—') + '</span>';
       } else if (col.fmt === 'vol') {
         var volCol = val > 10000 ? 'var(--green)' : val > 5000 ? 'var(--gold)' : 'var(--text)';
         cell = '<span style="font-family:DM Mono,monospace;color:' + volCol + ';">' + (val||0).toLocaleString() + '</span>';
