@@ -2106,6 +2106,10 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
         </div>
       </div>
       <div style="flex:1;"></div>
+      <button onclick="initAIFleet()" id="btn-init-fleet"
+        style="font-family:'DM Mono',monospace;font-size:10px;font-weight:700;padding:10px 20px;
+        border-radius:3px;border:1px solid rgba(167,139,250,.5);background:rgba(167,139,250,.1);
+        color:#a78bfa;cursor:pointer;letter-spacing:.5px;margin-right:8px;">🚗 INITIALIZE AI FLEET</button>
       <button onclick="generateHistory()" id="btn-gen-history"
         style="font-family:'DM Mono',monospace;font-size:10px;font-weight:700;padding:10px 20px;
         border-radius:3px;border:1px solid rgba(167,139,250,.5);background:rgba(167,139,250,.1);
@@ -7754,6 +7758,26 @@ function renderArchetypeTable(teams) {
   });
   html += '</tbody></table>';
   el.innerHTML = html;
+}
+
+async function initAIFleet() {
+  if (!sessionId) { toast('\u26a0 No session selected'); return; }
+  var btn = document.getElementById('btn-init-fleet');
+  if (btn) { btn.disabled = true; btn.textContent = '\u23f3 Creating fleet...'; }
+  try {
+    const res  = await fetch(API_URL + '/sessions/' + sessionId + '/initialize-ai-fleet', {method:'POST'});
+    const data = await res.json();
+    if (data.success) {
+      toast('\u2713 ' + data.vehicles_created + ' vehicles, ' + data.modules_created + ' modules created');
+      if (data.errors && data.errors.length > 0) {
+        console.warn('Fleet errors:', data.errors);
+        toast('\u26a0 Some errors: ' + data.errors[0]);
+      }
+    } else toast('\u26a0 ' + (data.detail || 'Error'));
+  } catch(e) { toast('\u26a0 ' + e.message); }
+  finally {
+    if (btn) { btn.disabled = false; btn.textContent = '\ud83d\ude97 INITIALIZE AI FLEET'; }
+  }
 }
 
 async function generateHistory() {
