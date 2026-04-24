@@ -460,6 +460,37 @@ input[type=text]:focus,input[type=number]:focus{outline:none;border-color:var(--
 .prop-mod-row-meta{font-family:'DM Mono',monospace;font-size:9px;color:var(--muted2);}
 .prop-mod-status-badge{font-family:'DM Mono',monospace;font-size:8px;padding:2px 6px;border-radius:2px;}
 
+/* ══════════ MARKET INTELLIGENCE ══════════ */
+.mi-report-card{background:var(--s1);border:2px solid var(--border);border-radius:6px;
+  padding:16px;display:flex;flex-direction:column;gap:6px;transition:border-color .15s;}
+.mi-report-card:hover{border-color:var(--border2);}
+.mi-report-card.subscribed{border-color:var(--cyan);background:rgba(50,204,192,.04);}
+.mi-report-icon{font-size:28px;margin-bottom:2px;}
+.mi-report-name{font-weight:700;font-size:13px;color:var(--white);}
+.mi-report-desc{font-size:10px;color:var(--muted2);line-height:1.5;flex:1;}
+.mi-report-cost{font-family:'DM Mono',monospace;font-size:10px;color:var(--gold);margin-top:4px;}
+.mi-subscribe-btn{font-family:'DM Mono',monospace;font-size:9px;padding:6px 0;border-radius:3px;
+  border:1px solid var(--border2);background:var(--s2);color:var(--muted2);cursor:pointer;
+  transition:all .15s;text-align:center;margin-top:4px;}
+.mi-subscribe-btn:hover{border-color:var(--cyan);color:var(--cyan);}
+.mi-subscribe-btn.active{border-color:var(--cyan);background:rgba(50,204,192,.1);color:var(--cyan);}
+.mi-subscribe-btn.active:hover{background:rgba(224,58,82,.1);border-color:var(--red);color:var(--red);}
+.mi-tab{font-family:'DM Mono',monospace;font-size:8px;padding:4px 10px;border-radius:2px;
+  border:1px solid var(--border2);background:var(--s2);color:var(--muted2);cursor:pointer;}
+.mi-tab.active{background:var(--cyanl);border-color:rgba(50,204,192,.4);color:var(--cyan);}
+/* Report tables */
+.mi-tbl{width:100%;border-collapse:collapse;}
+.mi-th{font-family:'DM Mono',monospace;font-size:8px;text-transform:uppercase;letter-spacing:1px;
+  color:var(--muted);padding:7px 10px;text-align:left;background:var(--s2);
+  border-bottom:1px solid var(--border);white-space:nowrap;}
+.mi-td{padding:8px 10px;font-size:11px;border-bottom:1px solid var(--border);vertical-align:middle;}
+.mi-td.mono{font-family:'DM Mono',monospace;font-size:10px;}
+.mi-tr:hover .mi-td{background:var(--s2);}
+/* Heatmap cells */
+.hm-cell{padding:6px 8px;text-align:center;font-family:'DM Mono',monospace;font-size:10px;}
+/* Spec bar in table */
+.mi-spec-bar{height:3px;border-radius:2px;margin-top:3px;}
+
 /* ══════════ VEHICLE PLAN STATUS ══════════ */
 .vstatus-study    {font-family:'DM Mono',monospace;font-size:8px;letter-spacing:1px;padding:2px 8px;border-radius:2px;
   background:rgba(86,96,112,.18);border:1px solid rgba(86,96,112,.35);color:#7a8899;}
@@ -1017,6 +1048,7 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
     <div class="nav-item active" onclick="nav('dashboard',this)"><span class="nav-icon">◈</span> Dashboard</div>
     <div class="nav-item" onclick="nav('operations',this);loadMfgFootprint(true)"><span class="nav-icon">⚙</span> Industrial Ops</div>
     <div class="nav-item" onclick="nav('commercial',this)"><span class="nav-icon">◎</span> Commercial</div>
+    <div class="nav-item" onclick="nav('market-intel',this)"><span class="nav-icon">🔍</span> Market Intelligence</div>
     <div class="nav-item" onclick="nav('financial',this)"><span class="nav-icon">$</span> Financial</div>
     <div class="nav-item" onclick="nav('engineering',this)"><span class="nav-icon">⚗</span> Engineering Lab <span class="nav-badge">14 specs</span></div>
     <div class="nav-item" onclick="nav('proposal',this)" id="nav-proposal"><span class="nav-icon">🚗</span> Vehicle Proposal</div>
@@ -1279,6 +1311,98 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
       <div class="ctrl"><div class="ctrl-lbl"><span>Dealer Support Fund</span><span class="ctrl-v" id="cm-ds">€95M</span></div><input type="range" min="10" max="300" step="5" value="95" oninput="svm('cm-ds',this.value)"></div>
     </div>
   </div>
+</div>
+
+<!-- ████ MARKET INTELLIGENCE ████ -->
+<div class="page" id="page-market-intel">
+  <div class="pg-title">MARKET INTELLIGENCE</div>
+  <div class="pg-sub">Research reports · Subscribe per round · Powered by live simulation data</div>
+
+  <!-- Research Budget Bar -->
+  <div class="card" style="margin-bottom:14px;padding:12px 16px;">
+    <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;">
+      <div>
+        <div style="font-family:'DM Mono',monospace;font-size:8px;text-transform:uppercase;letter-spacing:1.5px;color:var(--muted);margin-bottom:4px;">Research Budget This Round</div>
+        <div style="display:flex;align-items:baseline;gap:6px;">
+          <span style="font-family:'Orbitron',sans-serif;font-size:22px;font-weight:700;color:var(--cyan);" id="mi-budget-remaining">€13M</span>
+          <span style="font-family:'DM Mono',monospace;font-size:9px;color:var(--muted2);">remaining of</span>
+          <span style="font-family:'DM Mono',monospace;font-size:11px;color:var(--muted);" id="mi-budget-total">€13M</span>
+        </div>
+      </div>
+      <div style="flex:1;"></div>
+      <div style="font-family:'DM Mono',monospace;font-size:9px;color:var(--muted2);text-align:right;">
+        Subscribed reports auto-renew each round<br>Unsubscribe anytime before round submission
+      </div>
+    </div>
+    <div style="margin-top:10px;height:4px;background:var(--border2);border-radius:2px;overflow:hidden;">
+      <div id="mi-budget-bar" style="height:100%;width:100%;background:linear-gradient(90deg,var(--cyan),var(--blue));border-radius:2px;transition:width .4s;"></div>
+    </div>
+  </div>
+
+  <!-- Report Cards Grid -->
+  <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:16px;">
+
+    <!-- Segment Analysis -->
+    <div class="mi-report-card" id="mi-card-segment">
+      <div class="mi-report-icon">📊</div>
+      <div class="mi-report-name">Segment Analysis</div>
+      <div class="mi-report-desc">Competitor vehicles in each segment — specs, pricing, powertrain mix side-by-side</div>
+      <div class="mi-report-cost">€3M / round</div>
+      <button class="mi-subscribe-btn" id="mi-btn-segment" onclick="toggleMISubscription('segment',3)">Subscribe</button>
+    </div>
+
+    <!-- Market Share -->
+    <div class="mi-report-card" id="mi-card-share">
+      <div class="mi-report-icon">🥧</div>
+      <div class="mi-report-name">Market Share by OEM</div>
+      <div class="mi-report-desc">Volume and revenue market share for all OEMs across every segment this round</div>
+      <div class="mi-report-cost">€2M / round</div>
+      <button class="mi-subscribe-btn" id="mi-btn-share" onclick="toggleMISubscription('share',2)">Subscribe</button>
+    </div>
+
+    <!-- Purchase Reasons -->
+    <div class="mi-report-card" id="mi-card-reasons">
+      <div class="mi-report-icon">🧠</div>
+      <div class="mi-report-name">Consumer Insights</div>
+      <div class="mi-report-desc">Purchase reason weights per segment — what drives buying decisions in each market</div>
+      <div class="mi-report-cost">€2M / round</div>
+      <button class="mi-subscribe-btn" id="mi-btn-reasons" onclick="toggleMISubscription('reasons',2)">Subscribe</button>
+    </div>
+
+    <!-- Price Elasticity -->
+    <div class="mi-report-card" id="mi-card-elasticity">
+      <div class="mi-report-icon">📈</div>
+      <div class="mi-report-name">Price Elasticity</div>
+      <div class="mi-report-desc">Demand sensitivity to price changes per segment — optimal pricing zone indicators</div>
+      <div class="mi-report-cost">€4M / round</div>
+      <button class="mi-subscribe-btn" id="mi-btn-elasticity" onclick="toggleMISubscription('elasticity',4)">Subscribe</button>
+    </div>
+
+    <!-- Tech Trends -->
+    <div class="mi-report-card" id="mi-card-tech">
+      <div class="mi-report-icon">⚡</div>
+      <div class="mi-report-name">Technology Trends</div>
+      <div class="mi-report-desc">EV adoption rate, ADAS penetration, powertrain mix evolution across all OEMs</div>
+      <div class="mi-report-cost">€2M / round</div>
+      <button class="mi-subscribe-btn" id="mi-btn-tech" onclick="toggleMISubscription('tech',2)">Subscribe</button>
+    </div>
+
+  </div>
+
+  <!-- Report Viewer -->
+  <div class="card" id="mi-report-viewer" style="padding:0;overflow:hidden;min-height:200px;">
+    <div style="padding:12px 16px;border-bottom:1px solid var(--border);background:var(--s2);display:flex;align-items:center;gap:10px;">
+      <div style="font-family:'DM Mono',monospace;font-size:8px;text-transform:uppercase;letter-spacing:2px;color:var(--muted);">REPORT VIEWER</div>
+      <div style="flex:1;"></div>
+      <div id="mi-report-tabs" style="display:flex;gap:4px;"></div>
+    </div>
+    <div id="mi-report-content" style="padding:16px;">
+      <div style="text-align:center;padding:32px;color:var(--muted2);font-size:12px;">
+        Subscribe to a report above to view it here
+      </div>
+    </div>
+  </div>
+
 </div>
 
 <!-- ████ FINANCIAL ████ -->
@@ -2436,6 +2560,7 @@ function nav(page, el) {
   if(page==='market') buildMktBars();
   if(page==='plan') loadVehiclePlan();
   if(page==='proposal') loadVehicleProposal();
+  if(page==='market-intel') loadMarketIntel();
   if(page==='brands') renderBrand(currentBrand);
   if(page==='engineering') { loadBaseConfigs(currentModType); if(teamId) { loadModuleLibrary(); loadProductStudies(); } }
 }
@@ -3559,6 +3684,8 @@ document.addEventListener('click', function(e) {
     if (nf3 && window[nf3]) window[nf3]();
   }
   if (action === 'prop-spec-slide') { onPropSpecSlide(btn); }
+  if (action === 'mi-filter') { miFilterSeg(btn.getAttribute('data-seg'), btn); }
+  if (action === 'mi-show')   { showMIReport(btn.getAttribute('data-key')); }
   if (action === 'prop-com-input')  { onPropComInput(btn); }
   if (action === 'prop-ops-input')  { onPropOpsInput(btn); }
   if (action === 'prop-ops-auto')   { onPropOpsAuto(btn); }
@@ -7765,6 +7892,509 @@ function buildSpecReasonGrid() {
 
 // Load demand model when instructor navigates to the page
 var _origNavInstr = window.navInstr || null;
+
+
+// ══════════════════════════════════════════
+// MARKET INTELLIGENCE
+// ══════════════════════════════════════════
+
+var _mi = {
+  budget_total:    13,   // €M per round (instructor can configure)
+  budget_spent:    0,
+  subscriptions:   {},   // {report_key: true}
+  costs:           {segment:3, share:2, reasons:2, elasticity:4, tech:2},
+  active_report:   null,
+  data:            {},   // cached report data
+};
+
+async function loadMarketIntel() {
+  updateMIBudget();
+  renderMICards();
+  if (_mi.active_report) showMIReport(_mi.active_report);
+  else renderMIReportArea();
+}
+
+function updateMIBudget() {
+  var spent = Object.keys(_mi.subscriptions).reduce(function(s,k){
+    return s + (_mi.costs[k]||0);
+  }, 0);
+  _mi.budget_spent = spent;
+  var remaining = _mi.budget_total - spent;
+  var remEl = document.getElementById('mi-budget-remaining');
+  var barEl = document.getElementById('mi-budget-bar');
+  if (remEl) {
+    remEl.textContent = '\u20ac' + remaining + 'M';
+    remEl.style.color = remaining < 0 ? 'var(--red)' : 'var(--cyan)';
+  }
+  if (barEl) {
+    var pct = Math.max(0, Math.min(100, (remaining/_mi.budget_total)*100));
+    barEl.style.width = pct + '%';
+    barEl.style.background = remaining < 0
+      ? 'var(--red)' : remaining < 4
+      ? 'var(--gold)' : 'linear-gradient(90deg,var(--cyan),var(--blue))';
+  }
+}
+
+function renderMICards() {
+  Object.keys(_mi.costs).forEach(function(key) {
+    var card  = document.getElementById('mi-card-' + key);
+    var btn   = document.getElementById('mi-btn-' + key);
+    var subbed = !!_mi.subscriptions[key];
+    if (card) card.classList.toggle('subscribed', subbed);
+    if (btn) {
+      btn.classList.toggle('active', subbed);
+      btn.textContent = subbed ? '\u2713 Subscribed — click to cancel' : 'Subscribe';
+    }
+  });
+  // Render tabs for subscribed reports
+  var tabsEl = document.getElementById('mi-report-tabs');
+  if (!tabsEl) return;
+  var keys   = Object.keys(_mi.subscriptions);
+  var labels = {segment:'Segment Analysis', share:'Market Share',
+    reasons:'Consumer Insights', elasticity:'Price Elasticity', tech:'Tech Trends'};
+  tabsEl.innerHTML = keys.map(function(k) {
+    var active = _mi.active_report === k ? ' active' : '';
+    return '<div class="mi-tab' + active + '" onclick="showMIReport(\'' + k + '\')">' + (labels[k]||k) + '</div>';
+  }).join('');
+}
+
+function toggleMISubscription(key, cost) {
+  if (_mi.subscriptions[key]) {
+    delete _mi.subscriptions[key];
+    if (_mi.active_report === key) _mi.active_report = Object.keys(_mi.subscriptions)[0] || null;
+  } else {
+    var spent = Object.keys(_mi.subscriptions).reduce(function(s,k){return s+(_mi.costs[k]||0);},0);
+    if (spent + cost > _mi.budget_total) {
+      toast('\u26a0 Insufficient research budget. Unsubscribe another report first.');
+      return;
+    }
+    _mi.subscriptions[key] = true;
+    _mi.active_report = key;
+  }
+  updateMIBudget();
+  renderMICards();
+  renderMIReportArea();
+}
+
+function renderMIReportArea() {
+  if (_mi.active_report && _mi.subscriptions[_mi.active_report]) {
+    showMIReport(_mi.active_report);
+  } else if (Object.keys(_mi.subscriptions).length > 0) {
+    _mi.active_report = Object.keys(_mi.subscriptions)[0];
+    showMIReport(_mi.active_report);
+  } else {
+    var el = document.getElementById('mi-report-content');
+    if (el) el.innerHTML = '<div style="text-align:center;padding:32px;color:var(--muted2);font-size:12px;">Subscribe to a report above to view it here</div>';
+  }
+}
+
+async function showMIReport(key) {
+  _mi.active_report = key;
+  // Update tab highlights
+  document.querySelectorAll('.mi-tab').forEach(function(t) {
+    t.classList.toggle('active', t.textContent.toLowerCase().indexOf(key.substr(0,4)) >= 0);
+  });
+  renderMICards();
+  var el = document.getElementById('mi-report-content');
+  if (!el) return;
+  el.innerHTML = '<div style="color:var(--muted2);padding:24px;text-align:center;">Loading report...</div>';
+
+  // Load data if not cached
+  if (!_mi.data[key]) {
+    await fetchMIData(key);
+  }
+  renderMIReport(key);
+}
+
+async function fetchMIData(key) {
+  try {
+    if (key === 'segment') {
+      // Load all vehicles with their specs across all teams in session
+      var res  = await fetch(API_URL + '/sessions/' + sessionId + '/vehicles');
+      var data = await res.json();
+      _mi.data.segment = data.vehicles || [];
+    }
+    if (key === 'share') {
+      var res  = await fetch(API_URL + '/sessions/' + sessionId + '/market-share');
+      var data = await res.json();
+      _mi.data.share = data;
+    }
+    if (key === 'reasons') {
+      var res  = await fetch(API_URL + '/sessions/' + sessionId + '/purchase-weights');
+      var data = await res.json();
+      _mi.data.reasons = data.weights || [];
+    }
+    if (key === 'tech') {
+      var res  = await fetch(API_URL + '/sessions/' + sessionId + '/vehicles');
+      var data = await res.json();
+      _mi.data.tech = data.vehicles || [];
+    }
+    if (key === 'elasticity') {
+      // Elasticity is derived from demand model — synthetic data
+      _mi.data.elasticity = buildElasticityData();
+    }
+  } catch(e) {
+    console.warn('fetchMIData:', key, e);
+    _mi.data[key] = _mi.data[key] || [];
+  }
+}
+
+function renderMIReport(key) {
+  var el = document.getElementById('mi-report-content');
+  if (!el) return;
+  if (key === 'segment')    { el.innerHTML = renderSegmentAnalysis(); }
+  else if (key === 'share') { el.innerHTML = renderMarketShare(); }
+  else if (key === 'reasons'){el.innerHTML = renderConsumerInsights(); }
+  else if (key === 'elasticity'){el.innerHTML = renderElasticity(); }
+  else if (key === 'tech')  { el.innerHTML = renderTechTrends(); }
+}
+
+// ── REPORT 1: Segment Analysis ─────────────────────────────
+function renderSegmentAnalysis() {
+  var vehicles = _mi.data.segment || [];
+  if (vehicles.length === 0) return '<div style="padding:24px;color:var(--muted2);">No vehicle data available yet.</div>';
+
+  var segOrder = ['a_segment','b_segment','c_segment','d_segment','e_segment','f_segment',
+    'mpv','pickup','sports','c_van','d_van','e_van'];
+  var specCols = [
+    {key:'reliability',  label:'Reliability',  fmt:'pct'},
+    {key:'safety',       label:'Safety',       fmt:'pct'},
+    {key:'comfort',      label:'Comfort',      fmt:'pct'},
+    {key:'premiumness',  label:'Premium',      fmt:'pct'},
+    {key:'power',        label:'Power (hp)',   fmt:'num'},
+    {key:'power_kw',     label:'Power (kW)',   fmt:'num'},
+  ];
+
+  // Group by segment
+  var bySegment = {};
+  vehicles.forEach(function(v) {
+    if (!bySegment[v.segment_code]) bySegment[v.segment_code] = [];
+    bySegment[v.segment_code].push(v);
+  });
+
+  var html = '<div style="margin-bottom:12px;display:flex;gap:8px;flex-wrap:wrap;" id="mi-seg-filter">';
+  html += '<button class="mi-tab active" data-action="mi-filter" data-seg="all">All Segments</button>';
+  segOrder.forEach(function(seg) {
+    if (!bySegment[seg]) return;
+    html += '<button class="mi-tab" data-action="mi-filter" data-seg="' + seg + '">' + (SEG_NAMES[seg]||seg) + '</button>';
+  });
+  html += '</div>';
+
+  html += '<div style="overflow-x:auto;"><table class="mi-tbl" id="mi-seg-table">';
+  html += '<thead><tr>' +
+    '<th class="mi-th">Segment</th>' +
+    '<th class="mi-th">OEM</th>' +
+    '<th class="mi-th">Vehicle</th>' +
+    '<th class="mi-th">PWT Type</th>' +
+    '<th class="mi-th" style="text-align:right;">Unit TPC</th>';
+  specCols.forEach(function(s) { html += '<th class="mi-th" style="text-align:center;">' + s.label + '</th>'; });
+  html += '</tr></thead><tbody>';
+
+  var rows = [];
+  segOrder.forEach(function(seg) {
+    (bySegment[seg]||[]).forEach(function(v) {
+      if (v.status !== 'approved' && v.status !== 'plan') return;
+      rows.push({seg:seg, v:v});
+    });
+  });
+
+  if (rows.length === 0) {
+    html += '<tr><td colspan="' + (6+specCols.length) + '" style="padding:24px;color:var(--muted2);text-align:center;">No approved vehicles in the session yet.</td></tr>';
+  }
+
+  rows.forEach(function(row) {
+    var v   = row.v;
+    var rs  = v.rolled_up_specs || {};
+    var sc  = SEG_COLORS[v.segment_code] || 'var(--muted)';
+    var sn  = SEG_NAMES[v.segment_code]  || v.segment_code;
+    var pwt = rs.pwt_type || (v.pwt_module_id ? '\u2713 Module' : '\u2014');
+    var tpc = v.total_unit_tpc_eur ? '\u20ac'+Math.round(v.total_unit_tpc_eur).toLocaleString() : '\u2014';
+    html += '<tr class="mi-tr" data-seg="' + v.segment_code + '">' +
+      '<td class="mi-td"><span style="color:' + sc + ';font-size:10px;">' + sn + '</span></td>' +
+      '<td class="mi-td" style="font-weight:600;">' + (v.team_name||'OEM') + '</td>' +
+      '<td class="mi-td">' + v.name + '</td>' +
+      '<td class="mi-td mono">' + pwt + '</td>' +
+      '<td class="mi-td mono" style="text-align:right;color:var(--gold);">' + tpc + '</td>';
+    specCols.forEach(function(s) {
+      var val = rs[s.key];
+      var disp = val!=null ? (s.fmt==='pct'?Math.round(parseFloat(val)*100)+'%':Math.round(parseFloat(val))+'') : '\u2014';
+      var pct  = val!=null ? parseFloat(val)/( s.fmt==='pct'?1:640)*100 : 0;
+      var col  = pct>70?'var(--green)':pct>40?'var(--gold)':'var(--blue)';
+      html += '<td class="mi-td" style="text-align:center;">' +
+        '<div style="font-family:DM Mono,monospace;font-size:10px;">' + disp + '</div>' +
+        (val!=null?'<div class="mi-spec-bar" style="background:var(--border2);"><div style="height:100%;width:'+Math.round(pct)+'%;background:'+col+';border-radius:2px;"></div></div>':'') +
+      '</td>';
+    });
+    html += '</tr>';
+  });
+
+  html += '</tbody></table></div>';
+  return html;
+}
+
+function miFilterSeg(seg, btn) {
+  document.querySelectorAll('#mi-seg-filter .mi-tab').forEach(function(t){t.classList.remove('active');});
+  btn.classList.add('active');
+  document.querySelectorAll('#mi-seg-table tbody tr').forEach(function(row){
+    row.style.display = (seg==='all'||row.getAttribute('data-seg')===seg)?'':'none';
+  });
+}
+
+// ── REPORT 2: Market Share ─────────────────────────────────
+function renderMarketShare() {
+  var data = _mi.data.share || {};
+  var byOEM = data.by_oem || [];
+  if (byOEM.length === 0) {
+    // Build from session vehicles as fallback
+    var vehicles = _mi.data.segment || [];
+    var teamVols = {};
+    vehicles.forEach(function(v) {
+      var key = v.team_name || 'OEM';
+      if (!teamVols[key]) teamVols[key] = 0;
+      teamVols[key] += 1; // proxy: count of vehicles
+    });
+    byOEM = Object.entries(teamVols).map(function(e) {
+      return {team_name:e[0], volume:e[1]*5000, share_pct: 0};
+    });
+    var total = byOEM.reduce(function(s,r){return s+r.volume;},0)||1;
+    byOEM.forEach(function(r){ r.share_pct = Math.round(r.volume/total*100); });
+  }
+
+  var colors = ['var(--cyan)','var(--gold)','var(--green)','var(--purple)','var(--orange)',
+    'var(--blue)','var(--red)','#a78bfa','#f472b6','#34d399','#fb923c','#60a5fa'];
+
+  var html = '<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">';
+
+  // Left: bar chart
+  html += '<div><div style="font-family:DM Mono,monospace;font-size:8px;text-transform:uppercase;letter-spacing:1.5px;color:var(--muted);margin-bottom:12px;">Volume Market Share by OEM</div>';
+  byOEM.sort(function(a,b){return b.share_pct-a.share_pct;}).forEach(function(row, i) {
+    var col = colors[i%colors.length];
+    html += '<div style="margin-bottom:8px;">' +
+      '<div style="display:flex;justify-content:space-between;font-size:10px;margin-bottom:3px;">' +
+        '<span style="color:var(--text);">' + row.team_name + '</span>' +
+        '<span style="font-family:DM Mono,monospace;color:'+col+';">' + row.share_pct + '%</span>' +
+      '</div>' +
+      '<div style="height:8px;background:var(--border2);border-radius:4px;overflow:hidden;">' +
+        '<div style="height:100%;width:'+row.share_pct+'%;background:'+col+';border-radius:4px;transition:width .5s;"></div>' +
+      '</div></div>';
+  });
+  html += '</div>';
+
+  // Right: table
+  html += '<div><div style="font-family:DM Mono,monospace;font-size:8px;text-transform:uppercase;letter-spacing:1.5px;color:var(--muted);margin-bottom:12px;">OEM Ranking</div>';
+  html += '<table class="mi-tbl"><thead><tr>' +
+    '<th class="mi-th">#</th><th class="mi-th">OEM</th>' +
+    '<th class="mi-th" style="text-align:right;">Volume</th>' +
+    '<th class="mi-th" style="text-align:right;">Share</th>' +
+    '</tr></thead><tbody>';
+  byOEM.forEach(function(row, i) {
+    var col = colors[i%colors.length];
+    html += '<tr class="mi-tr">' +
+      '<td class="mi-td" style="color:var(--muted2);">' + (i+1) + '</td>' +
+      '<td class="mi-td" style="font-weight:600;display:flex;align-items:center;gap:6px;">' +
+        '<span style="width:8px;height:8px;border-radius:50%;background:'+col+';display:inline-block;flex-shrink:0;"></span>' +
+        row.team_name + '</td>' +
+      '<td class="mi-td mono" style="text-align:right;">' + (row.volume||0).toLocaleString() + '</td>' +
+      '<td class="mi-td mono" style="text-align:right;color:'+col+';">' + row.share_pct + '%</td>' +
+    '</tr>';
+  });
+  html += '</tbody></table></div></div>';
+  return html;
+}
+
+// ── REPORT 3: Consumer Insights ────────────────────────────
+function renderConsumerInsights() {
+  var weights = _mi.data.reasons || [];
+  if (weights.length === 0) return '<div style="padding:24px;color:var(--muted2);">Purchase reason data not available.</div>';
+
+  var reasons = ['practical_needs','convenience','comfort_lifestyle','fuel_energy_cost',
+    'safety','tech_innovation','brand_trust','price_financing','environmental','peer_social','aesthetics_design'];
+  var rLabels = {practical_needs:'Practical Needs',convenience:'Convenience',
+    comfort_lifestyle:'Comfort & Lifestyle',fuel_energy_cost:'Fuel/Energy Cost',
+    safety:'Safety',tech_innovation:'Tech & Innovation',brand_trust:'Brand Trust',
+    price_financing:'Price & Financing',environmental:'Environmental',
+    peer_social:'Peer Influence',aesthetics_design:'Aesthetics & Design'};
+  var segs = ['a_segment','b_segment','c_segment','d_segment','e_segment','f_segment',
+    'mpv','pickup','sports','c_van','d_van','e_van'];
+  var segShort = {a_segment:'A',b_segment:'B',c_segment:'C',d_segment:'D',
+    e_segment:'E',f_segment:'F',mpv:'MPV',pickup:'Pickup',sports:'Sports',
+    c_van:'C-Van',d_van:'D-Van',e_van:'E-Van'};
+
+  // Build lookup
+  var wMap = {};
+  weights.forEach(function(w){ wMap[w.segment_code+'|'+w.reason_code] = w.weight_pct; });
+
+  var html = '<div style="overflow-x:auto;"><table class="mi-tbl">';
+  html += '<thead><tr><th class="mi-th" style="min-width:140px;">Purchase Reason</th>';
+  segs.forEach(function(s){ html += '<th class="mi-th" style="text-align:center;min-width:55px;">' + (segShort[s]||s) + '</th>'; });
+  html += '</tr></thead><tbody>';
+
+  reasons.forEach(function(r) {
+    html += '<tr class="mi-tr"><td class="mi-td" style="font-size:10px;">' + (rLabels[r]||r) + '</td>';
+    segs.forEach(function(s) {
+      var val = parseFloat(wMap[s+'|'+r]||0);
+      var bg = val>=20?'rgba(56,212,134,.25)':val>=15?'rgba(200,164,60,.2)':
+               val>=8?'rgba(68,128,224,.15)':val>=4?'rgba(68,128,224,.06)':'transparent';
+      var col= val>=20?'var(--green)':val>=12?'var(--gold)':val>=5?'var(--text)':'var(--muted2)';
+      html += '<td class="hm-cell" style="background:' + bg + ';color:' + col + ';">' +
+        (val>0?Math.round(val)+'%':'·') + '</td>';
+    });
+    html += '</tr>';
+  });
+
+  html += '</tbody></table></div>';
+  html += '<div style="margin-top:8px;font-family:DM Mono,monospace;font-size:8px;color:var(--muted2);">' +
+    '<span style="color:var(--green);">■</span> ≥20% &nbsp;<span style="color:var(--gold);">■</span> 12–19% &nbsp;' +
+    '<span style="color:var(--text);">■</span> 5–11% &nbsp;<span style="color:var(--muted2);">·</span> &lt;5%</div>';
+  return html;
+}
+
+// ── REPORT 4: Price Elasticity ─────────────────────────────
+function buildElasticityData() {
+  // Synthetic elasticity coefficients per segment
+  // Elasticity = % change in demand / % change in price
+  return {
+    a_segment:{name:'A',elasticity:-2.1,optimal_k:11,range:[9,15]},
+    b_segment:{name:'B',elasticity:-1.8,optimal_k:17,range:[13,22]},
+    c_segment:{name:'C',elasticity:-1.5,optimal_k:25,range:[20,32]},
+    d_segment:{name:'D',elasticity:-1.2,optimal_k:37,range:[28,48]},
+    e_segment:{name:'E',elasticity:-0.9,optimal_k:53,range:[40,70]},
+    f_segment:{name:'F',elasticity:-0.6,optimal_k:88,range:[60,120]},
+    mpv:      {name:'MPV',elasticity:-1.6,optimal_k:30,range:[24,40]},
+    pickup:   {name:'Pickup',elasticity:-1.3,optimal_k:43,range:[33,55]},
+    sports:   {name:'Sports',elasticity:-0.8,optimal_k:52,range:[38,70]},
+    c_van:    {name:'C-Van',elasticity:-1.4,optimal_k:27,range:[20,35]},
+    d_van:    {name:'D-Van',elasticity:-1.2,optimal_k:38,range:[28,50]},
+    e_van:    {name:'E-Van',elasticity:-1.0,optimal_k:52,range:[38,68]},
+  };
+}
+
+function renderElasticity() {
+  var data = _mi.data.elasticity || buildElasticityData();
+  var segs = Object.keys(data);
+  var html = '<div style="overflow-x:auto;"><table class="mi-tbl"><thead><tr>' +
+    '<th class="mi-th">Segment</th>' +
+    '<th class="mi-th" style="text-align:center;">Price Elasticity</th>' +
+    '<th class="mi-th" style="text-align:center;">Optimal Price</th>' +
+    '<th class="mi-th" style="text-align:center;">Competitive Range</th>' +
+    '<th class="mi-th" style="text-align:left;min-width:180px;">Sensitivity</th>' +
+    '</tr></thead><tbody>';
+
+  segs.forEach(function(seg) {
+    var d   = data[seg];
+    var el  = Math.abs(d.elasticity);
+    var col = el>1.8?'var(--red)':el>1.2?'var(--gold)':'var(--green)';
+    var label = el>1.8?'High':el>1.2?'Medium':'Low';
+    var barW = Math.round(el/2.2*100);
+
+    html += '<tr class="mi-tr">' +
+      '<td class="mi-td" style="font-weight:600;">' + (SEG_NAMES[seg]||d.name) + '</td>' +
+      '<td class="mi-td mono" style="text-align:center;color:'+col+';">' + d.elasticity.toFixed(1) + '</td>' +
+      '<td class="mi-td mono" style="text-align:center;color:var(--gold);">\u20ac' + d.optimal_k + 'k</td>' +
+      '<td class="mi-td mono" style="text-align:center;color:var(--muted2);">\u20ac' + d.range[0] + 'k \u2013 \u20ac' + d.range[1] + 'k</td>' +
+      '<td class="mi-td">' +
+        '<div style="display:flex;align-items:center;gap:6px;">' +
+          '<div style="flex:1;height:6px;background:var(--border2);border-radius:3px;overflow:hidden;">' +
+            '<div style="height:100%;width:'+barW+'%;background:'+col+';border-radius:3px;"></div>' +
+          '</div>' +
+          '<span style="font-family:DM Mono,monospace;font-size:8px;color:'+col+';min-width:42px;">' + label + '</span>' +
+        '</div>' +
+      '</td></tr>';
+  });
+
+  html += '</tbody></table></div>';
+  html += '<div style="margin-top:10px;font-family:DM Mono,monospace;font-size:9px;color:var(--muted2);">' +
+    'Elasticity coefficient: -1.0 = 1% price increase \u2192 1% volume decrease \u00b7 ' +
+    '<span style="color:var(--green);">Low</span> = premium segment, less price sensitive \u00b7 ' +
+    '<span style="color:var(--red);">High</span> = mass market, very price sensitive</div>';
+  return html;
+}
+
+// ── REPORT 5: Tech Trends ──────────────────────────────────
+function renderTechTrends() {
+  var vehicles = _mi.data.tech || [];
+  var total    = vehicles.length || 1;
+
+  // Count PWT types
+  var pwtCounts = {};
+  var adasSum   = 0, adasCount = 0;
+  var bevCount  = 0, icePwtCount = 0;
+
+  vehicles.forEach(function(v) {
+    var rs  = v.rolled_up_specs || {};
+    var pwt = rs.pwt_type || 'Unknown';
+    pwtCounts[pwt] = (pwtCounts[pwt]||0) + 1;
+    if (['BEV','FCEV'].indexOf(pwt) >= 0) bevCount++;
+    else icePwtCount++;
+    if (rs.adas_level != null) { adasSum += parseFloat(rs.adas_level); adasCount++; }
+  });
+
+  var evPct   = Math.round(bevCount/total*100);
+  var avgAdas = adasCount > 0 ? (adasSum/adasCount).toFixed(1) : '—';
+
+  var colors = ['var(--cyan)','var(--gold)','var(--green)','var(--purple)','var(--orange)','var(--blue)','var(--red)'];
+  var pwtKeys = Object.keys(pwtCounts).sort(function(a,b){return pwtCounts[b]-pwtCounts[a];});
+
+  var html = '<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">';
+
+  // Left: KPI cards
+  html += '<div>';
+  html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px;">';
+  html += kpiCard('EV Penetration', evPct+'%', 'var(--cyan)', 'BEV + FCEV vehicles in portfolio');
+  html += kpiCard('Avg ADAS Level', avgAdas+'/5', 'var(--green)', 'across all vehicles');
+  html += kpiCard('Total Vehicles', vehicles.length, 'var(--gold)', 'in active portfolio');
+  html += kpiCard('ICE / Hybrid', icePwtCount, 'var(--orange)', 'ICE, HEV, PHEV, REEV');
+  html += '</div>';
+
+  // PWT breakdown
+  html += '<div style="font-family:DM Mono,monospace;font-size:8px;text-transform:uppercase;letter-spacing:1.5px;color:var(--muted);margin-bottom:10px;">Powertrain Mix</div>';
+  pwtKeys.forEach(function(pwt, i) {
+    var cnt  = pwtCounts[pwt];
+    var pct  = Math.round(cnt/total*100);
+    var col  = colors[i%colors.length];
+    html += '<div style="margin-bottom:7px;">' +
+      '<div style="display:flex;justify-content:space-between;font-size:10px;margin-bottom:3px;">' +
+        '<span style="color:var(--text);">' + pwt + '</span>' +
+        '<span style="font-family:DM Mono,monospace;color:'+col+';">' + pct + '% (' + cnt + ')</span>' +
+      '</div>' +
+      '<div style="height:6px;background:var(--border2);border-radius:3px;overflow:hidden;">' +
+        '<div style="height:100%;width:'+pct+'%;background:'+col+';border-radius:3px;"></div>' +
+      '</div></div>';
+  });
+  html += '</div>';
+
+  // Right: ADAS breakdown
+  html += '<div><div style="font-family:DM Mono,monospace;font-size:8px;text-transform:uppercase;letter-spacing:1.5px;color:var(--muted);margin-bottom:10px;">ADAS Level Distribution</div>';
+  for (var lvl = 0; lvl <= 5; lvl++) {
+    var cnt = vehicles.filter(function(v){
+      return parseFloat((v.rolled_up_specs||{}).adas_level||0) === lvl;
+    }).length;
+    var pct = Math.round(cnt/total*100);
+    var labels = ['0: No Assist','1: Basic Driver Assist','2: Partial Automation',
+      '3: Conditional Automation','4: High Automation','5: Full Automation'];
+    var col = lvl===0?'var(--muted2)':lvl<=2?'var(--gold)':lvl<=3?'var(--cyan)':'var(--green)';
+    html += '<div style="margin-bottom:8px;">' +
+      '<div style="display:flex;justify-content:space-between;font-size:10px;margin-bottom:3px;">' +
+        '<span style="color:var(--text);font-size:9px;">' + labels[lvl] + '</span>' +
+        '<span style="font-family:DM Mono,monospace;color:'+col+';">' + pct + '%</span>' +
+      '</div>' +
+      '<div style="height:5px;background:var(--border2);border-radius:3px;overflow:hidden;">' +
+        '<div style="height:100%;width:'+pct+'%;background:'+col+';border-radius:3px;"></div>' +
+      '</div></div>';
+  }
+  html += '</div>';
+
+  html += '</div>';
+  return html;
+}
+
+function kpiCard(label, val, col, sub) {
+  return '<div style="background:var(--s2);border:1px solid var(--border);border-radius:4px;padding:10px 12px;">' +
+    '<div style="font-family:DM Mono,monospace;font-size:7px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:5px;">' + label + '</div>' +
+    '<div style="font-family:Orbitron,sans-serif;font-size:18px;font-weight:700;color:' + col + ';">' + val + '</div>' +
+    '<div style="font-family:DM Mono,monospace;font-size:8px;color:var(--muted2);margin-top:3px;">' + sub + '</div>' +
+  '</div>';
+}
 
 
 // ══════════════════════════════════════════
