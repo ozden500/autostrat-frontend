@@ -7739,7 +7739,9 @@ function renderArchetypeTable(teams) {
     '<th style="font-family:DM Mono,monospace;font-size:8px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);padding:6px 10px;text-align:left;background:var(--s2);border-bottom:1px solid var(--border);">Archetype</th>' +
     '<th style="font-family:DM Mono,monospace;font-size:8px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);padding:6px 10px;text-align:left;background:var(--s2);border-bottom:1px solid var(--border);">Profile</th>' +
     '</tr></thead><tbody>';
-  teams.forEach(function(team, i) {
+  // Exclude instructor from archetype table
+  var playingTeams = teams.filter(function(t){ return t.name.toLowerCase() !== 'instructor'; });
+  playingTeams.forEach(function(team, i) {
     var arch = ARCHETYPE_CYCLE[i % ARCHETYPE_CYCLE.length];
     var col  = ARCHETYPE_COLORS[arch] || 'var(--text)';
     var isAI = team.team_type === 'ai';
@@ -7764,7 +7766,11 @@ async function generateHistory() {
     const data = await res.json();
     if (data.success) {
       toast('\u2713 ' + data.quarters + ' quarters generated for ' + data.teams + ' teams');
+      // Small delay to ensure DB writes are committed before reading
+      await new Promise(function(resolve){ setTimeout(resolve, 800); });
       await loadHistoricalPreview();
+      // Also refresh archetype table excluding instructor
+      await loadInstrHistory();
     } else if (data.status === 'already_exists') {
       toast('\u2139 Historical data already exists (' + data.quarters + ' quarters)');
       await loadHistoricalPreview();
@@ -7801,7 +7807,8 @@ function renderHistoricalTable(data) {
 
   var rounds   = data.rounds.sort(function(a,b){return a.round_number-b.round_number;});
   var outcomes = data.outcomes || [];
-  var teams    = [...new Set(outcomes.map(function(o){return o.team_name;}))].sort();
+  var teams    = [...new Set(outcomes.map(function(o){return o.team_name;}))]
+    .filter(function(n){ return n.toLowerCase() !== 'instructor'; }).sort();
 
   // Build lookup: team_name → round_id → outcome
   var lookup = {};
