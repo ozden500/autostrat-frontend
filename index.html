@@ -8310,19 +8310,23 @@ async function showMIReport(key) {
 async function fetchMIData(key) {
   try {
     if (key === 'segment') {
-      // Load all vehicles with specs across all teams in session
-      // Falls back to team-only if session endpoint not available
       try {
-        var res  = await fetch(API_URL + '/sessions/' + sessionId + '/vehicles');
-        if (!res.ok) throw new Error('Session endpoint returned ' + res.status);
-        var data = await res.json();
-        _mi.data.segment = data.vehicles || [];
-        console.log('[MI] Loaded', _mi.data.segment.length, 'vehicles from session endpoint');
+        var [vRes, voRes] = await Promise.all([
+          fetch(API_URL + '/sessions/' + sessionId + '/vehicles'),
+          fetch(API_URL + '/sessions/' + sessionId + '/vehicle-outcomes'),
+        ]);
+        if (!vRes.ok) throw new Error('Session endpoint returned ' + vRes.status);
+        var vData  = await vRes.json();
+        var voData = voRes.ok ? await voRes.json() : {outcomes:[]};
+        _mi.data.segment  = vData.vehicles || [];
+        _mi.data.seg_vols = voData.outcomes || [];
+        console.log('[MI] Loaded', _mi.data.segment.length, 'vehicles,', _mi.data.seg_vols.length, 'volume records');
       } catch(e) {
-        console.warn('[MI] Session endpoint failed, falling back to team endpoint:', e);
+        console.warn('[MI] Segment fetch failed:', e);
         var res2 = await fetch(API_URL + '/teams/' + teamId + '/vehicles');
         var data2 = await res2.json();
-        _mi.data.segment = data2.vehicles || [];
+        _mi.data.segment  = data2.vehicles || [];
+        _mi.data.seg_vols = [];
       }
     }
     if (key === 'share') {
@@ -8404,30 +8408,35 @@ function renderSegmentAnalysis() {
     {key:'status',         label:'Status',             align:'center',fmt:'status'},
   ];
 
+  // Build volume lookup from vehicle_outcomes
+  var segVols = _mi.data.seg_vols || [];
+  var volMap  = {};
+  var revMap  = {};
+  segVols.forEach(function(o) {
+    volMap[o.vehicle_id] = (volMap[o.vehicle_id] || 0) + o.units_sold;
+    revMap[o.vehicle_id] = (revMap[o.vehicle_id] || 0) + parseFloat(o.revenue_m || 0);
+  });
+
   // Enrich vehicles with derived fields
   var enriched = vehicles.map(function(v) {
     var rs   = v.rolled_up_specs || {};
     var segPriceK = {a_segment:12,b_segment:18,c_segment:26,d_segment:38,e_segment:55,
       f_segment:90,mpv:32,pickup:45,sports:55,c_van:28,d_van:40,e_van:55};
-    // Use rolled_up_specs for specs, fall back to segment averages
     var priceK = rs.retail_price_k || segPriceK[v.segment_code] || 25;
-    // Volume: from simulation outcomes or synthetic ramp based on lifecycle
-    var qVol = v.volume_last_qtr || Math.round(3000 + Math.random()*15000);
+    var qVol   = volMap[v.id] || 0;
+    var qRev   = revMap[v.id] || 0;
     return {
-      id:              v.id,
-      segment:         v.segment_code,
-      team_name:       v.team_name || 'Unknown OEM',
-      team_type:       v.team_type,
-      name:            v.name,
-      pwt_type:        rs.pwt_type || '—',
-      manufactured_in: rs.manufactured_in || v.region || 'Europe',
-      retail_price_k:  priceK,
-      fuel_economy:    parseFloat(rs.fuel||0)||null,
-      energy_cons:     parseFloat(rs.energy||0)||null,
-      roominess:       parseFloat(rs.roominess||0)||null,
-      volume_last_qtr: qVol,
-      volume_last_yr:  qVol * 4,
-      status:          v.status,
+      id:               v.id,
+      segment:          v.segment_code,
+      team_name:        v.team_name || 'Unknown OEM',
+      team_type:        v.team_type,
+      name:             v.name,
+      pwt_type:         rs.pwt_type || '—',
+      retail_price_k:   priceK,
+      roominess:        parseFloat(rs.roominess||0)||null,
+      volume_last_qtr:  qVol,
+      revenue_last_qtr: qRev,
+      status:           v.status,
     };
   });
 
@@ -8504,6 +8513,8 @@ function renderSegmentAnalysis() {
         cell = '<span style="font-family:DM Mono,monospace;color:var(--gold);">€' + (val||'—') + 'k</span>';
       } else if (col.fmt === 'num1') {
         cell = val > 0 ? '<span style="font-family:DM Mono,monospace;">' + parseFloat(val).toFixed(1) + '</span>' : '<span style="color:var(--muted2);">—</span>';
+      } else if (col.fmt === 'rev') {
+        cell = val > 0 ? '<span style="font-family:DM Mono,monospace;color:var(--cyan);">€'+parseFloat(val).toFixed(1)+'M</span>' : '<span style="color:var(--muted2);">—</span>';
       } else if (col.fmt === 'status') {
         var stMap = {approved:'var(--green)',plan:'var(--gold)',study:'#4a5568',draft:'#4a5568'};
         var stLbl = {approved:'APPROVED',plan:'PLAN',study:'STUDY',draft:'STUDY'};
