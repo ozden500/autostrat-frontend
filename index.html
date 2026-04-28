@@ -5345,15 +5345,21 @@ async function loadAnalystResults() {
           </tbody>
         </table>
       </div>`;
-    // Also populate P&L and FCF tabs
+    // Build team name map from scores (scores have team_name)
     var teamNames = {};
-    outcomes.forEach(function(o){ teamNames[o.team_id] = o.team_name || scores.find(function(s){return s.team_id===o.team_id;})?.team_name || 'Unknown'; });
-    scores.forEach(function(s){ teamNames[s.team_id] = s.team_name || teamNames[s.team_id]; });
+    scores.forEach(function(s){ if(s.team_name) teamNames[s.team_id] = s.team_name; });
+    // Fallback: attach team_name to outcomes from scores map
+    outcomes.forEach(function(o){
+      if (!o.team_name) o.team_name = teamNames[o.team_id] || 'Unknown';
+    });
     _analystData = {outcomes: outcomes, teams: teamNames};
     if (_analystTab === 'pl')  renderPLComparison(_analystData);
     if (_analystTab === 'fcf') renderFCFComparison(_analystData);
 
-  } catch(e) { content.innerHTML = '<div style="color:var(--red)">Error loading results.</div>'; }
+  } catch(e) { 
+    console.error('loadAnalystResults error:', e);
+    content.innerHTML = '<div style="color:var(--red)">Error loading results: ' + e.message + '</div>'; 
+  }
 }
 
 // ── TEAM MONITOR ─────────────────────────
