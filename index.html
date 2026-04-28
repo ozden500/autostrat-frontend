@@ -8341,6 +8341,29 @@ async function fetchMIData(key) {
       var data = await res.json();
       _mi.data.reasons = data.weights || [];
     }
+    if (key === 'footprint') {
+      try {
+        var [pRes, tRes] = await Promise.all([
+          fetch(API_URL + '/sessions/' + sessionId + '/plants'),
+          fetch(API_URL + '/sessions/' + sessionId + '/teams'),
+        ]);
+        var pData = await pRes.json();
+        var tData = await tRes.json();
+        var teams = (tData.teams || []).filter(function(t){return t.name.toLowerCase()!=='instructor';});
+        var teamMap = {};
+        teams.forEach(function(t){ teamMap[t.id] = t; });
+        var plants = (pData.plants || []).map(function(p){
+          var team = teamMap[p.team_id] || {};
+          p.team_name = team.name || 'Unknown';
+          p.team_type = team.team_type || 'human';
+          return p;
+        }).filter(function(p){ return p.team_name !== 'Unknown' && p.team_name.toLowerCase() !== 'instructor'; });
+        _mi.data.footprint = plants;
+      } catch(e) {
+        console.warn('[MI] Footprint fetch failed:', e);
+        _mi.data.footprint = [];
+      }
+    }
     if (key === 'tech') {
       var isInstr2 = currentUser && currentUser.role === 'instructor';
       var fetches2 = [fetch(API_URL + '/sessions/' + sessionId + '/vehicles')];
@@ -8365,6 +8388,7 @@ function renderMIReport(key) {
   var el = document.getElementById('mi-report-content');
   if (!el) return;
   if (key === 'segment')    { el.innerHTML = renderSegmentAnalysis(); }
+  if (key === 'footprint')  { el.innerHTML = renderManufacturingFootprint(); }
   else if (key === 'share') { el.innerHTML = renderMarketShare(); }
   else if (key === 'reasons'){el.innerHTML = renderConsumerInsights(); }
   else if (key === 'elasticity'){el.innerHTML = renderElasticity(); }
@@ -8939,6 +8963,156 @@ function renderTechTrends() {
       '</div></div>';
   }
   html += '</div></div>';
+  return html;
+}
+
+
+// ── REPORT: Manufacturing Footprint ──────────────────────────
+function renderManufacturingFootprint() {
+  var plants = _mi.data.footprint || [];
+  var colors = ['var(--cyan)','var(--gold)','var(--green)','var(--purple)',
+    'var(--orange)','var(--blue)','var(--red)','#a78bfa','#f472b6','#34d399'];
+
+  if (plants.length === 0) {
+    return '<div style="padding:32px;text-align:center;color:var(--muted2);">' +
+      '<div style="font-size:32px;margin-bottom:8px;">🏭</div>' +
+      '<div style="font-weight:600;margin-bottom:4px;">No plant data available</div>' +
+      '<div style="font-size:11px;">Plants need to be initialised by the instructor via the Footprint Manager.</div></div>';
+  }
+
+  // Aggregate by team
+  var teamMap = {};
+  plants.forEach(function(p) {
+    if (!teamMap[p.team_name]) {
+      teamMap[p.team_name] = {
+        team_name: p.team_name,
+        team_type: p.team_type,
+        plants: [],
+        total_capacity_k: 0,
+        regions: {},
+        countries: {},
+      };
+    }
+    var t = teamMap[p.team_name];
+    t.plants.push(p);
+    var cap = parseInt(p.capacity_k) || 0;
+    t.total_capacity_k += cap;
+    var region = p.region || 'Unknown';
+    var country = p.country_name || p.country_code || 'Unknown';
+    t.regions[region]  = (t.regions[region]  || 0) + cap;
+    t.countries[country] = (t.countries[country] || 0) + cap;
+  });
+
+  var teams = Object.values(teamMap).sort(function(a,b){
+    return b.total_capacity_k - a.total_capacity_k;
+  });
+
+  // Global totals
+  var totalCap = plants.reduce(function(s,p){return s+(parseInt(p.capacity_k)||0);}, 0);
+  var allRegions = {};
+  var allCountries = {};
+  plants.forEach(function(p){
+    var r = p.region || 'Unknown';
+    var c = p.country_name || p.country_code || 'Unknown';
+    var cap = parseInt(p.capacity_k) || 0;
+    allRegions[r]   = (allRegions[r]   || 0) + cap;
+    allCountries[c] = (allCountries[c] || 0) + cap;
+  });
+
+  var html = '';
+
+  // ── Header KPIs ──
+  html += '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:16px;">';
+  html += kpiCard('Total Industry Capacity', totalCap.toLocaleString() + 'k units', 'var(--cyan)', 'all OEMs combined');
+  html += kpiCard('Plants in Operation', plants.filter(function(p){return p.status==='active';}).length + ' active', 'var(--green)', plants.length + ' total');
+  html += kpiCard('Manufacturing Regions', Object.keys(allRegions).length + ' regions', 'var(--gold)', Object.keys(allCountries).length + ' countries');
+  html += '</div>';
+
+  // ── Regional breakdown chart ──
+  html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:16px;">';
+
+  // Left: by region
+  html += '<div style="background:var(--s2);border:1px solid var(--border);border-radius:4px;padding:12px;">';
+  html += '<div style="font-family:DM Mono,monospace;font-size:8px;text-transform:uppercase;letter-spacing:1.5px;color:var(--muted);margin-bottom:10px;">Capacity by Region (k units)</div>';
+  var regionEntries = Object.entries(allRegions).sort(function(a,b){return b[1]-a[1];});
+  var regColors = ['var(--cyan)','var(--gold)','var(--green)','var(--purple)','var(--orange)'];
+  regionEntries.forEach(function(entry, i) {
+    var pct = Math.round(entry[1]/totalCap*100);
+    var col = regColors[i%regColors.length];
+    html += '<div style="margin-bottom:8px;">' +
+      '<div style="display:flex;justify-content:space-between;font-size:10px;margin-bottom:3px;">' +
+        '<span style="color:var(--text);">' + entry[0] + '</span>' +
+        '<span style="font-family:DM Mono,monospace;color:' + col + ';">' + entry[1].toLocaleString() + 'k (' + pct + '%)</span>' +
+      '</div>' +
+      '<div style="height:6px;background:var(--border2);border-radius:3px;overflow:hidden;">' +
+        '<div style="height:100%;width:' + pct + '%;background:' + col + ';border-radius:3px;"></div>' +
+      '</div></div>';
+  });
+  html += '</div>';
+
+  // Right: by country
+  html += '<div style="background:var(--s2);border:1px solid var(--border);border-radius:4px;padding:12px;">';
+  html += '<div style="font-family:DM Mono,monospace;font-size:8px;text-transform:uppercase;letter-spacing:1.5px;color:var(--muted);margin-bottom:10px;">Capacity by Country (k units)</div>';
+  var countryEntries = Object.entries(allCountries).sort(function(a,b){return b[1]-a[1];}).slice(0,8);
+  countryEntries.forEach(function(entry, i) {
+    var pct = Math.round(entry[1]/totalCap*100);
+    var col = colors[i%colors.length];
+    html += '<div style="margin-bottom:7px;">' +
+      '<div style="display:flex;justify-content:space-between;font-size:10px;margin-bottom:2px;">' +
+        '<span style="color:var(--text);">' + entry[0] + '</span>' +
+        '<span style="font-family:DM Mono,monospace;color:' + col + ';">' + entry[1].toLocaleString() + 'k</span>' +
+      '</div>' +
+      '<div style="height:5px;background:var(--border2);border-radius:3px;overflow:hidden;">' +
+        '<div style="height:100%;width:' + pct + '%;background:' + col + ';border-radius:3px;"></div>' +
+      '</div></div>';
+  });
+  html += '</div></div>';
+
+  // ── OEM Detail Table ──
+  html += '<div style="font-family:DM Mono,monospace;font-size:8px;text-transform:uppercase;letter-spacing:1.5px;color:var(--muted);margin-bottom:10px;">OEM Manufacturing Footprint</div>';
+  html += '<div style="overflow-x:auto;"><table class="mi-tbl"><thead><tr>' +
+    '<th class="mi-th">#</th>' +
+    '<th class="mi-th">OEM</th>' +
+    '<th class="mi-th">Type</th>' +
+    '<th class="mi-th" style="text-align:right;">Plants</th>' +
+    '<th class="mi-th" style="text-align:right;">Total Capacity</th>' +
+    '<th class="mi-th" style="text-align:right;">Capacity Share</th>' +
+    '<th class="mi-th">Primary Region</th>' +
+    '<th class="mi-th">Plant Details</th>' +
+    '</tr></thead><tbody>';
+
+  teams.forEach(function(team, i) {
+    var col = colors[i%colors.length];
+    var sharePct = totalCap > 0 ? Math.round(team.total_capacity_k/totalCap*100) : 0;
+    var primaryRegion = Object.entries(team.regions).sort(function(a,b){return b[1]-a[1];})[0];
+    var plantList = team.plants.slice(0,3).map(function(p){
+      return '<span style="font-family:DM Mono,monospace;font-size:8px;padding:1px 5px;border-radius:2px;' +
+        'background:rgba(255,255,255,0.05);margin-right:3px;">' +
+        (p.name||'Plant') + ' ' + (p.capacity_k||0) + 'k</span>';
+    }).join('');
+    if (team.plants.length > 3) plantList += '<span style="font-size:9px;color:var(--muted2);">+' + (team.plants.length-3) + ' more</span>';
+
+    html += '<tr class="mi-tr">' +
+      '<td class="mi-td" style="color:var(--muted2);">' + (i+1) + '</td>' +
+      '<td class="mi-td" style="font-weight:600;display:flex;align-items:center;gap:6px;">' +
+        '<span style="width:8px;height:8px;border-radius:50%;background:' + col + ';display:inline-block;flex-shrink:0;"></span>' +
+        team.team_name + '</td>' +
+      '<td class="mi-td" style="font-family:DM Mono,monospace;font-size:9px;color:var(--muted2);">' +
+        (team.team_type === 'ai' ? 'AI' : 'Human') + '</td>' +
+      '<td class="mi-td mono" style="text-align:right;">' + team.plants.length + '</td>' +
+      '<td class="mi-td mono" style="text-align:right;color:' + col + ';">' + team.total_capacity_k.toLocaleString() + 'k</td>' +
+      '<td class="mi-td" style="text-align:right;">' +
+        '<div style="display:flex;align-items:center;gap:6px;justify-content:flex-end;">' +
+          '<div style="width:60px;height:6px;background:var(--border2);border-radius:3px;overflow:hidden;">' +
+            '<div style="height:100%;width:' + sharePct + '%;background:' + col + ';border-radius:3px;"></div></div>' +
+          '<span style="font-family:DM Mono,monospace;font-size:10px;color:' + col + ';">' + sharePct + '%</span>' +
+        '</div></td>' +
+      '<td class="mi-td" style="font-size:10px;">' + (primaryRegion ? primaryRegion[0] + ' (' + primaryRegion[1] + 'k)' : '—') + '</td>' +
+      '<td class="mi-td">' + (plantList || '<span style="color:var(--muted2);font-size:10px;">No plants</span>') + '</td>' +
+    '</tr>';
+  });
+
+  html += '</tbody></table></div>';
   return html;
 }
 
