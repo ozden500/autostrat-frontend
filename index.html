@@ -6254,8 +6254,16 @@ async function instructorCloseRound() {
   if (btn) { btn.disabled = true; btn.textContent = '⏳ Running simulation...'; }
   try {
     const res = await fetch(`${API_URL}/sessions/${sessionId}/rounds/${roundId}/run`, {method:'POST'});
-    if (!res.ok) throw new Error('Simulation failed: ' + res.status);
-    toast('✓ Simulation complete — results ready for all teams');
+    const runData = await res.json();
+    // Accept both success:true and already_complete (idempotent re-run)
+    if (!res.ok && runData.status !== 'already_complete') {
+      throw new Error('Simulation failed: ' + res.status + ' — ' + (runData.detail || ''));
+    }
+    if (runData.status === 'already_complete') {
+      toast('✓ Round already complete — results available');
+    } else {
+      toast('✓ Simulation complete — results ready for all teams');
+    }
     if (btn) btn.textContent = '✓ Round closed';
     const statusLabel = document.getElementById('ip-status-label');
     if (statusLabel) statusLabel.textContent = 'results';
