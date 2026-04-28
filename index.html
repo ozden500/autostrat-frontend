@@ -8322,10 +8322,9 @@ async function fetchMIData(key) {
         _mi.data.seg_vols = voData.outcomes || [];
         console.log('[MI] Loaded', _mi.data.segment.length, 'vehicles,', _mi.data.seg_vols.length, 'volume records');
       } catch(e) {
+        // Always use session endpoint — never fall back to team-only vehicles
         console.warn('[MI] Segment fetch failed:', e);
-        var res2 = await fetch(API_URL + '/teams/' + teamId + '/vehicles');
-        var data2 = await res2.json();
-        _mi.data.segment  = data2.vehicles || [];
+        _mi.data.segment  = [];
         _mi.data.seg_vols = [];
       }
     }
@@ -8386,7 +8385,10 @@ function renderSegmentAnalysis() {
 
   if (vehicles.length === 0) {
     return '<div style="padding:24px;color:var(--muted2);text-align:center;">' +
-      'No approved/plan vehicles in session yet. Teams need to submit proposals first.</div>';
+      '<div style="font-size:24px;margin-bottom:8px;">🚗</div>' +
+      '<div style="font-weight:600;margin-bottom:4px;">No vehicles in market yet</div>' +
+      '<div style="font-size:11px;">AI teams will have vehicles once the instructor initialises the AI fleet. ' +
+      'Human teams need to submit vehicle proposals through the Engineering module.</div></div>';
   }
 
   var segOrder = ['a_segment','b_segment','c_segment','d_segment','e_segment','f_segment',
