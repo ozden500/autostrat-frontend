@@ -2038,14 +2038,46 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
 <div class="instr-page" id="page-instr-results">
   <div class="pg-title" style="color:#a78bfa">RESULTS ANALYST</div>
   <div class="pg-sub">Full performance breakdown · All teams · All rounds</div>
+
+  <!-- Tab selector -->
+  <div style="display:flex;gap:4px;margin-bottom:16px;border-bottom:1px solid var(--border);padding-bottom:0;">
+    <button id="analyst-tab-summary" onclick="switchAnalystTab('summary')"
+      style="font-family:'DM Mono',monospace;font-size:9px;letter-spacing:1px;padding:7px 14px;border:none;border-bottom:2px solid #a78bfa;background:none;color:#a78bfa;cursor:pointer;text-transform:uppercase;">
+      Summary
+    </button>
+    <button id="analyst-tab-pl" onclick="switchAnalystTab('pl')"
+      style="font-family:'DM Mono',monospace;font-size:9px;letter-spacing:1px;padding:7px 14px;border:none;border-bottom:2px solid transparent;background:none;color:var(--muted);cursor:pointer;text-transform:uppercase;">
+      P&amp;L Comparison
+    </button>
+    <button id="analyst-tab-fcf" onclick="switchAnalystTab('fcf')"
+      style="font-family:'DM Mono',monospace;font-size:9px;letter-spacing:1px;padding:7px 14px;border:none;border-bottom:2px solid transparent;background:none;color:var(--muted);cursor:pointer;text-transform:uppercase;">
+      Free Cash Flow
+    </button>
+  </div>
+
+  <!-- Round selector -->
   <div style="display:flex;gap:8px;margin-bottom:16px;align-items:center">
     <select id="analyst-round-sel" onchange="loadAnalystResults()" style="background:var(--s2);border:1px solid var(--border2);color:var(--text);border-radius:6px;padding:7px 12px;font-size:12px;font-family:inherit">
       <option>Select round...</option>
     </select>
-    <button onclick="loadAnalystResults()" style="background:#4c1d95;color:#c4b5fd;border:none;border-radius:6px;padding:8px 16px;font-size:12px;cursor:pointer">Load Results</button>
+    <button onclick="loadAnalystResults()" style="background:#4c1d95;color:#c4b5fd;border:none;border-radius:6px;padding:8px 16px;font-size:12px;cursor:pointer">↻ Load</button>
   </div>
-  <div id="analyst-content">
-    <div style="color:var(--muted2);font-size:13px;padding:40px 0;text-align:center">Select a round to view full analysis.</div>
+
+  <!-- Tab content -->
+  <div id="analyst-tab-summary-content">
+    <div id="analyst-content">
+      <div style="color:var(--muted2);font-size:13px;padding:40px 0;text-align:center">Select a round to view full analysis.</div>
+    </div>
+  </div>
+  <div id="analyst-tab-pl-content" style="display:none;">
+    <div id="analyst-pl-content">
+      <div style="color:var(--muted2);font-size:13px;padding:40px 0;text-align:center">Select a round above to load P&L comparison.</div>
+    </div>
+  </div>
+  <div id="analyst-tab-fcf-content" style="display:none;">
+    <div id="analyst-fcf-content">
+      <div style="color:var(--muted2);font-size:13px;padding:40px 0;text-align:center">Select a round above to load Free Cash Flow analysis.</div>
+    </div>
   </div>
 </div>
 
@@ -5313,6 +5345,14 @@ async function loadAnalystResults() {
           </tbody>
         </table>
       </div>`;
+    // Also populate P&L and FCF tabs
+    var teamNames = {};
+    outcomes.forEach(function(o){ teamNames[o.team_id] = o.team_name || scores.find(function(s){return s.team_id===o.team_id;})?.team_name || 'Unknown'; });
+    scores.forEach(function(s){ teamNames[s.team_id] = s.team_name || teamNames[s.team_id]; });
+    _analystData = {outcomes: outcomes, teams: teamNames};
+    if (_analystTab === 'pl')  renderPLComparison(_analystData);
+    if (_analystTab === 'fcf') renderFCFComparison(_analystData);
+
   } catch(e) { content.innerHTML = '<div style="color:var(--red)">Error loading results.</div>'; }
 }
 
