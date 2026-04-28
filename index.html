@@ -5286,6 +5286,121 @@ async function refreshInstructorHub() {
 }
 
 // ── RESULTS ANALYST ──────────────────────
+var _analystTab = 'summary';
+var _analystData = null;
+
+function switchAnalystTab(tab) {
+  _analystTab = tab;
+  ['summary','pl','fcf'].forEach(function(t) {
+    var btn = document.getElementById('analyst-tab-' + t);
+    var c   = document.getElementById('analyst-tab-' + t + '-content');
+    if (btn) { btn.style.borderBottomColor = t===tab?'#a78bfa':'transparent'; btn.style.color = t===tab?'#a78bfa':'var(--muted)'; }
+    if (c)   c.style.display = t===tab?'':'none';
+  });
+  if (_analystData) {
+    if (tab==='pl')  renderPLComparison(_analystData);
+    if (tab==='fcf') renderFCFComparison(_analystData);
+  }
+}
+
+function renderPLComparison(data) {
+  var el = document.getElementById('analyst-pl-content');
+  if (!el) return;
+  var outcomes = (data.outcomes||[]).slice().sort(function(a,b){return b.revenue_m-a.revenue_m;});
+  var teams = data.teams||{};
+  if (!outcomes.length) { el.innerHTML='<div style="padding:24px;color:var(--muted2);text-align:center;">No data for this round.</div>'; return; }
+  var cols=['var(--cyan)','var(--gold)','var(--green)','var(--purple)','var(--orange)','var(--blue)','#a78bfa','#f472b6','#34d399','#fb923c','#60a5fa'];
+  outcomes.forEach(function(o){
+    o.gross_profit_m=o.gross_profit_m||(o.revenue_m-o.cogs_m);
+    o.marketing_m=o.marketing_spend_m||0;
+    o.ebit_margin=o.revenue_m>0?o.ebit_m/o.revenue_m*100:0;
+    o.gross_margin=o.revenue_m>0?o.gross_profit_m/o.revenue_m*100:0;
+  });
+  var lines=[
+    {key:'revenue_m',       label:'Gross Revenue',       bold:true, color:'var(--cyan)'},
+    {key:'cogs_m',          label:'  Cost of Goods Sold',bold:false,color:'var(--red)',   neg:true, sep:false},
+    {key:'gross_profit_m',  label:'Gross Profit',        bold:true, color:'var(--green)', sep:true},
+    {key:'marketing_m',     label:'  Marketing Spend',   bold:false,color:'var(--muted)', neg:true},
+    {key:'rd_spend_m',      label:'  R&D Spend',         bold:false,color:'var(--muted)', neg:true},
+    {key:'ebit_m',          label:'EBIT',                bold:true, color:'var(--gold)',  sep:true},
+    {key:'capex_m',         label:'  CapEx',             bold:false,color:'var(--muted)', neg:true},
+    {key:'cash_flow_m',     label:'Cash Flow',           bold:true, color:'var(--purple)',sep:true},
+    {key:'ebit_margin',     label:'EBIT Margin %',       bold:false,color:'var(--gold)',  pct:true},
+    {key:'gross_margin',    label:'Gross Margin %',      bold:false,color:'var(--green)', pct:true},
+    {key:'total_units_sold',label:'Units Sold',          bold:false,color:'var(--text)',  units:true},
+  ];
+  var h='<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;min-width:800px">';
+  h+='<thead><tr><th style="font-family:DM Mono,monospace;font-size:8px;color:var(--muted);padding:8px 12px;text-align:left;background:var(--s2);border-bottom:2px solid var(--border);min-width:160px;position:sticky;left:0;">P&L Line Item</th>';
+  outcomes.forEach(function(o,i){
+    var n=teams[o.team_id]||o.team_name||'Team';
+    h+='<th style="font-family:DM Mono,monospace;font-size:9px;color:'+cols[i%cols.length]+';padding:8px 10px;text-align:right;background:var(--s2);border-bottom:2px solid var(--border);min-width:110px;">'+n+'</th>';
+  });
+  h+='</tr></thead><tbody>';
+  lines.forEach(function(line){
+    if(line.sep) h+='<tr><td colspan="'+(outcomes.length+1)+'" style="padding:1px;background:var(--border)"></td></tr>';
+    h+='<tr style="border-bottom:1px solid rgba(255,255,255,0.03)">';
+    h+='<td style="padding:7px 12px;font-size:'+(line.bold?'11':'10')+'px;font-weight:'+(line.bold?700:400)+';color:'+(line.bold?line.color:'var(--text)')+';position:sticky;left:0;background:var(--s1)">'+line.label+'</td>';
+    outcomes.forEach(function(o){
+      var v=parseFloat(o[line.key])||0,disp,col;
+      if(line.pct){disp=v.toFixed(1)+'%';col=v>=15?'var(--green)':v>=5?'var(--gold)':'var(--red)';}
+      else if(line.units){disp=Math.round(v).toLocaleString();col='var(--text)';}
+      else{disp='€'+Math.abs(v).toFixed(0)+'M';col=line.neg?(v>0?'var(--red)':'var(--muted2)'):(v>=0?line.color:'var(--red)');if(line.neg&&v>0)disp='-'+disp;}
+      h+='<td style="padding:7px 10px;font-family:DM Mono,monospace;font-size:10px;font-weight:'+(line.bold?700:400)+';text-align:right;color:'+col+'">'+disp+'</td>';
+    });
+    h+='</tr>';
+  });
+  h+='</tbody></table></div>';
+  el.innerHTML=h;
+}
+
+function renderFCFComparison(data) {
+  var el = document.getElementById('analyst-fcf-content');
+  if (!el) return;
+  var outcomes = (data.outcomes||[]).slice().sort(function(a,b){return b.cash_flow_m-a.cash_flow_m;});
+  var teams = data.teams||{};
+  if (!outcomes.length) { el.innerHTML='<div style="padding:24px;color:var(--muted2);text-align:center;">No data for this round.</div>'; return; }
+  var cols=['var(--cyan)','var(--gold)','var(--green)','var(--purple)','var(--orange)','var(--blue)','#a78bfa','#f472b6','#34d399','#fb923c','#60a5fa'];
+  outcomes.forEach(function(o){
+    o.fcf_m=o.ebit_m-(o.capex_m||0);
+    o.fcf_yield=o.revenue_m>0?o.fcf_m/o.revenue_m*100:0;
+    o.rd_intensity=o.revenue_m>0?(o.rd_spend_m||0)/o.revenue_m*100:0;
+    o.capex_intensity=o.revenue_m>0?(o.capex_m||0)/o.revenue_m*100:0;
+  });
+  var lines=[
+    {key:'ebit_m',          label:'EBIT',               bold:true, color:'var(--gold)'},
+    {key:'capex_m',         label:'  Less: CapEx',       bold:false,color:'var(--red)',   neg:true},
+    {key:'fcf_m',           label:'Free Cash Flow',      bold:true, color:'var(--purple)',sep:true},
+    {key:'cash_flow_m',     label:'Operating Cash Flow', bold:true, color:'var(--cyan)'},
+    {key:'rd_spend_m',      label:'  R&D Investment',    bold:false,color:'var(--muted)', neg:true},
+    {key:'fcf_yield',       label:'FCF Yield %',         bold:false,color:'var(--purple)',pct:true},
+    {key:'rd_intensity',    label:'R&D Intensity %',     bold:false,color:'var(--green)', pct:true},
+    {key:'capex_intensity', label:'CapEx Intensity %',   bold:false,color:'var(--orange)',pct:true},
+    {key:'total_units_sold',label:'Units Sold',          bold:false,color:'var(--text)',  units:true},
+  ];
+  var h='<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;min-width:800px">';
+  h+='<thead><tr><th style="font-family:DM Mono,monospace;font-size:8px;color:var(--muted);padding:8px 12px;text-align:left;background:var(--s2);border-bottom:2px solid var(--border);min-width:160px;position:sticky;left:0;">Cash Flow Item</th>';
+  outcomes.forEach(function(o,i){
+    var n=teams[o.team_id]||o.team_name||'Team';
+    h+='<th style="font-family:DM Mono,monospace;font-size:9px;color:'+cols[i%cols.length]+';padding:8px 10px;text-align:right;background:var(--s2);border-bottom:2px solid var(--border);min-width:110px;">'+n+'</th>';
+  });
+  h+='</tr></thead><tbody>';
+  lines.forEach(function(line){
+    if(line.sep) h+='<tr><td colspan="'+(outcomes.length+1)+'" style="padding:1px;background:var(--border)"></td></tr>';
+    h+='<tr style="border-bottom:1px solid rgba(255,255,255,0.03)">';
+    h+='<td style="padding:7px 12px;font-size:'+(line.bold?'11':'10')+'px;font-weight:'+(line.bold?700:400)+';color:'+(line.bold?line.color:'var(--text)')+';position:sticky;left:0;background:var(--s1)">'+line.label+'</td>';
+    outcomes.forEach(function(o){
+      var v=parseFloat(o[line.key])||0,disp,col;
+      if(line.pct){disp=v.toFixed(1)+'%';col=v>=10?'var(--green)':v>=3?'var(--gold)':'var(--red)';}
+      else if(line.units){disp=Math.round(v).toLocaleString();col='var(--text)';}
+      else{disp='€'+Math.abs(v).toFixed(0)+'M';col=line.neg?(v>0?'var(--red)':'var(--muted2)'):(v>=0?line.color:'var(--red)');if(line.neg&&v>0)disp='-'+disp;}
+      h+='<td style="padding:7px 10px;font-family:DM Mono,monospace;font-size:10px;font-weight:'+(line.bold?700:400)+';text-align:right;color:'+col+'">'+disp+'</td>';
+    });
+    h+='</tr>';
+  });
+  h+='</tbody></table></div>';
+  el.innerHTML=h;
+}
+
 async function loadAnalystRounds() {
   if (!sessionId) return;
   try {
@@ -5356,9 +5471,17 @@ async function loadAnalystResults() {
     if (_analystTab === 'pl')  renderPLComparison(_analystData);
     if (_analystTab === 'fcf') renderFCFComparison(_analystData);
 
+    // Store data for P&L and FCF tabs
+    var teamNames={};
+    scores.forEach(function(s){ if(s.team_name) teamNames[s.team_id]=s.team_name; });
+    outcomes.forEach(function(o){ if(!o.team_name) o.team_name=teamNames[o.team_id]||'Unknown'; });
+    _analystData={outcomes:outcomes,teams:teamNames};
+    if(_analystTab==='pl')  renderPLComparison(_analystData);
+    if(_analystTab==='fcf') renderFCFComparison(_analystData);
+
   } catch(e) { 
     console.error('loadAnalystResults error:', e);
-    content.innerHTML = '<div style="color:var(--red)">Error loading results: ' + e.message + '</div>'; 
+    content.innerHTML = '<div style="color:var(--red)">Error: ' + e.message + '</div>'; 
   }
 }
 
