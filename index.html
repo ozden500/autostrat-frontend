@@ -5470,199 +5470,88 @@ function renderFCFComparison(data) {
   var teams = data.teams||{};
   if (!outcomes.length) { el.innerHTML='<div style="padding:24px;color:var(--muted2);text-align:center;">No data for this round.</div>'; return; }
   var cols=['var(--cyan)','var(--gold)','var(--green)','var(--purple)','var(--orange)','var(--blue)','#a78bfa','#f472b6','#34d399','#fb923c','#60a5fa'];
-  outcomes.forEach(function(o){
-    o.fcf_m=o.ebit_m-(o.capex_m||0);
-    o.fcf_yield=o.revenue_m>0?o.fcf_m/o.revenue_m*100:0;
-    o.rd_intensity=o.revenue_m>0?(o.rd_spend_m||0)/o.revenue_m*100:0;
-    o.capex_intensity=o.revenue_m>0?(o.capex_m||0)/o.revenue_m*100:0;
+
+  outcomes.forEach(function(o) {
+    var rev=o.revenue_m||0, cogs=o.cogs_m||0, capex=o.capex_m||0;
+    o._interest=rev*0.01; o._pretax=(o.ebit_m||0)-o._interest;
+    o._tax=Math.max(0,o._pretax*0.25); o._net_income=o._pretax-o._tax;
+    // CFO
+    o._da=capex*0.20; o._impair=0;
+    o._ar=-(rev*0.015); o._inv=-(cogs*0.02); o._ap=cogs*0.018; o._accr=rev*0.005;
+    o._wc=o._ar+o._inv+o._ap+o._accr;
+    o._cfo=o._net_income+o._da+o._impair+o._wc;
+    // CFI
+    o._capex_out=-capex; o._ppe=capex*0.05;
+    o._cfi=o._capex_out+o._ppe;
+    // CFF
+    o._debt_in=rev*0.005; o._debt_out=-(rev*0.008);
+    o._eq=0; o._buy=-(rev*0.002); o._div=-(rev*0.01);
+    o._cff=o._debt_in+o._debt_out+o._eq+o._buy+o._div;
+    o._net_chg=o._cfo+o._cfi+o._cff;
   });
-  var lines=[
-    {key:'ebit_m',          label:'EBIT',               bold:true, color:'var(--gold)'},
-    {key:'capex_m',         label:'  Less: CapEx',       bold:false,color:'var(--red)',   neg:true},
-    {key:'fcf_m',           label:'Free Cash Flow',      bold:true, color:'var(--purple)',sep:true},
-    {key:'cash_flow_m',     label:'Operating Cash Flow', bold:true, color:'var(--cyan)'},
-    {key:'rd_spend_m',      label:'  R&D Investment',    bold:false,color:'var(--muted)', neg:true},
-    {key:'fcf_yield',       label:'FCF Yield %',         bold:false,color:'var(--purple)',pct:true},
-    {key:'rd_intensity',    label:'R&D Intensity %',     bold:false,color:'var(--green)', pct:true},
-    {key:'capex_intensity', label:'CapEx Intensity %',   bold:false,color:'var(--orange)',pct:true},
-    {key:'total_units_sold',label:'Units Sold',          bold:false,color:'var(--text)',  units:true},
+
+  var struct=[
+    {t:'hdr',  label:'1. CASH FLOW FROM OPERATING ACTIVITIES (CFO)', col:'var(--cyan)'},
+    {t:'line', label:'  Net Income',                          key:'_net_income'},
+    {t:'sub',  label:'  Adjustments for Non-Cash Items:'},
+    {t:'line', label:'    Depreciation & Amortization',       key:'_da',       est:true},
+    {t:'line', label:'    Impairments',                       key:'_impair',   est:true},
+    {t:'sub',  label:'  Changes in Working Capital:'},
+    {t:'line', label:'    Accounts Receivable',               key:'_ar',       est:true},
+    {t:'line', label:'    Inventory',                         key:'_inv',      est:true},
+    {t:'line', label:'    Accounts Payable',                  key:'_ap',       est:true},
+    {t:'line', label:'    Accrued Expenses',                  key:'_accr',     est:true},
+    {t:'tot',  label:'= Net Cash from Operating Activities',  key:'_cfo',      col:'var(--cyan)'},
+    {t:'sep'},
+    {t:'hdr',  label:'2. CASH FLOW FROM INVESTING ACTIVITIES (CFI)', col:'var(--gold)'},
+    {t:'line', label:'  Capital Expenditures (CapEx)',        key:'_capex_out'},
+    {t:'line', label:'  Proceeds from Sale of PP&E',          key:'_ppe',      est:true},
+    {t:'tot',  label:'= Net Cash from Investing Activities',  key:'_cfi',      col:'var(--gold)'},
+    {t:'sep'},
+    {t:'hdr',  label:'3. CASH FLOW FROM FINANCING ACTIVITIES (CFF)', col:'var(--purple)'},
+    {t:'line', label:'  Debt Issued',                         key:'_debt_in',  est:true},
+    {t:'line', label:'  Debt Repaid',                         key:'_debt_out', est:true},
+    {t:'line', label:'  Equity Issued',                       key:'_eq',       est:true},
+    {t:'line', label:'  Share Repurchases',                   key:'_buy',      est:true},
+    {t:'line', label:'  Dividends Paid',                      key:'_div',      est:true},
+    {t:'tot',  label:'= Net Cash from Financing Activities',  key:'_cff',      col:'var(--purple)'},
+    {t:'sep'},
+    {t:'hdr',  label:'NET CHANGE IN CASH', col:'var(--green)'},
+    {t:'line', label:'  + Net Cash from Operating Activities',key:'_cfo'},
+    {t:'line', label:'  + Net Cash from Investing Activities',key:'_cfi'},
+    {t:'line', label:'  + Net Cash from Financing Activities',key:'_cff'},
+    {t:'tot',  label:'= Net Increase (Decrease) in Cash',     key:'_net_chg',  col:'var(--green)'},
   ];
-  var h='<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;min-width:800px">';
-  h+='<thead><tr><th style="font-family:DM Mono,monospace;font-size:8px;color:var(--muted);padding:8px 12px;text-align:left;background:var(--s2);border-bottom:2px solid var(--border);min-width:160px;position:sticky;left:0;">Cash Flow Item</th>';
+
+  var nc=outcomes.length;
+  var h='<div style="overflow-x:auto">';
+  h+='<div style="font-family:DM Mono,monospace;font-size:8px;color:var(--muted2);padding:6px 12px;margin-bottom:4px;">Indirect method. <span style="color:var(--orange)">est.</span> = automotive industry estimates. All values €M.</div>';
+  h+='<table style="width:100%;border-collapse:collapse;min-width:900px"><thead><tr>';
+  h+='<th style="font-family:DM Mono,monospace;font-size:8px;color:var(--muted);padding:8px 12px;text-align:left;background:var(--s2);border-bottom:2px solid var(--border);min-width:280px;position:sticky;left:0;">Cash Flow Statement</th>';
   outcomes.forEach(function(o,i){
-    var n=teams[o.team_id]||o.team_name||'Team';
-    h+='<th style="font-family:DM Mono,monospace;font-size:9px;color:'+cols[i%cols.length]+';padding:8px 10px;text-align:right;background:var(--s2);border-bottom:2px solid var(--border);min-width:110px;">'+n+'</th>';
+    h+='<th style="font-family:DM Mono,monospace;font-size:9px;color:'+cols[i%cols.length]+';padding:6px 8px;text-align:right;background:var(--s2);border-bottom:2px solid var(--border);min-width:100px;">'+(teams[o.team_id]||o.team_name||'Team')+'</th>';
   });
   h+='</tr></thead><tbody>';
-  lines.forEach(function(line){
-    if(line.sep) h+='<tr><td colspan="'+(outcomes.length+1)+'" style="padding:1px;background:var(--border)"></td></tr>';
-    h+='<tr style="border-bottom:1px solid rgba(255,255,255,0.03)">';
-    h+='<td style="padding:7px 12px;font-size:'+(line.bold?'11':'10')+'px;font-weight:'+(line.bold?700:400)+';color:'+(line.bold?line.color:'var(--text)')+';position:sticky;left:0;background:var(--s1)">'+line.label+'</td>';
+
+  struct.forEach(function(row){
+    if(row.t==='sep'){h+='<tr><td colspan="'+(nc+1)+'" style="padding:1px;background:var(--border)"></td></tr>';return;}
+    if(row.t==='hdr'){h+='<tr style="background:rgba(167,139,250,0.06)"><td colspan="'+(nc+1)+'" style="padding:6px 12px;font-family:DM Mono,monospace;font-size:8px;text-transform:uppercase;letter-spacing:1.5px;color:'+(row.col||'#a78bfa')+';font-weight:700;">'+row.label+'</td></tr>';return;}
+    if(row.t==='sub'){h+='<tr><td colspan="'+(nc+1)+'" style="padding:3px 12px;font-size:9px;color:var(--muted);font-style:italic;">'+row.label+'</td></tr>';return;}
+    var isTot=row.t==='tot';
+    var est=row.est?'<span style="font-size:7px;color:var(--orange);margin-left:3px">est.</span>':'';
+    h+='<tr style="border-bottom:1px solid rgba(255,255,255,0.03);'+(isTot?'background:rgba(255,255,255,0.03)':'')+'">';
+    h+='<td style="padding:'+(isTot?'8':'5')+'px 12px;font-size:'+(isTot?'11':'10')+'px;font-weight:'+(isTot?700:400)+';color:'+(isTot?(row.col||'var(--text)'):'var(--text)')+';position:sticky;left:0;background:var(--s1);border-right:1px solid var(--border);">'+row.label+est+'</td>';
     outcomes.forEach(function(o){
-      var v=parseFloat(o[line.key])||0,disp,col;
-      if(line.pct){disp=v.toFixed(1)+'%';col=v>=10?'var(--green)':v>=3?'var(--gold)':'var(--red)';}
-      else if(line.units){disp=Math.round(v).toLocaleString();col='var(--text)';}
-      else{disp='€'+Math.abs(v).toFixed(0)+'M';col=line.neg?(v>0?'var(--red)':'var(--muted2)'):(v>=0?line.color:'var(--red)');if(line.neg&&v>0)disp='-'+disp;}
-      h+='<td style="padding:7px 10px;font-family:DM Mono,monospace;font-size:10px;font-weight:'+(line.bold?700:400)+';text-align:right;color:'+col+'">'+disp+'</td>';
+      var v=parseFloat(o[row.key])||0;
+      var disp=(v>=0?'+':'')+'€'+Math.abs(v).toFixed(0)+'M';
+      var col=isTot?(v>=0?(row.col||'var(--green)'):'var(--red)'):(v>=0?'var(--cyan)':'var(--red)');
+      h+='<td style="padding:'+(isTot?'8':'5')+'px 8px;font-family:DM Mono,monospace;font-size:'+(isTot?'11':'10')+'px;font-weight:'+(isTot?700:400)+';text-align:right;color:'+col+';border-left:1px solid rgba(255,255,255,0.03)">'+disp+'</td>';
     });
     h+='</tr>';
   });
   h+='</tbody></table></div>';
   el.innerHTML=h;
 }
-
-async function loadAnalystRounds() {
-  if (!sessionId) return;
-  try {
-    const res  = await fetch(`${API_URL}/sessions/${sessionId}/rounds`);
-    const data = await res.json();
-    const rounds = (data.rounds || []).filter(r => r.phase === 'results');
-    const sel  = document.getElementById('analyst-round-sel');
-    sel.innerHTML = '<option value="">Select round...</option>' +
-      rounds.map(r => `<option value="${r.id}">Round ${r.round_number} · Q${r.quarter} ${r.year}</option>`).join('');
-  } catch(e) {}
-}
-
-async function loadAnalystResults() {
-  const sel = document.getElementById('analyst-round-sel');
-  const rid = sel?.value;
-  if (!rid) return;
-  const content = document.getElementById('analyst-content');
-  content.innerHTML = '<div style="color:var(--muted2);font-size:12px;padding:20px 0">Loading...</div>';
-  try {
-    const res  = await fetch(`${API_URL}/sessions/${sessionId}/rounds/${rid}/outcomes`);
-    const data = await res.json();
-    const scores   = data.scores || [];
-    const outcomes = data.outcomes || [];
-    const segMap   = {};
-    (data.segments || []).forEach(s => { if (!segMap[s.team_id]) segMap[s.team_id] = {}; segMap[s.team_id][s.segment_code] = s; });
-    const outcomeMap = {};
-    outcomes.forEach(o => outcomeMap[o.team_id] = o);
-
-    content.innerHTML = `
-      <div style="overflow-x:auto">
-        <table class="tbl" style="width:100%;min-width:700px">
-          <thead><tr>
-            <th>#</th><th>Team</th><th>Revenue</th><th>EBIT%</th><th>Mkt Share</th><th>Units</th>
-            <th>Financial</th><th>Commercial</th><th>Operational</th><th style="color:#a78bfa">Score</th>
-          </tr></thead>
-          <tbody>
-            ${scores.map(s => {
-              const o = outcomeMap[s.team_id] || {};
-              const segs = Object.values(segMap[s.team_id] || {});
-              const share = segs.length ? (segs.reduce((a,x)=>a+parseFloat(x.market_share_pct||0),0)/segs.length).toFixed(1) : '—';
-              const rev = parseFloat(o.revenue_m||0);
-              const ebit = rev > 0 ? (parseFloat(o.ebit_m||0)/rev*100).toFixed(1) : '—';
-              const rc = s.rank === 1 ? '#fbbf24' : s.rank === 2 ? '#94a3b8' : s.rank === 3 ? '#b45309' : 'var(--muted2)';
-              return `<tr>
-                <td style="color:${rc};font-weight:700">#${s.rank}</td>
-                <td style="font-weight:600">${s.team_name||'—'}</td>
-                <td>€${Math.round(rev).toLocaleString()}M</td>
-                <td class="${parseFloat(ebit)>8?'pos':'neu'}">${ebit}%</td>
-                <td>${share}%</td>
-                <td>${parseInt(o.total_units_sold||0).toLocaleString()}</td>
-                <td>${parseFloat(s.financial_score||0).toFixed(1)}</td>
-                <td>${parseFloat(s.commercial_score||0).toFixed(1)}</td>
-                <td>${parseFloat(s.operational_score||0).toFixed(1)}</td>
-                <td style="color:#a78bfa;font-weight:700">${parseFloat(s.composite_score||0).toFixed(1)}</td>
-              </tr>`;
-            }).join('')}
-          </tbody>
-        </table>
-      </div>`;
-    // Store data for P&L and FCF tabs
-    var teamNames={};
-    scores.forEach(function(s){ if(s.team_name) teamNames[s.team_id]=s.team_name; });
-    outcomes.forEach(function(o){ if(!o.team_name) o.team_name=teamNames[o.team_id]||'Unknown'; });
-    _analystData={outcomes:outcomes,teams:teamNames};
-    if(_analystTab==='pl')  renderPLComparison(_analystData);
-    if(_analystTab==='fcf') renderFCFComparison(_analystData);
-
-  } catch(e) { 
-    console.error('loadAnalystResults error:', e);
-    content.innerHTML = '<div style="color:var(--red)">Error: ' + e.message + '</div>'; 
-  }
-}
-
-// ── TEAM MONITOR ─────────────────────────
-async function loadTeamMonitor() {
-  if (!sessionId || !roundId) return;
-  const content = document.getElementById('monitor-content');
-  content.innerHTML = '<div style="color:var(--muted2);font-size:12px;padding:20px 0">Loading...</div>';
-  try {
-    const [tRes, sRes, cRes] = await Promise.all([
-      fetch(`${API_URL}/sessions/${sessionId}/teams`),
-      fetch(`${API_URL}/sessions/${sessionId}/rounds/${roundId}/submissions`),
-      fetch(`${API_URL}/sessions/${sessionId}/rounds/${roundId}/outcomes`)
-    ]);
-    const teams = ((await tRes.json()).teams || []).filter(t => t.name !== 'Instructor' && t.team_type === 'human');
-    const subs  = (await sRes.json()).submissions || [];
-    const subMap = {};
-    subs.forEach(s => subMap[s.team_id] = s);
-
-    content.innerHTML = teams.map(t => {
-      const sub  = subMap[t.id];
-      const done = sub?.status === 'submitted';
-      return `<div class="instr-team-card">
-        <div class="instr-team-card-header">
-          <div class="tdot" style="background:${t.color_hex||'#fff'}"></div>
-          <div class="instr-team-name">${t.name}</div>
-          <span class="instr-team-status ${done?'instr-submitted':'instr-pending'}">${done?'✓ Submitted':'⏳ Pending'}</span>
-        </div>
-        <div style="font-size:11px;color:var(--muted2)">${done ? 'Decisions submitted this round.' : 'No decisions submitted yet.'}</div>
-      </div>`;
-    }).join('') || '<div style="color:var(--muted2);font-size:12px">No teams found.</div>';
-  } catch(e) { content.innerHTML = '<div style="color:var(--red)">Error loading team data.</div>'; }
-}
-
-// ── FOOTPRINT MANAGER ─────────────────────
-async function loadFootprintManager() {
-  if (!sessionId) return;
-  const content = document.getElementById('footprint-manager-content');
-  content.innerHTML = '<div style="color:var(--muted2);font-size:12px;padding:20px 0">Loading...</div>';
-  try {
-    const [tRes, pRes] = await Promise.all([
-      fetch(`${API_URL}/sessions/${sessionId}/teams`),
-      fetch(`${API_URL}/sessions/${sessionId}/plants`)
-    ]);
-    const teams  = ((await tRes.json()).teams || []).filter(t => t.name !== 'Instructor' && t.team_type === 'human');
-    const plants = (await pRes.json()).plants || [];
-    const regionNames = {NA:'North America',SA:'South America',EU:'Europe',MEA:'MEA',APAC:'APAC'};
-    const regions = ['EU','NA','APAC','SA','MEA'];
-
-    content.innerHTML = teams.map(t => {
-      const teamPlants = plants.filter(p => p.team_id === t.id);
-      return `<div class="fp-mgr-team">
-        <div class="fp-mgr-team-name">🏢 ${t.name} — ${teamPlants.filter(p=>p.status==='active').length} active plants · ${teamPlants.reduce((s,p)=>s+(p.status==='active'?p.capacity_k:0),0)}k total capacity</div>
-        <div class="fp-mgr-grid">
-          ${regions.map(r => {
-            const rPlants = teamPlants.filter(p => p.region === r);
-            return `<div class="fp-mgr-region">
-              <div class="fp-mgr-region-name">${regionNames[r]}</div>
-              ${rPlants.length === 0 ? '<div style="font-size:10px;color:var(--muted)">No plants</div>' :
-                rPlants.map(p => `<div style="font-size:10px;color:${p.status==='active'?'#4ade80':p.status==='building'?'#fbbf24':'#94a3b8'};margin-bottom:2px">
-                  ${p.type==='vehicle'?'🚗':'⚙'} ${p.name}<br>
-                  <span style="color:var(--muted2)">${p.capacity_k}k · ${p.country_name||''} · ${p.status}</span>
-                </div>`).join('')}
-            </div>`;
-          }).join('')}
-        </div>
-      </div>`;
-    }).join('') || '<div style="color:var(--muted2)">No teams found.</div>';
-  } catch(e) { content.innerHTML = '<div style="color:var(--red)">Error loading footprint data.</div>'; }
-}
-
-// ── EVENT INJECTOR ───────────────────────
-const EVENT_DEFS = {
-  steel_tariff:  { label:'Steel Tariffs +15%',        icon:'🔧', type:'risk',  effect:'cogs_multiplier:1.15' },
-  semiconductor: { label:'Semiconductor Shortage',     icon:'💻', type:'risk',  effect:'capacity_multiplier:0.90' },
-  recession:     { label:'Demand Recession -20%',      icon:'📉', type:'risk',  effect:'demand_multiplier:0.80' },
-  strike:        { label:'Labour Strike -15%',         icon:'✊', type:'risk',  effect:'capacity_multiplier:0.85' },
-  ev_subsidy:    { label:'EV Subsidy Extended',        icon:'⚡', type:'opp',   effect:'ev_demand_multiplier:1.25' },
-  boom:          { label:'Consumer Boom +15%',         icon:'📈', type:'opp',   effect:'demand_multiplier:1.15' },
-  suv_surge:     { label:'SUV Surge +30%',             icon:'🚙', type:'opp',   effect:'suv_demand_multiplier:1.30' },
-  fuel_price:    { label:'Fuel Price Spike',           icon:'⛽', type:'opp',   effect:'ev_demand_multiplier:1.20' },
-};
 
 function injectEvent(eventKey) {
   const def = EVENT_DEFS[eventKey];
