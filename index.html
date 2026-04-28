@@ -6250,19 +6250,22 @@ async function refreshInstructorPanel() {
 
 async function instructorCloseRound() {
   if (!sessionId || !roundId) return;
-  const btn = document.getElementById('ip-btn-close') || document.getElementById('hub-btn-close');
-  if (btn) { btn.disabled = true; btn.textContent = '⏳ Running simulation...'; }
+  // Disable both buttons immediately
+  var btnA = document.getElementById('ip-btn-close');
+  var btnB = document.getElementById('hub-btn-close');
+  if (btnA) { btnA.disabled = true; btnA.textContent = '⏳ Running...'; }
+  if (btnB) { btnB.disabled = true; btnB.textContent = '⏳ Running...'; }
   try {
-    const res = await fetch(`${API_URL}/sessions/${sessionId}/rounds/${roundId}/run`, {method:'POST'});
-    const runData = await res.json();
-    // Accept both success:true and already_complete (idempotent re-run)
-    if (!res.ok && runData.status !== 'already_complete') {
-      throw new Error('Simulation failed: ' + res.status + ' — ' + (runData.detail || ''));
-    }
+    const res  = await fetch(`${API_URL}/sessions/${sessionId}/rounds/${roundId}/run`, {method:'POST'});
+    const text = await res.text();
+    var runData = {};
+    try { runData = JSON.parse(text); } catch(e) {}
     if (runData.status === 'already_complete') {
       toast('✓ Round already complete — results available');
-    } else {
+    } else if (runData.success || res.ok) {
       toast('✓ Simulation complete — results ready for all teams');
+    } else {
+      throw new Error((runData.detail || text || 'Unknown error'));
     }
     if (btn) btn.textContent = '✓ Round closed';
     const statusLabel = document.getElementById('ip-status-label');
@@ -6281,7 +6284,14 @@ async function instructorCloseRound() {
     await refreshInstructorHub();
   } catch(e) {
     toast('⚠ Simulation error: ' + e.message);
-    if (btn) { btn.disabled = false; btn.textContent = '⏹ Close Round & Run Simulation'; }
+    if (btnA) { btnA.disabled = false; btnA.textContent = '⏹ Close Round & Run Simulation'; }
+    if (btnB) { btnB.disabled = false; btnB.textContent = '⏹ Close Round & Run Simulation'; }
+  } finally {
+    // Re-enable after 3 seconds regardless
+    setTimeout(function() {
+      if (btnA && btnA.disabled) { btnA.disabled = false; btnA.textContent = '⏹ Close Round & Run Simulation'; }
+      if (btnB && btnB.disabled) { btnB.disabled = false; btnB.textContent = '⏹ Close Round & Run Simulation'; }
+    }, 3000);
   }
 }
 
