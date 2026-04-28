@@ -5310,47 +5310,157 @@ function renderPLComparison(data) {
   var teams = data.teams||{};
   if (!outcomes.length) { el.innerHTML='<div style="padding:24px;color:var(--muted2);text-align:center;">No data for this round.</div>'; return; }
   var cols=['var(--cyan)','var(--gold)','var(--green)','var(--purple)','var(--orange)','var(--blue)','#a78bfa','#f472b6','#34d399','#fb923c','#60a5fa'];
-  outcomes.forEach(function(o){
-    o.gross_profit_m=o.gross_profit_m||(o.revenue_m-o.cogs_m);
-    o.marketing_m=o.marketing_spend_m||0;
-    o.ebit_margin=o.revenue_m>0?o.ebit_m/o.revenue_m*100:0;
-    o.gross_margin=o.revenue_m>0?o.gross_profit_m/o.revenue_m*100:0;
+
+  // Derive all P&L lines from available DB fields + synthetic automotive ratios
+  outcomes.forEach(function(o) {
+    var rev = o.revenue_m || 0;
+    var cogs = o.cogs_m || 0;
+    // 1. Revenue block
+    o._gross_rev    = rev;
+    o._discount     = rev * 0.03;                          // 3% sales discount (est.)
+    o._net_rev      = rev - o._discount;
+    // 2. COGS breakdown (automotive industry ratios of total COGS)
+    o._mat          = cogs * 0.45;                         // Material 45%
+    o._labor        = cogs * 0.20;                         // Labor 20%
+    o._overhead     = cogs * 0.15;                         // Overhead 15%
+    o._freight      = cogs * 0.08;                         // Freight inbound 8%
+    o._customs      = cogs * 0.04;                         // Customs duty 4%
+    o._depr         = (o.capex_m||0) * 0.20;               // Depreciation = 20% of CapEx
+    o._warranty     = cogs * 0.03;                         // Warranty 3%
+    o._cogs_adj     = o._mat+o._labor+o._overhead+o._freight+o._customs+o._depr+o._warranty;
+    // 3. Gross Profit
+    o._gross_profit = o._net_rev - o._cogs_adj;
+    // 4. Opex
+    o._rd           = o.rd_spend_m || 0;
+    o._mkt          = o.marketing_spend_m || 0;
+    o._ga           = rev * 0.02;                          // G&A 2% of revenue (est.)
+    // 5. EBIT (use actual from DB)
+    o._ebit         = o.ebit_m || 0;
+    // 6. Non-operating (estimated)
+    o._interest     = rev * 0.01;                          // Interest ~1% revenue (est.)
+    o._impairment   = 0;                                   // No data available
+    o._pretax       = o._ebit - o._interest - o._impairment;
+    // 7. Tax (25% effective rate est.)
+    o._tax          = Math.max(0, o._pretax * 0.25);
+    // 8. Net Income
+    o._net_income   = o._pretax - o._tax;
+    // Units
+    o._units        = o.total_units_sold || 0;
   });
-  var lines=[
-    {key:'revenue_m',       label:'Gross Revenue',       bold:true, color:'var(--cyan)'},
-    {key:'cogs_m',          label:'  Cost of Goods Sold',bold:false,color:'var(--red)',   neg:true, sep:false},
-    {key:'gross_profit_m',  label:'Gross Profit',        bold:true, color:'var(--green)', sep:true},
-    {key:'marketing_m',     label:'  Marketing Spend',   bold:false,color:'var(--muted)', neg:true},
-    {key:'rd_spend_m',      label:'  R&D Spend',         bold:false,color:'var(--muted)', neg:true},
-    {key:'ebit_m',          label:'EBIT',                bold:true, color:'var(--gold)',  sep:true},
-    {key:'capex_m',         label:'  CapEx',             bold:false,color:'var(--muted)', neg:true},
-    {key:'cash_flow_m',     label:'Cash Flow',           bold:true, color:'var(--purple)',sep:true},
-    {key:'ebit_margin',     label:'EBIT Margin %',       bold:false,color:'var(--gold)',  pct:true},
-    {key:'gross_margin',    label:'Gross Margin %',      bold:false,color:'var(--green)', pct:true},
-    {key:'total_units_sold',label:'Units Sold',          bold:false,color:'var(--text)',  units:true},
+
+  // P&L structure
+  // type: 'header'=section label, 'total'=subtotal bold, 'line'=normal, 'sep'=divider, 'units'=unit row
+  var structure = [
+    {type:'units',  label:'Units Sold',                key:'_units'},
+    {type:'sep'},
+    {type:'header', label:'REVENUE'},
+    {type:'line',   label:'  Gross Revenue',           key:'_gross_rev',    sign:-1},
+    {type:'line',   label:'  Sales Discounts',         key:'_discount',     sign:1,  est:true},
+    {type:'total',  label:'Net Sales Revenue',         key:'_net_rev',      sign:-1, color:'var(--cyan)'},
+    {type:'sep'},
+    {type:'header', label:'COST OF GOODS SOLD'},
+    {type:'line',   label:'  Material',                key:'_mat',          sign:1,  est:true},
+    {type:'line',   label:'  Labor',                   key:'_labor',        sign:1,  est:true},
+    {type:'line',   label:'  Manufacturing Overhead',  key:'_overhead',     sign:1,  est:true},
+    {type:'line',   label:'  Freight Inbound',         key:'_freight',      sign:1,  est:true},
+    {type:'line',   label:'  Inbound Custom Duty',     key:'_customs',      sign:1,  est:true},
+    {type:'line',   label:'  Plant Depreciation',      key:'_depr',         sign:1,  est:true},
+    {type:'line',   label:'  Warranty',                key:'_warranty',     sign:1,  est:true},
+    {type:'total',  label:'Total COGS',                key:'_cogs_adj',     sign:1,  color:'var(--red)'},
+    {type:'sep'},
+    {type:'total',  label:'GROSS PROFIT',              key:'_gross_profit', sign:-1, color:'var(--green)'},
+    {type:'sep'},
+    {type:'header', label:'OPERATING EXPENSES'},
+    {type:'line',   label:'  Research & Development',  key:'_rd',           sign:1},
+    {type:'line',   label:'  Sales & Marketing',       key:'_mkt',          sign:1},
+    {type:'line',   label:'  General & Administrative',key:'_ga',           sign:1,  est:true},
+    {type:'sep'},
+    {type:'total',  label:'EBIT',                      key:'_ebit',         sign:-1, color:'var(--gold)'},
+    {type:'sep'},
+    {type:'header', label:'NON-OPERATING'},
+    {type:'line',   label:'  Interest Expense',        key:'_interest',     sign:1,  est:true},
+    {type:'line',   label:'  Impairments',             key:'_impairment',   sign:1,  est:true},
+    {type:'total',  label:'Pre-Tax Income',            key:'_pretax',       sign:-1, color:'var(--gold)'},
+    {type:'sep'},
+    {type:'line',   label:'  Income Tax (est. 25%)',   key:'_tax',          sign:1,  est:true},
+    {type:'sep'},
+    {type:'total',  label:'NET INCOME',                key:'_net_income',   sign:-1, color:'var(--purple)'},
   ];
-  var h='<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;min-width:800px">';
-  h+='<thead><tr><th style="font-family:DM Mono,monospace;font-size:8px;color:var(--muted);padding:8px 12px;text-align:left;background:var(--s2);border-bottom:2px solid var(--border);min-width:160px;position:sticky;left:0;">P&L Line Item</th>';
+
+  var ncols = outcomes.length;
+  var h = '<div style="overflow-x:auto">';
+  h += '<div style="font-family:DM Mono,monospace;font-size:8px;color:var(--muted2);padding:6px 12px;margin-bottom:4px;">'+
+    '* Lines marked <span style="color:var(--orange)">est.</span> are synthetic estimates using automotive industry ratios. '+
+    'All values in €M unless stated.</div>';
+  h += '<table style="width:100%;border-collapse:collapse;min-width:900px">';
+
+  // Header row
+  h += '<thead><tr>';
+  h += '<th style="font-family:DM Mono,monospace;font-size:8px;color:var(--muted);padding:8px 12px;text-align:left;background:var(--s2);border-bottom:2px solid var(--border);min-width:200px;position:sticky;left:0;">P&L Line Item</th>';
   outcomes.forEach(function(o,i){
-    var n=teams[o.team_id]||o.team_name||'Team';
-    h+='<th style="font-family:DM Mono,monospace;font-size:9px;color:'+cols[i%cols.length]+';padding:8px 10px;text-align:right;background:var(--s2);border-bottom:2px solid var(--border);min-width:110px;">'+n+'</th>';
+    var n = teams[o.team_id]||o.team_name||'Team';
+    var col = cols[i%cols.length];
+    h += '<th style="font-family:DM Mono,monospace;font-size:9px;color:'+col+';padding:6px 8px;text-align:right;background:var(--s2);border-bottom:2px solid var(--border);min-width:100px;">'+
+      n+'<br><span style="font-size:7px;color:var(--muted2);font-weight:400;">€M &nbsp;|&nbsp; % Rev</span></th>';
   });
-  h+='</tr></thead><tbody>';
-  lines.forEach(function(line){
-    if(line.sep) h+='<tr><td colspan="'+(outcomes.length+1)+'" style="padding:1px;background:var(--border)"></td></tr>';
-    h+='<tr style="border-bottom:1px solid rgba(255,255,255,0.03)">';
-    h+='<td style="padding:7px 12px;font-size:'+(line.bold?'11':'10')+'px;font-weight:'+(line.bold?700:400)+';color:'+(line.bold?line.color:'var(--text)')+';position:sticky;left:0;background:var(--s1)">'+line.label+'</td>';
-    outcomes.forEach(function(o){
-      var v=parseFloat(o[line.key])||0,disp,col;
-      if(line.pct){disp=v.toFixed(1)+'%';col=v>=15?'var(--green)':v>=5?'var(--gold)':'var(--red)';}
-      else if(line.units){disp=Math.round(v).toLocaleString();col='var(--text)';}
-      else{disp='€'+Math.abs(v).toFixed(0)+'M';col=line.neg?(v>0?'var(--red)':'var(--muted2)'):(v>=0?line.color:'var(--red)');if(line.neg&&v>0)disp='-'+disp;}
-      h+='<td style="padding:7px 10px;font-family:DM Mono,monospace;font-size:10px;font-weight:'+(line.bold?700:400)+';text-align:right;color:'+col+'">'+disp+'</td>';
+  h += '</tr></thead><tbody>';
+
+  structure.forEach(function(row) {
+    if (row.type === 'sep') {
+      h += '<tr><td colspan="'+(ncols+1)+'" style="padding:1px;background:var(--border)"></td></tr>';
+      return;
+    }
+    if (row.type === 'header') {
+      h += '<tr style="background:rgba(167,139,250,0.06)"><td colspan="'+(ncols+1)+
+        '" style="padding:5px 12px;font-family:DM Mono,monospace;font-size:7px;text-transform:uppercase;letter-spacing:2px;color:#a78bfa;font-weight:700;">'+
+        row.label+'</td></tr>';
+      return;
+    }
+    var isTotal = row.type === 'total';
+    var isUnits = row.type === 'units';
+    var bg = isTotal ? 'background:rgba(255,255,255,0.03);' : '';
+    h += '<tr style="border-bottom:1px solid rgba(255,255,255,0.03);'+bg+'">';
+    // Label cell
+    var estTag = row.est ? ' <span style="font-size:7px;color:var(--orange);vertical-align:middle;">est.</span>' : '';
+    h += '<td style="padding:'+(isTotal?'8':'6')+'px 12px;font-size:'+(isTotal?'11':'10')+'px;font-weight:'+(isTotal?700:400)+
+      ';color:'+(isTotal?(row.color||'var(--text)'):'var(--text)')+
+      ';position:sticky;left:0;background:var(--s1);border-right:1px solid var(--border);">'+
+      row.label+estTag+'</td>';
+
+    outcomes.forEach(function(o,i) {
+      var col = cols[i%cols.length];
+      if (isUnits) {
+        var uval = Math.round(o._units).toLocaleString();
+        h += '<td style="padding:6px 8px;font-family:DM Mono,monospace;font-size:10px;text-align:right;color:var(--text)">'+uval+'</td>';
+        return;
+      }
+      var v = parseFloat(o[row.key])||0;
+      var netRev = o._net_rev || 1;
+      var pct = (v/netRev*100);
+      // Format value
+      var dispV = '€'+Math.abs(v).toFixed(0)+'M';
+      var dispP = (row.sign===1 ? '-' : '')+Math.abs(pct).toFixed(1)+'%';
+      // Color for value
+      var vcol;
+      if (isTotal) {
+        vcol = v >= 0 ? (row.color||col) : 'var(--red)';
+      } else if (row.sign === 1) {
+        vcol = 'var(--red)';
+      } else {
+        vcol = v >= 0 ? 'var(--cyan)' : 'var(--red)';
+      }
+      // Color for pct
+      var pcol = row.sign===1 ? 'var(--muted2)' : (pct>=20?'var(--green)':pct>=10?'var(--gold)':'var(--muted2)');
+      h += '<td style="padding:'+(isTotal?'8':'6')+'px 8px;text-align:right;border-left:1px solid rgba(255,255,255,0.04)">' +
+        '<div style="font-family:DM Mono,monospace;font-size:'+(isTotal?'11':'10')+'px;font-weight:'+(isTotal?700:400)+';color:'+vcol+'">'+dispV+'</div>'+
+        '<div style="font-family:DM Mono,monospace;font-size:8px;color:'+pcol+'">'+dispP+'</div>'+
+        '</td>';
     });
-    h+='</tr>';
+    h += '</tr>';
   });
-  h+='</tbody></table></div>';
-  el.innerHTML=h;
+
+  h += '</tbody></table></div>';
+  el.innerHTML = h;
 }
 
 function renderFCFComparison(data) {
