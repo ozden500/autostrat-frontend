@@ -5460,17 +5460,6 @@ async function loadAnalystResults() {
           </tbody>
         </table>
       </div>`;
-    // Build team name map from scores (scores have team_name)
-    var teamNames = {};
-    scores.forEach(function(s){ if(s.team_name) teamNames[s.team_id] = s.team_name; });
-    // Fallback: attach team_name to outcomes from scores map
-    outcomes.forEach(function(o){
-      if (!o.team_name) o.team_name = teamNames[o.team_id] || 'Unknown';
-    });
-    _analystData = {outcomes: outcomes, teams: teamNames};
-    if (_analystTab === 'pl')  renderPLComparison(_analystData);
-    if (_analystTab === 'fcf') renderFCFComparison(_analystData);
-
     // Store data for P&L and FCF tabs
     var teamNames={};
     scores.forEach(function(s){ if(s.team_name) teamNames[s.team_id]=s.team_name; });
