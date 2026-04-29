@@ -2053,6 +2053,10 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
       style="font-family:'DM Mono',monospace;font-size:9px;letter-spacing:1px;padding:7px 14px;border:none;border-bottom:2px solid transparent;background:none;color:var(--muted);cursor:pointer;text-transform:uppercase;">
       Free Cash Flow
     </button>
+    <button id="analyst-tab-bs" onclick="switchAnalystTab('bs')"
+      style="font-family:'DM Mono',monospace;font-size:9px;letter-spacing:1px;padding:7px 14px;border:none;border-bottom:2px solid transparent;background:none;color:var(--muted);cursor:pointer;text-transform:uppercase;">
+      Balance Sheet
+    </button>
   </div>
 
   <!-- Round selector -->
@@ -2077,6 +2081,11 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
   <div id="analyst-tab-fcf-content" style="display:none;">
     <div id="analyst-fcf-content">
       <div style="color:var(--muted2);font-size:13px;padding:40px 0;text-align:center">Select a round above to load Free Cash Flow analysis.</div>
+    </div>
+  </div>
+  <div id="analyst-tab-bs-content" style="display:none;">
+    <div id="analyst-bs-content">
+      <div style="color:var(--muted2);font-size:13px;padding:40px 0;text-align:center">Select a round above to load Balance Sheet.</div>
     </div>
   </div>
 </div>
@@ -5285,6 +5294,138 @@ async function refreshInstructorHub() {
   } catch(e) { console.warn('Hub refresh error:', e); }
 }
 
+// ── BALANCE SHEET ────────────────────────
+async function renderBalanceSheet(data) {
+  var el = document.getElementById('analyst-bs-content');
+  if (!el) return;
+  var teams = data.teams || {};
+  var rid = data.round_id;
+  if (!rid) { el.innerHTML='<div style="padding:24px;color:var(--muted2);text-align:center;">No round selected.</div>'; return; }
+  el.innerHTML = '<div style="padding:20px;color:var(--muted2);">Loading balance sheet data...</div>';
+
+  try {
+    var res = await fetch(API_URL + '/sessions/' + sessionId + '/balance-sheet?round_id=' + rid);
+    var bsData = res.ok ? await res.json() : {snapshots:[]};
+    var snapshots = bsData.snapshots || [];
+
+    if (!snapshots.length) {
+      el.innerHTML = '<div style="padding:24px;color:var(--muted2);text-align:center;">' +
+        '<div style="font-size:24px;margin-bottom:8px;">📊</div>' +
+        '<div style="font-weight:600;">No balance sheet data for this round</div>' +
+        '<div style="font-size:11px;margin-top:4px;">Run a simulation round to generate balance sheet snapshots.</div>' +
+        '</div>';
+      return;
+    }
+
+    // Sort by total assets descending
+    snapshots.sort(function(a,b){ return (b.total_assets_m||0)-(a.total_assets_m||0); });
+    var cols = ['var(--cyan)','var(--gold)','var(--green)','var(--purple)',
+      'var(--orange)','var(--blue)','#a78bfa','#f472b6','#34d399','#fb923c','#60a5fa'];
+
+    var structure = [
+      {t:'hdr', label:'ASSETS', col:'var(--cyan)'},
+      {t:'sub', label:'Current Assets'},
+      {t:'line',label:'  Cash & Equivalents',           key:'cash_m'},
+      {t:'line',label:'  Short-Term Investments',        key:'short_term_investments_m', est:true},
+      {t:'line',label:'  Accounts Receivable',           key:'accounts_receivable_m'},
+      {t:'line',label:'  Inventory',                     key:'inventory_m'},
+      {t:'line',label:'  Prepaid Expenses',              key:'prepaid_expenses_m', est:true},
+      {t:'line',label:'  Other Current Assets',          key:'other_current_assets_m', est:true},
+      {t:'tot', label:'Total Current Assets',            key:'total_current_assets_m', col:'var(--cyan)'},
+      {t:'sep'},
+      {t:'sub', label:'Non-Current Assets'},
+      {t:'line',label:'  PP&E (Gross)',                  key:'ppe_gross_m'},
+      {t:'line',label:'  Accumulated Depreciation',      key:'accumulated_depreciation_m'},
+      {t:'line',label:'  PP&E (Net)',                    key:'ppe_net_m', bold:true},
+      {t:'line',label:'  Intangible Assets',             key:'intangibles_m', est:true},
+      {t:'line',label:'  Capitalized R&D',               key:'capitalized_rd_m'},
+      {t:'line',label:'  Goodwill',                      key:'goodwill_m', est:true},
+      {t:'line',label:'  Long-Term Investments',         key:'long_term_investments_m', est:true},
+      {t:'tot', label:'Total Non-Current Assets',        key:'total_noncurrent_assets_m', col:'var(--cyan)'},
+      {t:'sep'},
+      {t:'tot', label:'TOTAL ASSETS',                    key:'total_assets_m', col:'var(--cyan)', big:true},
+      {t:'sep'},
+      {t:'hdr', label:'LIABILITIES', col:'var(--red)'},
+      {t:'sub', label:'Current Liabilities'},
+      {t:'line',label:'  Accounts Payable',              key:'accounts_payable_m'},
+      {t:'line',label:'  Short-Term Debt',               key:'short_term_debt_m', est:true},
+      {t:'line',label:'  Accrued Expenses',              key:'accrued_expenses_m', est:true},
+      {t:'line',label:'  Deferred Revenue',              key:'deferred_revenue_m', est:true},
+      {t:'line',label:'  Warranty Provision',            key:'warranty_provision_m'},
+      {t:'tot', label:'Total Current Liabilities',       key:'total_current_liab_m', col:'var(--red)'},
+      {t:'sep'},
+      {t:'sub', label:'Non-Current Liabilities'},
+      {t:'line',label:'  Long-Term Debt',                key:'long_term_debt_m'},
+      {t:'line',label:'  Deferred Tax Liability',        key:'deferred_tax_liab_m', est:true},
+      {t:'line',label:'  Pension Obligation',            key:'pension_obligation_m', est:true},
+      {t:'tot', label:'Total Non-Current Liabilities',   key:'total_noncurrent_liab_m', col:'var(--red)'},
+      {t:'sep'},
+      {t:'tot', label:'TOTAL LIABILITIES',               key:'total_liabilities_m', col:'var(--red)', big:true},
+      {t:'sep'},
+      {t:'hdr', label:'EQUITY', col:'var(--green)'},
+      {t:'line',label:'  Share Capital',                 key:'share_capital_m', est:true},
+      {t:'line',label:'  Share Premium',                 key:'share_premium_m', est:true},
+      {t:'line',label:'  Retained Earnings',             key:'retained_earnings_m'},
+      {t:'line',label:'  Treasury Stock',                key:'treasury_stock_m', est:true},
+      {t:'line',label:'  Other Comprehensive Income',    key:'other_comprehensive_m', est:true},
+      {t:'tot', label:'TOTAL EQUITY',                    key:'total_equity_m', col:'var(--green)', big:true},
+      {t:'sep'},
+      {t:'chk', label:'Balance Check (A - L - E)',       key:'balance_check_m'},
+    ];
+
+    var nc = snapshots.length;
+    var h = '<div style="overflow-x:auto">';
+    h += '<div style="font-family:DM Mono,monospace;font-size:8px;color:var(--muted2);padding:6px 12px;margin-bottom:4px;">' +
+      '<span style="color:var(--orange)">est.</span> = synthetic estimate. All values €M. ' +
+      'Balance check should be ~0 (Assets = Liabilities + Equity).</div>';
+    h += '<table style="width:100%;border-collapse:collapse;min-width:900px"><thead><tr>';
+    h += '<th style="font-family:DM Mono,monospace;font-size:8px;color:var(--muted);padding:8px 12px;text-align:left;background:var(--s2);border-bottom:2px solid var(--border);min-width:230px;position:sticky;left:0;">Balance Sheet Item</th>';
+    snapshots.forEach(function(s,i){
+      var n = teams[s.team_id] || s.team_id;
+      h += '<th style="font-family:DM Mono,monospace;font-size:9px;color:'+cols[i%cols.length]+';padding:6px 8px;text-align:right;background:var(--s2);border-bottom:2px solid var(--border);min-width:100px;">'+n+'</th>';
+    });
+    h += '</tr></thead><tbody>';
+
+    structure.forEach(function(row) {
+      if (row.t==='sep') { h+='<tr><td colspan="'+(nc+1)+'" style="padding:1px;background:var(--border)"></td></tr>'; return; }
+      if (row.t==='hdr') { h+='<tr style="background:rgba(167,139,250,0.06)"><td colspan="'+(nc+1)+'" style="padding:6px 12px;font-family:DM Mono,monospace;font-size:8px;text-transform:uppercase;letter-spacing:1.5px;color:'+(row.col||'#a78bfa')+';font-weight:700;">'+row.label+'</td></tr>'; return; }
+      if (row.t==='sub') { h+='<tr><td colspan="'+(nc+1)+'" style="padding:4px 12px;font-size:9px;color:var(--muted);font-style:italic;">'+row.label+'</td></tr>'; return; }
+
+      var isTot = row.t==='tot';
+      var isChk = row.t==='chk';
+      var isBig = row.big;
+      var est = row.est ? '<span style="font-size:7px;color:var(--orange);margin-left:3px">est.</span>' : '';
+      h += '<tr style="border-bottom:1px solid rgba(255,255,255,0.03);'+(isTot||isBig?'background:rgba(255,255,255,0.03)':'')+'">';
+      h += '<td style="padding:'+(isBig?'9':isTot?'7':'5')+'px 12px;font-size:'+(isBig?'12':isTot?'11':'10')+'px;font-weight:'+(isTot||isBig?700:400)+';color:'+(isTot?(row.col||'var(--text)'):'var(--text)')+';position:sticky;left:0;background:var(--s1);border-right:1px solid var(--border);">'+row.label+est+'</td>';
+
+      snapshots.forEach(function(s) {
+        var v = parseFloat(s[row.key]) || 0;
+        var disp = '€' + Math.abs(v).toFixed(0) + 'M';
+        if (v < 0) disp = '-' + disp;
+        var col;
+        if (isChk) {
+          col = Math.abs(v) < 1 ? 'var(--green)' : Math.abs(v) < 50 ? 'var(--gold)' : 'var(--red)';
+          disp = (v >= 0 ? '+' : '') + '€' + v.toFixed(1) + 'M';
+        } else if (isTot || isBig) {
+          col = row.col || 'var(--text)';
+        } else if (v < 0) {
+          col = 'var(--red)';
+        } else {
+          col = 'var(--text)';
+        }
+        h += '<td style="padding:'+(isBig?'9':isTot?'7':'5')+'px 8px;font-family:DM Mono,monospace;font-size:'+(isBig?'12':isTot?'11':'10')+'px;font-weight:'+(isTot||isBig?700:400)+';text-align:right;color:'+col+';border-left:1px solid rgba(255,255,255,0.03)">'+disp+'</td>';
+      });
+      h += '</tr>';
+    });
+
+    h += '</tbody></table></div>';
+    el.innerHTML = h;
+  } catch(e) {
+    console.error('renderBalanceSheet error:', e);
+    el.innerHTML = '<div style="color:var(--red);padding:20px;">Error: ' + e.message + '</div>';
+  }
+}
+
 // ── RESULTS ANALYST ──────────────────────
 var _analystTab = 'summary';
 var _analystData = null;
@@ -5410,7 +5551,7 @@ async function loadTeamMonitor() {
 
 function switchAnalystTab(tab) {
   _analystTab = tab;
-  ['summary','pl','fcf'].forEach(function(t) {
+  ['summary','pl','fcf','bs'].forEach(function(t) {
     var btn = document.getElementById('analyst-tab-' + t);
     var c   = document.getElementById('analyst-tab-' + t + '-content');
     if (btn) { btn.style.borderBottomColor = t===tab?'#a78bfa':'transparent'; btn.style.color = t===tab?'#a78bfa':'var(--muted)'; }
@@ -5419,6 +5560,7 @@ function switchAnalystTab(tab) {
   if (_analystData) {
     if (tab==='pl')  renderPLComparison(_analystData);
     if (tab==='fcf') renderFCFComparison(_analystData);
+    if (tab==='bs')  renderBalanceSheet(_analystData);
   }
 }
 
