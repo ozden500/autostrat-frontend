@@ -6686,7 +6686,8 @@ async function instructorCloseRound() {
     } else {
       throw new Error((runData.detail || text || 'Unknown error'));
     }
-    if (btn) btn.textContent = '✓ Round closed';
+    if (btnA) { btnA.disabled = true; btnA.textContent = '✓ Round closed'; }
+    if (btnB) { btnB.disabled = true; btnB.textContent = '✓ Round closed'; }
     const statusLabel = document.getElementById('ip-status-label');
     if (statusLabel) statusLabel.textContent = 'results';
     const nextBtn = document.getElementById('ip-btn-next');
