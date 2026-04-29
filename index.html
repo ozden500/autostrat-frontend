@@ -5289,6 +5289,125 @@ async function refreshInstructorHub() {
 var _analystTab = 'summary';
 var _analystData = null;
 
+async function loadAnalystRounds() {
+  var sel = document.getElementById('analyst-round-sel');
+  if (!sel || !sessionId) return;
+  try {
+    var res = await fetch(API_URL + '/sessions/' + sessionId + '/rounds');
+    var data = await res.json();
+    var rounds = (data.rounds || []).filter(function(r) {
+      return !r.is_historical && r.round_number > 0 && r.phase === 'results';
+    }).sort(function(a,b){ return b.round_number - a.round_number; });
+    sel.innerHTML = '<option value="">Select round...</option>';
+    rounds.forEach(function(r) {
+      var opt = document.createElement('option');
+      opt.value = r.id;
+      opt.textContent = 'Round ' + r.round_number + ' (' + r.phase + ')';
+      sel.appendChild(opt);
+    });
+    if (rounds.length > 0) {
+      sel.value = rounds[0].id;
+      loadAnalystResults();
+    }
+  } catch(e) { console.warn('loadAnalystRounds error:', e); }
+}
+
+async function loadAnalystResults() {
+  var sel = document.getElementById('analyst-round-sel');
+  if (!sel || !sel.value) return;
+  var rid = sel.value;
+  var content = document.getElementById('analyst-content');
+  if (content) content.innerHTML = '<div style="padding:20px;color:var(--muted2);">Loading...</div>';
+  try {
+    var res = await fetch(API_URL + '/sessions/' + sessionId + '/rounds/' + rid + '/outcomes');
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    var data = await res.json();
+    var outcomes = data.outcomes || [];
+    var scores   = data.scores   || [];
+    var segments = data.segments || [];
+
+    // Build team name map
+    var teamNames = {};
+    scores.forEach(function(s){ if(s.team_name) teamNames[s.team_id] = s.team_name; });
+    outcomes.forEach(function(o){ if(!o.team_name) o.team_name = teamNames[o.team_id] || 'Unknown'; });
+
+    // Summary tab
+    if (content) {
+      var sorted = scores.slice().sort(function(a,b){ return a.rank - b.rank; });
+      var h = '<table class="mi-tbl"><thead><tr>' +
+        '<th class="mi-th">#</th><th class="mi-th">Team</th>' +
+        '<th class="mi-th" style="text-align:right">Financial</th>' +
+        '<th class="mi-th" style="text-align:right">Commercial</th>' +
+        '<th class="mi-th" style="text-align:right">Operational</th>' +
+        '<th class="mi-th" style="text-align:right">Composite</th>' +
+        '<th class="mi-th" style="text-align:right">Revenue €M</th>' +
+        '<th class="mi-th" style="text-align:right">EBIT €M</th>' +
+        '</tr></thead><tbody>';
+      sorted.forEach(function(s) {
+        var o = outcomes.find(function(x){ return x.team_id === s.team_id; }) || {};
+        h += '<tr class="mi-tr">' +
+          '<td class="mi-td" style="color:var(--gold);font-weight:700;">' + s.rank + '</td>' +
+          '<td class="mi-td" style="font-weight:600;">' + (s.team_name||'Unknown') + '</td>' +
+          '<td class="mi-td mono" style="text-align:right;">' + (s.financial_score||0).toFixed(1) + '</td>' +
+          '<td class="mi-td mono" style="text-align:right;">' + (s.commercial_score||0).toFixed(1) + '</td>' +
+          '<td class="mi-td mono" style="text-align:right;">' + (s.operational_score||0).toFixed(1) + '</td>' +
+          '<td class="mi-td mono" style="text-align:right;color:var(--cyan);font-weight:700;">' + (s.composite_score||0).toFixed(1) + '</td>' +
+          '<td class="mi-td mono" style="text-align:right;">€' + (o.revenue_m||0).toFixed(0) + 'M</td>' +
+          '<td class="mi-td mono" style="text-align:right;color:var(--green);">€' + (o.ebit_m||0).toFixed(0) + 'M</td>' +
+          '</tr>';
+      });
+      h += '</tbody></table>';
+      content.innerHTML = h;
+    }
+
+    // Store for P&L and FCF tabs
+    _analystData = {outcomes: outcomes, teams: teamNames};
+    if (_analystTab === 'pl')  renderPLComparison(_analystData);
+    if (_analystTab === 'fcf') renderFCFComparison(_analystData);
+
+  } catch(e) {
+    console.error('loadAnalystResults error:', e);
+    if (content) content.innerHTML = '<div style="color:var(--red)">Error: ' + e.message + '</div>';
+  }
+}
+
+async function loadTeamMonitor() {
+  if (!sessionId) return;
+  var el = document.getElementById('team-monitor-content');
+  if (!el) return;
+  try {
+    var [tRes, rRes] = await Promise.all([
+      fetch(API_URL + '/sessions/' + sessionId + '/teams'),
+      fetch(API_URL + '/sessions/' + sessionId + '/rounds'),
+    ]);
+    var tData = await tRes.json();
+    var rData = await rRes.json();
+    var teams = (tData.teams || []).filter(function(t){ return t.name.toLowerCase() !== 'instructor'; });
+    var rounds = (rData.rounds || []).filter(function(r){ return !r.is_historical && r.round_number > 0; });
+    var latestRound = rounds.sort(function(a,b){ return b.round_number - a.round_number; })[0];
+    if (!latestRound) { el.innerHTML = '<div style="padding:20px;color:var(--muted2);">No rounds yet.</div>'; return; }
+    var subRes = await fetch(API_URL + '/sessions/' + sessionId + '/rounds/' + latestRound.id + '/submissions');
+    var subData = subRes.ok ? await subRes.json() : {submissions:[]};
+    var subs = subData.submissions || [];
+    var subMap = {};
+    subs.forEach(function(s){ subMap[s.team_id] = s; });
+    var h = '<div style="font-family:DM Mono,monospace;font-size:8px;color:var(--muted);margin-bottom:8px;text-transform:uppercase;letter-spacing:1px;">Round ' + latestRound.round_number + ' — ' + latestRound.phase + '</div>';
+    h += '<table class="mi-tbl"><thead><tr><th class="mi-th">Team</th><th class="mi-th">Type</th><th class="mi-th" style="text-align:center">Status</th></tr></thead><tbody>';
+    teams.forEach(function(t) {
+      var sub = subMap[t.id];
+      var status = sub ? '✓ Submitted' : '⏳ Pending';
+      var scol = sub ? 'var(--green)' : 'var(--gold)';
+      h += '<tr class="mi-tr">' +
+        '<td class="mi-td" style="font-weight:600;">' + t.name + '</td>' +
+        '<td class="mi-td" style="font-size:9px;color:var(--muted2);">' + (t.team_type||'human') + '</td>' +
+        '<td class="mi-td" style="text-align:center;color:' + scol + ';">' + status + '</td>' +
+        '</tr>';
+    });
+    h += '</tbody></table>';
+    el.innerHTML = h;
+  } catch(e) { el.innerHTML = '<div style="color:var(--red)">Error: ' + e.message + '</div>'; }
+}
+
 function switchAnalystTab(tab) {
   _analystTab = tab;
   ['summary','pl','fcf'].forEach(function(t) {
