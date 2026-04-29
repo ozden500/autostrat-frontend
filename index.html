@@ -5501,10 +5501,11 @@ async function loadAnalystResults() {
       content.innerHTML = h;
     }
 
-    // Store for P&L and FCF tabs
-    _analystData = {outcomes: outcomes, teams: teamNames};
+    // Store for P&L, FCF and Balance Sheet tabs
+    _analystData = {outcomes: outcomes, teams: teamNames, round_id: rid};
     if (_analystTab === 'pl')  renderPLComparison(_analystData);
     if (_analystTab === 'fcf') renderFCFComparison(_analystData);
+    if (_analystTab === 'bs')  renderBalanceSheet(_analystData);
 
   } catch(e) {
     console.error('loadAnalystResults error:', e);
