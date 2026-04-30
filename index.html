@@ -3022,9 +3022,25 @@ function scheduleCostCalc() {
 async function fetchPlatformStdCost() {
   if (currentModType !== 'platform') return;
   const size = document.getElementById('mod-primary-select')?.value;
-  const pwt  = document.getElementById('mod-secondary-select')?.value;
+  const pwtRaw = document.getElementById('mod-secondary-select')?.value;
   const opt  = parseFloat(document.getElementById('cost-opt-slider')?.value || 0) / 100;
-  if (!size || !pwt) return;
+  if (!size || !pwtRaw) return;
+  // Map dropdown values to engine-expected codes
+  const pwtMap = {
+    'ICE': 'ice_only', 'ICE_ONLY': 'ice_only',
+    'BEV': 'bev_only', 'BEV_ONLY': 'bev_only',
+    'ICE_BEV': 'ice_and_bev', 'HYBRID': 'ice_and_bev',
+    'ice_only': 'ice_only', 'bev_only': 'bev_only', 'ice_and_bev': 'ice_and_bev'
+  };
+  const pwt = pwtMap[pwtRaw] || 'ice_only';
+  // Map platform size to engine codes
+  const sizeMap = {
+    'SMALL':'small','MEDIUM':'medium','LARGE':'large',
+    'FRAME':'frame','PERFORMANCE':'performance','COMMERCIAL':'commercial',
+    'small':'small','medium':'medium','large':'large',
+    'frame':'frame','performance':'performance','commercial':'commercial'
+  };
+  const platformSize = sizeMap[size] || size.toLowerCase();
 
   var bomEl = document.getElementById('mod-cost-bom');
   var legEl = document.getElementById('mod-cost-legacy');
@@ -3035,7 +3051,7 @@ async function fetchPlatformStdCost() {
       method: 'POST',
       headers: {'Content-Type':'application/json'},
       body: JSON.stringify({
-        platform_size: size,
+        platform_size: platformSize,
         pwt_compatibility: pwt,
         cost_optimization_index: opt
       })
