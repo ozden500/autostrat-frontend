@@ -1492,6 +1492,22 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
         </select>
       </div>
 
+      <!-- Cost Optimization Index (platform only) -->
+      <div class="ctrl" id="mod-cost-opt-row" style="display:none">
+        <label class="ctrl-lbl-top">Cost Optimization Index
+          <span style="font-family:DM Mono,monospace;font-size:9px;color:var(--gold);margin-left:6px;" id="cost-opt-display">0%</span>
+        </label>
+        <input type="range" id="cost-opt-slider" min="0" max="20" value="0" step="1"
+          style="width:100%;accent-color:var(--gold);margin:6px 0;"
+          oninput="document.getElementById('cost-opt-display').textContent=this.value+'%'; fetchPlatformStdCost();">
+        <div style="display:flex;justify-content:space-between;font-family:DM Mono,monospace;font-size:8px;color:var(--muted2);">
+          <span>0% — No optimization</span><span>20% — Max engineering effort</span>
+        </div>
+        <div style="font-size:9px;color:var(--muted2);margin-top:4px;">
+          Higher optimization reduces unit cost but increases R&D spend progressively.
+        </div>
+      </div>
+
       <!-- Step 2: Development path -->
       <div class="ctrl" id="mod-step2" style="display:none">
         <label class="ctrl-lbl-top">Development Path</label>
@@ -1522,7 +1538,8 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
 
       <!-- Live cost preview -->
       <div id="mod-cost-preview" style="display:none;margin-top:10px;">
-        <div class="cost-box">
+        <!-- Standard R&D cost (existing modules) -->
+        <div class="cost-box" id="mod-cost-legacy">
           <div style="font-family:'DM Mono',monospace;font-size:8px;text-transform:uppercase;letter-spacing:2px;color:var(--muted);margin-bottom:8px;">💰 R&D Cost Estimate</div>
           <div class="cost-row"><span class="cost-name">R&D Investment</span><span class="cost-val" id="mc-spend">—</span></div>
           <div class="cost-row"><span class="cost-name">Team FTE-months</span><span class="cost-val" id="mc-fte">—</span></div>
@@ -1530,6 +1547,10 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
           <div class="cost-row"><span class="cost-name">Budget / Quarter</span><span class="cost-val" id="mc-perq">—</span></div>
           <div class="cost-row ctot"><span class="cost-name">Unit TPC (€/veh)</span><span class="cost-val" id="mc-tpc">—</span></div>
           <div class="cost-row ctot"><span class="cost-name">Module Weight</span><span class="cost-val" id="mc-wt">—</span></div>
+        </div>
+        <!-- Platform BOM cost (new engine) -->
+        <div id="mod-cost-bom" style="display:none;margin-top:8px;">
+          <div id="mod-cost-bom-content"></div>
         </div>
       </div>
 
@@ -2862,6 +2883,11 @@ function onPrimaryChange() {
 }
 
 function onBaseConfigChange() {
+  // Show cost optimization slider for platform module
+  var costOptRow = document.getElementById('mod-cost-opt-row');
+  if (costOptRow) {
+    costOptRow.style.display = currentModType === 'platform' ? '' : 'none';
+  }
   // For types with secondary, read from secondary select
   // For types without, read from window._selectedConfigKey
   let val = document.getElementById('mod-secondary-select')?.value || window._selectedConfigKey || '';
@@ -2872,6 +2898,7 @@ function onBaseConfigChange() {
   document.getElementById('mod-specs-area').style.display='block';
   document.getElementById('mod-name-row').style.display='block';
   document.getElementById('mod-cost-preview').style.display='block';
+  if (currentModType === 'platform') fetchPlatformStdCost();
   document.getElementById('mod-submit-area').style.display='block';
   setDevPath('new', document.getElementById('path-new'));
   scheduleCostCalc();
@@ -2990,6 +3017,142 @@ function getModuleSpecs() {
 function scheduleCostCalc() {
   clearTimeout(costDebounceTimer);
   costDebounceTimer = setTimeout(fetchCostPreview, 400);
+}
+
+async function fetchPlatformStdCost() {
+  if (currentModType !== 'platform') return;
+  const size = document.getElementById('mod-primary-select')?.value;
+  const pwt  = document.getElementById('mod-secondary-select')?.value;
+  const opt  = parseFloat(document.getElementById('cost-opt-slider')?.value || 0) / 100;
+  if (!size || !pwt) return;
+
+  var bomEl = document.getElementById('mod-cost-bom');
+  var legEl = document.getElementById('mod-cost-legacy');
+  if (bomEl) bomEl.style.display = 'none';
+
+  try {
+    const res = await fetch(API_URL + '/platform/calculate-cost', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({
+        platform_size: size,
+        pwt_compatibility: pwt,
+        cost_optimization_index: opt
+      })
+    });
+    const d = await res.json();
+    if (!d.success) return;
+    const r = d.result;
+
+    // Update legacy TPC field
+    var tpcEl = document.getElementById('mc-tpc');
+    if (tpcEl) tpcEl.textContent = '€' + Math.round(r.std_platform_tpc_eur).toLocaleString() + '/veh';
+    var wtEl = document.getElementById('mc-wt');
+    if (wtEl) wtEl.textContent = Math.round(r.total_net_weight_kg) + ' kg net';
+    var spendEl = document.getElementById('mc-spend');
+    if (spendEl) spendEl.textContent = '€' + r.total_rd_cost_eur_m.toFixed(1) + 'M';
+
+    // Render BOM breakdown
+    if (!bomEl) return;
+    var h = '<div style="font-family:DM Mono,monospace;font-size:8px;text-transform:uppercase;letter-spacing:2px;color:var(--muted);margin-bottom:8px;">📋 Standard Cost BOM (US Basis)</div>';
+
+    // Material section
+    h += '<div style="font-size:9px;color:var(--muted);margin:6px 0 3px;">MATERIAL COST</div>';
+    h += '<table style="width:100%;border-collapse:collapse;font-size:9px;">';
+    h += '<tr style="color:var(--muted2);font-family:DM Mono,monospace;font-size:8px;">' +
+      '<td style="padding:2px 4px;">Material</td>' +
+      '<td style="padding:2px 4px;text-align:right;">Net kg</td>' +
+      '<td style="padding:2px 4px;text-align:right;">Gross kg</td>' +
+      '<td style="padding:2px 4px;text-align:right;">€/kg</td>' +
+      '<td style="padding:2px 4px;text-align:right;">Cost €</td>' +
+      '</tr>';
+    r.material_lines.forEach(function(l) {
+      h += '<tr style="border-top:1px solid rgba(255,255,255,0.04);">' +
+        '<td style="padding:3px 4px;color:var(--text);">' + l.material_name + '</td>' +
+        '<td style="padding:3px 4px;text-align:right;font-family:DM Mono,monospace;">' + l.net_weight_kg.toFixed(1) + '</td>' +
+        '<td style="padding:3px 4px;text-align:right;font-family:DM Mono,monospace;">' + l.gross_weight_kg.toFixed(1) + '</td>' +
+        '<td style="padding:3px 4px;text-align:right;font-family:DM Mono,monospace;">€' + l.material_price_eur_kg.toFixed(2) + '</td>' +
+        '<td style="padding:3px 4px;text-align:right;font-family:DM Mono,monospace;color:var(--cyan);">€' + Math.round(l.material_cost_eur) + '</td>' +
+        '</tr>';
+    });
+    h += '<tr style="border-top:1px solid var(--border2);font-weight:700;">' +
+      '<td style="padding:3px 4px;color:var(--cyan);">Total Material</td>' +
+      '<td style="padding:3px 4px;text-align:right;font-family:DM Mono,monospace;">' + r.total_net_weight_kg.toFixed(1) + '</td>' +
+      '<td style="padding:3px 4px;text-align:right;font-family:DM Mono,monospace;">' + r.total_gross_weight_kg.toFixed(1) + '</td>' +
+      '<td></td>' +
+      '<td style="padding:3px 4px;text-align:right;font-family:DM Mono,monospace;color:var(--cyan);">€' + Math.round(r.total_material_cost_eur) + '</td>' +
+      '</tr></table>';
+
+    // Process section
+    h += '<div style="font-size:9px;color:var(--muted);margin:8px 0 3px;">PROCESS COST (Machine + Labor + Energy)</div>';
+    h += '<table style="width:100%;border-collapse:collapse;font-size:9px;">';
+    h += '<tr style="color:var(--muted2);font-family:DM Mono,monospace;font-size:8px;">' +
+      '<td style="padding:2px 4px;">Process</td>' +
+      '<td style="padding:2px 4px;text-align:right;">Gross kg</td>' +
+      '<td style="padding:2px 4px;text-align:right;">Mach €</td>' +
+      '<td style="padding:2px 4px;text-align:right;">Labor €</td>' +
+      '<td style="padding:2px 4px;text-align:right;">Energy €</td>' +
+      '<td style="padding:2px 4px;text-align:right;">Total €</td>' +
+      '</tr>';
+    r.process_lines.forEach(function(l) {
+      h += '<tr style="border-top:1px solid rgba(255,255,255,0.04);">' +
+        '<td style="padding:3px 4px;color:var(--text);">' + l.process_name + '</td>' +
+        '<td style="padding:3px 4px;text-align:right;font-family:DM Mono,monospace;">' + l.gross_weight_kg.toFixed(1) + '</td>' +
+        '<td style="padding:3px 4px;text-align:right;font-family:DM Mono,monospace;">€' + Math.round(l.machine_cost_eur) + '</td>' +
+        '<td style="padding:3px 4px;text-align:right;font-family:DM Mono,monospace;">€' + Math.round(l.labor_cost_eur) + '</td>' +
+        '<td style="padding:3px 4px;text-align:right;font-family:DM Mono,monospace;">€' + Math.round(l.energy_cost_eur) + '</td>' +
+        '<td style="padding:3px 4px;text-align:right;font-family:DM Mono,monospace;color:var(--gold);">€' + Math.round(l.process_cost_eur) + '</td>' +
+        '</tr>';
+    });
+    h += '<tr style="border-top:1px solid var(--border2);font-weight:700;">' +
+      '<td colspan="5" style="padding:3px 4px;color:var(--gold);">Total Process</td>' +
+      '<td style="padding:3px 4px;text-align:right;font-family:DM Mono,monospace;color:var(--gold);">€' + Math.round(r.total_process_cost_eur) + '</td>' +
+      '</tr></table>';
+
+    // Cost build-up
+    h += '<div style="font-size:9px;color:var(--muted);margin:8px 0 3px;">COST BUILD-UP</div>';
+    h += '<div style="background:var(--s2);border-radius:4px;padding:8px;font-size:10px;">';
+    var rows = [
+      ['Direct Cost (Mat + Proc)', r.direct_cost_eur, 'var(--text)'],
+      ['  Supplier Content (85%)', r.supplier_content_eur, 'var(--muted2)'],
+      ['  + Supplier Overhead (5%)', r.supplier_overhead_eur, 'var(--muted2)'],
+      ['  + Supplier Profit (10%)', r.supplier_profit_eur, 'var(--muted2)'],
+      ['  Supplier Total', r.supplier_total_eur, 'var(--text)'],
+      ['  OEM Internal (15%)', r.oem_internal_eur, 'var(--text)'],
+      ['Total Standard Direct', r.total_std_direct_eur, 'var(--text)'],
+      ['Cost Opt Reduction (-' + r.cost_opt_reduction_pct.toFixed(1) + '%)', null, 'var(--green)'],
+    ];
+    rows.forEach(function(row) {
+      var val = row[1] !== null ? '€' + Math.round(row[1]).toLocaleString() : '-' + r.cost_opt_reduction_pct.toFixed(1) + '%';
+      h += '<div style="display:flex;justify-content:space-between;margin-bottom:3px;">' +
+        '<span style="color:' + row[2] + ';">' + row[0] + '</span>' +
+        '<span style="font-family:DM Mono,monospace;color:' + row[2] + ';">' + val + '</span>' +
+        '</div>';
+    });
+    h += '<div style="border-top:1px solid var(--border2);margin-top:4px;padding-top:6px;display:flex;justify-content:space-between;font-weight:700;font-size:12px;">' +
+      '<span style="color:var(--purple);">STANDARD PLATFORM TPC</span>' +
+      '<span style="font-family:DM Mono,monospace;color:var(--purple);">€' + Math.round(r.std_platform_tpc_eur).toLocaleString() + '/veh</span>' +
+      '</div></div>';
+
+    // R&D summary
+    h += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:8px;">';
+    h += '<div style="background:rgba(167,139,250,0.08);border:1px solid rgba(167,139,250,0.2);border-radius:4px;padding:8px;text-align:center;">' +
+      '<div style="font-family:DM Mono,monospace;font-size:8px;color:var(--muted);margin-bottom:2px;">TOTAL R&D COST</div>' +
+      '<div style="font-size:16px;font-weight:700;color:#a78bfa;">€' + r.total_rd_cost_eur_m.toFixed(1) + 'M</div>' +
+      '<div style="font-size:8px;color:var(--muted2);">Base €' + r.base_rd_cost_eur_m + 'M + €' + r.rd_premium_eur_m.toFixed(1) + 'M opt. premium</div>' +
+      '</div>';
+    h += '<div style="background:rgba(6,182,212,0.08);border:1px solid rgba(6,182,212,0.2);border-radius:4px;padding:8px;text-align:center;">' +
+      '<div style="font-family:DM Mono,monospace;font-size:8px;color:var(--muted);margin-bottom:2px;">NET WEIGHT</div>' +
+      '<div style="font-size:16px;font-weight:700;color:var(--cyan);">' + Math.round(r.total_net_weight_kg) + ' kg</div>' +
+      '<div style="font-size:8px;color:var(--muted2);">Gross: ' + Math.round(r.total_gross_weight_kg) + ' kg (incl. scrap)</div>' +
+      '</div>';
+    h += '</div>';
+
+    document.getElementById('mod-cost-bom-content').innerHTML = h;
+    bomEl.style.display = '';
+    if (legEl) legEl.style.display = 'none';
+
+  } catch(e) { console.warn('Platform BOM cost error:', e); }
 }
 
 async function fetchCostPreview() {
