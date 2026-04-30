@@ -3032,7 +3032,11 @@ function getModuleSpecs() {
 
 function scheduleCostCalc() {
   clearTimeout(costDebounceTimer);
-  costDebounceTimer = setTimeout(fetchCostPreview, 400);
+  if (currentModType === 'platform') {
+    costDebounceTimer = setTimeout(fetchPlatformStdCost, 400);
+  } else {
+    costDebounceTimer = setTimeout(fetchCostPreview, 400);
+  }
 }
 
 async function fetchPlatformStdCost() {
@@ -3071,9 +3075,9 @@ async function fetchPlatformStdCost() {
         pwt_compatibility: pwt,
         cost_optimization_index: opt,
         weight_optimization_index: parseFloat(document.getElementById('weight-opt-slider')?.value||0)/100,
-        safety_index: parseFloat(document.getElementById('spec-safety')?.value||50)/100,
-        reliability_index: parseFloat(document.getElementById('spec-reliability')?.value||50)/100,
-        comfort_index: parseFloat(document.getElementById('spec-comfort')?.value||50)/100,
+        safety_index: parseFloat(document.getElementById('msr-safety')?.value||0.5),
+        reliability_index: parseFloat(document.getElementById('msr-reliability')?.value||0.5),
+        comfort_index: parseFloat(document.getElementById('msr-comfort')?.value||0.5),
       })
     });
     const d = await res.json();
