@@ -3041,6 +3041,9 @@ function scheduleCostCalc() {
 
 async function fetchPlatformStdCost() {
   if (currentModType !== 'platform') return;
+  // Always hide legacy cost box for platform — show BOM instead
+  var legEl = document.getElementById('mod-cost-legacy');
+  if (legEl) legEl.style.display = 'none';
   const size = document.getElementById('mod-primary-select')?.value;
   const pwtRaw = document.getElementById('mod-secondary-select')?.value;
   const opt  = parseFloat(document.getElementById('cost-opt-slider')?.value || 0) / 100;
