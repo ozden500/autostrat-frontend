@@ -3277,7 +3277,7 @@ function fetchPlatformStdCost() {
     var wtEl = document.getElementById('mc-wt');
     if (wtEl) wtEl.textContent = Math.round(r.total_net_weight_kg) + ' kg net';
     var spendEl = document.getElementById('mc-spend');
-    if (spendEl) spendEl.textContent = '€' + r.total_rd_cost_eur_m.toFixed(1) + 'M';
+    if (spendEl) spendEl.textContent = '€' + (r.total_rd_cost_eur_m||0).toFixed(1) + 'M';
 
     // Render BOM breakdown
     if (!bomEl) return;
@@ -3309,8 +3309,8 @@ function fetchPlatformStdCost() {
     });
     h += '<tr style="border-top:1px solid var(--border2);font-weight:700;">' +
       '<td style="padding:3px 4px;color:var(--cyan);">Total Material</td>' +
-      '<td style="padding:3px 4px;text-align:right;font-family:DM Mono,monospace;">' + r.total_net_weight_kg.toFixed(1) + '</td>' +
-      '<td style="padding:3px 4px;text-align:right;font-family:DM Mono,monospace;">' + r.total_gross_weight_kg.toFixed(1) + '</td>' +
+      '<td style="padding:3px 4px;text-align:right;font-family:DM Mono,monospace;">' + (r.total_net_weight_kg||0).toFixed(1) + '</td>' +
+      '<td style="padding:3px 4px;text-align:right;font-family:DM Mono,monospace;">' + (r.total_gross_weight_kg||0).toFixed(1) + '</td>' +
       '<td></td>' +
       '<td style="padding:3px 4px;text-align:right;font-family:DM Mono,monospace;color:var(--cyan);">€' + Math.round(r.total_material_cost_eur) + '</td>' +
       '</tr></table>';
@@ -3356,10 +3356,10 @@ function fetchPlatformStdCost() {
       ['  Supplier Total (85%×1.15)', r.supplier_total_eur, 'var(--text)'],
       ['  OEM Internal (15%)', r.oem_internal_eur, 'var(--text)'],
       ['Total Standard Direct', r.total_std_direct_eur, 'var(--text)'],
-      ['Cost Opt Reduction (-' + r.cost_opt_reduction_pct.toFixed(1) + '%)', null, 'var(--green)'],
+      ['Cost Opt Reduction (-' + (r.cost_opt_reduction_pct||0).toFixed(1) + '%)', null, 'var(--green)'],
     ];
     rows.forEach(function(row) {
-      var val = row[1] !== null ? '€' + Math.round(row[1]).toLocaleString() : '-' + r.cost_opt_reduction_pct.toFixed(1) + '%';
+      var val = row[1] !== null ? '€' + Math.round(row[1]).toLocaleString() : '-' + (r.cost_opt_reduction_pct||0).toFixed(1) + '%';
       h += '<div style="display:flex;justify-content:space-between;margin-bottom:3px;">' +
         '<span style="color:' + row[2] + ';">' + row[0] + '</span>' +
         '<span style="font-family:DM Mono,monospace;color:' + row[2] + ';">' + val + '</span>' +
@@ -3374,8 +3374,8 @@ function fetchPlatformStdCost() {
     h += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:8px;">';
     h += '<div style="background:rgba(167,139,250,0.08);border:1px solid rgba(167,139,250,0.2);border-radius:4px;padding:8px;text-align:center;">' +
       '<div style="font-family:DM Mono,monospace;font-size:8px;color:var(--muted);margin-bottom:2px;">TOTAL R&D COST</div>' +
-      '<div style="font-size:16px;font-weight:700;color:#a78bfa;">€' + r.total_rd_cost_eur_m.toFixed(1) + 'M</div>' +
-      '<div style="font-size:8px;color:var(--muted2);">Base €' + r.base_rd_cost_eur_m + 'M + €' + r.rd_premium_eur_m.toFixed(1) + 'M opt. premium</div>' +
+      '<div style="font-size:16px;font-weight:700;color:#a78bfa;">€' + (r.total_rd_cost_eur_m||0).toFixed(1) + 'M</div>' +
+      '<div style="font-size:8px;color:var(--muted2);">Base €' + (r.base_rd_cost_eur_m||0) + 'M + €' + (r.rd_premium_eur_m||0).toFixed(1) + 'M opt. premium</div>' +
       '</div>';
     h += '<div style="background:rgba(6,182,212,0.08);border:1px solid rgba(6,182,212,0.2);border-radius:4px;padding:8px;text-align:center;">' +
       '<div style="font-family:DM Mono,monospace;font-size:8px;color:var(--muted);margin-bottom:2px;">NET WEIGHT</div>' +
@@ -10431,6 +10431,7 @@ function drawRadar() {
 
 </body>
 </html>
+ 
  
  
  
