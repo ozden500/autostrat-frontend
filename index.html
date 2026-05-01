@@ -3203,12 +3203,15 @@ async function fetchPlatformStdCost() {
     // Cost build-up
     h += '<div style="font-size:9px;color:var(--muted);margin:8px 0 3px;">COST BUILD-UP</div>';
     h += '<div style="background:var(--s2);border-radius:4px;padding:8px;font-size:10px;">';
+    var adjDirect = r.spec_direct_cost_eur || r.direct_cost_eur;
     var rows = [
-      ['Direct Cost (Mat + Proc)', r.direct_cost_eur, 'var(--text)'],
+      ['Base Material + Process', r.direct_cost_eur, 'var(--muted2)'],
+      ['Spec Adjustments (Safety/Reliability/Comfort/Weight)', (adjDirect - r.direct_cost_eur), 'var(--orange)'],
+      ['Adjusted Direct Cost', adjDirect, 'var(--text)'],
       ['  Supplier Content (85%)', r.supplier_content_eur, 'var(--muted2)'],
       ['  + Supplier Overhead (5%)', r.supplier_overhead_eur, 'var(--muted2)'],
       ['  + Supplier Profit (10%)', r.supplier_profit_eur, 'var(--muted2)'],
-      ['  Supplier Total', r.supplier_total_eur, 'var(--text)'],
+      ['  Supplier Total (85%×1.15)', r.supplier_total_eur, 'var(--text)'],
       ['  OEM Internal (15%)', r.oem_internal_eur, 'var(--text)'],
       ['Total Standard Direct', r.total_std_direct_eur, 'var(--text)'],
       ['Cost Opt Reduction (-' + r.cost_opt_reduction_pct.toFixed(1) + '%)', null, 'var(--green)'],
