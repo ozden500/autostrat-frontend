@@ -3039,7 +3039,201 @@ function scheduleCostCalc() {
   }
 }
 
-async function fetchPlatformStdCost() {
+async 
+// ════════════════════════════════════════════════════════════════════
+// PLATFORM COST ENGINE v2.2.0 — Client-Side JavaScript
+// All calculation runs in browser. DB write only on module submission.
+// ════════════════════════════════════════════════════════════════════
+var _PC = {
+  VERSION: "2.2.0",
+  US_LABOR: 58.0, US_ELEC: 0.08,
+  MAT: {
+    HSS_STAMPED:    {p:1.20, ss:1.35, sc:1.20, sm:1.18, sd:1.05, n:"High Strength Steel"},
+    MILD_STEEL:     {p:0.85, ss:1.32, sc:1.18, sm:1.15, sd:1.05, n:"Mild Steel - Structural"},
+    UHSS:           {p:2.10, ss:1.40, sc:1.25, sm:1.20, sd:1.05, n:"Ultra High Strength Steel"},
+    FRAME_STEEL:    {p:0.90, ss:1.28, sc:1.15, sm:1.12, sd:1.05, n:"Heavy Section Steel"},
+    ALU_CAST:       {p:3.80, ss:1.30, sc:1.18, sm:1.15, sd:1.05, n:"Aluminum - Die Cast"},
+    ALU_STAMP:      {p:4.20, ss:1.28, sc:1.20, sm:1.15, sd:1.05, n:"Aluminum - Stamped"},
+    ALU_EXTRUSION:  {p:4.50, ss:1.08, sc:1.10, sm:1.12, sd:1.05, n:"Aluminum - Extruded"},
+    CFRP:           {p:45.0, ss:1.20, sc:1.00, sm:1.25, sd:1.10, n:"Carbon Fiber (CFRP)"},
+    RUBBER_EPDM:    {p:4.50, ss:1.05, sc:1.00, sm:1.05, sd:1.05, n:"EPDM Rubber - Seals"},
+    STRUCT_ADHESIVE:{p:8.00, ss:1.02, sc:1.00, sm:1.02, sd:1.02, n:"Structural Adhesive"},
+    BATTERY_HOUSING:{p:5.50, ss:1.25, sc:1.15, sm:1.12, sd:1.05, n:"Battery Housing"},
+  },
+  PROC: {
+    STAMPING:        {m:0.65,l:0.80,e:8.0,  n:"Metal Stamping (Press)"},
+    ROLL_FORMING:    {m:0.45,l:0.60,e:5.0,  n:"Roll Forming"},
+    DIE_CASTING:     {m:0.85,l:1.20,e:45.0, n:"Aluminum Die Casting"},
+    WELDING_MIG:     {m:0.90,l:3.50,e:12.0, n:"MIG/MAG Welding"},
+    WELDING_LASER:   {m:1.80,l:1.50,e:18.0, n:"Laser/Spot Welding"},
+    WELDING_FRICTION:{m:2.10,l:2.00,e:22.0, n:"Friction Stir Welding"},
+    MACHINING_CNC:   {m:2.20,l:4.00,e:22.0, n:"CNC Machining"},
+    ASSEMBLY_GEN:    {m:0.20,l:5.00,e:3.0,  n:"General Sub-Assembly"},
+    ASSEMBLY_PRESS:  {m:0.35,l:3.00,e:2.0,  n:"Press-Fit Assembly"},
+    COATING_ECOAT:   {m:0.30,l:1.00,e:15.0, n:"E-Coat / Primer Coating"},
+    COMPOSITE_LAY:   {m:3.50,l:8.00,e:10.0, n:"Composite Layup (CFRP)"},
+  },
+  STEEL: {HSS_STAMPED:1,FRAME_STEEL:1,MILD_STEEL:1,UHSS:1},
+  RUBBER: {RUBBER_EPDM:1}, ADHESIVE: {STRUCT_ADHESIVE:1},
+  PRECISION: {WELDING_MIG:1,WELDING_LASER:1,WELDING_FRICTION:1,MACHINING_CNC:1},
+  BASE_RD: {small:45,medium:65,large:90,frame:55,performance:120,commercial:50},
+  BOM: {
+    "small|ice_only":    [["HSS_STAMPED",120,"STAMPING"],["MILD_STEEL",25,"WELDING_MIG"],["ALU_CAST",15,"DIE_CASTING"],["RUBBER_EPDM",8,"ASSEMBLY_GEN"],["STRUCT_ADHESIVE",4,"ASSEMBLY_GEN"]],
+    "small|bev_only":    [["HSS_STAMPED",120,"STAMPING"],["MILD_STEEL",25,"WELDING_MIG"],["ALU_CAST",15,"DIE_CASTING"],["BATTERY_HOUSING",18,"STAMPING"],["RUBBER_EPDM",8,"ASSEMBLY_GEN"],["STRUCT_ADHESIVE",4,"ASSEMBLY_GEN"]],
+    "small|ice_and_bev": [["HSS_STAMPED",120,"STAMPING"],["MILD_STEEL",25,"WELDING_MIG"],["ALU_CAST",15,"DIE_CASTING"],["BATTERY_HOUSING",18,"STAMPING"],["RUBBER_EPDM",8,"ASSEMBLY_GEN"],["STRUCT_ADHESIVE",4,"ASSEMBLY_GEN"]],
+    "medium|ice_only":   [["HSS_STAMPED",160,"STAMPING"],["MILD_STEEL",35,"WELDING_MIG"],["ALU_CAST",25,"DIE_CASTING"],["ALU_EXTRUSION",10,"ROLL_FORMING"],["RUBBER_EPDM",12,"ASSEMBLY_GEN"],["STRUCT_ADHESIVE",6,"ASSEMBLY_GEN"]],
+    "medium|bev_only":   [["HSS_STAMPED",160,"STAMPING"],["MILD_STEEL",35,"WELDING_MIG"],["ALU_CAST",25,"DIE_CASTING"],["ALU_EXTRUSION",10,"ROLL_FORMING"],["BATTERY_HOUSING",25,"STAMPING"],["RUBBER_EPDM",12,"ASSEMBLY_GEN"],["STRUCT_ADHESIVE",6,"ASSEMBLY_GEN"]],
+    "medium|ice_and_bev":[["HSS_STAMPED",160,"STAMPING"],["MILD_STEEL",35,"WELDING_MIG"],["ALU_CAST",25,"DIE_CASTING"],["ALU_EXTRUSION",10,"ROLL_FORMING"],["BATTERY_HOUSING",25,"STAMPING"],["RUBBER_EPDM",12,"ASSEMBLY_GEN"],["STRUCT_ADHESIVE",6,"ASSEMBLY_GEN"]],
+    "large|ice_only":    [["HSS_STAMPED",220,"STAMPING"],["MILD_STEEL",55,"WELDING_MIG"],["ALU_CAST",45,"DIE_CASTING"],["ALU_EXTRUSION",18,"ROLL_FORMING"],["RUBBER_EPDM",15,"ASSEMBLY_GEN"],["STRUCT_ADHESIVE",8,"ASSEMBLY_GEN"]],
+    "large|bev_only":    [["HSS_STAMPED",220,"STAMPING"],["MILD_STEEL",55,"WELDING_MIG"],["ALU_CAST",45,"DIE_CASTING"],["ALU_EXTRUSION",18,"ROLL_FORMING"],["BATTERY_HOUSING",35,"STAMPING"],["RUBBER_EPDM",15,"ASSEMBLY_GEN"],["STRUCT_ADHESIVE",8,"ASSEMBLY_GEN"]],
+    "large|ice_and_bev": [["HSS_STAMPED",220,"STAMPING"],["MILD_STEEL",55,"WELDING_MIG"],["ALU_CAST",45,"DIE_CASTING"],["ALU_EXTRUSION",18,"ROLL_FORMING"],["BATTERY_HOUSING",35,"STAMPING"],["RUBBER_EPDM",15,"ASSEMBLY_GEN"],["STRUCT_ADHESIVE",8,"ASSEMBLY_GEN"]],
+    "frame|ice_only":    [["FRAME_STEEL",280,"WELDING_MIG"],["MILD_STEEL",60,"STAMPING"],["ALU_CAST",15,"DIE_CASTING"],["RUBBER_EPDM",18,"ASSEMBLY_GEN"],["STRUCT_ADHESIVE",5,"ASSEMBLY_GEN"]],
+    "frame|bev_only":    [["FRAME_STEEL",280,"WELDING_MIG"],["MILD_STEEL",60,"STAMPING"],["ALU_CAST",15,"DIE_CASTING"],["BATTERY_HOUSING",40,"STAMPING"],["RUBBER_EPDM",18,"ASSEMBLY_GEN"],["STRUCT_ADHESIVE",5,"ASSEMBLY_GEN"]],
+    "frame|ice_and_bev": [["FRAME_STEEL",280,"WELDING_MIG"],["MILD_STEEL",60,"STAMPING"],["ALU_CAST",15,"DIE_CASTING"],["BATTERY_HOUSING",40,"STAMPING"],["RUBBER_EPDM",18,"ASSEMBLY_GEN"],["STRUCT_ADHESIVE",5,"ASSEMBLY_GEN"]],
+    "performance|ice_only":    [["UHSS",80,"STAMPING"],["ALU_STAMP",60,"STAMPING"],["ALU_CAST",40,"DIE_CASTING"],["ALU_EXTRUSION",25,"ROLL_FORMING"],["CFRP",20,"COMPOSITE_LAY"],["RUBBER_EPDM",8,"ASSEMBLY_GEN"],["STRUCT_ADHESIVE",6,"ASSEMBLY_GEN"]],
+    "performance|bev_only":    [["UHSS",80,"STAMPING"],["ALU_STAMP",60,"STAMPING"],["ALU_CAST",40,"DIE_CASTING"],["ALU_EXTRUSION",25,"ROLL_FORMING"],["CFRP",20,"COMPOSITE_LAY"],["BATTERY_HOUSING",30,"STAMPING"],["RUBBER_EPDM",8,"ASSEMBLY_GEN"],["STRUCT_ADHESIVE",6,"ASSEMBLY_GEN"]],
+    "performance|ice_and_bev": [["UHSS",80,"STAMPING"],["ALU_STAMP",60,"STAMPING"],["ALU_CAST",40,"DIE_CASTING"],["ALU_EXTRUSION",25,"ROLL_FORMING"],["CFRP",20,"COMPOSITE_LAY"],["BATTERY_HOUSING",30,"STAMPING"],["RUBBER_EPDM",8,"ASSEMBLY_GEN"],["STRUCT_ADHESIVE",6,"ASSEMBLY_GEN"]],
+    "commercial|ice_only":    [["FRAME_STEEL",300,"WELDING_MIG"],["MILD_STEEL",70,"STAMPING"],["ALU_CAST",15,"DIE_CASTING"],["RUBBER_EPDM",20,"ASSEMBLY_GEN"],["STRUCT_ADHESIVE",5,"ASSEMBLY_GEN"]],
+    "commercial|bev_only":    [["FRAME_STEEL",300,"WELDING_MIG"],["MILD_STEEL",70,"STAMPING"],["ALU_CAST",15,"DIE_CASTING"],["BATTERY_HOUSING",50,"STAMPING"],["RUBBER_EPDM",20,"ASSEMBLY_GEN"],["STRUCT_ADHESIVE",5,"ASSEMBLY_GEN"]],
+    "commercial|ice_and_bev": [["FRAME_STEEL",300,"WELDING_MIG"],["MILD_STEEL",70,"STAMPING"],["ALU_CAST",15,"DIE_CASTING"],["BATTERY_HOUSING",50,"STAMPING"],["RUBBER_EPDM",20,"ASSEMBLY_GEN"],["STRUCT_ADHESIVE",5,"ASSEMBLY_GEN"]],
+  },
+  PROCS: {
+    "small|ice_only":    [["STAMPING",162],["WELDING_MIG",33],["DIE_CASTING",18],["ASSEMBLY_GEN",18],["COATING_ECOAT",172]],
+    "small|bev_only":    [["STAMPING",185],["WELDING_MIG",33],["DIE_CASTING",18],["ASSEMBLY_GEN",18],["COATING_ECOAT",185]],
+    "small|ice_and_bev": [["STAMPING",207],["WELDING_MIG",38],["DIE_CASTING",21],["ASSEMBLY_GEN",20],["COATING_ECOAT",207]],
+    "medium|ice_only":   [["STAMPING",216],["WELDING_MIG",46],["DIE_CASTING",29],["ROLL_FORMING",11],["ASSEMBLY_GEN",25],["COATING_ECOAT",248]],
+    "medium|bev_only":   [["STAMPING",241],["WELDING_MIG",46],["DIE_CASTING",29],["ROLL_FORMING",11],["ASSEMBLY_GEN",25],["COATING_ECOAT",248]],
+    "medium|ice_and_bev":[["STAMPING",275],["WELDING_MIG",53],["DIE_CASTING",33],["ROLL_FORMING",13],["ASSEMBLY_GEN",29],["COATING_ECOAT",285]],
+    "large|ice_only":    [["STAMPING",297],["WELDING_MIG",73],["DIE_CASTING",53],["ROLL_FORMING",19],["ASSEMBLY_GEN",36],["COATING_ECOAT",361]],
+    "large|bev_only":    [["STAMPING",340],["WELDING_MIG",73],["DIE_CASTING",53],["ROLL_FORMING",19],["ASSEMBLY_GEN",36],["COATING_ECOAT",361]],
+    "large|ice_and_bev": [["STAMPING",380],["WELDING_MIG",84],["DIE_CASTING",61],["ROLL_FORMING",22],["ASSEMBLY_GEN",41],["COATING_ECOAT",415]],
+    "frame|ice_only":    [["WELDING_MIG",358],["STAMPING",79],["DIE_CASTING",18],["ASSEMBLY_GEN",38],["COATING_ECOAT",378]],
+    "frame|bev_only":    [["WELDING_MIG",384],["STAMPING",144],["DIE_CASTING",18],["ASSEMBLY_GEN",42],["COATING_ECOAT",460]],
+    "frame|ice_and_bev": [["WELDING_MIG",412],["STAMPING",161],["DIE_CASTING",21],["ASSEMBLY_GEN",44],["COATING_ECOAT",435]],
+    "performance|ice_only":    [["STAMPING",166],["WELDING_LASER",42],["DIE_CASTING",47],["ROLL_FORMING",27],["COMPOSITE_LAY",24],["MACHINING_CNC",15],["ASSEMBLY_PRESS",25],["COATING_ECOAT",239]],
+    "performance|bev_only":    [["STAMPING",190],["WELDING_LASER",42],["DIE_CASTING",47],["ROLL_FORMING",27],["COMPOSITE_LAY",24],["MACHINING_CNC",15],["ASSEMBLY_PRESS",25],["COATING_ECOAT",269]],
+    "performance|ice_and_bev": [["STAMPING",220],["WELDING_LASER",48],["DIE_CASTING",54],["ROLL_FORMING",31],["COMPOSITE_LAY",28],["MACHINING_CNC",17],["ASSEMBLY_PRESS",29],["COATING_ECOAT",309]],
+    "commercial|ice_only":    [["WELDING_MIG",384],["STAMPING",90],["DIE_CASTING",18],["ASSEMBLY_GEN",42],["COATING_ECOAT",410]],
+    "commercial|bev_only":    [["WELDING_MIG",384],["STAMPING",144],["DIE_CASTING",18],["ASSEMBLY_GEN",42],["COATING_ECOAT",460]],
+    "commercial|ice_and_bev": [["WELDING_MIG",442],["STAMPING",166],["DIE_CASTING",21],["ASSEMBLY_GEN",48],["COATING_ECOAT",529]],
+  },
+  scrap: function(code, proc) {
+    var m = this.MAT[code]; if (!m) return 1.05;
+    if (proc.indexOf('STAMP')>=0||proc.indexOf('ROLL')>=0) return m.ss;
+    if (proc.indexOf('CAST')>=0) return m.sc;
+    if (proc.indexOf('MACH')>=0) return m.sm;
+    return m.sd;
+  },
+  calc: function(size, pwt, co, wo, saf, rel, com) {
+    var key = size+"|"+pwt;
+    var pwt_m = {ice_only:1.0,bev_only:0.85,ice_and_bev:1.15}[pwt]||1.0;
+    if (!this.BOM[key]) return null;
+
+    // Build base material lines
+    var mats = this.BOM[key].map(function(r) {
+      var ms = _PC.MAT[r[0]]||{p:1.0,ss:1.05,sc:1.05,sm:1.05,sd:1.05,n:r[0]};
+      var net = r[1]*pwt_m, sc = _PC.scrap(r[0],r[2]);
+      return {code:r[0],name:ms.n,net:net,sc:sc,gross:net*sc,price:ms.p,cost:net*sc*ms.p,proc:r[2],spec:false,label:""};
+    });
+
+    // Build base process lines
+    var procs = this.PROCS[key].map(function(r) {
+      var ps = _PC.PROC[r[0]]||{m:0.5,l:1.0,e:5.0,n:r[0]};
+      return {code:r[0],name:ps.n,gross:r[1],m:ps.m,l:ps.l,e:ps.e,spec:false,label:""};
+    });
+
+    // A. SAFETY → replace steel with UHSS
+    if (saf > 0.001) {
+      var uf = saf*0.40;
+      var steel = mats.filter(function(l){return _PC.STEEL[l.code]&&!l.spec;});
+      var tot_sn = steel.reduce(function(s,l){return s+l.net;},0);
+      mats.forEach(function(l){if(_PC.STEEL[l.code]&&!l.spec){l.net*=(1-uf);l.gross=l.net*l.sc;l.cost=l.gross*l.price;}});
+      var un=tot_sn*uf; mats.push({code:"UHSS",name:"Ultra High Strength Steel (Safety)",net:un,sc:1.40,gross:un*1.40,price:2.10,cost:un*1.40*2.10,proc:"STAMPING",spec:true,label:"Safety"});
+    }
+
+    // B. COMFORT → extra rubber/adhesive
+    if (com > 0.001) {
+      var base_mats = mats.slice();
+      base_mats.forEach(function(l){
+        if (_PC.RUBBER[l.code]) { var ex=l.net*com*0.60; mats.push({code:l.code,name:l.name+" (Comfort NVH)",net:ex,sc:l.sc,gross:ex*l.sc,price:l.price,cost:ex*l.sc*l.price,proc:l.proc,spec:true,label:"Comfort"}); }
+        if (_PC.ADHESIVE[l.code]) { var ex2=l.net*com*0.40; mats.push({code:l.code,name:l.name+" (Comfort Structural)",net:ex2,sc:l.sc,gross:ex2*l.sc,price:l.price,cost:ex2*l.sc*l.price,proc:l.proc,spec:true,label:"Comfort"}); }
+      });
+    }
+
+    // C. WEIGHT OPT → steel → ALU/CFRP
+    if (wo > 0.001) {
+      var wf=wo*0.40;
+      var steel2=mats.filter(function(l){return _PC.STEEL[l.code]&&!l.spec;});
+      var ts2=steel2.reduce(function(s,l){return s+l.net;},0);
+      mats.forEach(function(l){if(_PC.STEEL[l.code]&&!l.spec){l.net*=(1-wf);l.gross=l.net*l.sc;l.cost=l.gross*l.price;}});
+      var an=ts2*wf*0.55; mats.push({code:"ALU_STAMP",name:"Aluminum Stamped (Weight Opt.)",net:an,sc:1.28,gross:an*1.28,price:4.20,cost:an*1.28*4.20,proc:"STAMPING",spec:true,label:"Weight Opt."});
+      if (wo>0.70){var cn=ts2*wf*0.10*((wo-0.70)/0.30);mats.push({code:"CFRP",name:"Carbon Fiber (Weight Opt.)",net:cn,sc:1.20,gross:cn*1.20,price:45.0,cost:cn*1.20*45.0,proc:"COMPOSITE_LAY",spec:true,label:"Weight Opt."});}
+      procs.push({code:"WELDING_FRICTION",name:"Friction Stir Welding (Alu)",gross:an*1.28*0.4,m:2.10,l:2.0,e:22.0,spec:true,label:"Weight Opt."});
+    }
+
+    // D. COST OPT → reduce scrap + labor
+    if (co > 0.001) {
+      var sr=co*0.15, lr=co*0.10;
+      mats.forEach(function(l){l.sc=Math.max(1.0,l.sc*(1-sr));l.gross=l.net*l.sc;l.cost=l.gross*l.price;});
+      procs.forEach(function(l){l.l=l.l*(1-lr);});
+    }
+
+    // E. RELIABILITY → more labor on precision
+    if (rel > 0.001) {
+      procs.forEach(function(l){if(_PC.PRECISION[l.code])l.l=l.l*(1+rel*0.20);});
+    }
+
+    // Compute final process costs
+    procs.forEach(function(l){
+      l.mach=Math.round(l.gross*l.m*100)/100;
+      l.lhrs=Math.round(l.gross*l.l/100*1000)/1000;
+      l.lcost=Math.round(l.lhrs*_PC.US_LABOR*100)/100;
+      l.ekwh=Math.round(l.gross*l.e/100*1000)/1000;
+      l.ecost=Math.round(l.ekwh*_PC.US_ELEC*100)/100;
+      l.total=Math.round((l.mach+l.lcost+l.ecost)*100)/100;
+    });
+
+    // Finalise mat costs
+    mats.forEach(function(l){l.gross=Math.round(l.gross*100)/100;l.net=Math.round(l.net*100)/100;l.cost=Math.round(l.gross*l.price*100)/100;});
+
+    var tm=mats.reduce(function(s,l){return s+l.cost;},0);
+    var tp=procs.reduce(function(s,l){return s+l.total;},0);
+    var tnw=mats.reduce(function(s,l){return s+l.net;},0);
+    var tgw=mats.reduce(function(s,l){return s+l.gross;},0);
+    var dc=tm+tp;
+    var sc85=dc*0.85, soh=sc85*0.05, spf=sc85*0.10, stot=sc85*1.15, oem=dc*0.15, std=stot+oem;
+    var cor=co>0?0.05*Math.pow(co,0.6):0;
+    var tpc=std*(1-cor);
+    var brd=this.BASE_RD[size]||60;
+    var cord=0.50*(Math.exp(3*co)-1)/(Math.exp(3)-1);
+    var word=0.30*(Math.exp(3*wo)-1)/(Math.exp(3)-1);
+
+    // Convert to API-compatible field names for display reuse
+    return {
+      platform_size:size, pwt_compatibility:pwt,
+      total_net_weight_kg:Math.round(tnw*10)/10,
+      total_gross_weight_kg:Math.round(tgw*10)/10,
+      total_material_cost_eur:Math.round(tm*100)/100,
+      total_process_cost_eur:Math.round(tp*100)/100,
+      direct_cost_eur:Math.round(dc*100)/100,
+      supplier_content_eur:Math.round(sc85*100)/100,
+      supplier_overhead_eur:Math.round(soh*100)/100,
+      supplier_profit_eur:Math.round(spf*100)/100,
+      supplier_total_eur:Math.round(stot*100)/100,
+      oem_internal_eur:Math.round(oem*100)/100,
+      total_std_direct_eur:Math.round(std*100)/100,
+      cost_opt_reduction_pct:Math.round(cor*10000)/100,
+      std_platform_tpc_eur:Math.round(tpc*100)/100,
+      base_rd_cost_eur_m:brd,
+      rd_premium_pct:Math.round((cord+word)*10000)/100,
+      total_rd_cost_eur_m:Math.round(brd*(1+cord+word)*10)/10,
+      material_lines:mats.map(function(l){return {material_code:l.code,material_name:l.name,net_weight_kg:l.net,scrap_rate:l.sc,gross_weight_kg:l.gross,material_price_eur_kg:l.price,material_cost_eur:l.cost,spec_driven:l.spec,spec_label:l.label};}),
+      process_lines:procs.map(function(l){return {process_code:l.code,process_name:l.name,gross_weight_kg:l.gross,machine_cost_eur:l.mach,labor_hours:l.lhrs,labor_cost_eur:l.lcost,energy_kwh:l.ekwh,energy_cost_eur:l.ecost,process_cost_eur:l.total,spec_driven:l.spec,spec_label:l.label};}),
+    };
+  }
+};
+
+function fetchPlatformStdCost() {
   if (currentModType !== 'platform') return;
   // Always hide legacy cost box for platform — show BOM instead
   var legEl = document.getElementById('mod-cost-legacy');
@@ -3070,22 +3264,12 @@ async function fetchPlatformStdCost() {
   if (bomEl) bomEl.style.display = 'none';
 
   try {
-    const res = await fetch(API_URL + '/platform/calculate-cost', {
-      method: 'POST',
-      headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({
-        platform_size: platformSize,
-        pwt_compatibility: pwt,
-        cost_optimization_index: opt,
-        weight_optimization_index: parseFloat(document.getElementById('weight-opt-slider')?.value||0)/100,
-        safety_index: parseFloat(document.getElementById('msr-safety')?.value||0.5),
-        reliability_index: parseFloat(document.getElementById('msr-reliability')?.value||0.5),
-        comfort_index: parseFloat(document.getElementById('msr-comfort')?.value||0.5),
-      })
-    });
-    const d = await res.json();
-    if (!d.success) return;
-    const r = d.result;
+    var wo = parseFloat(document.getElementById('weight-opt-slider')?.value||0)/100;
+    var saf = parseFloat(document.getElementById('msr-safety')?.value||0.5);
+    var rel = parseFloat(document.getElementById('msr-reliability')?.value||0.5);
+    var com = parseFloat(document.getElementById('msr-comfort')?.value||0.5);
+    var r = _PC.calc(platformSize, pwt, opt, wo, saf, rel, com);
+    if (!r) { console.warn('No BOM for', platformSize, pwt); return; }
 
     // Update legacy TPC field
     var tpcEl = document.getElementById('mc-tpc');
@@ -10247,4 +10431,5 @@ function drawRadar() {
 
 </body>
 </html>
+ 
  
