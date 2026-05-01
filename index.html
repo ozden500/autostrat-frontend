@@ -1497,7 +1497,7 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
         <label class="ctrl-lbl-top">Cost Optimization Index
           <span style="font-family:DM Mono,monospace;font-size:9px;color:var(--gold);margin-left:6px;" id="cost-opt-display">0%</span>
         </label>
-        <input type="range" id="cost-opt-slider" min="0" max="20" value="0" step="1"
+        <input type="range" id="cost-opt-slider" min="0" max="100" value="0" step="1"
           style="width:100%;accent-color:var(--gold);margin:6px 0;"
           oninput="document.getElementById('cost-opt-display').textContent=this.value+'%'; fetchPlatformStdCost();">
         <div style="display:flex;justify-content:space-between;font-family:DM Mono,monospace;font-size:8px;color:var(--muted2);">
