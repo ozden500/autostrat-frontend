@@ -3337,6 +3337,13 @@ function fetchPlatformStdCost() {
     'ICE': 'ice_only', 'ICE_ONLY': 'ice_only',
     'BEV': 'bev_only', 'BEV_ONLY': 'bev_only',
     'ICE_BEV': 'ice_and_bev', 'HYBRID': 'ice_and_bev',
+    'MICRO_ICE': 'ice_only', 'MICRO_BEV': 'bev_only',
+    'SMALL_ICE': 'ice_only', 'SMALL_BEV': 'bev_only', 'SMALL_ICE_BEV': 'ice_and_bev',
+    'MEDIUM_ICE': 'ice_only', 'MEDIUM_BEV': 'bev_only', 'MEDIUM_ICE_BEV': 'ice_and_bev',
+    'LARGE_ICE': 'ice_only', 'LARGE_BEV': 'bev_only', 'LARGE_ICE_BEV': 'ice_and_bev',
+    'FRAME_ICE': 'ice_only', 'FRAME_ICE_BEV': 'ice_and_bev',
+    'PERF_ICE': 'ice_only', 'PERF_BEV': 'bev_only', 'PERF_ICE_BEV': 'ice_and_bev',
+    'COMMERCIAL_ICE': 'ice_only', 'COMMERCIAL_BEV': 'bev_only', 'COMMERCIAL_ICE_BEV': 'ice_and_bev',
     'ice_only': 'ice_only', 'bev_only': 'bev_only', 'ice_and_bev': 'ice_and_bev'
   };
   const pwt = pwtMap[pwtRaw] || 'ice_only';
@@ -10614,6 +10621,7 @@ function drawRadar() {
 
 </body>
 </html>
+ 
  
  
  
