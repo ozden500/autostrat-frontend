@@ -3151,12 +3151,27 @@ var _PC = {
       var un=tot_sn*uf; mats.push({code:"UHSS",name:"Ultra High Strength Steel (Safety)",net:un,sc:1.40,gross:un*1.40,price:2.10,cost:un*1.40*2.10,proc:"STAMPING",spec:true,label:"Safety"});
     }
 
+    // Safety → process impacts: UHSS hot stamping energy +15%, welding labor +10%
+    if (saf > 0.001) {
+      procs.forEach(function(l){
+        if (l.code === 'STAMPING') l.e = l.e * (1 + saf * 0.15);
+        if (_PC.PRECISION[l.code] && l.code.indexOf('WELD') >= 0) l.l = l.l * (1 + saf * 0.10);
+      });
+    }
+
     // B. COMFORT → extra rubber/adhesive
     if (com > 0.001) {
       var base_mats = mats.slice();
       base_mats.forEach(function(l){
-        if (_PC.RUBBER[l.code]) { var ex=l.net*com*0.60; mats.push({code:l.code,name:l.name+" (Comfort NVH)",net:ex,sc:l.sc,gross:ex*l.sc,price:l.price,cost:ex*l.sc*l.price,proc:l.proc,spec:true,label:"Comfort"}); }
-        if (_PC.ADHESIVE[l.code]) { var ex2=l.net*com*0.40; mats.push({code:l.code,name:l.name+" (Comfort Structural)",net:ex2,sc:l.sc,gross:ex2*l.sc,price:l.price,cost:ex2*l.sc*l.price,proc:l.proc,spec:true,label:"Comfort"}); }
+        if (_PC.RUBBER[l.code]) { var ex=l.net*com*0.40; mats.push({code:l.code,name:l.name+" (Comfort NVH)",net:ex,sc:l.sc,gross:ex*l.sc,price:l.price,cost:ex*l.sc*l.price,proc:l.proc,spec:true,label:"Comfort"}); }
+        if (_PC.ADHESIVE[l.code]) { var ex2=l.net*com*0.25; mats.push({code:l.code,name:l.name+" (Comfort Structural)",net:ex2,sc:l.sc,gross:ex2*l.sc,price:l.price,cost:ex2*l.sc*l.price,proc:l.proc,spec:true,label:"Comfort"}); }
+      });
+    }
+
+    // Comfort → assembly labor +15%
+    if (com > 0.001) {
+      procs.forEach(function(l){
+        if (l.code === 'ASSEMBLY_GEN' || l.code === 'ASSEMBLY_PRESS') l.l = l.l * (1 + com * 0.15);
       });
     }
 
@@ -3173,14 +3188,25 @@ var _PC = {
 
     // D. COST OPT → reduce scrap + labor
     if (co > 0.001) {
-      var sr=co*0.15, lr=co*0.10;
+      var sr=co*0.20, lr=co*0.10;
       mats.forEach(function(l){l.sc=Math.max(1.0,l.sc*(1-sr));l.gross=l.net*l.sc;l.cost=l.gross*l.price;});
       procs.forEach(function(l){l.l=l.l*(1-lr);});
     }
 
-    // E. RELIABILITY → more labor on precision
+    // E. RELIABILITY → more labor on precision + e-coat, premium adhesive
     if (rel > 0.001) {
-      procs.forEach(function(l){if(_PC.PRECISION[l.code])l.l=l.l*(1+rel*0.20);});
+      // Process: +20% labor on precision welds/machining, +10% on e-coat
+      procs.forEach(function(l){
+        if (_PC.PRECISION[l.code]) l.l = l.l * (1 + rel * 0.20);
+        if (l.code === 'COATING_ECOAT') l.l = l.l * (1 + rel * 0.10);
+      });
+      // Material: premium adhesive grade +15% cost at max reliability
+      mats.forEach(function(l){
+        if (_PC.ADHESIVE[l.code] && !l.spec) {
+          l.price = l.price * (1 + rel * 0.15);
+          l.cost = l.gross * l.price;
+        }
+      });
     }
 
     // Compute final process costs
@@ -10431,6 +10457,7 @@ function drawRadar() {
 
 </body>
 </html>
+ 
  
  
  
