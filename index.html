@@ -1492,6 +1492,34 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
         </select>
       </div>
 
+      <!-- Step 2: Development path -->
+      <div class="ctrl" id="mod-step2" style="display:none">
+        <label class="ctrl-lbl-top">Development Path</label>
+        <div style="display:flex;gap:6px;margin-top:4px;">
+          <button class="mod-path-btn active" id="path-new" onclick="setDevPath('new',this)">🆕 New</button>
+          <button class="mod-path-btn" id="path-modify" onclick="setDevPath('modify',this)">✏️ Modify Existing</button>
+          <button class="mod-path-btn" id="path-reuse" onclick="setDevPath('reuse',this)">♻️ Reuse</button>
+        </div>
+      </div>
+
+      <!-- Source module (Modify/Reuse) -->
+      <div class="ctrl" id="mod-source-row" style="display:none">
+        <label class="ctrl-lbl-top">Source Module</label>
+        <select id="mod-source-select" onchange="onSourceModuleChange()">
+          <option value="">— select from library —</option>
+        </select>
+      </div>
+
+      <!-- Module name -->
+      <div class="ctrl" id="mod-name-row" style="display:none">
+        <label class="ctrl-lbl-top">Module Name</label>
+        <input type="text" id="mod-name-input" placeholder="e.g. Platform Alpha-1" maxlength="40"
+          style="width:100%;background:var(--s3);border:1px solid var(--border2);border-radius:2px;color:var(--text);padding:6px 8px;font-size:12px;font-family:inherit;outline:none;">
+      </div>
+
+      <!-- Spec sliders (dynamically built) -->
+      <div id="mod-specs-area" style="display:none;margin-top:8px;"></div>
+
       <!-- Cost Optimization Index (platform only) -->
       <div class="ctrl" id="mod-cost-opt-row" style="display:none">
         <label class="ctrl-lbl-top">Cost Optimization Index
@@ -1524,33 +1552,6 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
         </div>
       </div>
 
-      <!-- Step 2: Development path -->
-      <div class="ctrl" id="mod-step2" style="display:none">
-        <label class="ctrl-lbl-top">Development Path</label>
-        <div style="display:flex;gap:6px;margin-top:4px;">
-          <button class="mod-path-btn active" id="path-new" onclick="setDevPath('new',this)">🆕 New</button>
-          <button class="mod-path-btn" id="path-modify" onclick="setDevPath('modify',this)">✏️ Modify Existing</button>
-          <button class="mod-path-btn" id="path-reuse" onclick="setDevPath('reuse',this)">♻️ Reuse</button>
-        </div>
-      </div>
-
-      <!-- Source module (Modify/Reuse) -->
-      <div class="ctrl" id="mod-source-row" style="display:none">
-        <label class="ctrl-lbl-top">Source Module</label>
-        <select id="mod-source-select" onchange="onSourceModuleChange()">
-          <option value="">— select from library —</option>
-        </select>
-      </div>
-
-      <!-- Module name -->
-      <div class="ctrl" id="mod-name-row" style="display:none">
-        <label class="ctrl-lbl-top">Module Name</label>
-        <input type="text" id="mod-name-input" placeholder="e.g. Platform Alpha-1" maxlength="40"
-          style="width:100%;background:var(--s3);border:1px solid var(--border2);border-radius:2px;color:var(--text);padding:6px 8px;font-size:12px;font-family:inherit;outline:none;">
-      </div>
-
-      <!-- Spec sliders (dynamically built) -->
-      <div id="mod-specs-area" style="display:none;margin-top:8px;"></div>
 
       <!-- Live cost preview -->
       <div id="mod-cost-preview" style="display:none;margin-top:10px;">
@@ -10542,6 +10543,7 @@ function drawRadar() {
 
 </body>
 </html>
+ 
  
  
  
