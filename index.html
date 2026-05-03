@@ -3823,7 +3823,6 @@ function _renderMultiEnergyFull(container) {
   h += '<div style="font-size:9px;color:'+vcol+';text-transform:uppercase;letter-spacing:2px;margin:10px 0 6px;font-family:DM Mono,monospace;">';
   h += (sel==='ice'?'ICE-READY':'BEV-READY')+' — DETAILED BOM</div>';
   h += _bomDetail(v.material_lines, v.process_lines, v);
-  h += _costBuildUp(v);
 
   container.innerHTML = h;
 }
