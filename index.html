@@ -2840,6 +2840,8 @@ function getSecondaryOptions(type, configs, primaryVal) {
 }
 
 function formatPrimaryLabel(type, val) {
+  if (type==='platform' && val==='micro') return 'MICRO (A-Segment)';
+
   if (type==='ice_pwt')  return `${val}-Cylinder`;
   if (type==='epwt')     return val.replace(/_/g,'-');
   if (type==='tophat')   return val.replace(/_/g,' ').replace(/\b\w/g,c=>c.toUpperCase());
@@ -3105,12 +3107,14 @@ var _PC = {
   STEEL: {HSS_STAMPED:1,FRAME_STEEL:1,MILD_STEEL:1,UHSS:1},
   RUBBER: {RUBBER_EPDM:1}, ADHESIVE: {STRUCT_ADHESIVE:1},
   PRECISION: {WELDING_MIG:1,WELDING_LASER:1,WELDING_FRICTION:1,MACHINING_CNC:1},
-  BASE_RD: {small:180,medium:280,large:380,frame:220,performance:480,commercial:200},
+  BASE_RD: {micro:80,small:180,medium:280,large:380,frame:220,performance:480,commercial:200},
   RD_FTE_SHARE: 0.60,        // 60% of R&D is FTE cost
   RD_MAT_SHARE: 0.40,        // 40% of R&D is material cost
   US_FTE_RATE_MONTH: 13333,  // US fully loaded engineering FTE €160k/yr ÷ 12
   RD_MAT_INDEX: 1.00,        // US standard material index
   BOM: {
+    "micro|ice_only":    [["HSS_STAMPED",70,"STAMPING"],["MILD_STEEL",15,"WELDING_MIG"],["ALU_CAST",5,"DIE_CASTING"],["RUBBER_EPDM",4,"ASSEMBLY_GEN"],["STRUCT_ADHESIVE",1,"ASSEMBLY_GEN"]],
+    "micro|bev_only":    [["HSS_STAMPED",70,"STAMPING"],["MILD_STEEL",15,"WELDING_MIG"],["ALU_CAST",5,"DIE_CASTING"],["BATTERY_HOUSING",10,"STAMPING"],["RUBBER_EPDM",4,"ASSEMBLY_GEN"],["STRUCT_ADHESIVE",1,"ASSEMBLY_GEN"]],
     "small|ice_only":    [["HSS_STAMPED",120,"STAMPING"],["MILD_STEEL",25,"WELDING_MIG"],["ALU_CAST",15,"DIE_CASTING"],["RUBBER_EPDM",8,"ASSEMBLY_GEN"],["STRUCT_ADHESIVE",4,"ASSEMBLY_GEN"]],
     "small|bev_only":    [["HSS_STAMPED",120,"STAMPING"],["MILD_STEEL",25,"WELDING_MIG"],["ALU_CAST",15,"DIE_CASTING"],["BATTERY_HOUSING",18,"STAMPING"],["RUBBER_EPDM",8,"ASSEMBLY_GEN"],["STRUCT_ADHESIVE",4,"ASSEMBLY_GEN"]],
     "small|ice_and_bev": [["HSS_STAMPED",120,"STAMPING"],["MILD_STEEL",25,"WELDING_MIG"],["ALU_CAST",15,"DIE_CASTING"],["BATTERY_HOUSING",18,"STAMPING"],["RUBBER_EPDM",8,"ASSEMBLY_GEN"],["STRUCT_ADHESIVE",4,"ASSEMBLY_GEN"]],
@@ -3131,6 +3135,8 @@ var _PC = {
     "commercial|ice_and_bev": [["FRAME_STEEL",300,"WELDING_MIG"],["MILD_STEEL",70,"STAMPING"],["ALU_CAST",15,"DIE_CASTING"],["BATTERY_HOUSING",50,"STAMPING"],["RUBBER_EPDM",20,"ASSEMBLY_GEN"],["STRUCT_ADHESIVE",5,"ASSEMBLY_GEN"]],
   },
   PROCS: {
+    "micro|ice_only":    [["STAMPING",95],["WELDING_MIG",20],["DIE_CASTING",6],["ASSEMBLY_GEN",9],["COATING_ECOAT",95]],
+    "micro|bev_only":    [["STAMPING",108],["WELDING_MIG",20],["DIE_CASTING",6],["ASSEMBLY_GEN",10],["COATING_ECOAT",108]],
     "small|ice_only":    [["STAMPING",162],["WELDING_MIG",33],["DIE_CASTING",18],["ASSEMBLY_GEN",18],["COATING_ECOAT",172]],
     "small|bev_only":    [["STAMPING",185],["WELDING_MIG",33],["DIE_CASTING",18],["ASSEMBLY_GEN",18],["COATING_ECOAT",185]],
     "small|ice_and_bev": [["STAMPING",207],["WELDING_MIG",38],["DIE_CASTING",21],["ASSEMBLY_GEN",20],["COATING_ECOAT",207]],
@@ -10608,6 +10614,7 @@ function drawRadar() {
 
 </body>
 </html>
+ 
  
  
  
