@@ -7905,6 +7905,27 @@ function selectStudy(vid) {
 }
 
 // ── Context banner ─────────────────────────────────────────
+
+// Segment → compatible platform sizes (P=primary, S=secondary)
+var SEGMENT_PLATFORM_COMPAT = {
+  a_segment:   ['micro','small'],
+  b_segment:   ['micro','small','medium'],
+  c_segment:   ['small','medium'],
+  d_segment:   ['medium','large'],
+  e_segment:   ['medium','large'],
+  f_segment:   ['large','performance'],
+  sports:      ['performance'],
+  mpv:         ['medium','large'],
+  pickup:      ['frame'],
+  c_van:       ['small','medium','commercial'],
+  d_van:       ['medium','frame','commercial'],
+  e_van:       ['large','commercial'],
+};
+
+function getCompatiblePlatformSizes(segmentCode) {
+  return SEGMENT_PLATFORM_COMPAT[segmentCode] || ['micro','small','medium','large','frame','performance','commercial'];
+}
+
 function buildContextBanner() {
   if (!_prop.study) return '';
   var v   = _prop.study;
@@ -8097,13 +8118,21 @@ function buildModuleOptions(modType, propKey, nextFn) {
       html += '<div>';
 
       // Size
+      // Filter sizes by segment compatibility
+      var compatSizes = _prop.study ? getCompatiblePlatformSizes(_prop.study.segment_code) : ['micro','small','medium','large','frame','performance','commercial'];
+      var allSizes = ['micro','small','medium','large','frame','performance','commercial'];
+      var sizeLabels = {micro:'MICRO (A-Segment)',small:'SMALL (B/C-Seg)',medium:'MEDIUM (C/D-Seg)',large:'LARGE (D/E-Seg)',frame:'FRAME (Truck/Van)',performance:'PERFORMANCE (Sports)',commercial:'COMMERCIAL (Heavy Van)'};
       html += '<div style="margin-bottom:10px;">' +
-        '<div style="font-family:DM Mono,monospace;font-size:8px;text-transform:uppercase;letter-spacing:1px;color:var(--muted2);margin-bottom:4px;">Platform Size</div>' +
+        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">' +
+          '<label class="ctrl-lbl-top" style="margin:0;">Platform Size' +
+            (_prop.study ? '<span style="font-size:9px;color:var(--green);margin-left:6px;">· filtered for '+SEG_NAMES[_prop.study.segment_code]+'</span>' : '') +
+          '</label>' +
+        '</div>' +
         '<select id="prop-plat-size" onchange="onPropPlatformChange()" ' +
         'style="width:100%;background:var(--s3);border:1px solid var(--border2);border-radius:2px;color:var(--text);padding:6px 8px;font-size:12px;font-family:inherit;outline:none;">' +
         '<option value="">— select size —</option>' +
-        ['micro','small','medium','large','frame','performance','commercial'].map(function(s){
-          return '<option value="'+s+'"'+(pSize===s?' selected':'')+'>'+s.toUpperCase()+'</option>';
+        allSizes.filter(function(s){ return compatSizes.indexOf(s)>=0; }).map(function(s){
+          return '<option value="'+s+'"'+(pSize===s?' selected':'')+'>'+sizeLabels[s]+'</option>';
         }).join('') +
         '</select></div>';
 
@@ -8119,27 +8148,35 @@ function buildModuleOptions(modType, propKey, nextFn) {
         '</select></div>';
 
       // Spec sliders
-      function propSlider(id, label, val, tooltip) {
-        return '<div style="margin-bottom:10px;">' +
-          '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px;">' +
-            '<span style="font-size:11px;color:var(--muted2);">'+label+
-              (tooltip?'<span title="'+tooltip+'" style="cursor:help;color:var(--muted);margin-left:4px;font-size:9px;">ⓘ</span>':'')+'</span>'+
-            '<span style="font-family:DM Mono,monospace;font-size:9px;color:var(--gold);" id="prop-plat-'+id+'-val">'+val+'%</span>' +
-          '</div>' +
-          '<input type="range" min="0" max="100" step="1" value="'+val+'" id="prop-plat-'+id+'" ' +
-        'oninput="this.nextElementSibling&&(this.nextElementSibling.textContent=this.value+'%');onPropPlatformChange()" ' +
-          'style="width:100%;accent-color:var(--gold);margin:2px 0;">' +
-        '</div>';
+      function propSlider(id, label, val, tooltip, accentColor) {
+        var color = accentColor || 'var(--gold)';
+        var tid = 'prop-plat-' + id + '-val';
+        var ttip = tooltip ? '<span style="cursor:help;color:var(--muted2);margin-left:4px;font-size:10px;" title="' + tooltip + '">ⓘ</span>' : '';
+        var parts = [
+          '<div class="ctrl">',
+          '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">',
+          '<label class="ctrl-lbl-top" style="margin:0;">' + label + ttip + '</label>',
+          '<span style="font-family:DM Mono,monospace;font-size:9px;color:' + color + ';" id="' + tid + '">' + val + '%</span>',
+          '</div>',
+          '<input type="range" min="0" max="100" step="1" value="' + val + '" id="prop-plat-' + id + '" class="spec-range"',
+          ' style="width:100%;accent-color:' + color + ';margin:2px 0 4px;"',
+          ' oninput="document.getElementById(\'' + tid + '\').textContent=this.value+\'%\';onPropPlatformChange()">',
+          '<div style="display:flex;justify-content:space-between;font-family:DM Mono,monospace;font-size:8px;color:var(--muted2);">',
+          '<span>0% — Standard</span><span>100% — Max</span>',
+          '</div>',
+          '</div>'
+        ];
+        return parts.join('');
       }
 
-      html += propSlider('rel', 'Reliability', pRel, 'Drives AHSS substitution, precision welding, premium adhesives');
-      html += propSlider('com', 'Comfort', pCom, 'Adds NVH rubber/adhesive content and assembly labor');
-      html += propSlider('saf', 'Safety', pSaf, 'Replaces mild steel with UHSS for crash structures');
+      html += propSlider('rel',   'Reliability',        pRel,   'Drives AHSS substitution, precision welding, premium adhesives and extra coating passes.', 'var(--gold)');
+      html += propSlider('com',   'Comfort',            pCom,   'Adds NVH rubber/adhesive content and assembly labor for acoustic materials.', 'var(--purple)');
+      html += propSlider('saf',   'Safety',             pSaf,   'Replaces mild steel with UHSS for crash structures. Increases stamping energy and welding precision.', 'var(--blue)');
 
       html += '<div style="border-top:0.5px solid var(--border);margin:8px 0;"></div>';
 
-      html += propSlider('coopt', 'Cost Optimization', pCoOpt, 'Reduces scrap rates and labor hours via DFM investment');
-      html += propSlider('woopt', 'Weight Optimization', pWoOpt, 'Substitutes steel with aluminum/CFRP. Increases material cost.');
+      html += propSlider('coopt', 'Cost Optimization',  pCoOpt, 'Investment in DFM, lean engineering and supplier negotiation. Reduces scrap rates and labor hours, but increases R&D spend.', 'var(--gold)');
+      html += propSlider('woopt', 'Weight Optimization',pWoOpt, 'Substitutes steel with aluminum/CFRP. Reduces net weight but significantly increases material cost and R&D spend.', 'var(--cyan)');
 
       html += '</div>';
 
