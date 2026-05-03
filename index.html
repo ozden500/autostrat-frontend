@@ -3051,6 +3051,7 @@ var _PC = {
     HSS_STAMPED:    {p:1.20, ss:1.35, sc:1.20, sm:1.18, sd:1.05, n:"High Strength Steel"},
     MILD_STEEL:     {p:0.85, ss:1.32, sc:1.18, sm:1.15, sd:1.05, n:"Mild Steel - Structural"},
     UHSS:           {p:2.10, ss:1.40, sc:1.25, sm:1.20, sd:1.05, n:"Ultra High Strength Steel"},
+    AHSS:           {p:1.65, ss:1.36, sc:1.22, sm:1.18, sd:1.05, n:"Advanced High Strength Steel (AHSS)"},
     FRAME_STEEL:    {p:0.90, ss:1.28, sc:1.15, sm:1.12, sd:1.05, n:"Heavy Section Steel"},
     ALU_CAST:       {p:3.80, ss:1.30, sc:1.18, sm:1.15, sd:1.05, n:"Aluminum - Die Cast"},
     ALU_STAMP:      {p:4.20, ss:1.28, sc:1.20, sm:1.15, sd:1.05, n:"Aluminum - Stamped"},
@@ -3159,6 +3160,15 @@ var _PC = {
       });
     }
 
+    // Safety → process: UHSS hot stamping energy +15%, welding labor +10%, e-coat energy +10%
+    if (saf > 0.001) {
+      procs.forEach(function(l){
+        if (l.code === 'STAMPING') l.e = l.e * (1 + saf * 0.15);
+        if (l.code === 'COATING_ECOAT') l.e = l.e * (1 + saf * 0.10);
+        if (_PC.PRECISION[l.code] && l.code.indexOf('WELD') >= 0) l.l = l.l * (1 + saf * 0.10);
+      });
+    }
+
     // B. COMFORT → extra rubber/adhesive
     if (com > 0.001) {
       var base_mats = mats.slice();
@@ -3169,6 +3179,13 @@ var _PC = {
     }
 
     // Comfort → assembly labor +15%
+    if (com > 0.001) {
+      procs.forEach(function(l){
+        if (l.code === 'ASSEMBLY_GEN' || l.code === 'ASSEMBLY_PRESS') l.l = l.l * (1 + com * 0.15);
+      });
+    }
+
+    // Comfort → assembly labor +15% (NVH pad fitting, extra seals)
     if (com > 0.001) {
       procs.forEach(function(l){
         if (l.code === 'ASSEMBLY_GEN' || l.code === 'ASSEMBLY_PRESS') l.l = l.l * (1 + com * 0.15);
@@ -3413,6 +3430,8 @@ function fetchPlatformStdCost() {
     document.getElementById('mod-cost-bom-content').innerHTML = h;
     bomEl.style.display = '';
     if (legEl) legEl.style.display = 'none';
+    // Cache result for submission
+    window._lastPlatformCalc = r;
 
   } catch(e) { console.warn('Platform BOM cost error:', e); }
 }
@@ -3441,6 +3460,68 @@ async function fetchCostPreview() {
   } catch(e) { console.warn('Cost preview:', e); }
 }
 
+
+async function savePlatformBOM(moduleId, r) {
+  // Saves full BOM to module_cost_calculations for industrial cost recalculation
+  // Stores: labor_hours, energy_kwh, machine_cost_eur per process line
+  // Stores: net_weight_kg, gross_weight_kg, material_cost_eur per material line
+  try {
+    var lines = [];
+    var seq = 1;
+    (r.material_lines || []).forEach(function(l) {
+      lines.push({
+        module_design_id: moduleId,
+        line_type: 'material',
+        material_code: l.material_code || l.code,
+        material_name: l.material_name || l.name,
+        net_weight_kg: l.net_weight_kg || l.net || 0,
+        scrap_rate: l.scrap_rate || l.sc || 1.05,
+        gross_weight_kg: l.gross_weight_kg || l.gross || 0,
+        material_price_eur_kg: l.material_price_eur_kg || l.price || 0,
+        material_cost_eur: l.material_cost_eur || l.cost || 0,
+        labor_rate_used_eur_hr: 58.00,
+        electricity_rate_used: 0.08,
+        cost_basis: 'standard',
+        line_sequence: seq++,
+      });
+    });
+    (r.process_lines || []).forEach(function(l) {
+      lines.push({
+        module_design_id: moduleId,
+        line_type: 'process',
+        process_code: l.process_code || l.code,
+        process_name: l.process_name || l.name,
+        process_gross_weight_kg: l.gross_weight_kg || l.gross || 0,
+        machine_cost_eur: l.machine_cost_eur || l.mach || 0,
+        labor_hours: l.labor_hours || l.lhrs || 0,
+        labor_cost_eur: l.labor_cost_eur || l.lcost || 0,
+        energy_kwh: l.energy_kwh || l.ekwh || 0,
+        energy_cost_eur: l.energy_cost_eur || l.ecost || 0,
+        process_cost_eur: l.process_cost_eur || l.total || 0,
+        labor_rate_used_eur_hr: 58.00,
+        electricity_rate_used: 0.08,
+        cost_basis: 'standard',
+        line_sequence: seq++,
+      });
+    });
+    if (lines.length === 0) return;
+    await fetch(`${API_URL}/module-cost-calculations`, {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({
+        module_id: moduleId,
+        team_id: teamId,
+        session_id: sessionId,
+        std_tpc_eur: r.std_platform_tpc_eur || 0,
+        net_weight_kg: r.total_net_weight_kg || 0,
+        total_rd_eur_m: r.total_rd_cost_eur_m || 0,
+        lines: lines
+      })
+    });
+    console.log('[BOM] Saved', lines.length, 'lines to module_cost_calculations');
+  } catch(e) { console.warn('[BOM] Save error:', e); }
+}
+
 async function submitModule() {
   if (!teamId||!sessionId) { toast('⚠ Join a session first'); return; }
   const configKey = getSelectedConfigKey();
@@ -3461,6 +3542,10 @@ async function submitModule() {
     });
     const data = await res.json();
     if (data.success) {
+      // Save full BOM cost breakdown to module_cost_calculations
+      if (currentModType === 'platform' && window._lastPlatformCalc && data.module_id) {
+        await savePlatformBOM(data.module_id, window._lastPlatformCalc);
+      }
       msgEl.textContent=`✓ "${name}" development started — ${data.lead_time_quarters} quarters`;
       toast(`✓ ${name} — R&D started!`);
       await loadModuleLibrary(); resetModuleForm();
@@ -10457,6 +10542,7 @@ function drawRadar() {
 
 </body>
 </html>
+ 
  
  
  
