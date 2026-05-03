@@ -3700,35 +3700,74 @@ function _bomDetail(matLines, procLines, r) {
 
   // Cost build-up
   if (r.direct_cost_eur) {
-    h += '<div style="font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:2px;margin:10px 0 4px;">Cost Build-Up</div>';
-    h += '<div style="background:var(--s2);border-radius:4px;padding:8px;font-size:10px;">';
-    var rows = [
-      ['Direct Cost (Mat + Proc)', r.direct_cost_eur, 'var(--text)'],
-      ['  Supplier Content (85%)', r.supplier_content_eur, 'var(--muted2)'],
-      ['  + Overhead (5%)', r.supplier_overhead_eur, 'var(--muted2)'],
-      ['  + Profit (10%)', r.supplier_profit_eur, 'var(--muted2)'],
-      ['  Supplier Total (×1.15)', r.supplier_total_eur, 'var(--text)'],
-      ['  OEM Internal (15%)', r.oem_internal_eur, 'var(--text)'],
-      ['Total Standard Direct', r.total_std_direct_eur, 'var(--text)'],
-    ];
-    rows.forEach(function(row) {
-      if (!row[1]) return;
-      h += '<div style="display:flex;justify-content:space-between;margin-bottom:2px;">';
-      h += '<span style="color:'+row[2]+';">'+row[0]+'</span>';
-      h += '<span style="font-family:DM Mono,monospace;color:'+row[2]+';">€'+Math.round(row[1]).toLocaleString()+'</span>';
-      h += '</div>';
-    });
-    if (r.cost_opt_reduction_pct > 0) {
-      h += '<div style="display:flex;justify-content:space-between;margin-bottom:2px;">';
-      h += '<span style="color:var(--green);">Cost Opt. Reduction (−'+r.cost_opt_reduction_pct.toFixed(1)+'%)</span>';
-      h += '<span style="font-family:DM Mono,monospace;color:var(--green);">−'+r.cost_opt_reduction_pct.toFixed(1)+'%</span>';
-      h += '</div>';
-    }
-    h += '<div style="border-top:1px solid var(--border2);margin-top:4px;padding-top:5px;display:flex;justify-content:space-between;font-size:12px;font-weight:500;">';
-    h += '<span style="color:var(--purple);">STANDARD PLATFORM TPC</span>';
-    h += '<span style="font-family:DM Mono,monospace;color:var(--purple);">€'+Math.round(r.std_platform_tpc_eur).toLocaleString()+'/veh</span>';
-    h += '</div></div>';
+    h += _costBuildUp(r);
   }
+  return h;
+}
+
+function _costBuildUp(r) {
+  var dc   = r.direct_cost_eur || 0;
+  var sc   = r.supplier_content_eur || dc*0.85;
+  var soh  = r.supplier_overhead_eur || sc*0.05;
+  var spf  = r.supplier_profit_eur   || sc*0.10;
+  var stot = r.supplier_total_eur    || sc*1.15;
+  var trans = r.oem_internal_eur     || dc*0.15;
+  var std  = r.total_std_direct_eur  || stot+trans;
+  var tpc  = r.std_platform_tpc_eur  || std;
+  var cor  = r.cost_opt_reduction_pct || 0;
+
+  function row(label, val, color, indent) {
+    return '<div style="display:flex;justify-content:space-between;margin-bottom:3px;padding-left:'+(indent||0)+'px;">' +
+      '<span style="color:'+color+';">'+label+'</span>' +
+      '<span style="font-family:DM Mono,monospace;color:'+color+';">€'+Math.round(val).toLocaleString()+'</span>' +
+      '</div>';
+  }
+  function sectionLabel(label) {
+    return '<div style="font-size:8px;font-family:DM Mono,monospace;text-transform:uppercase;letter-spacing:2px;color:var(--muted);margin:8px 0 4px;">'+label+'</div>';
+  }
+
+  var h = '<div style="font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:2px;margin:10px 0 4px;">Cost Build-Up</div>';
+  h += '<div style="background:var(--s2);border-radius:4px;padding:10px;font-size:10px;">';
+
+  // Direct cost
+  h += row('Design Cost (Material + Process)', dc, 'var(--text)', 0);
+  h += '<div style="border-top:0.5px solid var(--border);margin:6px 0;"></div>';
+
+  // Purchased cost section
+  h += sectionLabel('Purchased Cost — 85% external');
+  h += row('Supplier Content (85%)', sc, 'var(--muted2)', 8);
+  h += row('+ Supplier Overhead (5%)', soh, 'var(--muted2)', 8);
+  h += row('+ Supplier Profit (10%)', spf, 'var(--muted2)', 8);
+  h += '<div style="display:flex;justify-content:space-between;margin-bottom:3px;padding:3px 0;border-top:0.5px solid rgba(255,255,255,0.08);">' +
+    '<span style="color:var(--cyan);font-weight:500;">Total Purchased Cost</span>' +
+    '<span style="font-family:DM Mono,monospace;color:var(--cyan);font-weight:500;">€'+Math.round(stot).toLocaleString()+'</span>' +
+    '</div>';
+
+  h += '<div style="border-top:0.5px solid var(--border);margin:6px 0;"></div>';
+
+  // Transformation cost section
+  h += sectionLabel('Transformation Cost — 15% OEM');
+  h += '<div style="display:flex;justify-content:space-between;margin-bottom:3px;">' +
+    '<span style="color:var(--gold);font-weight:500;">Total Transformation Cost</span>' +
+    '<span style="font-family:DM Mono,monospace;color:var(--gold);font-weight:500;">€'+Math.round(trans).toLocaleString()+'</span>' +
+    '</div>';
+
+  h += '<div style="border-top:1px solid var(--border2);margin:8px 0 4px;"></div>';
+
+  // Cost opt reduction
+  if (cor > 0) {
+    h += '<div style="display:flex;justify-content:space-between;margin-bottom:4px;">' +
+      '<span style="color:var(--green);">Cost Opt. Reduction (−'+cor.toFixed(1)+'%)</span>' +
+      '<span style="font-family:DM Mono,monospace;color:var(--green);">−'+cor.toFixed(1)+'%</span>' +
+      '</div>';
+  }
+
+  // TPC total
+  h += '<div style="display:flex;justify-content:space-between;padding-top:4px;font-size:13px;font-weight:500;">' +
+    '<span style="color:var(--purple);">STANDARD PLATFORM TPC</span>' +
+    '<span style="font-family:DM Mono,monospace;color:var(--purple);">€'+Math.round(tpc).toLocaleString()+'/veh</span>' +
+    '</div>';
+  h += '</div>';
   return h;
 }
 
@@ -3784,6 +3823,7 @@ function _renderMultiEnergyFull(container) {
   h += '<div style="font-size:9px;color:'+vcol+';text-transform:uppercase;letter-spacing:2px;margin:10px 0 6px;font-family:DM Mono,monospace;">';
   h += (sel==='ice'?'ICE-READY':'BEV-READY')+' — DETAILED BOM</div>';
   h += _bomDetail(v.material_lines, v.process_lines, v);
+  h += _costBuildUp(v);
 
   container.innerHTML = h;
 }
