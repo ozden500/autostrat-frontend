@@ -3265,12 +3265,15 @@ var _PC = {
       var is = sumVariant(ice_mat, ice_proc);
       var bs = sumVariant(bev_mat, bev_proc);
 
-      // R&D shared cost (×1.50)
+      // R&D shared cost (×1.50 multi-energy) + cost/weight opt premium (max +10% each)
       var brd = this.BASE_RD[size]||280;
-      var rd_multi = brd * 1.50;
+      var cord_me = 0.10*(Math.exp(3*co)-1)/(Math.exp(3)-1);
+      var word_me = 0.10*(Math.exp(3*wo)-1)/(Math.exp(3)-1);
+      var rd_multi = brd * 1.50 * (1 + cord_me + word_me);
       var rd_fte = rd_multi * this.RD_FTE_SHARE;
       var rd_mat = rd_multi * this.RD_MAT_SHARE;
       var fte_months = Math.round(rd_fte*1000000/this.US_FTE_RATE_MONTH/10)*10;
+      var rd_opt_pct = Math.round((cord_me+word_me)*10000)/100;
 
       // Delta vs pure single-PWT
       var ice_pct = Math.round((is.tpc/r_ice.std_platform_tpc_eur-1)*1000)/10;
@@ -3309,8 +3312,8 @@ var _PC = {
         std_fte_months:         fte_months,
         std_fte_rate_eur_month: this.US_FTE_RATE_MONTH,
         rd_material_index:      this.RD_MAT_INDEX,
-        base_rd_cost_eur_m:     brd,
-        rd_premium_pct:         50,
+        base_rd_cost_eur_m:     Math.round(brd*1.50*10)/10,
+        rd_premium_pct:         Math.round((50 + rd_opt_pct)*10)/10,
         cost_opt_reduction_pct: r_ice.cost_opt_reduction_pct||0,
         std_platform_tpc_eur:   Math.round(is.tpc*100)/100,
         total_net_weight_kg:    Math.round(is.net*10)/10,
@@ -3463,8 +3466,8 @@ var _PC = {
     var cor=0; // Cost opt already applied in BOM (scrap rates + labor hours)
     var tpc=std; // No separate top-down reduction — BOM changes drive the saving
     var brd=this.BASE_RD[size]||280;
-    var cord=0.50*(Math.exp(3*co)-1)/(Math.exp(3)-1);
-    var word=0.30*(Math.exp(3*wo)-1)/(Math.exp(3)-1);
+    var cord=0.10*(Math.exp(3*co)-1)/(Math.exp(3)-1); // max +10% R&D for cost opt
+    var word=0.10*(Math.exp(3*wo)-1)/(Math.exp(3)-1); // max +10% R&D for weight opt
     var total_rd = Math.round(brd*(1+cord+word)*10)/10;
     var rd_fte_cost = Math.round(total_rd*this.RD_FTE_SHARE*100)/100;
     var rd_mat_cost = Math.round(total_rd*this.RD_MAT_SHARE*100)/100;
@@ -3632,7 +3635,24 @@ function _rdCard(r) {
   h += _statCell('MATERIAL (40%)', '€'+rdMat.toFixed(0)+'M', '#a78bfa');
   h += _statCell('FTE-MONTHS', fteM.toLocaleString(), 'var(--text)');
   h += '</div>';
-  if (isPremium) h += '<div style="font-size:9px;color:#a78bfa;margin-top:5px;">R&D premium: +'+r.rd_premium_pct.toFixed(0)+'% vs single PWT baseline</div>';
+  // Always show opt premium breakdown
+  var optPrem = r.rd_premium_pct || 0;
+  var base_rd = r.base_rd_cost_eur_m || rdTotal;
+  if (isPremium && optPrem > 10) {
+    // Multi-energy: show vs baseline
+    h += '<div style="font-size:9px;color:#a78bfa;margin-top:5px;">R&D premium: +'+optPrem.toFixed(0)+'% vs single PWT — dual homologation</div>';
+  } else {
+    // Show cost/weight opt impact
+    var optImpact = rdTotal - base_rd;
+    if (optImpact > 0.5) {
+      h += '<div style="font-size:9px;color:#a78bfa;margin-top:5px;display:flex;justify-content:space-between;">' +
+        '<span>Opt. R&D premium (co+wo)</span>' +
+        '<span style="font-family:DM Mono,monospace;">+€'+optImpact.toFixed(1)+'M (+'+optPrem.toFixed(1)+'%)</span>' +
+        '</div>';
+    } else {
+      h += '<div style="font-size:9px;color:var(--muted2);margin-top:5px;">No opt. premium — base R&D applies</div>';
+    }
+  }
   h += '</div>';
   return h;
 }
