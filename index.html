@@ -1522,33 +1522,33 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
 
       <!-- Cost Optimization Index (platform only) -->
       <div class="ctrl" id="mod-cost-opt-row" style="display:none">
-        <label class="ctrl-lbl-top">Cost Optimization Index
-          <span style="font-family:DM Mono,monospace;font-size:9px;color:var(--gold);margin-left:6px;" id="cost-opt-display">0%</span>
-        </label>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+          <label class="ctrl-lbl-top" style="margin:0;">Cost Optimization Index
+            <span style="cursor:help;color:var(--muted2);margin-left:4px;font-size:10px;" title="Investment in Design for Manufacturability (DFM), lean engineering and supplier negotiation. Reduces scrap rates and labor hours, but requires exponentially more R&D spend as index increases.">ⓘ</span>
+          </label>
+          <span style="font-family:DM Mono,monospace;font-size:9px;color:var(--gold);" id="cost-opt-display">0%</span>
+        </div>
         <input type="range" id="cost-opt-slider" min="0" max="100" value="0" step="1"
           style="width:100%;accent-color:var(--gold);margin:6px 0;"
           oninput="document.getElementById('cost-opt-display').textContent=this.value+'%'; fetchPlatformStdCost();">
         <div style="display:flex;justify-content:space-between;font-family:DM Mono,monospace;font-size:8px;color:var(--muted2);">
-          <span>0% — No optimization</span><span>20% — Max engineering effort</span>
-        </div>
-        <div style="font-size:9px;color:var(--muted2);margin-top:4px;">
-          Higher optimization reduces unit cost but increases R&D spend progressively.
+          <span>0% — Standard</span><span>100% — Max effort</span>
         </div>
       </div>
 
       <!-- Weight Optimization Index (platform only) -->
       <div class="ctrl" id="mod-weight-opt-row" style="display:none">
-        <label class="ctrl-lbl-top">Weight Optimization Index
-          <span style="font-family:DM Mono,monospace;font-size:9px;color:var(--cyan);margin-left:6px;" id="weight-opt-display">0%</span>
-        </label>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+          <label class="ctrl-lbl-top" style="margin:0;">Weight Optimization Index
+            <span style="cursor:help;color:var(--muted2);margin-left:4px;font-size:10px;" title="Investment in lightweighting: substitutes steel with aluminum and CFRP. Reduces net weight but significantly increases material cost and R&D spend. CFRP introduced above 70%.">ⓘ</span>
+          </label>
+          <span style="font-family:DM Mono,monospace;font-size:9px;color:var(--cyan);" id="weight-opt-display">0%</span>
+        </div>
         <input type="range" id="weight-opt-slider" min="0" max="100" value="0" step="1"
           style="width:100%;accent-color:var(--cyan);margin:6px 0;"
           oninput="document.getElementById('weight-opt-display').textContent=this.value+'%'; fetchPlatformStdCost();">
         <div style="display:flex;justify-content:space-between;font-family:DM Mono,monospace;font-size:8px;color:var(--muted2);">
-          <span>0% — Standard materials</span><span>100% — Max lightweighting</span>
-        </div>
-        <div style="font-size:9px;color:var(--muted2);margin-top:4px;">
-          Reduces net weight via material substitution. Cost increases due to premium materials and advanced processes.
+          <span>0% — Standard</span><span>100% — Max lightweighting</span>
         </div>
       </div>
 
@@ -2770,24 +2770,24 @@ const MOD_TYPE_INFO = {
 
 const MOD_SPECS = {
   platform: [
-    {id:'reliability', name:'Reliability', unit:'%', min:0, max:1, step:0.01, def:0.5},
-    {id:'comfort',     name:'Comfort',     unit:'%', min:0, max:1, step:0.01, def:0.5},
-    {id:'safety',      name:'Safety',      unit:'%', min:0, max:1, step:0.01, def:0.5},
+    {id:'reliability', name:'Reliability', unit:'%', min:0, max:100, step:1, def:50, tooltip:'Higher reliability drives AHSS material substitution, precision welding quality, premium adhesives and coating thickness. Increases process cost.'},
+    {id:'comfort',     name:'Comfort',     unit:'%', min:0, max:100, step:1, def:50, tooltip:'Higher comfort adds NVH rubber and adhesive content for noise/vibration damping. Also increases assembly labor for fitting acoustic materials.'},
+    {id:'safety',      name:'Safety',      unit:'%', min:0, max:100, step:1, def:50, tooltip:'Higher safety replaces mild steel with UHSS for crash structures. Increases hot stamping energy and welding precision requirements.'},
   ],
   ice_pwt: [
-    {id:'reliability',   name:'Reliability',   unit:'%',  min:0,  max:1,   step:0.01, def:0.5},
+    {id:'reliability', name:'Reliability', unit:'%', min:0, max:100, step:1, def:50, tooltip:'Higher reliability drives AHSS material, precision welding, premium adhesives and extra coating passes.'},
     {id:'power',         name:'Power',         unit:'hp', min:60, max:640, step:10,   def:100},
     {id:'emission_tech', name:'Emission Tech', unit:'',   min:0,  max:1,   step:0.01, def:0.1},
   ],
   epwt: [
-    {id:'reliability', name:'Reliability', unit:'%',  min:0,  max:1,    step:0.01, def:0.5},
+    {id:'reliability', name:'Reliability', unit:'%', min:0, max:100, step:1, def:50, tooltip:'Higher reliability drives AHSS material, precision welding, premium adhesives and extra coating passes.'},
     {id:'power_kw',    name:'Power',       unit:'kW', min:30, max:1500, step:10,   def:150},
     {id:'efficiency',  name:'Efficiency',  unit:'',   min:0,  max:1,    step:0.01, def:0.7},
   ],
   tophat: [
-    {id:'reliability', name:'Reliability', unit:'%',  min:0,   max:1,   step:0.01, def:0.5},
-    {id:'comfort',     name:'Comfort',     unit:'%',  min:0,   max:1,   step:0.01, def:0.5},
-    {id:'safety',      name:'Safety',      unit:'%',  min:0,   max:1,   step:0.01, def:0.5},
+    {id:'reliability', name:'Reliability', unit:'%', min:0, max:100, step:1, def:50, tooltip:'Higher reliability drives AHSS material, precision welding, premium adhesives and extra coating passes.'},
+    {id:'comfort', name:'Comfort', unit:'%', min:0, max:100, step:1, def:50, tooltip:'Adds NVH rubber/adhesive content and assembly labor for acoustic materials.'},
+    {id:'safety', name:'Safety', unit:'%', min:0, max:100, step:1, def:50, tooltip:'Replaces mild steel with UHSS for crash structures. Increases stamping energy and welding precision.'},
     {id:'roominess',   name:'Roominess',   unit:'m³', min:1.5, max:7.5, step:0.1,  def:2.5},
     {id:'premiumness', name:'Premiumness', unit:'%',  min:0,   max:1,   step:0.01, def:0.3},
   ],
@@ -3029,15 +3029,21 @@ function populateSourceSelect() {
 function buildSpecSliders(type) {
   const specs = MOD_SPECS[type]||[];
   const area = document.getElementById('mod-specs-area');
-  area.innerHTML = specs.map(sp=>`
-    <div class="ctrl">
-      <div class="ctrl-lbl"><span>${sp.name}</span>
-        <span class="ctrl-v" id="msv-${sp.id}">${sp.def}${sp.unit}</span>
+  area.innerHTML = specs.map(sp=>{
+    var tooltipHtml = sp.tooltip
+      ? `<span style="cursor:help;color:var(--muted2);margin-left:4px;font-size:10px;" title="${sp.tooltip}">ⓘ</span>`
+      : '';
+    return `<div class="ctrl">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+        <label class="ctrl-lbl-top" style="margin:0;">${sp.name}${tooltipHtml}</label>
+        <span style="font-family:DM Mono,monospace;font-size:9px;color:var(--gold);" id="msv-${sp.id}">${sp.def}%</span>
       </div>
       <input type="range" min="${sp.min}" max="${sp.max}" step="${sp.step}" value="${sp.def}"
-        id="msr-${sp.id}"
-        oninput="updateSpecDisplay('${sp.id}','${sp.unit}',${sp.step<0.1?2:sp.step<1?1:0},this.value);scheduleCostCalc()">
-    </div>`).join('');
+        id="msr-${sp.id}" class="spec-range"
+        style="width:100%;margin:2px 0 6px;"
+        oninput="document.getElementById('msv-${sp.id}').textContent=this.value+'%';scheduleCostCalc()">
+    </div>`;
+  }).join('');
 }
 
 function updateSpecDisplay(id, unit, decimals, val) {
@@ -3343,9 +3349,9 @@ function fetchPlatformStdCost() {
 
   try {
     var wo = parseFloat(document.getElementById('weight-opt-slider')?.value||0)/100;
-    var saf = parseFloat(document.getElementById('msr-safety')?.value||0.5);
-    var rel = parseFloat(document.getElementById('msr-reliability')?.value||0.5);
-    var com = parseFloat(document.getElementById('msr-comfort')?.value||0.5);
+    var saf = parseFloat(document.getElementById('msr-safety')?.value||50) / 100;
+    var rel = parseFloat(document.getElementById('msr-reliability')?.value||50) / 100;
+    var com = parseFloat(document.getElementById('msr-comfort')?.value||50) / 100;
     var r = _PC.calc(platformSize, pwt, opt, wo, saf, rel, com);
     if (!r) { console.warn('No BOM for', platformSize, pwt); return; }
 
@@ -10602,6 +10608,7 @@ function drawRadar() {
 
 </body>
 </html>
+ 
  
  
  
