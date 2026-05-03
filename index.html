@@ -3078,7 +3078,11 @@ var _PC = {
   STEEL: {HSS_STAMPED:1,FRAME_STEEL:1,MILD_STEEL:1,UHSS:1},
   RUBBER: {RUBBER_EPDM:1}, ADHESIVE: {STRUCT_ADHESIVE:1},
   PRECISION: {WELDING_MIG:1,WELDING_LASER:1,WELDING_FRICTION:1,MACHINING_CNC:1},
-  BASE_RD: {small:45,medium:65,large:90,frame:55,performance:120,commercial:50},
+  BASE_RD: {small:180,medium:280,large:380,frame:220,performance:480,commercial:200},
+  RD_FTE_SHARE: 0.60,        // 60% of R&D is FTE cost
+  RD_MAT_SHARE: 0.40,        // 40% of R&D is material cost
+  US_FTE_RATE_MONTH: 13333,  // US fully loaded engineering FTE €160k/yr ÷ 12
+  RD_MAT_INDEX: 1.00,        // US standard material index
   BOM: {
     "small|ice_only":    [["HSS_STAMPED",120,"STAMPING"],["MILD_STEEL",25,"WELDING_MIG"],["ALU_CAST",15,"DIE_CASTING"],["RUBBER_EPDM",8,"ASSEMBLY_GEN"],["STRUCT_ADHESIVE",4,"ASSEMBLY_GEN"]],
     "small|bev_only":    [["HSS_STAMPED",120,"STAMPING"],["MILD_STEEL",25,"WELDING_MIG"],["ALU_CAST",15,"DIE_CASTING"],["BATTERY_HOUSING",18,"STAMPING"],["RUBBER_EPDM",8,"ASSEMBLY_GEN"],["STRUCT_ADHESIVE",4,"ASSEMBLY_GEN"]],
@@ -3248,9 +3252,13 @@ var _PC = {
     var sc85=dc*0.85, soh=sc85*0.05, spf=sc85*0.10, stot=sc85*1.15, oem=dc*0.15, std=stot+oem;
     var cor=co>0?0.05*Math.pow(co,0.6):0;
     var tpc=std*(1-cor);
-    var brd=this.BASE_RD[size]||60;
+    var brd=this.BASE_RD[size]||280;
     var cord=0.50*(Math.exp(3*co)-1)/(Math.exp(3)-1);
     var word=0.30*(Math.exp(3*wo)-1)/(Math.exp(3)-1);
+    var total_rd = Math.round(brd*(1+cord+word)*10)/10;
+    var rd_fte_cost = Math.round(total_rd*this.RD_FTE_SHARE*100)/100;
+    var rd_mat_cost = Math.round(total_rd*this.RD_MAT_SHARE*100)/100;
+    var fte_months  = Math.round(rd_fte_cost*1000000/this.US_FTE_RATE_MONTH/10)*10; // round to 10
 
     // Convert to API-compatible field names for display reuse
     return {
@@ -3270,7 +3278,12 @@ var _PC = {
       std_platform_tpc_eur:Math.round(tpc*100)/100,
       base_rd_cost_eur_m:brd,
       rd_premium_pct:Math.round((cord+word)*10000)/100,
-      total_rd_cost_eur_m:Math.round(brd*(1+cord+word)*10)/10,
+      total_rd_cost_eur_m:total_rd,
+      std_rd_fte_cost_eur_m:rd_fte_cost,
+      std_rd_material_eur_m:rd_mat_cost,
+      std_fte_months:fte_months,
+      std_fte_rate_eur_month:this.US_FTE_RATE_MONTH,
+      rd_material_index:this.RD_MAT_INDEX,
       material_lines:mats.map(function(l){return {material_code:l.code,material_name:l.name,net_weight_kg:l.net,scrap_rate:l.sc,gross_weight_kg:l.gross,material_price_eur_kg:l.price,material_cost_eur:l.cost,spec_driven:l.spec,spec_label:l.label};}),
       process_lines:procs.map(function(l){return {process_code:l.code,process_name:l.name,gross_weight_kg:l.gross,machine_cost_eur:l.mach,labor_hours:l.lhrs,labor_cost_eur:l.lcost,energy_kwh:l.ekwh,energy_cost_eur:l.ecost,process_cost_eur:l.total,spec_driven:l.spec,spec_label:l.label};}),
     };
@@ -3416,10 +3429,28 @@ function fetchPlatformStdCost() {
 
     // R&D summary
     h += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:8px;">';
-    h += '<div style="background:rgba(167,139,250,0.08);border:1px solid rgba(167,139,250,0.2);border-radius:4px;padding:8px;text-align:center;">' +
-      '<div style="font-family:DM Mono,monospace;font-size:8px;color:var(--muted);margin-bottom:2px;">TOTAL R&D COST</div>' +
-      '<div style="font-size:16px;font-weight:700;color:#a78bfa;">€' + (r.total_rd_cost_eur_m||0).toFixed(1) + 'M</div>' +
-      '<div style="font-size:8px;color:var(--muted2);">Base €' + (r.base_rd_cost_eur_m||0) + 'M + €' + (r.rd_premium_eur_m||0).toFixed(1) + 'M opt. premium</div>' +
+    var fte_m = r.std_fte_months || 0;
+    var rd_fte = r.std_rd_fte_cost_eur_m || (r.total_rd_cost_eur_m * 0.60);
+    var rd_mat = r.std_rd_material_eur_m || (r.total_rd_cost_eur_m * 0.40);
+    h += '<div style="background:rgba(167,139,250,0.08);border:1px solid rgba(167,139,250,0.2);border-radius:4px;padding:8px;">' +
+      '<div style="font-family:DM Mono,monospace;font-size:8px;color:var(--muted);margin-bottom:6px;">TOTAL R&D COST</div>' +
+      '<div style="font-size:18px;font-weight:700;color:#a78bfa;margin-bottom:4px;">€' + (r.total_rd_cost_eur_m||0).toFixed(0) + 'M</div>' +
+      '<div style="display:flex;justify-content:space-between;font-size:9px;margin-bottom:2px;">' +
+        '<span style="color:var(--muted2);">FTE Cost (60%)</span>' +
+        '<span style="font-family:DM Mono,monospace;color:#a78bfa;">€' + rd_fte.toFixed(0) + 'M</span>' +
+      '</div>' +
+      '<div style="display:flex;justify-content:space-between;font-size:9px;margin-bottom:4px;">' +
+        '<span style="color:var(--muted2);">Material Cost (40%)</span>' +
+        '<span style="font-family:DM Mono,monospace;color:#a78bfa;">€' + rd_mat.toFixed(0) + 'M</span>' +
+      '</div>' +
+      '<div style="border-top:1px solid rgba(167,139,250,0.2);padding-top:4px;display:flex;justify-content:space-between;font-size:9px;">' +
+        '<span style="color:var(--muted2);">FTE-months (US basis)</span>' +
+        '<span style="font-family:DM Mono,monospace;color:var(--text);">' + fte_m.toLocaleString() + '</span>' +
+      '</div>' +
+      '<div style="display:flex;justify-content:space-between;font-size:8px;margin-top:2px;">' +
+        '<span style="color:var(--muted2);">US rate €160k/yr</span>' +
+        '<span style="font-family:DM Mono,monospace;color:var(--muted2);">≈' + Math.round(fte_m/48) + ' FTEs over 4yr</span>' +
+      '</div>' +
       '</div>';
     h += '<div style="background:rgba(6,182,212,0.08);border:1px solid rgba(6,182,212,0.2);border-radius:4px;padding:8px;text-align:center;">' +
       '<div style="font-family:DM Mono,monospace;font-size:8px;color:var(--muted);margin-bottom:2px;">NET WEIGHT</div>' +
@@ -3516,6 +3547,11 @@ async function savePlatformBOM(moduleId, r) {
         std_tpc_eur: r.std_platform_tpc_eur || 0,
         net_weight_kg: r.total_net_weight_kg || 0,
         total_rd_eur_m: r.total_rd_cost_eur_m || 0,
+        std_rd_fte_cost_eur_m: r.std_rd_fte_cost_eur_m || 0,
+        std_rd_material_eur_m: r.std_rd_material_eur_m || 0,
+        std_fte_months: r.std_fte_months || 0,
+        std_fte_rate_eur_month: r.std_fte_rate_eur_month || 13333,
+        rd_material_index: r.rd_material_index || 1.0,
         lines: lines
       })
     });
@@ -10543,6 +10579,7 @@ function drawRadar() {
 
 </body>
 </html>
+ 
  
  
  
