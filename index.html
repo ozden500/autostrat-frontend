@@ -3166,46 +3166,143 @@ var _PC = {
   calc: function(size, pwt, co, wo, saf, rel, com) {
     var key = size+"|"+pwt;
     var pwt_m = {ice_only:1.0,bev_only:1.00,ice_and_bev:1.10}[pwt]||1.0;
-    // For multi-energy: run two sub-calculations and return dual result
+    // For multi-energy: run two sub-calculations with BOM-level additions
     if (pwt === 'ice_and_bev') {
       var r_ice = this.calc(size, 'ice_only', co, wo, saf, rel, com);
       var r_bev = this.calc(size, 'bev_only', co, wo, saf, rel, com);
       if (!r_ice || !r_bev) return null;
-      // Multi-energy provision premium: +5% TPC and weight on each variant
-      var ME_PREM = 1.05;
+
+      // Multi-energy BOM additions (physical, not a markup)
+      // ICE-Ready: heavier gauge steel + HV conduit provision + extra assembly
+      // BEV-Ready: ICE tunnel provision + engine mount hardpoints + extra welding
+      var ME_ADD = {
+        micro:       {steel_pct:0.03, hv_alu:2,  tunnel_steel:5,  asm_ice:3,  weld_bev:4,  asm_bev:3},
+        small:       {steel_pct:0.03, hv_alu:4,  tunnel_steel:10, asm_ice:5,  weld_bev:8,  asm_bev:5},
+        medium:      {steel_pct:0.03, hv_alu:5,  tunnel_steel:15, asm_ice:7,  weld_bev:12, asm_bev:7},
+        large:       {steel_pct:0.03, hv_alu:7,  tunnel_steel:20, asm_ice:9,  weld_bev:15, asm_bev:9},
+        frame:       {steel_pct:0.03, hv_alu:6,  tunnel_steel:18, asm_ice:8,  weld_bev:12, asm_bev:8},
+        performance: {steel_pct:0.03, hv_alu:5,  tunnel_steel:12, asm_ice:6,  weld_bev:10, asm_bev:6},
+        commercial:  {steel_pct:0.03, hv_alu:8,  tunnel_steel:22, asm_ice:10, weld_bev:18, asm_bev:10},
+      };
+      var me = ME_ADD[size] || ME_ADD.medium;
+
+      // Build ICE-ready BOM additions
+      var ice_mat = r_ice.material_lines.map(function(l){return Object.assign({},l);});
+      var ice_proc = r_ice.process_lines.map(function(l){return Object.assign({},l);});
+      // +3% on all steel lines (heavier gauge for dual architecture)
+      ice_mat.forEach(function(l){
+        if(['HSS_STAMPED','MILD_STEEL','FRAME_STEEL','UHSS'].indexOf(l.material_code||l.code)>=0 && !l.spec_driven){
+          l.net_weight_kg = Math.round((l.net_weight_kg||l.net||0)*(1+me.steel_pct)*100)/100;
+          l.gross_weight_kg = Math.round(l.net_weight_kg*(l.scrap_rate||l.sc||1.05)*100)/100;
+          l.material_cost_eur = Math.round(l.gross_weight_kg*(l.material_price_eur_kg||l.price||1.20)*100)/100;
+        }
+      });
+      // +HV conduit channels (ALU_EXTRUSION — routed but empty in ICE use)
+      ice_mat.push({material_code:'ALU_EXTRUSION',material_name:'HV Conduit Provision (Multi-energy)',
+        net_weight_kg:me.hv_alu, scrap_rate:1.08, gross_weight_kg:Math.round(me.hv_alu*1.08*10)/10,
+        material_price_eur_kg:4.50, material_cost_eur:Math.round(me.hv_alu*1.08*4.50*100)/100,
+        spec_driven:true, spec_label:'Multi-energy'});
+      // +extra assembly for dual-provision mounting points
+      ice_proc.push({process_code:'ASSEMBLY_GEN',process_name:'Dual-Provision Assembly (Multi-energy)',
+        gross_weight_kg:me.asm_ice, m_rate:0.20, l_hrs:5.00, e_kwh:3.0,
+        machine_cost_eur:Math.round(me.asm_ice*0.20*100)/100,
+        labor_hours:Math.round(me.asm_ice*5.00/100*1000)/1000,
+        labor_cost_eur:Math.round(me.asm_ice*5.00/100*58*100)/100,
+        energy_kwh:Math.round(me.asm_ice*3.0/100*1000)/1000,
+        energy_cost_eur:Math.round(me.asm_ice*3.0/100*0.08*100)/100,
+        process_cost_eur:0, spec_driven:true, spec_label:'Multi-energy'});
+      ice_proc[ice_proc.length-1].process_cost_eur = Math.round(
+        (ice_proc[ice_proc.length-1].machine_cost_eur +
+         ice_proc[ice_proc.length-1].labor_cost_eur +
+         ice_proc[ice_proc.length-1].energy_cost_eur)*100)/100;
+
+      // Build BEV-ready BOM additions
+      var bev_mat = r_bev.material_lines.map(function(l){return Object.assign({},l);});
+      var bev_proc = r_bev.process_lines.map(function(l){return Object.assign({},l);});
+      // +ICE tunnel provision (MILD_STEEL structural reinforcement)
+      bev_mat.push({material_code:'MILD_STEEL',material_name:'ICE Tunnel Provision (Multi-energy)',
+        net_weight_kg:me.tunnel_steel, scrap_rate:1.32, gross_weight_kg:Math.round(me.tunnel_steel*1.32*10)/10,
+        material_price_eur_kg:0.85, material_cost_eur:Math.round(me.tunnel_steel*1.32*0.85*100)/100,
+        spec_driven:true, spec_label:'Multi-energy'});
+      // +welding for engine mount hardpoints
+      bev_proc.push({process_code:'WELDING_MIG',process_name:'Engine Mount Hardpoints (Multi-energy)',
+        gross_weight_kg:me.weld_bev, m_rate:0.90, l_hrs:3.50, e_kwh:12.0,
+        machine_cost_eur:Math.round(me.weld_bev*0.90*100)/100,
+        labor_hours:Math.round(me.weld_bev*3.50/100*1000)/1000,
+        labor_cost_eur:Math.round(me.weld_bev*3.50/100*58*100)/100,
+        energy_kwh:Math.round(me.weld_bev*12.0/100*1000)/1000,
+        energy_cost_eur:Math.round(me.weld_bev*12.0/100*0.08*100)/100,
+        process_cost_eur:0, spec_driven:true, spec_label:'Multi-energy'});
+      bev_proc[bev_proc.length-1].process_cost_eur = Math.round(
+        (bev_proc[bev_proc.length-1].machine_cost_eur +
+         bev_proc[bev_proc.length-1].labor_cost_eur +
+         bev_proc[bev_proc.length-1].energy_cost_eur)*100)/100;
+      // +extra assembly for dual-provision
+      bev_proc.push({process_code:'ASSEMBLY_GEN',process_name:'Dual-Provision Assembly (Multi-energy)',
+        gross_weight_kg:me.asm_bev, m_rate:0.20, l_hrs:5.00, e_kwh:3.0,
+        machine_cost_eur:Math.round(me.asm_bev*0.20*100)/100,
+        labor_hours:Math.round(me.asm_bev*5.00/100*1000)/1000,
+        labor_cost_eur:Math.round(me.asm_bev*5.00/100*58*100)/100,
+        energy_kwh:Math.round(me.asm_bev*3.0/100*1000)/1000,
+        energy_cost_eur:Math.round(me.asm_bev*3.0/100*0.08*100)/100,
+        process_cost_eur:0, spec_driven:true, spec_label:'Multi-energy'});
+      bev_proc[bev_proc.length-1].process_cost_eur = Math.round(
+        (bev_proc[bev_proc.length-1].machine_cost_eur +
+         bev_proc[bev_proc.length-1].labor_cost_eur +
+         bev_proc[bev_proc.length-1].energy_cost_eur)*100)/100;
+
+      // Compute adjusted totals from modified BOMs
+      function sumVariant(mats, procs) {
+        var tm = mats.reduce(function(s,l){return s+(l.material_cost_eur||l.cost||0);},0);
+        var tp = procs.reduce(function(s,l){return s+(l.process_cost_eur||l.total||0);},0);
+        var tnw = mats.reduce(function(s,l){return s+(l.net_weight_kg||l.net||0);},0);
+        var tgw = mats.reduce(function(s,l){return s+(l.gross_weight_kg||l.gross||0);},0);
+        var dc = tm+tp;
+        var std = (dc*0.85*1.15)+(dc*0.15);
+        var tpc = std * (1 - (r_ice.cost_opt_reduction_pct||0)/100);
+        return {mat:tm,proc:tp,net:tnw,gross:tgw,dc:dc,std:std,tpc:tpc};
+      }
+      var is = sumVariant(ice_mat, ice_proc);
+      var bs = sumVariant(bev_mat, bev_proc);
+
+      // R&D shared cost (×1.50)
       var brd = this.BASE_RD[size]||280;
-      var rd_multi = brd * 1.50; // 50% R&D premium for dual validation
+      var rd_multi = brd * 1.50;
       var rd_fte = rd_multi * this.RD_FTE_SHARE;
       var rd_mat = rd_multi * this.RD_MAT_SHARE;
       var fte_months = Math.round(rd_fte*1000000/this.US_FTE_RATE_MONTH/10)*10;
+
+      // Delta vs pure single-PWT
+      var ice_pct = Math.round((is.tpc/r_ice.std_platform_tpc_eur-1)*1000)/10;
+      var bev_pct = Math.round((bs.tpc/r_bev.std_platform_tpc_eur-1)*1000)/10;
+
       return {
         platform_size: size, pwt_compatibility: 'ice_and_bev',
         is_multi_energy: true,
-        // ICE-ready variant (ICE BOM + multi provisions)
         ice_ready: {
-          std_platform_tpc_eur: Math.round(r_ice.std_platform_tpc_eur * ME_PREM * 100)/100,
-          total_net_weight_kg:  Math.round(r_ice.total_net_weight_kg  * ME_PREM * 10)/10,
-          total_gross_weight_kg:Math.round(r_ice.total_gross_weight_kg* ME_PREM * 10)/10,
-          total_material_cost_eur: Math.round(r_ice.total_material_cost_eur * ME_PREM * 100)/100,
-          total_process_cost_eur:  Math.round(r_ice.total_process_cost_eur  * ME_PREM * 100)/100,
-          direct_cost_eur:         Math.round(r_ice.direct_cost_eur         * ME_PREM * 100)/100,
-          vs_pure_ice_pct: 5.0,
-          material_lines: r_ice.material_lines,
-          process_lines:  r_ice.process_lines,
+          std_platform_tpc_eur:    Math.round(is.tpc*100)/100,
+          total_net_weight_kg:     Math.round(is.net*10)/10,
+          total_gross_weight_kg:   Math.round(is.gross*10)/10,
+          total_material_cost_eur: Math.round(is.mat*100)/100,
+          total_process_cost_eur:  Math.round(is.proc*100)/100,
+          direct_cost_eur:         Math.round(is.dc*100)/100,
+          total_std_direct_eur:    Math.round(is.std*100)/100,
+          vs_pure_ice_pct: ice_pct,
+          material_lines: ice_mat,
+          process_lines:  ice_proc,
         },
-        // BEV-ready variant (BEV BOM + multi provisions)
         bev_ready: {
-          std_platform_tpc_eur: Math.round(r_bev.std_platform_tpc_eur * ME_PREM * 100)/100,
-          total_net_weight_kg:  Math.round(r_bev.total_net_weight_kg  * ME_PREM * 10)/10,
-          total_gross_weight_kg:Math.round(r_bev.total_gross_weight_kg* ME_PREM * 10)/10,
-          total_material_cost_eur: Math.round(r_bev.total_material_cost_eur * ME_PREM * 100)/100,
-          total_process_cost_eur:  Math.round(r_bev.total_process_cost_eur  * ME_PREM * 100)/100,
-          direct_cost_eur:         Math.round(r_bev.direct_cost_eur         * ME_PREM * 100)/100,
-          vs_pure_bev_pct: 5.0,
-          material_lines: r_bev.material_lines,
-          process_lines:  r_bev.process_lines,
+          std_platform_tpc_eur:    Math.round(bs.tpc*100)/100,
+          total_net_weight_kg:     Math.round(bs.net*10)/10,
+          total_gross_weight_kg:   Math.round(bs.gross*10)/10,
+          total_material_cost_eur: Math.round(bs.mat*100)/100,
+          total_process_cost_eur:  Math.round(bs.proc*100)/100,
+          direct_cost_eur:         Math.round(bs.dc*100)/100,
+          total_std_direct_eur:    Math.round(bs.std*100)/100,
+          vs_pure_bev_pct: bev_pct,
+          material_lines: bev_mat,
+          process_lines:  bev_proc,
         },
-        // Shared R&D (×1.50 vs single PWT)
         total_rd_cost_eur_m:    Math.round(rd_multi*10)/10,
         std_rd_fte_cost_eur_m:  Math.round(rd_fte*100)/100,
         std_rd_material_eur_m:  Math.round(rd_mat*100)/100,
@@ -3214,10 +3311,9 @@ var _PC = {
         rd_material_index:      this.RD_MAT_INDEX,
         base_rd_cost_eur_m:     brd,
         rd_premium_pct:         50,
-        cost_opt_reduction_pct: r_ice.cost_opt_reduction_pct,
-        // Summary for display
-        std_platform_tpc_eur: r_ice.std_platform_tpc_eur, // used by legacy display
-        total_net_weight_kg:  r_ice.total_net_weight_kg,
+        cost_opt_reduction_pct: r_ice.cost_opt_reduction_pct||0,
+        std_platform_tpc_eur:   Math.round(is.tpc*100)/100,
+        total_net_weight_kg:    Math.round(is.net*10)/10,
       };
     }
     if (!this.BOM[key]) return null;
