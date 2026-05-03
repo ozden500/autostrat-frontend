@@ -3166,6 +3166,60 @@ var _PC = {
   calc: function(size, pwt, co, wo, saf, rel, com) {
     var key = size+"|"+pwt;
     var pwt_m = {ice_only:1.0,bev_only:1.00,ice_and_bev:1.10}[pwt]||1.0;
+    // For multi-energy: run two sub-calculations and return dual result
+    if (pwt === 'ice_and_bev') {
+      var r_ice = this.calc(size, 'ice_only', co, wo, saf, rel, com);
+      var r_bev = this.calc(size, 'bev_only', co, wo, saf, rel, com);
+      if (!r_ice || !r_bev) return null;
+      // Multi-energy provision premium: +5% TPC and weight on each variant
+      var ME_PREM = 1.05;
+      var brd = this.BASE_RD[size]||280;
+      var rd_multi = brd * 1.50; // 50% R&D premium for dual validation
+      var rd_fte = rd_multi * this.RD_FTE_SHARE;
+      var rd_mat = rd_multi * this.RD_MAT_SHARE;
+      var fte_months = Math.round(rd_fte*1000000/this.US_FTE_RATE_MONTH/10)*10;
+      return {
+        platform_size: size, pwt_compatibility: 'ice_and_bev',
+        is_multi_energy: true,
+        // ICE-ready variant (ICE BOM + multi provisions)
+        ice_ready: {
+          std_platform_tpc_eur: Math.round(r_ice.std_platform_tpc_eur * ME_PREM * 100)/100,
+          total_net_weight_kg:  Math.round(r_ice.total_net_weight_kg  * ME_PREM * 10)/10,
+          total_gross_weight_kg:Math.round(r_ice.total_gross_weight_kg* ME_PREM * 10)/10,
+          total_material_cost_eur: Math.round(r_ice.total_material_cost_eur * ME_PREM * 100)/100,
+          total_process_cost_eur:  Math.round(r_ice.total_process_cost_eur  * ME_PREM * 100)/100,
+          direct_cost_eur:         Math.round(r_ice.direct_cost_eur         * ME_PREM * 100)/100,
+          vs_pure_ice_pct: 5.0,
+          material_lines: r_ice.material_lines,
+          process_lines:  r_ice.process_lines,
+        },
+        // BEV-ready variant (BEV BOM + multi provisions)
+        bev_ready: {
+          std_platform_tpc_eur: Math.round(r_bev.std_platform_tpc_eur * ME_PREM * 100)/100,
+          total_net_weight_kg:  Math.round(r_bev.total_net_weight_kg  * ME_PREM * 10)/10,
+          total_gross_weight_kg:Math.round(r_bev.total_gross_weight_kg* ME_PREM * 10)/10,
+          total_material_cost_eur: Math.round(r_bev.total_material_cost_eur * ME_PREM * 100)/100,
+          total_process_cost_eur:  Math.round(r_bev.total_process_cost_eur  * ME_PREM * 100)/100,
+          direct_cost_eur:         Math.round(r_bev.direct_cost_eur         * ME_PREM * 100)/100,
+          vs_pure_bev_pct: 5.0,
+          material_lines: r_bev.material_lines,
+          process_lines:  r_bev.process_lines,
+        },
+        // Shared R&D (×1.50 vs single PWT)
+        total_rd_cost_eur_m:    Math.round(rd_multi*10)/10,
+        std_rd_fte_cost_eur_m:  Math.round(rd_fte*100)/100,
+        std_rd_material_eur_m:  Math.round(rd_mat*100)/100,
+        std_fte_months:         fte_months,
+        std_fte_rate_eur_month: this.US_FTE_RATE_MONTH,
+        rd_material_index:      this.RD_MAT_INDEX,
+        base_rd_cost_eur_m:     brd,
+        rd_premium_pct:         50,
+        cost_opt_reduction_pct: r_ice.cost_opt_reduction_pct,
+        // Summary for display
+        std_platform_tpc_eur: r_ice.std_platform_tpc_eur, // used by legacy display
+        total_net_weight_kg:  r_ice.total_net_weight_kg,
+      };
+    }
     if (!this.BOM[key]) return null;
 
     // Build base material lines
@@ -3350,6 +3404,67 @@ var _PC = {
   }
 };
 
+
+function renderMultiEnergyBOM(r, container) {
+  // Renders dual-variant (ICE-ready + BEV-ready) side by side
+  var ice = r.ice_ready, bev = r.bev_ready;
+  var h = '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">';
+
+  function variantCard(v, label, color, vsPure) {
+    var c = '<div style="background:var(--s2);border-radius:6px;padding:10px;">';
+    c += '<div style="font-family:DM Mono,monospace;font-size:8px;text-transform:uppercase;letter-spacing:2px;color:'+color+';margin-bottom:8px;">'+label+'</div>';
+    c += '<div style="font-size:18px;font-weight:700;color:'+color+';margin-bottom:2px;">€'+Math.round(v.std_platform_tpc_eur).toLocaleString()+'/veh</div>';
+    c += '<div style="font-size:9px;color:var(--muted2);margin-bottom:8px;">vs pure '+label.split(' ')[0]+': <span style="color:'+color+';">+'+vsPure+'%</span></div>';
+    c += '<div style="display:flex;justify-content:space-between;font-size:10px;margin-bottom:3px;"><span style="color:var(--muted2);">Net weight</span><span style="font-family:DM Mono,monospace;">'+v.total_net_weight_kg.toFixed(0)+' kg</span></div>';
+    c += '<div style="display:flex;justify-content:space-between;font-size:10px;margin-bottom:3px;"><span style="color:var(--muted2);">Material cost</span><span style="font-family:DM Mono,monospace;">€'+Math.round(v.total_material_cost_eur)+'</span></div>';
+    c += '<div style="display:flex;justify-content:space-between;font-size:10px;"><span style="color:var(--muted2);">Process cost</span><span style="font-family:DM Mono,monospace;">€'+Math.round(v.total_process_cost_eur)+'</span></div>';
+    c += '</div>';
+    return c;
+  }
+
+  h += variantCard(ice, 'ICE-Ready variant', 'var(--gold)', ice.vs_pure_ice_pct);
+  h += variantCard(bev, 'BEV-Ready variant', 'var(--green)', bev.vs_pure_bev_pct);
+  h += '</div>';
+
+  // Shared R&D
+  var rd_fte = r.std_rd_fte_cost_eur_m || r.total_rd_cost_eur_m*0.6;
+  var rd_mat = r.std_rd_material_eur_m || r.total_rd_cost_eur_m*0.4;
+  h += '<div style="background:rgba(167,139,250,0.08);border:1px solid rgba(167,139,250,0.2);border-radius:6px;padding:12px;margin-top:10px;">';
+  h += '<div style="font-family:DM Mono,monospace;font-size:8px;color:var(--muted);margin-bottom:6px;text-transform:uppercase;letter-spacing:2px;">SHARED R&D DEVELOPMENT COST</div>';
+  h += '<div style="font-size:11px;color:var(--muted2);margin-bottom:8px;">Covers both ICE-ready and BEV-ready variants — dual crash validation, dual homologation, two PWT integration programs</div>';
+  h += '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;">';
+  h += '<div style="text-align:center;"><div style="font-size:8px;color:var(--muted2);margin-bottom:2px;">TOTAL R&D</div><div style="font-size:18px;font-weight:700;color:#a78bfa;">€'+r.total_rd_cost_eur_m.toFixed(0)+'M</div><div style="font-size:8px;color:var(--muted2);">×1.5 vs single PWT</div></div>';
+  h += '<div style="text-align:center;"><div style="font-size:8px;color:var(--muted2);margin-bottom:2px;">FTE COST (60%)</div><div style="font-size:16px;font-weight:500;color:#a78bfa;">€'+rd_fte.toFixed(0)+'M</div><div style="font-size:8px;color:var(--muted2);">'+(r.std_fte_months||0).toLocaleString()+' FTE-months</div></div>';
+  h += '<div style="text-align:center;"><div style="font-size:8px;color:var(--muted2);margin-bottom:2px;">MATERIAL (40%)</div><div style="font-size:16px;font-weight:500;color:#a78bfa;">€'+rd_mat.toFixed(0)+'M</div><div style="font-size:8px;color:var(--muted2);">Proto + test lab</div></div>';
+  h += '</div></div>';
+
+  // ICE-ready BOM detail
+  h += '<div style="margin-top:12px;font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:2px;margin-bottom:6px;">ICE-READY — Material BOM</div>';
+  h += _renderMatTable(ice.material_lines, r.total_material_cost_eur);
+  h += '<div style="margin-top:10px;font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:2px;margin-bottom:6px;">BEV-READY — Material BOM</div>';
+  h += _renderMatTable(bev.material_lines, r.total_material_cost_eur);
+
+  container.innerHTML = h;
+}
+
+function _renderMatTable(lines, baseMat) {
+  var h = '<table style="width:100%;border-collapse:collapse;font-size:9px;">';
+  h += '<tr style="color:var(--muted2);"><td style="padding:2px 4px;">Material</td><td style="padding:2px 4px;text-align:right;">Net kg</td><td style="padding:2px 4px;text-align:right;">Cost €</td></tr>';
+  lines.forEach(function(l) {
+    var isSpec = l.spec_driven;
+    var col = l.spec_label === 'BEV Structural' ? 'var(--green)' :
+              l.spec_label === 'Safety' ? 'var(--orange)' :
+              l.spec_label === 'Comfort' ? 'var(--purple)' : 'var(--text)';
+    h += '<tr style="border-top:0.5px solid rgba(255,255,255,0.04);">';
+    h += '<td style="padding:2px 4px;color:'+col+';">'+(isSpec?'+ ':'')+l.material_name+'</td>';
+    h += '<td style="padding:2px 4px;text-align:right;font-family:DM Mono,monospace;">'+l.net_weight_kg.toFixed(1)+'</td>';
+    h += '<td style="padding:2px 4px;text-align:right;font-family:DM Mono,monospace;color:var(--cyan);">€'+Math.round(l.material_cost_eur)+'</td>';
+    h += '</tr>';
+  });
+  h += '</table>';
+  return h;
+}
+
 function fetchPlatformStdCost() {
   if (currentModType !== 'platform') return;
   // Always hide legacy cost box for platform — show BOM instead
@@ -3394,6 +3509,21 @@ function fetchPlatformStdCost() {
     var com = parseFloat(document.getElementById('msr-comfort')?.value||50) / 100;
     var r = _PC.calc(platformSize, pwt, opt, wo, saf, rel, com);
     if (!r) { console.warn('No BOM for', platformSize, pwt); return; }
+    // Handle multi-energy dual variant
+    if (r.is_multi_energy) {
+      var bomContent = document.getElementById('mod-cost-bom-content');
+      var bomEl2 = document.getElementById('mod-cost-bom');
+      var legEl2 = document.getElementById('mod-cost-legacy');
+      if (legEl2) legEl2.style.display = 'none';
+      var emptyEl2 = document.getElementById('mod-cost-empty');
+      if (emptyEl2) emptyEl2.style.display = 'none';
+      renderMultiEnergyBOM(r, bomContent);
+      if (bomEl2) bomEl2.style.display = '';
+      var tpcEl = document.getElementById('mc-tpc');
+      if (tpcEl) tpcEl.textContent = 'ICE €'+Math.round(r.ice_ready.std_platform_tpc_eur).toLocaleString()+' / BEV €'+Math.round(r.bev_ready.std_platform_tpc_eur).toLocaleString();
+      window._lastPlatformCalc = r;
+      return;
+    }
 
     // Update legacy TPC field
     var tpcEl = document.getElementById('mc-tpc');
