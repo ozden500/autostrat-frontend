@@ -3113,26 +3113,26 @@ var _PC = {
   US_FTE_RATE_MONTH: 13333,  // US fully loaded engineering FTE €160k/yr ÷ 12
   RD_MAT_INDEX: 1.00,        // US standard material index
   BOM: {
-    "micro|ice_only":    [["HSS_STAMPED",70,"STAMPING"],["MILD_STEEL",15,"WELDING_MIG"],["ALU_CAST",5,"DIE_CASTING"],["RUBBER_EPDM",4,"ASSEMBLY_GEN"],["STRUCT_ADHESIVE",1,"ASSEMBLY_GEN"]],
+    "micro|ice_only":    [["HSS_STAMPED",70,"STAMPING"],["MILD_STEEL",15,"WELDING_MIG"],["ALU_CAST",5,"DIE_CASTING"],["RUBBER_EPDM",4,"ASSEMBLY_GEN"],["STRUCT_ADHESIVE",1,"ASSEMBLY_GEN",["MILD_STEEL",12,"STAMPING"],["RUBBER_EPDM",3,"ASSEMBLY_GEN"],["STRUCT_ADHESIVE",1,"ASSEMBLY_GEN"]]],
     "micro|bev_only":    [["HSS_STAMPED",70,"STAMPING"],["MILD_STEEL",15,"WELDING_MIG"],["ALU_CAST",5,"DIE_CASTING"],["BATTERY_HOUSING",10,"STAMPING"],["RUBBER_EPDM",4,"ASSEMBLY_GEN"],["STRUCT_ADHESIVE",1,"ASSEMBLY_GEN"]],
-    "small|ice_only":    [["HSS_STAMPED",120,"STAMPING"],["MILD_STEEL",25,"WELDING_MIG"],["ALU_CAST",15,"DIE_CASTING"],["RUBBER_EPDM",8,"ASSEMBLY_GEN"],["STRUCT_ADHESIVE",4,"ASSEMBLY_GEN"]],
+    "small|ice_only":    [["HSS_STAMPED",120,"STAMPING"],["MILD_STEEL",25,"WELDING_MIG"],["ALU_CAST",15,"DIE_CASTING"],["RUBBER_EPDM",8,"ASSEMBLY_GEN"],["STRUCT_ADHESIVE",4,"ASSEMBLY_GEN",["MILD_STEEL",20,"STAMPING"],["RUBBER_EPDM",5,"ASSEMBLY_GEN"],["STRUCT_ADHESIVE",2,"ASSEMBLY_GEN"]]],
     "small|bev_only":    [["HSS_STAMPED",120,"STAMPING"],["MILD_STEEL",25,"WELDING_MIG"],["ALU_CAST",15,"DIE_CASTING"],["BATTERY_HOUSING",18,"STAMPING"],["RUBBER_EPDM",8,"ASSEMBLY_GEN"],["STRUCT_ADHESIVE",4,"ASSEMBLY_GEN"]],
-    "small|ice_and_bev": [["HSS_STAMPED",120,"STAMPING"],["MILD_STEEL",25,"WELDING_MIG"],["ALU_CAST",15,"DIE_CASTING"],["BATTERY_HOUSING",18,"STAMPING"],["RUBBER_EPDM",8,"ASSEMBLY_GEN"],["STRUCT_ADHESIVE",4,"ASSEMBLY_GEN"]],
-    "medium|ice_only":   [["HSS_STAMPED",160,"STAMPING"],["MILD_STEEL",35,"WELDING_MIG"],["ALU_CAST",25,"DIE_CASTING"],["ALU_EXTRUSION",10,"ROLL_FORMING"],["RUBBER_EPDM",12,"ASSEMBLY_GEN"],["STRUCT_ADHESIVE",6,"ASSEMBLY_GEN"]],
+    "small|ice_and_bev": [["HSS_STAMPED",120,"STAMPING"],["MILD_STEEL",25,"WELDING_MIG"],["ALU_CAST",15,"DIE_CASTING"],["BATTERY_HOUSING",18,"STAMPING"],["RUBBER_EPDM",8,"ASSEMBLY_GEN"],["STRUCT_ADHESIVE",4,"ASSEMBLY_GEN",["MILD_STEEL",20,"STAMPING"],["RUBBER_EPDM",5,"ASSEMBLY_GEN"],["STRUCT_ADHESIVE",2,"ASSEMBLY_GEN"]]],
+    "medium|ice_only":   [["HSS_STAMPED",160,"STAMPING"],["MILD_STEEL",35,"WELDING_MIG"],["ALU_CAST",25,"DIE_CASTING"],["ALU_EXTRUSION",10,"ROLL_FORMING"],["RUBBER_EPDM",12,"ASSEMBLY_GEN"],["STRUCT_ADHESIVE",6,"ASSEMBLY_GEN",["MILD_STEEL",28,"STAMPING"],["RUBBER_EPDM",6,"ASSEMBLY_GEN"],["STRUCT_ADHESIVE",2,"ASSEMBLY_GEN"]]],
     "medium|bev_only":   [["HSS_STAMPED",160,"STAMPING"],["MILD_STEEL",35,"WELDING_MIG"],["ALU_CAST",25,"DIE_CASTING"],["ALU_EXTRUSION",10,"ROLL_FORMING"],["BATTERY_HOUSING",25,"STAMPING"],["RUBBER_EPDM",12,"ASSEMBLY_GEN"],["STRUCT_ADHESIVE",6,"ASSEMBLY_GEN"]],
-    "medium|ice_and_bev":[["HSS_STAMPED",160,"STAMPING"],["MILD_STEEL",35,"WELDING_MIG"],["ALU_CAST",25,"DIE_CASTING"],["ALU_EXTRUSION",10,"ROLL_FORMING"],["BATTERY_HOUSING",25,"STAMPING"],["RUBBER_EPDM",12,"ASSEMBLY_GEN"],["STRUCT_ADHESIVE",6,"ASSEMBLY_GEN"]],
-    "large|ice_only":    [["HSS_STAMPED",220,"STAMPING"],["MILD_STEEL",55,"WELDING_MIG"],["ALU_CAST",45,"DIE_CASTING"],["ALU_EXTRUSION",18,"ROLL_FORMING"],["RUBBER_EPDM",15,"ASSEMBLY_GEN"],["STRUCT_ADHESIVE",8,"ASSEMBLY_GEN"]],
+    "medium|ice_and_bev":[["HSS_STAMPED",160,"STAMPING"],["MILD_STEEL",35,"WELDING_MIG"],["ALU_CAST",25,"DIE_CASTING"],["ALU_EXTRUSION",10,"ROLL_FORMING"],["BATTERY_HOUSING",25,"STAMPING"],["RUBBER_EPDM",12,"ASSEMBLY_GEN"],["STRUCT_ADHESIVE",6,"ASSEMBLY_GEN",["MILD_STEEL",28,"STAMPING"],["RUBBER_EPDM",6,"ASSEMBLY_GEN"],["STRUCT_ADHESIVE",2,"ASSEMBLY_GEN"]]],
+    "large|ice_only":    [["HSS_STAMPED",220,"STAMPING"],["MILD_STEEL",55,"WELDING_MIG"],["ALU_CAST",45,"DIE_CASTING"],["ALU_EXTRUSION",18,"ROLL_FORMING"],["RUBBER_EPDM",15,"ASSEMBLY_GEN"],["STRUCT_ADHESIVE",8,"ASSEMBLY_GEN",["MILD_STEEL",35,"STAMPING"],["RUBBER_EPDM",8,"ASSEMBLY_GEN"],["STRUCT_ADHESIVE",3,"ASSEMBLY_GEN"]]],
     "large|bev_only":    [["HSS_STAMPED",220,"STAMPING"],["MILD_STEEL",55,"WELDING_MIG"],["ALU_CAST",45,"DIE_CASTING"],["ALU_EXTRUSION",18,"ROLL_FORMING"],["BATTERY_HOUSING",35,"STAMPING"],["RUBBER_EPDM",15,"ASSEMBLY_GEN"],["STRUCT_ADHESIVE",8,"ASSEMBLY_GEN"]],
-    "large|ice_and_bev": [["HSS_STAMPED",220,"STAMPING"],["MILD_STEEL",55,"WELDING_MIG"],["ALU_CAST",45,"DIE_CASTING"],["ALU_EXTRUSION",18,"ROLL_FORMING"],["BATTERY_HOUSING",35,"STAMPING"],["RUBBER_EPDM",15,"ASSEMBLY_GEN"],["STRUCT_ADHESIVE",8,"ASSEMBLY_GEN"]],
-    "frame|ice_only":    [["FRAME_STEEL",280,"WELDING_MIG"],["MILD_STEEL",60,"STAMPING"],["ALU_CAST",15,"DIE_CASTING"],["RUBBER_EPDM",18,"ASSEMBLY_GEN"],["STRUCT_ADHESIVE",5,"ASSEMBLY_GEN"]],
+    "large|ice_and_bev": [["HSS_STAMPED",220,"STAMPING"],["MILD_STEEL",55,"WELDING_MIG"],["ALU_CAST",45,"DIE_CASTING"],["ALU_EXTRUSION",18,"ROLL_FORMING"],["BATTERY_HOUSING",35,"STAMPING"],["RUBBER_EPDM",15,"ASSEMBLY_GEN"],["STRUCT_ADHESIVE",8,"ASSEMBLY_GEN",["MILD_STEEL",35,"STAMPING"],["RUBBER_EPDM",8,"ASSEMBLY_GEN"],["STRUCT_ADHESIVE",3,"ASSEMBLY_GEN"]]],
+    "frame|ice_only":    [["FRAME_STEEL",280,"WELDING_MIG"],["MILD_STEEL",60,"STAMPING"],["ALU_CAST",15,"DIE_CASTING"],["RUBBER_EPDM",18,"ASSEMBLY_GEN"],["STRUCT_ADHESIVE",5,"ASSEMBLY_GEN",["MILD_STEEL",45,"STAMPING"],["RUBBER_EPDM",10,"ASSEMBLY_GEN"],["STRUCT_ADHESIVE",3,"ASSEMBLY_GEN"]]],
     "frame|bev_only":    [["FRAME_STEEL",280,"WELDING_MIG"],["MILD_STEEL",60,"STAMPING"],["ALU_CAST",15,"DIE_CASTING"],["BATTERY_HOUSING",40,"STAMPING"],["RUBBER_EPDM",18,"ASSEMBLY_GEN"],["STRUCT_ADHESIVE",5,"ASSEMBLY_GEN"]],
-    "frame|ice_and_bev": [["FRAME_STEEL",280,"WELDING_MIG"],["MILD_STEEL",60,"STAMPING"],["ALU_CAST",15,"DIE_CASTING"],["BATTERY_HOUSING",40,"STAMPING"],["RUBBER_EPDM",18,"ASSEMBLY_GEN"],["STRUCT_ADHESIVE",5,"ASSEMBLY_GEN"]],
-    "performance|ice_only":    [["UHSS",80,"STAMPING"],["ALU_STAMP",60,"STAMPING"],["ALU_CAST",40,"DIE_CASTING"],["ALU_EXTRUSION",25,"ROLL_FORMING"],["CFRP",20,"COMPOSITE_LAY"],["RUBBER_EPDM",8,"ASSEMBLY_GEN"],["STRUCT_ADHESIVE",6,"ASSEMBLY_GEN"]],
+    "frame|ice_and_bev": [["FRAME_STEEL",280,"WELDING_MIG"],["MILD_STEEL",60,"STAMPING"],["ALU_CAST",15,"DIE_CASTING"],["BATTERY_HOUSING",40,"STAMPING"],["RUBBER_EPDM",18,"ASSEMBLY_GEN"],["STRUCT_ADHESIVE",5,"ASSEMBLY_GEN",["MILD_STEEL",45,"STAMPING"],["RUBBER_EPDM",10,"ASSEMBLY_GEN"],["STRUCT_ADHESIVE",3,"ASSEMBLY_GEN"]]],
+    "performance|ice_only":    [["UHSS",80,"STAMPING"],["ALU_STAMP",60,"STAMPING"],["ALU_CAST",40,"DIE_CASTING"],["ALU_EXTRUSION",25,"ROLL_FORMING"],["CFRP",20,"COMPOSITE_LAY"],["RUBBER_EPDM",8,"ASSEMBLY_GEN"],["STRUCT_ADHESIVE",6,"ASSEMBLY_GEN",["MILD_STEEL",25,"STAMPING"],["RUBBER_EPDM",5,"ASSEMBLY_GEN"],["STRUCT_ADHESIVE",2,"ASSEMBLY_GEN"]]],
     "performance|bev_only":    [["UHSS",80,"STAMPING"],["ALU_STAMP",60,"STAMPING"],["ALU_CAST",40,"DIE_CASTING"],["ALU_EXTRUSION",25,"ROLL_FORMING"],["CFRP",20,"COMPOSITE_LAY"],["BATTERY_HOUSING",30,"STAMPING"],["RUBBER_EPDM",8,"ASSEMBLY_GEN"],["STRUCT_ADHESIVE",6,"ASSEMBLY_GEN"]],
-    "performance|ice_and_bev": [["UHSS",80,"STAMPING"],["ALU_STAMP",60,"STAMPING"],["ALU_CAST",40,"DIE_CASTING"],["ALU_EXTRUSION",25,"ROLL_FORMING"],["CFRP",20,"COMPOSITE_LAY"],["BATTERY_HOUSING",30,"STAMPING"],["RUBBER_EPDM",8,"ASSEMBLY_GEN"],["STRUCT_ADHESIVE",6,"ASSEMBLY_GEN"]],
-    "commercial|ice_only":    [["FRAME_STEEL",300,"WELDING_MIG"],["MILD_STEEL",70,"STAMPING"],["ALU_CAST",15,"DIE_CASTING"],["RUBBER_EPDM",20,"ASSEMBLY_GEN"],["STRUCT_ADHESIVE",5,"ASSEMBLY_GEN"]],
+    "performance|ice_and_bev": [["UHSS",80,"STAMPING"],["ALU_STAMP",60,"STAMPING"],["ALU_CAST",40,"DIE_CASTING"],["ALU_EXTRUSION",25,"ROLL_FORMING"],["CFRP",20,"COMPOSITE_LAY"],["BATTERY_HOUSING",30,"STAMPING"],["RUBBER_EPDM",8,"ASSEMBLY_GEN"],["STRUCT_ADHESIVE",6,"ASSEMBLY_GEN",["MILD_STEEL",25,"STAMPING"],["RUBBER_EPDM",5,"ASSEMBLY_GEN"],["STRUCT_ADHESIVE",2,"ASSEMBLY_GEN"]]],
+    "commercial|ice_only":    [["FRAME_STEEL",300,"WELDING_MIG"],["MILD_STEEL",70,"STAMPING"],["ALU_CAST",15,"DIE_CASTING"],["RUBBER_EPDM",20,"ASSEMBLY_GEN"],["STRUCT_ADHESIVE",5,"ASSEMBLY_GEN",["MILD_STEEL",50,"STAMPING"],["RUBBER_EPDM",12,"ASSEMBLY_GEN"],["STRUCT_ADHESIVE",4,"ASSEMBLY_GEN"]]],
     "commercial|bev_only":    [["FRAME_STEEL",300,"WELDING_MIG"],["MILD_STEEL",70,"STAMPING"],["ALU_CAST",15,"DIE_CASTING"],["BATTERY_HOUSING",50,"STAMPING"],["RUBBER_EPDM",20,"ASSEMBLY_GEN"],["STRUCT_ADHESIVE",5,"ASSEMBLY_GEN"]],
-    "commercial|ice_and_bev": [["FRAME_STEEL",300,"WELDING_MIG"],["MILD_STEEL",70,"STAMPING"],["ALU_CAST",15,"DIE_CASTING"],["BATTERY_HOUSING",50,"STAMPING"],["RUBBER_EPDM",20,"ASSEMBLY_GEN"],["STRUCT_ADHESIVE",5,"ASSEMBLY_GEN"]],
+    "commercial|ice_and_bev": [["FRAME_STEEL",300,"WELDING_MIG"],["MILD_STEEL",70,"STAMPING"],["ALU_CAST",15,"DIE_CASTING"],["BATTERY_HOUSING",50,"STAMPING"],["RUBBER_EPDM",20,"ASSEMBLY_GEN"],["STRUCT_ADHESIVE",5,"ASSEMBLY_GEN",["MILD_STEEL",50,"STAMPING"],["RUBBER_EPDM",12,"ASSEMBLY_GEN"],["STRUCT_ADHESIVE",4,"ASSEMBLY_GEN"]]],
   },
   PROCS: {
     "micro|ice_only":    [["STAMPING",95],["WELDING_MIG",20],["DIE_CASTING",6],["ASSEMBLY_GEN",9],["COATING_ECOAT",95]],
@@ -3165,7 +3165,7 @@ var _PC = {
   },
   calc: function(size, pwt, co, wo, saf, rel, com) {
     var key = size+"|"+pwt;
-    var pwt_m = {ice_only:1.0,bev_only:0.85,ice_and_bev:1.15}[pwt]||1.0;
+    var pwt_m = {ice_only:1.0,bev_only:1.00,ice_and_bev:1.10}[pwt]||1.0;
     if (!this.BOM[key]) return null;
 
     // Build base material lines
@@ -3180,6 +3180,33 @@ var _PC = {
       var ps = _PC.PROC[r[0]]||{m:0.5,l:1.0,e:5.0,n:r[0]};
       return {code:r[0],name:ps.n,gross:r[1],m:ps.m,l:ps.l,e:ps.e,spec:false,label:""};
     });
+
+    // BEV structural additions (reinforced floor, HV routing, underbody shield)
+    // BEV platforms cost 18-22% more than ICE due to structural complexity
+    var BEV_STRUCT = {
+      micro:       {uhss_floor:15,alu_hv:3, uhss_shield:5, adhesive:2,laser_weld_kg:8, asm_kg:4},
+      small:       {uhss_floor:25,alu_hv:5, uhss_shield:8, adhesive:3,laser_weld_kg:12,asm_kg:6},
+      medium:      {uhss_floor:35,alu_hv:8, uhss_shield:12,adhesive:4,laser_weld_kg:18,asm_kg:8},
+      large:       {uhss_floor:45,alu_hv:10,uhss_shield:15,adhesive:5,laser_weld_kg:22,asm_kg:10},
+      frame:       {uhss_floor:35,alu_hv:8, uhss_shield:12,adhesive:4,laser_weld_kg:15,asm_kg:8},
+      performance: {uhss_floor:30,alu_hv:8, uhss_shield:10,adhesive:3,laser_weld_kg:15,asm_kg:7},
+      commercial:  {uhss_floor:50,alu_hv:12,uhss_shield:18,adhesive:6,laser_weld_kg:25,asm_kg:12},
+    };
+    if ((pwt === 'bev_only' || pwt === 'ice_and_bev') && BEV_STRUCT[size]) {
+      var bs = BEV_STRUCT[size];
+      // UHSS reinforced floor cross-members + sills (battery weight load paths)
+      mats.push({code:'UHSS',name:'UHSS Floor Reinforcement (BEV)',net:bs.uhss_floor,sc:1.40,gross:bs.uhss_floor*1.40,price:2.10,cost:bs.uhss_floor*1.40*2.10,proc:'STAMPING',spec:true,label:'BEV Structural'});
+      // Aluminum HV cable channels + cooling circuit integration
+      mats.push({code:'ALU_EXTRUSION',name:'HV Cable Channels (BEV)',net:bs.alu_hv,sc:1.08,gross:bs.alu_hv*1.08,price:4.50,cost:bs.alu_hv*1.08*4.50,proc:'ROLL_FORMING',spec:true,label:'BEV Structural'});
+      // UHSS underbody crash shield (battery intrusion protection)
+      mats.push({code:'UHSS',name:'Underbody Crash Shield (BEV)',net:bs.uhss_shield,sc:1.40,gross:bs.uhss_shield*1.40,price:2.10,cost:bs.uhss_shield*1.40*2.10,proc:'STAMPING',spec:true,label:'BEV Structural'});
+      // Extra structural adhesive for bonding (fire protection, sealing)
+      mats.push({code:'STRUCT_ADHESIVE',name:'Structural Adhesive (BEV)',net:bs.adhesive,sc:1.02,gross:bs.adhesive*1.02,price:8.00,cost:bs.adhesive*1.02*8.00,proc:'ASSEMBLY_GEN',spec:true,label:'BEV Structural'});
+      // Laser welding for HV integration (precision joins)
+      procs.push({code:'WELDING_LASER',name:'Laser Welding HV Integration (BEV)',gross:bs.laser_weld_kg,m:1.80,l:1.50,e:18.0,spec:true,label:'BEV Structural'});
+      // Additional assembly (battery mounting interfaces, thermal routing)
+      procs.push({code:'ASSEMBLY_GEN',name:'BEV Systems Integration Assembly',gross:bs.asm_kg,m:0.20,l:5.00,e:3.0,spec:true,label:'BEV Structural'});
+    }
 
     // A. SAFETY → replace steel with UHSS
     if (saf > 0.001) {
@@ -3394,7 +3421,8 @@ function fetchPlatformStdCost() {
       var isSpec = l.spec_driven;
       var specColor = l.spec_label === 'Safety' ? 'var(--orange)' : 
                       l.spec_label === 'Comfort' ? 'var(--purple)' :
-                      l.spec_label === 'Weight Opt.' ? 'var(--cyan)' : 'var(--text)';
+                      l.spec_label === 'Weight Opt.' ? 'var(--cyan)' :
+                      l.spec_label === 'BEV Structural' ? 'var(--green)' : 'var(--text)';
       h += '<tr style="border-top:1px solid rgba(255,255,255,0.04);' + (isSpec?'background:rgba(255,255,255,0.02)':'') + '">' +
         '<td style="padding:3px 4px;color:' + (isSpec?specColor:'var(--text)') + ';' + (isSpec?'font-style:italic':'') + '">' + 
           (isSpec ? '+ ' : '') + l.material_name + '</td>' +
@@ -10621,6 +10649,7 @@ function drawRadar() {
 
 </body>
 </html>
+ 
  
  
  
