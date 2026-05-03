@@ -3259,7 +3259,7 @@ var _PC = {
         var tgw = mats.reduce(function(s,l){return s+(l.gross_weight_kg||l.gross||0);},0);
         var dc = tm+tp;
         var std = (dc*0.85*1.15)+(dc*0.15);
-        var tpc = std * (1 - (r_ice.cost_opt_reduction_pct||0)/100);
+        var tpc = std; // Cost opt embedded in BOM lines
         return {mat:tm,proc:tp,net:tnw,gross:tgw,dc:dc,std:std,tpc:tpc};
       }
       var is = sumVariant(ice_mat, ice_proc);
@@ -3460,8 +3460,8 @@ var _PC = {
     var tgw=mats.reduce(function(s,l){return s+l.gross;},0);
     var dc=tm+tp;
     var sc85=dc*0.85, soh=sc85*0.05, spf=sc85*0.10, stot=sc85*1.15, oem=dc*0.15, std=stot+oem;
-    var cor=co>0?0.05*Math.pow(co,0.6):0;
-    var tpc=std*(1-cor);
+    var cor=0; // Cost opt already applied in BOM (scrap rates + labor hours)
+    var tpc=std; // No separate top-down reduction — BOM changes drive the saving
     var brd=this.BASE_RD[size]||280;
     var cord=0.50*(Math.exp(3*co)-1)/(Math.exp(3)-1);
     var word=0.30*(Math.exp(3*wo)-1)/(Math.exp(3)-1);
@@ -3484,7 +3484,7 @@ var _PC = {
       supplier_total_eur:Math.round(stot*100)/100,
       oem_internal_eur:Math.round(oem*100)/100,
       total_std_direct_eur:Math.round(std*100)/100,
-      cost_opt_reduction_pct:Math.round(cor*10000)/100,
+      cost_opt_reduction_pct:0, // Reduction is embedded in BOM lines
       std_platform_tpc_eur:Math.round(tpc*100)/100,
       base_rd_cost_eur_m:brd,
       rd_premium_pct:Math.round((cord+word)*10000)/100,
