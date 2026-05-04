@@ -1530,7 +1530,7 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
         </div>
         <input type="range" id="cost-opt-slider" min="0" max="100" value="0" step="1"
           style="width:100%;accent-color:var(--gold);margin:6px 0;"
-          oninput="document.getElementById('cost-opt-display').textContent=this.value+'%'; fetchPlatformStdCost();">
+          oninput="document.getElementById('cost-opt-display').textContent=this.value+'%'; scheduleCostCalc();">
         <div style="display:flex;justify-content:space-between;font-family:DM Mono,monospace;font-size:8px;color:var(--muted2);">
           <span>0% — Standard</span><span>100% — Max effort</span>
         </div>
@@ -1546,7 +1546,7 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
         </div>
         <input type="range" id="weight-opt-slider" min="0" max="100" value="0" step="1"
           style="width:100%;accent-color:var(--cyan);margin:6px 0;"
-          oninput="document.getElementById('weight-opt-display').textContent=this.value+'%'; fetchPlatformStdCost();">
+          oninput="document.getElementById('weight-opt-display').textContent=this.value+'%'; scheduleCostCalc();">
         <div style="display:flex;justify-content:space-between;font-family:DM Mono,monospace;font-size:8px;color:var(--muted2);">
           <span>0% — Standard</span><span>100% — Max lightweighting</span>
         </div>
@@ -2924,8 +2924,9 @@ function onBaseConfigChange() {
   // Show cost optimization slider for platform module
   var costOptRow = document.getElementById('mod-cost-opt-row');
   var weightOptRow = document.getElementById('mod-weight-opt-row');
-  if (costOptRow) costOptRow.style.display = currentModType === 'platform' ? '' : 'none';
-  if (weightOptRow) weightOptRow.style.display = currentModType === 'platform' ? '' : 'none';
+  var showOpt = (currentModType === 'platform' || currentModType === 'ice_pwt');
+  if (costOptRow) costOptRow.style.display = showOpt ? '' : 'none';
+  if (weightOptRow) weightOptRow.style.display = showOpt ? '' : 'none';
   // For types with secondary, read from secondary select
   // For types without, read from window._selectedConfigKey
   let val = document.getElementById('mod-secondary-select')?.value || window._selectedConfigKey || '';
@@ -2939,6 +2940,7 @@ function onBaseConfigChange() {
   var emEl = document.getElementById('mod-cost-empty');
   if (emEl) emEl.style.display = 'none';
   if (currentModType === 'platform') fetchPlatformStdCost();
+  else if (currentModType === 'ice_pwt') fetchICEPWTStdCost();
   document.getElementById('mod-submit-area').style.display='block';
   setDevPath('new', document.getElementById('path-new'));
   scheduleCostCalc();
@@ -3064,6 +3066,8 @@ function scheduleCostCalc() {
   clearTimeout(costDebounceTimer);
   if (currentModType === 'platform') {
     costDebounceTimer = setTimeout(fetchPlatformStdCost, 400);
+  } else if (currentModType === 'ice_pwt') {
+    costDebounceTimer = setTimeout(fetchICEPWTStdCost, 400);
   } else {
     costDebounceTimer = setTimeout(fetchCostPreview, 400);
   }
@@ -3589,9 +3593,14 @@ function _renderSingleVariantLayout(r, bomEl, legEl) {
   if (emptyEl) emptyEl.style.display = 'none';
   var container = document.getElementById('mod-cost-bom-content');
   var pwt = r.pwt_compatibility;
-  var isIce = pwt === 'ice_only';
-  var color = isIce ? 'var(--gold)' : 'var(--green)';
-  var label = isIce ? 'ICE Platform' : 'BEV Platform';
+  var color, label;
+  if (r.module_type === 'ice_pwt') {
+    color = 'var(--orange)'; label = 'ICE Powertrain';
+  } else {
+    var isIce = pwt === 'ice_only';
+    color = isIce ? 'var(--gold)' : 'var(--green)';
+    label = isIce ? 'ICE Platform' : 'BEV Platform';
+  }
 
   var h = '';
   // ── Summary card ──
@@ -3954,6 +3963,268 @@ function fetchPlatformStdCost() {
     _renderSingleVariantLayout(r, bomEl, legEl);
 
   } catch(e) { console.warn('Platform BOM cost error:', e); }
+}
+
+// ════════════════════════════════════════════════════════════════════
+// ICE PWT COST ENGINE v1.0.0 — Client-Side JavaScript
+// Mirrors _PC structure exactly. BOM keyed by cylinder count + hybrid.
+// ════════════════════════════════════════════════════════════════════
+var _ICE_PC = {
+  VERSION: "1.0.0",
+  US_LABOR: 58.0, US_ELEC: 0.08,
+  US_FTE_RATE_MONTH: 13333, RD_FTE_SHARE: 0.60, RD_MAT_SHARE: 0.40, RD_MAT_INDEX: 1.00,
+  MAT: {
+    CAST_IRON_BLOCK: {p:1.35, sc:1.25, sm:1.25, sd:1.08, n:"Cast Iron Engine Block"},
+    ALU_ALLOY_HEAD:  {p:3.80, sc:1.18, sm:1.15, sd:1.05, n:"Aluminum Alloy – Head & Covers"},
+    FORGED_STEEL:    {p:3.20, sc:1.05, sm:1.25, sd:1.08, n:"Forged Steel – Crank & Conrods"},
+    ALU_PISTON:      {p:4.50, sc:1.00, sm:1.20, sd:1.05, n:"Aluminum Alloy – Pistons"},
+    STEEL_ALLOY:     {p:2.40, sc:1.20, sm:1.25, sd:1.08, n:"Steel Alloy – Valvetrain & Timing"},
+    RUBBER_SEAL:     {p:5.50, sc:1.00, sm:1.02, sd:1.02, n:"Rubber/Composite Seals & Gaskets"},
+    MOTOR_STEEL:     {p:2.80, sc:1.12, sm:1.15, sd:1.05, n:"Electrical Steel – Motor Laminations"},
+    RARE_EARTH_MAG:  {p:45.0, sc:1.02, sm:1.08, sd:1.03, n:"Rare Earth Magnets (NdFeB)"},
+  },
+  PROC: {
+    IRON_CASTING:     {m:0.80, l:0.60, e:15.0, n:"Iron Casting & Bore Machining"},
+    ALU_DIE_CAST:     {m:0.85, l:0.60, e:20.0, n:"Aluminum Die Casting"},
+    HOT_FORGING:      {m:2.50, l:1.50, e:18.0, n:"Hot Forging (Crank/Conrods)"},
+    ENGINE_MACHINING: {m:3.50, l:2.00, e:15.0, n:"CNC Engine Machining & Honing"},
+    ENGINE_ASSEMBLY:  {m:0.20, l:1.00, e:3.0,  n:"Engine Sub-Assembly"},
+    DYNO_TEST:        {m:0.40, l:0.30, e:4.0,  n:"Dynamometer Testing & Break-In"},
+  },
+  PRECISION: {ENGINE_MACHINING:1, HOT_FORGING:1},
+  // Base BOM for 4-cylinder (quantities scale by cylinders/4)
+  BASE_BOM: {
+    4: [["CAST_IRON_BLOCK",95,"IRON_CASTING"],["ALU_ALLOY_HEAD",28,"ALU_DIE_CAST"],
+        ["FORGED_STEEL",22,"HOT_FORGING"],["ALU_PISTON",4,"ENGINE_MACHINING"],
+        ["STEEL_ALLOY",18,"ENGINE_MACHINING"],["RUBBER_SEAL",2,"ENGINE_ASSEMBLY"]],
+  },
+  // Hybrid-specific additions appended as-is (not scaled by cylinder count)
+  HYBRID_BOM: {
+    HEV:  [["MOTOR_STEEL",8,"ENGINE_ASSEMBLY"],["RARE_EARTH_MAG",2,"ENGINE_ASSEMBLY"]],
+    PHEV: [["MOTOR_STEEL",15,"ENGINE_ASSEMBLY"],["RARE_EARTH_MAG",4,"ENGINE_ASSEMBLY"]],
+    REEV: [["MOTOR_STEEL",20,"ENGINE_ASSEMBLY"],["RARE_EARTH_MAG",5,"ENGINE_ASSEMBLY"]],
+  },
+  // Base process throughput (kg) for 4-cylinder; scale by cylinders/4
+  BASE_PROCS: {
+    4: [["IRON_CASTING",118],["ALU_DIE_CAST",33],["HOT_FORGING",23],
+        ["ENGINE_MACHINING",27],["ENGINE_ASSEMBLY",169],["DYNO_TEST",169]],
+  },
+  BASE_RD: {
+    "3CYL_ICE":120, "4CYL_ICE":160, "4CYL_TURBO":175,
+    "4CYL_HEV":220, "4CYL_PHEV":280, "4CYL_REEV":260,
+    "6CYL_ICE":220, "6CYL_TURBO":240, "6CYL_HEV":300,
+    "8CYL_ICE":280, "8CYL_TURBO":300, "12CYL_ICE":400,
+  },
+  scrap: function(code, proc) {
+    var m = this.MAT[code]; if (!m) return 1.05;
+    if (proc.indexOf('CAST')>=0||proc.indexOf('DIE')>=0) return m.sc;
+    if (proc.indexOf('FORG')>=0||proc.indexOf('STAMP')>=0) return m.sc; // ss falls back to sc
+    if (proc.indexOf('MACH')>=0) return m.sm;
+    return m.sd;
+  },
+  calc: function(config_key, power_hp, emission_tech, reliability, co, wo) {
+    co = co || 0; wo = wo || 0;
+    // Step 1 — Parse config key e.g. "4CYL_HEV" → cylinders=4, hybrid_tech="HEV"
+    var parts = config_key.split('_');
+    var cylinders = parseInt(parts[0]) || 4;
+    var hybrid_tech = parts.slice(1).join('_'); // "ICE", "HEV", "PHEV", "TURBO", etc.
+    var scale = cylinders / 4;
+
+    // Step 2 — Build base material lines scaled by cylinder count
+    var base4 = this.BASE_BOM[4];
+    var mats = base4.map(function(r) {
+      var ms = _ICE_PC.MAT[r[0]] || {p:1.0,sc:1.05,sm:1.05,sd:1.05,n:r[0]};
+      var net = r[1] * scale;
+      var sc  = _ICE_PC.scrap(r[0], r[2]);
+      return {code:r[0],name:ms.n,net:net,sc:sc,gross:net*sc,price:ms.p,cost:net*sc*ms.p,proc:r[2],spec:false,label:""};
+    });
+
+    // Step 3 — Append hybrid BOM lines (not scaled — motor size is fixed)
+    var hybrid_rows = this.HYBRID_BOM[hybrid_tech] || [];
+    hybrid_rows.forEach(function(r) {
+      var ms = _ICE_PC.MAT[r[0]] || {p:1.0,sc:1.05,sm:1.05,sd:1.05,n:r[0]};
+      var sc = _ICE_PC.scrap(r[0], r[2]);
+      mats.push({code:r[0],name:ms.n+' ('+hybrid_tech+')',net:r[1],sc:sc,gross:r[1]*sc,price:ms.p,cost:r[1]*sc*ms.p,proc:r[2],spec:true,label:hybrid_tech});
+    });
+
+    // Step 4 — Build process lines scaled by cylinder count; add hybrid assembly throughput
+    var base_procs4 = this.BASE_PROCS[4];
+    var hybrid_asm_kg = hybrid_rows.reduce(function(s,r){return s+r[1];},0);
+    var procs = base_procs4.map(function(r) {
+      var ps = _ICE_PC.PROC[r[0]] || {m:0.5,l:1.0,e:5.0,n:r[0]};
+      var gross = r[1]*scale + (r[0]==='ENGINE_ASSEMBLY'||r[0]==='DYNO_TEST' ? hybrid_asm_kg : 0);
+      return {code:r[0],name:ps.n,gross:gross,m:ps.m,l:ps.l,e:ps.e,spec:false,label:""};
+    });
+
+    // Step 5 — Spec driver A: Power (baseline = 25 hp/cylinder)
+    var BASE_HP_PER_CYL = 25;
+    var pw_f = Math.max(0, (power_hp/cylinders - BASE_HP_PER_CYL) / BASE_HP_PER_CYL);
+    if (pw_f > 0.01) {
+      var extra_kg = 4 * pw_f * scale;
+      mats.push({code:'FORGED_STEEL',name:'Heavier Internals (Power)',
+        net:extra_kg,sc:1.05,gross:extra_kg*1.05,price:3.20,cost:extra_kg*1.05*3.20,
+        proc:'HOT_FORGING',spec:true,label:'Power'});
+      procs.push({code:'ENGINE_MACHINING',name:'High-Power Machining (Power)',
+        gross:extra_kg*1.05,m:3.50,l:2.00,e:15.0,spec:true,label:'Power'});
+    }
+
+    // Step 6 — Spec driver B: Emission Tech (catalyst housings + PGM at Euro 6d level)
+    var et_delta = Math.max(0, emission_tech - 0.1);
+    if (et_delta > 0.01) {
+      var et_kg = 2 * (et_delta/0.9) * scale;
+      mats.push({code:'STEEL_ALLOY',name:'Exhaust Aftertreatment (Emission Tech)',
+        net:et_kg,sc:1.08,gross:et_kg*1.08,price:2.40,cost:et_kg*1.08*2.40,
+        proc:'ENGINE_ASSEMBLY',spec:true,label:'Emission Tech'});
+      if (emission_tech > 0.70) {
+        var pgm_kg = 0.3 * (emission_tech - 0.70) / 0.30;
+        mats.push({code:'RARE_EARTH_MAG',name:'PGM Catalyst (Emission Tech)',
+          net:pgm_kg,sc:1.02,gross:pgm_kg*1.02,price:45.0,cost:pgm_kg*1.02*45.0,
+          proc:'ENGINE_ASSEMBLY',spec:true,label:'Emission Tech'});
+      }
+    }
+
+    // Step 7 — Spec driver C: Reliability (precision labor + seal grade premium)
+    if (reliability > 0.001) {
+      procs.forEach(function(l){
+        if (_ICE_PC.PRECISION[l.code]) l.l = l.l * (1 + reliability * 0.20);
+      });
+      mats.forEach(function(l){
+        if (l.code === 'RUBBER_SEAL' && !l.spec) {
+          l.price = l.price * (1 + reliability * 0.15);
+          l.cost  = l.gross * l.price;
+        }
+      });
+    }
+
+    // Step 8a — Weight Optimization: substitute cast iron block → aluminum alloy block
+    if (wo > 0.001) {
+      var wf = wo * 0.60; // max 60% of cast iron replaced at wo=1
+      mats.forEach(function(l){
+        if (l.code === 'CAST_IRON_BLOCK' && !l.spec) {
+          var alu_net = l.net * wf * 0.40; // aluminum block is ~40% the mass of equivalent cast iron
+          l.net   = l.net * (1 - wf);
+          l.gross = l.net * l.sc;
+          l.cost  = l.gross * l.price;
+          if (alu_net > 0.1) {
+            mats.push({code:'ALU_ALLOY_HEAD', name:'Aluminum Alloy Block (Weight Opt.)',
+              net:alu_net, sc:1.18, gross:alu_net*1.18, price:3.80, cost:alu_net*1.18*3.80,
+              proc:'ALU_DIE_CAST', spec:true, label:'Weight Opt.'});
+            procs.push({code:'ALU_DIE_CAST', name:'Aluminum Block Die Casting (Weight Opt.)',
+              gross:alu_net*1.18, m:0.85, l:0.60, e:20.0, spec:true, label:'Weight Opt.'});
+          }
+        }
+      });
+    }
+
+    // Step 8b — Cost Optimization: reduce scrap rates + labor hours, embedded in BOM lines (mirrors _PC)
+    if (co > 0.001) {
+      var sr = co * 0.20, lr = co * 0.10;
+      mats.forEach(function(l){ l.sc = Math.max(1.0, l.sc*(1-sr)); l.gross = l.net*l.sc; l.cost = l.gross*l.price; });
+      procs.forEach(function(l){ l.l = l.l*(1-lr); });
+    }
+
+    // Step 8 — Compute process costs (identical formula to _PC)
+    procs.forEach(function(l){
+      l.mach  = Math.round(l.gross*l.m*100)/100;
+      l.lhrs  = Math.round(l.gross*l.l/100*1000)/1000;
+      l.lcost = Math.round(l.lhrs*_ICE_PC.US_LABOR*100)/100;
+      l.ekwh  = Math.round(l.gross*l.e/100*1000)/1000;
+      l.ecost = Math.round(l.ekwh*_ICE_PC.US_ELEC*100)/100;
+      l.total = Math.round((l.mach+l.lcost+l.ecost)*100)/100;
+    });
+    mats.forEach(function(l){
+      l.gross = Math.round(l.gross*100)/100;
+      l.net   = Math.round(l.net*100)/100;
+      l.cost  = Math.round(l.gross*l.price*100)/100;
+    });
+
+    // Step 9 — Cost build-up (identical formula to _PC)
+    var tm=mats.reduce(function(s,l){return s+l.cost;},0);
+    var tp=procs.reduce(function(s,l){return s+l.total;},0);
+    var tnw=mats.reduce(function(s,l){return s+l.net;},0);
+    var tgw=mats.reduce(function(s,l){return s+l.gross;},0);
+    var dc=tm+tp;
+    var sc85=dc*0.85, soh=sc85*0.05, spf=sc85*0.10, stot=sc85*1.15, oem=dc*0.15, std=stot+oem;
+    var tpc=std;
+
+    // Step 10 — R&D cost (same exponential curve as _PC)
+    var HYBRID_RD_PREM = {HEV:60,PHEV:120,REEV:100};
+    var brd = this.BASE_RD[config_key] || (cylinders*40 + (HYBRID_RD_PREM[hybrid_tech]||0));
+    var pow_d  = 0.15 * Math.min(1, pw_f/2);
+    var emis_d = 0.10 * (emission_tech / 1.0);
+    var rel_d  = 0.08 * (Math.exp(3*reliability)-1) / (Math.exp(3)-1);
+    var cord   = 0.10 * (Math.exp(3*co)-1) / (Math.exp(3)-1);
+    var word   = 0.10 * (Math.exp(3*wo)-1) / (Math.exp(3)-1);
+    var total_rd    = Math.round(brd*(1+pow_d+emis_d+rel_d+cord+word)*10)/10;
+    var rd_fte_cost = Math.round(total_rd*this.RD_FTE_SHARE*100)/100;
+    var rd_mat_cost = Math.round(total_rd*this.RD_MAT_SHARE*100)/100;
+    var fte_months  = Math.round(rd_fte_cost*1000000/this.US_FTE_RATE_MONTH/10)*10;
+    var rd_prem_pct = Math.round((pow_d+emis_d+rel_d+cord+word)*10000)/100;
+
+    // Step 11 — Return (same shape as _PC.calc())
+    return {
+      module_type: 'ice_pwt',
+      pwt_compatibility: 'ice_only',
+      config_key: config_key,
+      total_net_weight_kg:     Math.round(tnw*10)/10,
+      total_gross_weight_kg:   Math.round(tgw*10)/10,
+      total_material_cost_eur: Math.round(tm*100)/100,
+      total_process_cost_eur:  Math.round(tp*100)/100,
+      direct_cost_eur:         Math.round(dc*100)/100,
+      supplier_content_eur:    Math.round(sc85*100)/100,
+      supplier_overhead_eur:   Math.round(soh*100)/100,
+      supplier_profit_eur:     Math.round(spf*100)/100,
+      supplier_total_eur:      Math.round(stot*100)/100,
+      oem_internal_eur:        Math.round(oem*100)/100,
+      total_std_direct_eur:    Math.round(std*100)/100,
+      std_platform_tpc_eur:    Math.round(tpc*100)/100,
+      cost_opt_reduction_pct:  0, // Reduction is embedded in BOM lines, same as _PC
+      base_rd_cost_eur_m:      brd,
+      rd_premium_pct:          rd_prem_pct,
+      total_rd_cost_eur_m:     total_rd,
+      std_rd_fte_cost_eur_m:   rd_fte_cost,
+      std_rd_material_eur_m:   rd_mat_cost,
+      std_fte_months:          fte_months,
+      std_fte_rate_eur_month:  this.US_FTE_RATE_MONTH,
+      rd_material_index:       this.RD_MAT_INDEX,
+      material_lines: mats.map(function(l){return {
+        material_code:l.code, material_name:l.name,
+        net_weight_kg:l.net, scrap_rate:l.sc, gross_weight_kg:l.gross,
+        material_price_eur_kg:l.price, material_cost_eur:l.cost,
+        spec_driven:l.spec, spec_label:l.label};}),
+      process_lines: procs.map(function(l){return {
+        process_code:l.code, process_name:l.name,
+        gross_weight_kg:l.gross, machine_cost_eur:l.mach,
+        labor_hours:l.lhrs, labor_cost_eur:l.lcost,
+        energy_kwh:l.ekwh, energy_cost_eur:l.ecost,
+        process_cost_eur:l.total, spec_driven:l.spec, spec_label:l.label};}),
+    };
+  }
+};
+
+function fetchICEPWTStdCost() {
+  if (currentModType !== 'ice_pwt') return;
+  var legEl = document.getElementById('mod-cost-legacy');
+  if (legEl) legEl.style.display = 'none';
+  var configKey = document.getElementById('mod-secondary-select')?.value;
+  if (!configKey) return;
+  var power_hp      = parseFloat(document.getElementById('msr-power')?.value      || 100);
+  var emission_tech = parseFloat(document.getElementById('msr-emission_tech')?.value || 0.1);
+  var reliability   = parseFloat(document.getElementById('msr-reliability')?.value  || 50) / 100;
+  var co            = parseFloat(document.getElementById('cost-opt-slider')?.value  || 0) / 100;
+  var wo            = parseFloat(document.getElementById('weight-opt-slider')?.value || 0) / 100;
+  try {
+    var r = _ICE_PC.calc(configKey, power_hp, emission_tech, reliability, co, wo);
+    if (!r) { console.warn('No BOM for ICE PWT config', configKey); return; }
+    var bomEl  = document.getElementById('mod-cost-bom');
+    var legEl2 = document.getElementById('mod-cost-legacy');
+    var emEl   = document.getElementById('mod-cost-empty');
+    if (emEl) emEl.style.display = 'none';
+    window._lastICEPWTCalc = r;
+    _renderSingleVariantLayout(r, bomEl, legEl2);
+    var tpcEl = document.getElementById('mc-tpc');
+    if (tpcEl) tpcEl.textContent = '€' + Math.round(r.std_platform_tpc_eur).toLocaleString() + '/veh';
+  } catch(e) { console.warn('ICE PWT BOM cost error:', e); }
 }
 
 async function fetchCostPreview() {
