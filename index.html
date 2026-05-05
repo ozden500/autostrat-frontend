@@ -2817,7 +2817,7 @@ async function modTab(type, el) {
 const MOD_STEP_LABELS = {
   platform: {a:'Platform Size',    b:'PWT Compatibility'},
   ice_pwt:  {a:'Cylinder Count',   b:'Hybrid Technology'},
-  epwt:     {a:'Performance Class',b:null},
+  epwt:     {a:'Performance Class',b:'Make or Buy'},
   tophat:   {a:'Vehicle Segment',  b:'Body Type'},
   eands:    {a:'ADAS Level',       b:null},
 };
@@ -2836,6 +2836,7 @@ function getSecondaryOptions(type, configs, primaryVal) {
   if (type==='platform') return configs.filter(c=>c.size_code===primaryVal).map(c=>({val:c.config_key, label:c.energy_type}));
   if (type==='ice_pwt')  return configs.filter(c=>String(c.cylinders)===primaryVal).map(c=>({val:c.config_key, label:c.hybrid_tech}));
   if (type==='tophat')   return configs.filter(c=>c.segment_code===primaryVal).map(c=>({val:c.config_key, label:c.body_type}));
+  if (type==='epwt')     return [{val:primaryVal+'_MAKE',label:'Make (Own Development)'},{val:primaryVal+'_BUY',label:'Buy (Sourced from Supplier)'}];
   return [];
 }
 
@@ -2924,7 +2925,7 @@ function onBaseConfigChange() {
   // Show cost optimization slider for platform module
   var costOptRow = document.getElementById('mod-cost-opt-row');
   var weightOptRow = document.getElementById('mod-weight-opt-row');
-  var showOpt = (currentModType === 'platform' || currentModType === 'ice_pwt');
+  var showOpt = (currentModType === 'platform' || currentModType === 'ice_pwt' || currentModType === 'epwt');
   if (costOptRow) costOptRow.style.display = showOpt ? '' : 'none';
   if (weightOptRow) weightOptRow.style.display = showOpt ? '' : 'none';
   // For types with secondary, read from secondary select
@@ -2941,6 +2942,7 @@ function onBaseConfigChange() {
   if (emEl) emEl.style.display = 'none';
   if (currentModType === 'platform') fetchPlatformStdCost();
   else if (currentModType === 'ice_pwt') fetchICEPWTStdCost();
+  else if (currentModType === 'epwt') fetchEPWTStdCost();
   document.getElementById('mod-submit-area').style.display='block';
   setDevPath('new', document.getElementById('path-new'));
   scheduleCostCalc();
@@ -3068,6 +3070,8 @@ function scheduleCostCalc() {
     costDebounceTimer = setTimeout(fetchPlatformStdCost, 400);
   } else if (currentModType === 'ice_pwt') {
     costDebounceTimer = setTimeout(fetchICEPWTStdCost, 400);
+  } else if (currentModType === 'epwt') {
+    costDebounceTimer = setTimeout(fetchEPWTStdCost, 400);
   } else {
     costDebounceTimer = setTimeout(fetchCostPreview, 400);
   }
@@ -3596,6 +3600,8 @@ function _renderSingleVariantLayout(r, bomEl, legEl) {
   var color, label;
   if (r.module_type === 'ice_pwt') {
     color = 'var(--orange)'; label = 'ICE Powertrain';
+  } else if (r.module_type === 'epwt') {
+    color = 'var(--cyan)'; label = r.make_buy === 'BUY' ? 'e-Motor (Sourced)' : 'e-Motor (Make)';
   } else {
     var isIce = pwt === 'ice_only';
     color = isIce ? 'var(--gold)' : 'var(--green)';
@@ -4225,6 +4231,291 @@ function fetchICEPWTStdCost() {
     var tpcEl = document.getElementById('mc-tpc');
     if (tpcEl) tpcEl.textContent = '€' + Math.round(r.std_platform_tpc_eur).toLocaleString() + '/veh';
   } catch(e) { console.warn('ICE PWT BOM cost error:', e); }
+}
+
+// ════════════════════════════════════════════════════════════════════
+// ePWT COST ENGINE v1.0.0 — Client-Side JavaScript
+// Mirrors _ICE_PC structure. Config key = epwt_class + '_MAKE'|'_BUY'.
+// ════════════════════════════════════════════════════════════════════
+var _EPWT_PC = {
+  VERSION: "1.0.0",
+  US_LABOR: 58.0, US_ELEC: 0.08,
+  US_FTE_RATE_MONTH: 13333, RD_FTE_SHARE: 0.60, RD_MAT_SHARE: 0.40, RD_MAT_INDEX: 1.00,
+  MAT: {
+    ELEC_STEEL_LAMI: {p:4.50, sc:1.30, sm:1.20, sd:1.05, n:"Electrical Steel Laminations"},
+    COPPER_WINDING:  {p:9.00, sc:1.08, sm:1.05, sd:1.05, n:"Copper Winding Wire"},
+    RARE_EARTH_MAG:  {p:45.0, sc:1.02, sm:1.08, sd:1.03, n:"Rare Earth Magnets (NdFeB)"},
+    ALU_HOUSING:     {p:3.80, sc:1.18, sm:1.15, sd:1.05, n:"Aluminum Motor Housing"},
+    STEEL_SHAFT:     {p:3.20, sc:1.05, sm:1.25, sd:1.08, n:"Steel Shaft & Bearings"},
+    INSULATION_POLY: {p:12.0, sc:1.00, sm:1.02, sd:1.03, n:"Slot Insulation & Potting"},
+  },
+  PROC: {
+    LAMI_STAMP:      {m:0.90, l:1.50, e:12.0, n:"Lamination Blanking & Stacking"},
+    COIL_WINDING:    {m:1.20, l:3.00, e:8.0,  n:"Automated Coil Winding"},
+    MAGNET_ASSEMBLY: {m:0.50, l:4.00, e:5.0,  n:"Magnet Magnetising & Rotor Assembly"},
+    ALU_DIE_CAST:    {m:0.85, l:0.60, e:20.0, n:"Aluminum Housing Die Casting"},
+    SHAFT_MACHINING: {m:2.50, l:2.00, e:12.0, n:"Shaft Turning & Bearing Fitting"},
+    MOTOR_ASSEMBLY:  {m:0.15, l:2.00, e:3.0,  n:"Final Motor Assembly"},
+    MOTOR_TEST:      {m:0.50, l:0.80, e:18.0, n:"Electrical Test & Run-In"},
+  },
+  PRECISION: {COIL_WINDING:1, MAGNET_ASSEMBLY:1, SHAFT_MACHINING:1},
+  BASE_BOM: {
+    "LOW_POWER":   [["ELEC_STEEL_LAMI",22,"LAMI_STAMP"],["COPPER_WINDING",3,"COIL_WINDING"],
+                    ["RARE_EARTH_MAG",0.8,"MAGNET_ASSEMBLY"],["ALU_HOUSING",10,"ALU_DIE_CAST"],
+                    ["STEEL_SHAFT",3,"SHAFT_MACHINING"],["INSULATION_POLY",0.8,"MOTOR_ASSEMBLY"]],
+    "MAINSTREAM":  [["ELEC_STEEL_LAMI",40,"LAMI_STAMP"],["COPPER_WINDING",6,"COIL_WINDING"],
+                    ["RARE_EARTH_MAG",1.5,"MAGNET_ASSEMBLY"],["ALU_HOUSING",18,"ALU_DIE_CAST"],
+                    ["STEEL_SHAFT",5,"SHAFT_MACHINING"],["INSULATION_POLY",1.5,"MOTOR_ASSEMBLY"]],
+    "PERFORMANCE": [["ELEC_STEEL_LAMI",65,"LAMI_STAMP"],["COPPER_WINDING",10,"COIL_WINDING"],
+                    ["RARE_EARTH_MAG",2.5,"MAGNET_ASSEMBLY"],["ALU_HOUSING",28,"ALU_DIE_CAST"],
+                    ["STEEL_SHAFT",8,"SHAFT_MACHINING"],["INSULATION_POLY",2.5,"MOTOR_ASSEMBLY"]],
+    "HIGH_PERF":   [["ELEC_STEEL_LAMI",100,"LAMI_STAMP"],["COPPER_WINDING",16,"COIL_WINDING"],
+                    ["RARE_EARTH_MAG",4.0,"MAGNET_ASSEMBLY"],["ALU_HOUSING",42,"ALU_DIE_CAST"],
+                    ["STEEL_SHAFT",12,"SHAFT_MACHINING"],["INSULATION_POLY",4.0,"MOTOR_ASSEMBLY"]],
+    "ULTRA_HP":    [["ELEC_STEEL_LAMI",140,"LAMI_STAMP"],["COPPER_WINDING",22,"COIL_WINDING"],
+                    ["RARE_EARTH_MAG",6.0,"MAGNET_ASSEMBLY"],["ALU_HOUSING",60,"ALU_DIE_CAST"],
+                    ["STEEL_SHAFT",18,"SHAFT_MACHINING"],["INSULATION_POLY",6.0,"MOTOR_ASSEMBLY"]],
+  },
+  BASE_PROCS: {
+    "LOW_POWER":   [["LAMI_STAMP",28.6],["COIL_WINDING",3.15],["MAGNET_ASSEMBLY",0.82],
+                    ["ALU_DIE_CAST",11.8],["SHAFT_MACHINING",3.75],["MOTOR_ASSEMBLY",39.6],["MOTOR_TEST",39.6]],
+    "MAINSTREAM":  [["LAMI_STAMP",52],["COIL_WINDING",6.3],["MAGNET_ASSEMBLY",1.53],
+                    ["ALU_DIE_CAST",21.2],["SHAFT_MACHINING",6.25],["MOTOR_ASSEMBLY",72],["MOTOR_TEST",72]],
+    "PERFORMANCE": [["LAMI_STAMP",84.5],["COIL_WINDING",10.5],["MAGNET_ASSEMBLY",2.55],
+                    ["ALU_DIE_CAST",33],["SHAFT_MACHINING",10],["MOTOR_ASSEMBLY",116],["MOTOR_TEST",116]],
+    "HIGH_PERF":   [["LAMI_STAMP",130],["COIL_WINDING",16.8],["MAGNET_ASSEMBLY",4.08],
+                    ["ALU_DIE_CAST",49.6],["SHAFT_MACHINING",15],["MOTOR_ASSEMBLY",178],["MOTOR_TEST",178]],
+    "ULTRA_HP":    [["LAMI_STAMP",182],["COIL_WINDING",23.1],["MAGNET_ASSEMBLY",6.12],
+                    ["ALU_DIE_CAST",70.8],["SHAFT_MACHINING",22.5],["MOTOR_ASSEMBLY",252],["MOTOR_TEST",252]],
+  },
+  BASE_POWER: {"LOW_POWER":50,"MAINSTREAM":150,"PERFORMANCE":350,"HIGH_PERF":600,"ULTRA_HP":1000},
+  BASE_RD:    {"LOW_POWER":60,"MAINSTREAM":120,"PERFORMANCE":180,"HIGH_PERF":250,"ULTRA_HP":350},
+  scrap: function(code, proc) {
+    var m = this.MAT[code]; if (!m) return 1.05;
+    if (proc.indexOf('CAST')>=0||proc.indexOf('DIE')>=0||proc.indexOf('STAMP')>=0) return m.sc;
+    if (proc.indexOf('MACH')>=0) return m.sm;
+    return m.sd;
+  },
+  calc: function(config_key, power_kw, efficiency, reliability, co, wo) {
+    co = co||0; wo = wo||0;
+
+    // Step 1 — Parse config key: 'MAINSTREAM_MAKE' → epwt_class='MAINSTREAM', make_buy='MAKE'
+    var parts      = config_key.split('_');
+    var make_buy   = parts[parts.length-1];           // 'MAKE' or 'BUY'
+    var epwt_class = parts.slice(0,-1).join('_');     // 'MAINSTREAM', 'HIGH_PERF', etc.
+
+    var base_bom   = this.BASE_BOM[epwt_class];
+    var base_procs = this.BASE_PROCS[epwt_class];
+    if (!base_bom) return null;
+
+    // Step 2 — Build base material lines
+    var mats = base_bom.map(function(r) {
+      var ms = _EPWT_PC.MAT[r[0]] || {p:1.0,sc:1.05,sm:1.05,sd:1.05,n:r[0]};
+      var sc = _EPWT_PC.scrap(r[0], r[2]);
+      return {code:r[0],name:ms.n,net:r[1],sc:sc,gross:r[1]*sc,price:ms.p,cost:r[1]*sc*ms.p,proc:r[2],spec:false,label:""};
+    });
+
+    // Step 3 — Build base process lines
+    var procs = base_procs.map(function(r) {
+      var ps = _EPWT_PC.PROC[r[0]] || {m:0.5,l:1.0,e:5.0,n:r[0]};
+      return {code:r[0],name:ps.n,gross:r[1],m:ps.m,l:ps.l,e:ps.e,spec:false,label:""};
+    });
+
+    // Step 4 — Spec driver A: Power (extra copper + magnets above class baseline)
+    var base_pw = this.BASE_POWER[epwt_class] || 150;
+    var pw_f = Math.max(0, (power_kw - base_pw) / base_pw);
+    if (pw_f > 0.01) {
+      var base_cu  = base_bom.find(function(r){return r[0]==='COPPER_WINDING';})[1];
+      var base_mag = base_bom.find(function(r){return r[0]==='RARE_EARTH_MAG';})[1];
+      var extra_cu  = base_cu  * pw_f * 0.30;
+      var extra_mag = base_mag * pw_f * 0.20;
+      mats.push({code:'COPPER_WINDING',name:'Extra Windings (Power)',
+        net:extra_cu,sc:1.08,gross:extra_cu*1.08,price:9.00,cost:extra_cu*1.08*9.00,
+        proc:'COIL_WINDING',spec:true,label:'Power'});
+      mats.push({code:'RARE_EARTH_MAG',name:'Extra Magnets (Power)',
+        net:extra_mag,sc:1.02,gross:extra_mag*1.02,price:45.0,cost:extra_mag*1.02*45.0,
+        proc:'MAGNET_ASSEMBLY',spec:true,label:'Power'});
+      procs.push({code:'COIL_WINDING',name:'Extra Coil Winding (Power)',
+        gross:extra_cu*1.08,m:1.20,l:3.00,e:8.0,spec:true,label:'Power'});
+    }
+
+    // Step 5 — Spec driver B: Efficiency (premium lamination grade + insulation above 0.70)
+    var eff_delta = Math.max(0, efficiency - 0.70);
+    if (eff_delta > 0.01) {
+      var base_lami_net = base_bom.find(function(r){return r[0]==='ELEC_STEEL_LAMI';})[1];
+      var lami_extra = base_lami_net * eff_delta * 0.15;
+      mats.push({code:'ELEC_STEEL_LAMI',name:'Premium Lamination Grade (Efficiency)',
+        net:lami_extra,sc:1.30,gross:lami_extra*1.30,price:4.50,cost:lami_extra*1.30*4.50,
+        proc:'LAMI_STAMP',spec:true,label:'Efficiency'});
+      procs.push({code:'COIL_WINDING',name:'High-Fill Winding (Efficiency)',
+        gross:lami_extra*1.30,m:1.20,l:4.00,e:8.0,spec:true,label:'Efficiency'});
+      mats.forEach(function(l){
+        if (l.code==='INSULATION_POLY'&&!l.spec){
+          l.price=l.price*(1+eff_delta*0.30); l.cost=l.gross*l.price;
+        }
+      });
+    }
+
+    // Step 6 — Weight Optimization: topology-optimized housing + thin-gauge lami
+    if (wo > 0.001) {
+      mats.forEach(function(l){
+        if (l.code==='ALU_HOUSING'&&!l.spec) {
+          l.net=l.net*(1-wo*0.35); l.gross=l.net*l.sc; l.cost=l.gross*l.price;
+        }
+        if (l.code==='ELEC_STEEL_LAMI'&&!l.spec) {
+          var saved_net = l.net * wo * 0.15;
+          l.net=l.net*(1-wo*0.15); l.gross=l.net*l.sc; l.cost=l.gross*l.price;
+          if (saved_net > 0.5) {
+            var tg_net = saved_net * 0.70;
+            mats.push({code:'ELEC_STEEL_LAMI',name:'Thin-Gauge Lami (Weight Opt.)',
+              net:tg_net,sc:1.35,gross:tg_net*1.35,price:6.50,cost:tg_net*1.35*6.50,
+              proc:'LAMI_STAMP',spec:true,label:'Weight Opt.'});
+          }
+        }
+      });
+    }
+
+    // Step 7 — Cost Optimization: reduce scrap rates + labor hours, embedded in BOM (mirrors _PC)
+    if (co > 0.001) {
+      var sr=co*0.20, lr=co*0.10;
+      mats.forEach(function(l){l.sc=Math.max(1.0,l.sc*(1-sr));l.gross=l.net*l.sc;l.cost=l.gross*l.price;});
+      procs.forEach(function(l){l.l=l.l*(1-lr);});
+    }
+
+    // Step 8 — Reliability: precision process labor + insulation price premium
+    if (reliability > 0.001) {
+      procs.forEach(function(l){
+        if (_EPWT_PC.PRECISION[l.code]) l.l=l.l*(1+reliability*0.20);
+      });
+      mats.forEach(function(l){
+        if (l.code==='INSULATION_POLY'&&!l.spec){
+          l.price=l.price*(1+reliability*0.15); l.cost=l.gross*l.price;
+        }
+      });
+    }
+
+    // Step 9 — Compute process costs (identical formula to _PC)
+    procs.forEach(function(l){
+      l.mach  = Math.round(l.gross*l.m*100)/100;
+      l.lhrs  = Math.round(l.gross*l.l/100*1000)/1000;
+      l.lcost = Math.round(l.lhrs*_EPWT_PC.US_LABOR*100)/100;
+      l.ekwh  = Math.round(l.gross*l.e/100*1000)/1000;
+      l.ecost = Math.round(l.ekwh*_EPWT_PC.US_ELEC*100)/100;
+      l.total = Math.round((l.mach+l.lcost+l.ecost)*100)/100;
+    });
+    mats.forEach(function(l){
+      l.gross = Math.round(l.gross*100)/100;
+      l.net   = Math.round(l.net*100)/100;
+      l.cost  = Math.round(l.gross*l.price*100)/100;
+    });
+
+    var tm=mats.reduce(function(s,l){return s+l.cost;},0);
+    var tp=procs.reduce(function(s,l){return s+l.total;},0);
+    var tnw=mats.reduce(function(s,l){return s+l.net;},0);
+    var tgw=mats.reduce(function(s,l){return s+l.gross;},0);
+    var dc=tm+tp;
+
+    // Step 10 — Cost build-up: Make uses standard 85/15 split; Buy applies full supplier margin
+    var sc85, soh, spf, stot, oem, std, tpc;
+    if (make_buy === 'BUY') {
+      sc85 = Math.round(dc*1.00*100)/100;
+      soh  = Math.round(dc*0.05*100)/100;
+      spf  = Math.round(dc*0.20*100)/100;
+      stot = Math.round(dc*1.25*100)/100;
+      oem  = Math.round(dc*0.05*100)/100;
+      std  = Math.round((stot+oem)*100)/100;
+      tpc  = std;
+    } else {
+      sc85 = Math.round(dc*0.85*100)/100;
+      soh  = Math.round(sc85*0.05*100)/100;
+      spf  = Math.round(sc85*0.10*100)/100;
+      stot = Math.round(sc85*1.15*100)/100;
+      oem  = Math.round(dc*0.15*100)/100;
+      std  = Math.round((stot+oem)*100)/100;
+      tpc  = std;
+    }
+
+    // Step 11 — R&D (Buy: integration + qualification only, ~28% of Make R&D)
+    var brd = this.BASE_RD[epwt_class] || 120;
+    var pow_d  = 0.15 * Math.min(1, pw_f/2);
+    var eff_d  = 0.12 * efficiency;
+    var rel_d  = 0.08*(Math.exp(3*reliability)-1)/(Math.exp(3)-1);
+    var cord   = 0.10*(Math.exp(3*co)-1)/(Math.exp(3)-1);
+    var word   = 0.10*(Math.exp(3*wo)-1)/(Math.exp(3)-1);
+    var total_rd, rd_prem_pct;
+    if (make_buy === 'BUY') {
+      total_rd    = Math.round(brd*0.28*(1+rel_d+cord)*10)/10;
+      rd_prem_pct = Math.round((rel_d+cord)*10000)/100;
+    } else {
+      total_rd    = Math.round(brd*(1+pow_d+eff_d+rel_d+cord+word)*10)/10;
+      rd_prem_pct = Math.round((pow_d+eff_d+rel_d+cord+word)*10000)/100;
+    }
+    var rd_fte_cost = Math.round(total_rd*this.RD_FTE_SHARE*100)/100;
+    var rd_mat_cost = Math.round(total_rd*this.RD_MAT_SHARE*100)/100;
+    var fte_months  = Math.round(rd_fte_cost*1000000/this.US_FTE_RATE_MONTH/10)*10;
+
+    return {
+      module_type: 'epwt', make_buy: make_buy, epwt_class: epwt_class,
+      pwt_compatibility: 'ice_only',
+      total_net_weight_kg:     Math.round(tnw*10)/10,
+      total_gross_weight_kg:   Math.round(tgw*10)/10,
+      total_material_cost_eur: Math.round(tm*100)/100,
+      total_process_cost_eur:  Math.round(tp*100)/100,
+      direct_cost_eur:         Math.round(dc*100)/100,
+      supplier_content_eur:    sc85,
+      supplier_overhead_eur:   soh,
+      supplier_profit_eur:     spf,
+      supplier_total_eur:      stot,
+      oem_internal_eur:        oem,
+      total_std_direct_eur:    std,
+      std_platform_tpc_eur:    Math.round(tpc*100)/100,
+      cost_opt_reduction_pct:  0,
+      base_rd_cost_eur_m:      make_buy==='BUY' ? Math.round(brd*0.28*10)/10 : brd,
+      rd_premium_pct:          rd_prem_pct,
+      total_rd_cost_eur_m:     total_rd,
+      std_rd_fte_cost_eur_m:   rd_fte_cost,
+      std_rd_material_eur_m:   rd_mat_cost,
+      std_fte_months:          fte_months,
+      std_fte_rate_eur_month:  this.US_FTE_RATE_MONTH,
+      rd_material_index:       this.RD_MAT_INDEX,
+      material_lines: mats.map(function(l){return {
+        material_code:l.code, material_name:l.name,
+        net_weight_kg:l.net, scrap_rate:l.sc, gross_weight_kg:l.gross,
+        material_price_eur_kg:l.price, material_cost_eur:l.cost,
+        spec_driven:l.spec, spec_label:l.label};}),
+      process_lines: procs.map(function(l){return {
+        process_code:l.code, process_name:l.name,
+        gross_weight_kg:l.gross, machine_cost_eur:l.mach,
+        labor_hours:l.lhrs, labor_cost_eur:l.lcost,
+        energy_kwh:l.ekwh, energy_cost_eur:l.ecost,
+        process_cost_eur:l.total, spec_driven:l.spec, spec_label:l.label};}),
+    };
+  }
+};
+
+function fetchEPWTStdCost() {
+  if (currentModType !== 'epwt') return;
+  var legEl = document.getElementById('mod-cost-legacy');
+  if (legEl) legEl.style.display = 'none';
+  var configKey = document.getElementById('mod-secondary-select')?.value;
+  if (!configKey) return;
+  var power_kw    = parseFloat(document.getElementById('msr-power_kw')?.value    || 150);
+  var efficiency  = parseFloat(document.getElementById('msr-efficiency')?.value   || 0.7);
+  var reliability = parseFloat(document.getElementById('msr-reliability')?.value  || 50) / 100;
+  var co = parseFloat(document.getElementById('cost-opt-slider')?.value  || 0) / 100;
+  var wo = parseFloat(document.getElementById('weight-opt-slider')?.value || 0) / 100;
+  try {
+    var r = _EPWT_PC.calc(configKey, power_kw, efficiency, reliability, co, wo);
+    if (!r) { console.warn('No BOM for ePWT config', configKey); return; }
+    var bomEl  = document.getElementById('mod-cost-bom');
+    var legEl2 = document.getElementById('mod-cost-legacy');
+    var emEl   = document.getElementById('mod-cost-empty');
+    if (emEl) emEl.style.display = 'none';
+    window._lastEPWTCalc = r;
+    _renderSingleVariantLayout(r, bomEl, legEl2);
+    var tpcEl = document.getElementById('mc-tpc');
+    if (tpcEl) tpcEl.textContent = '€' + Math.round(r.std_platform_tpc_eur).toLocaleString() + '/veh';
+  } catch(e) { console.warn('ePWT BOM cost error:', e); }
 }
 
 async function fetchCostPreview() {
