@@ -9070,6 +9070,71 @@ function buildModuleOptions(modType, propKey, nextFn) {
       // Trigger cost calc after render
       setTimeout(function(){ onPropPlatformChange(); }, 150);
 
+    } else if (propKey === 'tophat') {
+      // ── TopHat BOM configurator (mirrors platform case) ──
+      if (!currentSel.specs) currentSel.specs = {};
+      var thSpecs = currentSel.specs;
+      var thSeg     = _prop.study ? _prop.study.segment_code : '';
+      var thSegUp   = thSeg ? thSeg.split('_')[0].toUpperCase() : '';
+      var thAvail   = (_propTopHatConfigs||[]).filter(function(c){return c.segment_code===thSeg;});
+      if (!thAvail.length && (_propTopHatConfigs||[]).length) thAvail = _propTopHatConfigs;
+      var thBodyOpts = thAvail.map(function(c){return '<option value="'+c.config_key+'"'+(thSpecs.config_key===c.config_key?' selected':'')+'>'+c.body_type+'</option>';}).join('');
+      var thCfgKey   = thSpecs.config_key || '';
+
+      html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:12px;">';
+
+      // LEFT: body type + spec sliders
+      html += '<div>';
+      html += '<div style="margin-bottom:10px;">';
+      html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">';
+      html += '<label class="ctrl-lbl-top" style="margin:0;">Body Type'+(thSeg?'<span style="font-size:9px;color:var(--green);margin-left:6px;">· '+thSegUp+'-Segment</span>':'')+'</label>';
+      html += '</div>';
+      html += '<select id="prop-th-config" onchange="onPropTopHatChange()" style="width:100%;background:var(--s3);border:1px solid var(--border2);border-radius:2px;color:var(--text);padding:6px 8px;font-size:12px;font-family:inherit;outline:none;">';
+      html += '<option value="">— select body type —</option>'+thBodyOpts;
+      html += '</select></div>';
+
+      function thPropSlider(id, label, min, max, step, defVal, unit, color) {
+        var cur = thSpecs[id] != null ? thSpecs[id] : defVal;
+        var disp = unit==='m3' ? parseFloat(cur).toFixed(1)+' m³' : unit==='pct01' ? Math.round(cur*100)+'%' : cur+'%';
+        var oi   = unit==='m3'
+          ? "document.getElementById('prop-th-"+id+"-val').textContent=parseFloat(this.value).toFixed(1)+' m³';onPropTopHatChange()"
+          : unit==='pct01'
+            ? "document.getElementById('prop-th-"+id+"-val').textContent=Math.round(this.value*100)+'%';onPropTopHatChange()"
+            : "document.getElementById('prop-th-"+id+"-val').textContent=this.value+'%';onPropTopHatChange()";
+        return '<div class="ctrl"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">'
+          +'<label class="ctrl-lbl-top" style="margin:0;">'+label+'</label>'
+          +'<span style="font-family:DM Mono,monospace;font-size:9px;color:'+color+';" id="prop-th-'+id+'-val">'+disp+'</span></div>'
+          +'<input type="range" min="'+min+'" max="'+max+'" step="'+step+'" value="'+cur+'" id="prop-th-'+id+'" class="spec-range"'
+          +' style="width:100%;accent-color:'+color+';margin:2px 0 4px;" oninput="'+oi+'"></div>';
+      }
+
+      html += thPropSlider('reliability','Reliability',0,100,1,50,'pct','var(--gold)');
+      html += thPropSlider('comfort',    'Comfort',    0,100,1,50,'pct','var(--purple)');
+      html += thPropSlider('safety',     'Safety',     0,100,1,50,'pct','var(--blue)');
+      html += '<div style="border-top:0.5px solid var(--border);margin:6px 0;"></div>';
+      html += thPropSlider('roominess',  'Roominess',  1.5,7.5,0.1,2.5,'m3','var(--cyan)');
+      html += thPropSlider('premiumness','Premiumness',0,1,0.01,0.3,'pct01','var(--orange)');
+      html += '</div>';
+
+      // RIGHT: live BOM preview
+      html += '<div><div style="font-family:DM Mono,monospace;font-size:8px;text-transform:uppercase;';
+      html += 'letter-spacing:1px;color:var(--purple);margin-bottom:8px;">Standard Cost Analysis</div>';
+      html += '<div id="prop-th-bom" style="font-size:10px;color:var(--muted2);overflow-y:auto;max-height:420px;">';
+      html += thCfgKey ? '' : 'Select body type to see cost breakdown';
+      html += '</div></div>';
+      html += '</div>'; // end grid
+
+      // Continue button
+      html += '<div style="margin-top:14px;display:flex;align-items:center;gap:12px;">';
+      html += '<button data-action="prop-continue" data-nextfn="' + nextFn + '" ';
+      html += 'style="font-family:DM Mono,monospace;font-size:9px;padding:6px 16px;border-radius:2px;';
+      html += 'border:1px solid rgba(167,139,250,.4);background:rgba(167,139,250,.08);color:var(--purple);cursor:pointer;">';
+      html += 'Continue →</button>';
+      html += '<span style="font-family:DM Mono,monospace;font-size:8px;color:var(--muted2);">Select body type to configure · development starts after proposal approval</span>';
+      html += '</div>';
+
+      setTimeout(function(){ onPropTopHatChange(); }, 150);
+
     } else {
       // ── Generic new-development for non-platform modules ──
       var sliderId = 'prop-new-' + propKey;
@@ -9382,57 +9447,7 @@ function buildTopHatSection() {
 }
 
 function renderTopHatBOMPanel() {
-  var container = document.getElementById('prop-tophat-content');
-  if (!container) return;
-  var seg = _prop.study ? _prop.study.segment_code : '';
-  var segUpper = seg ? seg.split('_')[0].toUpperCase() : '';
-  // Filter configs to match study segment
-  var avail = (_propTopHatConfigs || []).filter(function(c){ return c.segment_code === seg; });
-  if (!avail.length && _propTopHatConfigs && _propTopHatConfigs.length) avail = _propTopHatConfigs;
-  var bodyOpts = avail.map(function(c){ return '<option value="'+c.config_key+'">'+c.body_type+'</option>'; }).join('');
-
-  var h = '<div style="background:rgba(167,139,250,0.06);border:1px solid rgba(167,139,250,0.2);border-radius:6px;padding:14px;margin-bottom:14px;">';
-  h += '<div style="font-family:DM Mono,monospace;font-size:8px;color:var(--purple);text-transform:uppercase;letter-spacing:2px;margin-bottom:12px;">Top Hat Cost Explorer'+(seg?' <span style="color:var(--muted2);">· '+segUpper+'-Segment</span>':'')+'</div>';
-  h += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">';
-
-  // LEFT: controls
-  h += '<div>';
-  h += '<div style="margin-bottom:8px;"><label class="ctrl-lbl-top">Body Type</label>';
-  h += '<select id="prop-th-config" onchange="onPropTopHatChange()" style="width:100%;background:var(--s3);border:1px solid var(--border2);border-radius:2px;color:var(--text);padding:6px 8px;font-size:12px;font-family:inherit;outline:none;">';
-  h += '<option value="">— select body type —</option>' + bodyOpts + '</select></div>';
-
-  function thSlider(id, label, min, max, step, def, unit, color) {
-    var display = unit === 'm3' ? def.toFixed(1)+' m³' : (unit === 'pct01' ? Math.round(def*100)+'%' : def+'%');
-    var oninput = unit === 'm3'
-      ? "document.getElementById('prop-th-"+id+"-val').textContent=parseFloat(this.value).toFixed(1)+' m³';onPropTopHatChange()"
-      : unit === 'pct01'
-        ? "document.getElementById('prop-th-"+id+"-val').textContent=Math.round(this.value*100)+'%';onPropTopHatChange()"
-        : "document.getElementById('prop-th-"+id+"-val').textContent=this.value+'%';onPropTopHatChange()";
-    return '<div class="ctrl"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">'
-      + '<label class="ctrl-lbl-top" style="margin:0;">'+label+'</label>'
-      + '<span style="font-family:DM Mono,monospace;font-size:9px;color:'+color+';" id="prop-th-'+id+'-val">'+display+'</span></div>'
-      + '<input type="range" min="'+min+'" max="'+max+'" step="'+step+'" value="'+def+'" id="prop-th-'+id+'" class="spec-range"'
-      + ' style="width:100%;accent-color:'+color+';margin:2px 0 4px;" oninput="'+oninput+'"></div>';
-  }
-
-  h += thSlider('reliability', 'Reliability', 0, 100, 1, 50, 'pct', 'var(--gold)');
-  h += thSlider('comfort',     'Comfort',     0, 100, 1, 50, 'pct', 'var(--purple)');
-  h += thSlider('safety',      'Safety',      0, 100, 1, 50, 'pct', 'var(--blue)');
-  h += thSlider('roominess',   'Roominess',   1.5, 7.5, 0.1, 2.5, 'm3', 'var(--cyan)');
-  h += thSlider('premiumness', 'Premiumness', 0, 1, 0.01, 0.3, 'pct01', 'var(--orange)');
-  h += '</div>';
-
-  // RIGHT: BOM output
-  h += '<div style="overflow-y:auto;max-height:420px;">';
-  h += '<div style="font-family:DM Mono,monospace;font-size:8px;text-transform:uppercase;letter-spacing:1px;color:var(--purple);margin-bottom:8px;">Standard Cost Analysis</div>';
-  h += '<div id="prop-th-bom" style="font-size:10px;color:var(--muted2);">Select body type to see cost breakdown</div>';
-  h += '</div>';
-  h += '</div></div>';
-
-  // Library picker below
-  h += '<div id="prop-tophat-content-lib"></div>';
-  container.innerHTML = h;
-  buildModuleSection(4, 'tophat', 'tophat', 'prop-tophat-content-lib', 'advanceToEandS');
+  buildModuleSection(4, 'tophat', 'tophat', 'prop-tophat-content', 'advanceToEandS');
 }
 
 function onPropTopHatChange() {
@@ -9442,6 +9457,19 @@ function onPropTopHatChange() {
   var saf  = parseFloat(document.getElementById('prop-th-safety')?.value        || 50) / 100;
   var room = parseFloat(document.getElementById('prop-th-roominess')?.value     || 2.5);
   var prem = parseFloat(document.getElementById('prop-th-premiumness')?.value   || 0.3);
+
+  // Persist to _prop so Continue button carries the right specs forward
+  if (!_prop.tophat) _prop.tophat = {mode:'new', specs:{}};
+  if (!_prop.tophat.specs) _prop.tophat.specs = {};
+  Object.assign(_prop.tophat.specs, {
+    config_key: ck,
+    reliability: parseFloat(document.getElementById('prop-th-reliability')?.value || 50),
+    comfort:     parseFloat(document.getElementById('prop-th-comfort')?.value      || 50),
+    safety:      parseFloat(document.getElementById('prop-th-safety')?.value       || 50),
+    roominess:   room,
+    premiumness: prem,
+  });
+
   try {
     var r = _TOPHAT_PC.calc(ck, rel, com, saf, room, prem, 0, 0);
     if (!r) return;
@@ -9450,6 +9478,9 @@ function onPropTopHatChange() {
     bomDiv.innerHTML = _summaryCard(r.std_platform_tpc_eur, r.total_net_weight_kg,
       r.total_material_cost_eur, r.total_process_cost_eur, 0, 'var(--purple)', 'Top Hat', null)
       + _rdCard(r) + _bomDetail(r.material_lines, r.process_lines, r);
+    // Update section status
+    var s4 = document.getElementById('prop-sec-4-status');
+    if (s4) s4.textContent = '✎ ' + ck + ' configured';
   } catch(e) { console.warn('TopHat proposal BOM error:', e); }
 }
 function advanceToEandS() {
