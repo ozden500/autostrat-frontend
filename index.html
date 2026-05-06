@@ -1467,6 +1467,7 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
     <div class="seg-tab-eng" onclick="modTab('epwt',this)"><div class="sdot" style="background:var(--cyan)"></div>e-Motor</div>
     <div class="seg-tab-eng" id="tophat-tab" onclick="modTabTopHat(this)" style="opacity:.45;cursor:not-allowed;" title="Top Hat requires an open study request"><div class="sdot" style="background:var(--purple)"></div>Top Hat <span style="font-family:'DM Mono',monospace;font-size:7px;margin-left:4px;color:var(--muted);">study required</span></div>
     <div class="seg-tab-eng" onclick="modTab('eands',this)"><div class="sdot" style="background:var(--blue)"></div>E&S / ADAS</div>
+    <div class="seg-tab-eng" onclick="modTab('battery',this)"><div class="sdot" style="background:var(--green)"></div>Battery</div>
   </div>
 
   <!-- Two-column layout: configurator + library -->
@@ -1641,6 +1642,7 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
       <div class="seg-tab-eng" onclick="setBenchFilter('epwt',this)" style="font-size:9px;padding:4px 10px;">e-Motor</div>
       <div class="seg-tab-eng" onclick="setBenchFilter('tophat',this)" style="font-size:9px;padding:4px 10px;">Top Hat</div>
       <div class="seg-tab-eng" onclick="setBenchFilter('eands',this)" style="font-size:9px;padding:4px 10px;">E&S</div>
+      <div class="seg-tab-eng" onclick="setBenchFilter('battery',this)" style="font-size:9px;padding:4px 10px;">Battery</div>
     </div>
     <div style="overflow-x:auto;">
       <table class="tbl" id="bench-table">
@@ -2791,6 +2793,9 @@ const MOD_SPECS = {
     {id:'roominess',   name:'Roominess',   unit:'m³', min:1.5, max:7.5, step:0.1,  def:2.5},
     {id:'premiumness', name:'Premiumness', unit:'%',  min:0,   max:1,   step:0.01, def:0.3},
   ],
+  battery: [
+    {id:'target_kwh', name:'Energy Capacity', unit:'kWh', min:15, max:250, step:5, def:60, tooltip:'Target pack energy. In proposals the range is constrained by platform volume × chemistry energy density.'},
+  ],
   eands: [
     {id:'adas_level',   name:'ADAS Level',    unit:'',  min:0, max:5,   step:1,   def:1,  tooltip:'SAE Level 0–5. L3+ requires Zonal architecture minimum; L4/5 requires Centralized.'},
     {id:'sensor_suite', name:'Sensor Suite',  unit:'%', min:0, max:100, step:5,   def:30, tooltip:'Camera, radar and LiDAR content. Above 60% adds radar; above 85% adds LiDAR.'},
@@ -2824,6 +2829,7 @@ const MOD_STEP_LABELS = {
   epwt:     {a:'Performance Class',b:'Make or Buy'},
   tophat:   {a:'Vehicle Segment',  b:'Body Type'},
   eands:    {a:'E/E Architecture', b:'Make or Buy'},
+  battery:  {a:'Chemistry',        b:'Make or Buy'},
 };
 
 // Unique primary values per type (extracted from configs)
@@ -2833,6 +2839,7 @@ function getPrimaryOptions(type, configs) {
   if (type==='epwt')     return configs.map(c=>c.epwt_class);
   if (type==='tophat')   return [...new Set(configs.map(c=>c.segment_code))];
   if (type==='eands')    return ['DECENTRALIZED','ZONAL','CENTRALIZED'];
+  if (type==='battery')  return ['LFP','NMC_532','NMC_811','NCA','SOLID_STATE'];
   return [];
 }
 
@@ -2842,6 +2849,7 @@ function getSecondaryOptions(type, configs, primaryVal) {
   if (type==='tophat')   return configs.filter(c=>c.segment_code===primaryVal).map(c=>({val:c.config_key, label:c.body_type}));
   if (type==='epwt')     return [{val:primaryVal+'_MAKE',label:'Make (Own Development)'},{val:primaryVal+'_BUY',label:'Buy (Sourced from Supplier)'}];
   if (type==='eands')    return [{val:primaryVal+'_MAKE',label:'Make (Own Development)'},{val:primaryVal+'_BUY',label:'Buy (Tier-1 Sourced)'}];
+  if (type==='battery')  return [{val:primaryVal+'_MAKE',label:'Make (Gigafactory)'},{val:primaryVal+'_BUY',label:'Buy (Cell Supplier)'}];
   return [];
 }
 
@@ -2852,12 +2860,32 @@ function formatPrimaryLabel(type, val) {
   if (type==='epwt')     return val.replace(/_/g,'-');
   if (type==='tophat')   return val.replace(/_/g,' ').replace(/\b\w/g,c=>c.toUpperCase());
   if (type==='eands')    return {DECENTRALIZED:'Decentralized (80+ ECUs)',ZONAL:'Zonal (5-6 Zones)',CENTRALIZED:'Centralized (HPC)'}[val]||val;
+  if (type==='battery')  return {LFP:'LFP (Iron-Phosphate)',NMC_532:'NMC-532',NMC_811:'NMC-811 (High Ni)',NCA:'NCA (High Power)',SOLID_STATE:'Solid-State (Next-Gen)'}[val]||val.replace(/_/g,'-');
   return val;
 }
 
 async function loadBaseConfigs(type) {
   const ep = {platform:'platform',ice_pwt:'ice-pwt',epwt:'epwt',tophat:'tophat',eands:'eands'};
   try {
+    if (!ep[type]) {
+      // Client-side-only module types (battery): no DB config needed
+      currentBaseConfigs = [];
+      const labels = MOD_STEP_LABELS[type];
+      const la = document.getElementById('mod-step1a-label');
+      const lb = document.getElementById('mod-step1b-label');
+      if(la) la.textContent = labels.a;
+      if(lb && labels.b) lb.textContent = labels.b;
+      const ps = document.getElementById('mod-primary-select');
+      ps.innerHTML = '<option value="">— select —</option>';
+      getPrimaryOptions(type, []).forEach(val => {
+        const opt = document.createElement('option');
+        opt.value = val; opt.textContent = formatPrimaryLabel(type, val);
+        ps.appendChild(opt);
+      });
+      document.getElementById('mod-step1b').style.display = 'none';
+      resetModuleForm();
+      return;
+    }
     const res = await fetch(`${API_URL}/module-configs/${ep[type]}`);
     const data = await res.json();
     currentBaseConfigs = data.configs || [];
@@ -2931,7 +2959,7 @@ function onBaseConfigChange() {
   // Show cost optimization slider for platform module
   var costOptRow = document.getElementById('mod-cost-opt-row');
   var weightOptRow = document.getElementById('mod-weight-opt-row');
-  var showOpt = (currentModType === 'platform' || currentModType === 'ice_pwt' || currentModType === 'epwt' || currentModType === 'tophat' || currentModType === 'eands');
+  var showOpt = (currentModType === 'platform' || currentModType === 'ice_pwt' || currentModType === 'epwt' || currentModType === 'tophat' || currentModType === 'eands' || currentModType === 'battery');
   if (costOptRow) costOptRow.style.display = showOpt ? '' : 'none';
   if (weightOptRow) weightOptRow.style.display = showOpt ? '' : 'none';
   // For types with secondary, read from secondary select
@@ -2951,6 +2979,7 @@ function onBaseConfigChange() {
   else if (currentModType === 'epwt') fetchEPWTStdCost();
   else if (currentModType === 'tophat') fetchTopHatStdCost();
   else if (currentModType === 'eands') fetchEandsStdCost();
+  else if (currentModType === 'battery') fetchBatteryStdCost();
   document.getElementById('mod-submit-area').style.display='block';
   setDevPath('new', document.getElementById('path-new'));
   scheduleCostCalc();
@@ -3084,6 +3113,8 @@ function scheduleCostCalc() {
     costDebounceTimer = setTimeout(fetchTopHatStdCost, 400);
   } else if (currentModType === 'eands') {
     costDebounceTimer = setTimeout(fetchEandsStdCost, 400);
+  } else if (currentModType === 'battery') {
+    costDebounceTimer = setTimeout(fetchBatteryStdCost, 400);
   } else {
     costDebounceTimer = setTimeout(fetchCostPreview, 400);
   }
@@ -3618,6 +3649,9 @@ function _renderSingleVariantLayout(r, bomEl, legEl) {
     color = 'var(--purple)'; label = 'Top Hat';
   } else if (r.module_type === 'eands') {
     color = 'var(--blue)'; label = r.make_buy === 'BUY' ? 'E&S (Sourced)' : 'E&S · ' + r.ee_arch;
+  } else if (r.module_type === 'battery') {
+    color = 'var(--green)';
+    label = r.make_buy === 'BUY' ? 'Battery (Sourced · ' + r.chemistry_name + ')' : 'Battery · ' + r.chemistry_name;
   } else {
     var isIce = pwt === 'ice_only';
     color = isIce ? 'var(--gold)' : 'var(--green)';
@@ -5147,6 +5181,319 @@ function fetchEandsStdCost() {
         '⚠ ADAS L' + adas + ' requires ' + (adas>=4?'Centralized':'Zonal minimum') + ' architecture — upgrade for optimal performance</div>');
     }
   } catch(e) { console.warn('E&S BOM cost error:', e); }
+}
+
+// ════════════════════════════════════════════════════════════════════
+// BATTERY PACK COST ENGINE v1.0.0 — Client-Side JavaScript
+// Chemistry × Make/Buy × kWh capacity. Raw material BOM per chemistry.
+// MAKE = own gigafactory (full raw-mat BOM). BUY = purchased cells + own pack assembly.
+// ════════════════════════════════════════════════════════════════════
+var _BATTERY_PC = {
+  VERSION: "1.0.0",
+  US_LABOR: 58.0, US_ELEC: 0.08,
+  US_FTE_RATE_MONTH: 13333, RD_FTE_SHARE: 0.50, RD_MAT_SHARE: 0.50, RD_MAT_INDEX: 1.00,
+
+  // Chemistry properties: cell price €/kWh (BUY market), gravimetric Wh/kg, volumetric Wh/L (pack-level), R&D multiplier
+  CHEM: {
+    'LFP':        {price_kwh:65,  wh_per_kg:160, wh_per_l:210, rd_base:300,  n:'LFP (Iron-Phosphate)'},
+    'NMC_532':    {price_kwh:82,  wh_per_kg:210, wh_per_l:285, rd_base:500,  n:'NMC-532'},
+    'NMC_811':    {price_kwh:98,  wh_per_kg:265, wh_per_l:350, rd_base:800,  n:'NMC-811 (High Nickel)'},
+    'NCA':        {price_kwh:115, wh_per_kg:280, wh_per_l:375, rd_base:1000, n:'NCA (High Power)'},
+    'SOLID_STATE':{price_kwh:265, wh_per_kg:400, wh_per_l:510, rd_base:2000, n:'Solid-State (Next-Gen)'},
+  },
+
+  // Platform volume envelope (min/max litres available for battery)
+  PLAT_VOL: {
+    'micro':       {min:50,  max:85},
+    'small':       {min:90,  max:160},
+    'medium':      {min:160, max:280},
+    'large':       {min:260, max:430},
+    'performance': {min:180, max:320},
+    'frame':       {min:380, max:750},
+    'commercial':  {min:550, max:1100},
+  },
+
+  // Platform max battery mass (kg) from vehicle mass budget
+  PLAT_MASS: {
+    'micro':180, 'small':320, 'medium':520, 'large':750,
+    'performance':600, 'frame':1200, 'commercial':2000,
+  },
+
+  MAT: {
+    // Cell raw materials
+    LITHIUM_SALT:    {p:28.0,  sc:1.02, sd:1.01, n:'Lithium Salt (LiOH/Li₂CO₃)'},
+    IRON_PHOSPHATE:  {p:2.8,   sc:1.03, sd:1.02, n:'Iron Phosphate (LFP Cathode)'},
+    NICKEL_SULFATE:  {p:14.0,  sc:1.02, sd:1.01, n:'Nickel Sulfate (Cathode)'},
+    COBALT_SULFATE:  {p:33.0,  sc:1.02, sd:1.01, n:'Cobalt Sulfate (Cathode)'},
+    MANGANESE_OXIDE: {p:2.2,   sc:1.03, sd:1.02, n:'Manganese Oxide (Cathode)'},
+    ALU_OXIDE:       {p:3.5,   sc:1.02, sd:1.01, n:'Aluminium Oxide (NCA Cathode)'},
+    SOLID_ELECTROLYTE:{p:85.0, sc:1.03, sd:1.02, n:'Solid Electrolyte (Ceramic)'},
+    GRAPHITE:        {p:8.0,   sc:1.05, sd:1.03, n:'Graphite Anode Active Material'},
+    COPPER_FOIL:     {p:9.5,   sc:1.04, sd:1.02, n:'Copper Foil (Anode Current Collector)'},
+    ALU_FOIL:        {p:3.2,   sc:1.04, sd:1.02, n:'Aluminium Foil (Cathode Current Collector)'},
+    ELECTROLYTE:     {p:12.0,  sc:1.03, sd:1.02, n:'Liquid Electrolyte (LiPF₆)'},
+    SEPARATOR:       {p:25.0,  sc:1.03, sd:1.02, n:'Polymer Separator (PE/PP)'},
+    CELL_CAN:        {p:2.8,   sc:1.05, sd:1.03, n:'Cell Can / Pouch Foil'},
+    // Pack-level materials
+    MODULE_ALU:      {p:3.8,   sc:1.05, sd:1.03, n:'Module Aluminium Housing'},
+    PACK_STRUCT:     {p:2.5,   sc:1.05, sd:1.03, n:'Pack Structural Frame (Al/Steel)'},
+    COOLING_PLATE:   {p:4.2,   sc:1.04, sd:1.02, n:'Cooling Plate (Aluminium)'},
+    THERMAL_FILM:    {p:18.0,  sc:1.02, sd:1.01, n:'Thermal Interface Material'},
+    HV_WIRING:       {p:15.0,  sc:1.03, sd:1.02, n:'HV Wiring & Connectors'},
+    BMS_ELECTRONICS: {p:800.0, sc:1.01, sd:1.00, n:'Battery Management System (BMS)'},
+    PURCHASED_CELLS: {p:1.0,   sc:1.00, sd:1.00, n:'Battery Cells (Purchased)'},
+  },
+
+  PROC: {
+    ELECTRODE_MIXING: {m:0.05, l:0.80, e:8.0,  n:'Electrode Slurry Mixing & Coating'},
+    CELL_ASSEMBLY:    {m:0.20, l:1.50, e:12.0, n:'Cell Winding/Stacking & Assembly'},
+    CELL_FORMATION:   {m:0.00, l:0.50, e:25.0, n:'Cell Formation Cycling'},
+    MODULE_ASSEMBLY:  {m:0.10, l:2.00, e:3.0,  n:'Module Assembly & Cell Welding'},
+    PACK_INTEGRATION: {m:0.15, l:3.00, e:4.0,  n:'Pack Integration & BMS Wiring'},
+    EOL_TEST:         {m:0.20, l:1.00, e:15.0, n:'End-of-Line Testing & Conditioning'},
+  },
+
+  // Cell-level raw material content per kWh (kg/kWh) by chemistry
+  CELL_MATS: {
+    'LFP':       [['LITHIUM_SALT',0.38],['IRON_PHOSPHATE',1.80],['GRAPHITE',1.10],
+                  ['COPPER_FOIL',0.15],['ALU_FOIL',0.22],['ELECTROLYTE',0.45],
+                  ['SEPARATOR',0.18],['CELL_CAN',0.65]],
+    'NMC_532':   [['LITHIUM_SALT',0.30],['NICKEL_SULFATE',0.85],['COBALT_SULFATE',0.45],
+                  ['MANGANESE_OXIDE',0.45],['GRAPHITE',0.95],['COPPER_FOIL',0.14],
+                  ['ALU_FOIL',0.20],['ELECTROLYTE',0.42],['SEPARATOR',0.16],['CELL_CAN',0.60]],
+    'NMC_811':   [['LITHIUM_SALT',0.26],['NICKEL_SULFATE',1.40],['COBALT_SULFATE',0.12],
+                  ['MANGANESE_OXIDE',0.14],['GRAPHITE',0.85],['COPPER_FOIL',0.13],
+                  ['ALU_FOIL',0.18],['ELECTROLYTE',0.38],['SEPARATOR',0.14],['CELL_CAN',0.55]],
+    'NCA':       [['LITHIUM_SALT',0.24],['NICKEL_SULFATE',1.60],['COBALT_SULFATE',0.25],
+                  ['ALU_OXIDE',0.10],['GRAPHITE',0.80],['COPPER_FOIL',0.12],
+                  ['ALU_FOIL',0.17],['ELECTROLYTE',0.35],['SEPARATOR',0.13],['CELL_CAN',0.50]],
+    'SOLID_STATE':[['LITHIUM_SALT',0.20],['NICKEL_SULFATE',0.80],['COBALT_SULFATE',0.10],
+                  ['MANGANESE_OXIDE',0.20],['SOLID_ELECTROLYTE',0.80],['GRAPHITE',0.10],
+                  ['COPPER_FOIL',0.12],['ALU_FOIL',0.17],['CELL_CAN',0.45]],
+  },
+
+  // Pack-level material content per kWh (kg/kWh), chemistry-independent
+  PACK_MATS: [['MODULE_ALU',0.80],['PACK_STRUCT',1.20],['COOLING_PLATE',0.50],
+              ['THERMAL_FILM',0.15],['HV_WIRING',0.10],['BMS_ELECTRONICS',0.02]],
+
+  // Derive kWh slider range from platform volume × chemistry density (+ mass ceiling)
+  kwhRange: function(platform_size, chemistry) {
+    var vol  = this.PLAT_VOL[platform_size]  || {min:90, max:160};
+    var mmax = this.PLAT_MASS[platform_size] || 320;
+    var chem = this.CHEM[chemistry]          || this.CHEM['NMC_532'];
+    var kwh_vol_min  = Math.round(vol.min  * chem.wh_per_l / 1000 / 5) * 5;
+    var kwh_vol_max  = Math.round(vol.max  * chem.wh_per_l / 1000 / 5) * 5;
+    var kwh_mass_max = Math.round(mmax     * chem.wh_per_kg/ 1000 / 5) * 5;
+    return {min: Math.max(10, kwh_vol_min), max: Math.min(kwh_vol_max, kwh_mass_max)};
+  },
+
+  scrap: function(code) {
+    var m = this.MAT[code]; if (!m) return 1.03; return m.sc;
+  },
+
+  calc: function(config_key, target_kwh, co) {
+    co = co||0; target_kwh = target_kwh||60;
+    var parts     = config_key.split('_');
+    var make_buy  = parts[parts.length-1];
+    var chemistry = parts.slice(0,-1).join('_');
+    var chem_props = this.CHEM[chemistry];
+    if (!chem_props) return null;
+
+    var mats = []; var procs = [];
+    var cell_gross_kg = 0;
+
+    if (make_buy === 'MAKE') {
+      // ── MAKE: full raw material BOM from cell chemistry ──
+      var cell_mat_list = this.CELL_MATS[chemistry] || [];
+      cell_mat_list.forEach(function(r) {
+        var ms = _BATTERY_PC.MAT[r[0]] || {p:5.0, sc:1.03, n:r[0]};
+        var net = r[1] * target_kwh;
+        var sc  = ms.sc; var gross = net * sc;
+        cell_gross_kg += gross;
+        mats.push({code:r[0], name:ms.n, net:net, sc:sc, gross:gross,
+          price:ms.p, cost:gross*ms.p, proc:'CELL_ASSEMBLY', spec:false, label:''});
+      });
+      // Pack-level materials
+      this.PACK_MATS.forEach(function(r) {
+        var ms = _BATTERY_PC.MAT[r[0]] || {p:3.0, sc:1.03, n:r[0]};
+        var net = r[1] * target_kwh;
+        var sc  = ms.sc; var gross = net * sc;
+        mats.push({code:r[0], name:ms.n, net:net, sc:sc, gross:gross,
+          price:ms.p, cost:gross*ms.p, proc:'MODULE_ASSEMBLY', spec:false, label:''});
+      });
+      // Cost optimization embedded in BOM
+      if (co > 0.001) {
+        var sr = co*0.15, lr = co*0.10;
+        mats.forEach(function(l){l.sc=Math.max(1.0,l.sc*(1-sr));l.gross=l.net*l.sc;l.cost=l.gross*l.price;});
+      }
+      // Processes: cell processes use cell gross; pack processes use total gross
+      var total_gross = mats.reduce(function(s,l){return s+l.gross;},0);
+      ['ELECTRODE_MIXING','CELL_ASSEMBLY','CELL_FORMATION'].forEach(function(pc){
+        var ps = _BATTERY_PC.PROC[pc];
+        var lg = co > 0.001 ? ps.l*(1-co*0.10) : ps.l;
+        procs.push({code:pc, name:ps.n, gross:cell_gross_kg, m:ps.m, l:lg, e:ps.e, spec:false, label:''});
+      });
+      ['MODULE_ASSEMBLY','PACK_INTEGRATION','EOL_TEST'].forEach(function(pc){
+        var ps = _BATTERY_PC.PROC[pc];
+        var lg = co > 0.001 ? ps.l*(1-co*0.10) : ps.l;
+        procs.push({code:pc, name:ps.n, gross:total_gross, m:ps.m, l:lg, e:ps.e, spec:false, label:''});
+      });
+
+    } else {
+      // ── BUY: purchased cells + own pack assembly ──
+      var cell_mass_kg = Math.round(target_kwh * 1000 / chem_props.wh_per_kg * 10) / 10;
+      var cell_cost    = chem_props.price_kwh * target_kwh;
+      mats.push({code:'PURCHASED_CELLS',
+        name:'Battery Cells (Purchased · ' + chem_props.n + ')',
+        net:cell_mass_kg, sc:1.00, gross:cell_mass_kg,
+        price: Math.round(cell_cost / cell_mass_kg * 100) / 100,
+        cost:cell_cost, proc:'', spec:false, label:''});
+      // Pack materials only
+      this.PACK_MATS.forEach(function(r) {
+        var ms = _BATTERY_PC.MAT[r[0]] || {p:3.0, sc:1.03, n:r[0]};
+        var net = r[1] * target_kwh;
+        var sc  = ms.sc; var gross = net * sc;
+        mats.push({code:r[0], name:ms.n, net:net, sc:sc, gross:gross,
+          price:ms.p, cost:gross*ms.p, proc:'MODULE_ASSEMBLY', spec:false, label:''});
+      });
+      if (co > 0.001) {
+        var sr2 = co*0.15, lr2 = co*0.10;
+        mats.slice(1).forEach(function(l){l.sc=Math.max(1.0,l.sc*(1-sr2));l.gross=l.net*l.sc;l.cost=l.gross*l.price;});
+      }
+      var pack_gross = mats.slice(1).reduce(function(s,l){return s+l.gross;},0) + cell_mass_kg;
+      ['MODULE_ASSEMBLY','PACK_INTEGRATION','EOL_TEST'].forEach(function(pc){
+        var ps = _BATTERY_PC.PROC[pc];
+        var lg = co > 0.001 ? ps.l*(1-co*0.10) : ps.l;
+        procs.push({code:pc, name:ps.n, gross:pack_gross, m:ps.m, l:lg, e:ps.e, spec:false, label:''});
+      });
+    }
+
+    // Compute process costs
+    procs.forEach(function(l){
+      l.mach  = Math.round(l.gross*l.m*100)/100;
+      l.lhrs  = Math.round(l.gross*l.l/100*1000)/1000;
+      l.lcost = Math.round(l.lhrs*_BATTERY_PC.US_LABOR*100)/100;
+      l.ekwh  = Math.round(l.gross*l.e/100*1000)/1000;
+      l.ecost = Math.round(l.ekwh*_BATTERY_PC.US_ELEC*100)/100;
+      l.total = Math.round((l.mach+l.lcost+l.ecost)*100)/100;
+    });
+    mats.forEach(function(l){
+      l.gross=Math.round(l.gross*100)/100; l.net=Math.round(l.net*100)/100;
+      l.cost=Math.round(l.gross*l.price*100)/100;
+    });
+
+    var tm  = mats.reduce(function(s,l){return s+l.cost;},0);
+    var tp  = procs.reduce(function(s,l){return s+l.total;},0);
+    var tnw = mats.reduce(function(s,l){return s+l.net;},0);
+    var tgw = mats.reduce(function(s,l){return s+l.gross;},0);
+    var dc  = tm + tp;
+
+    // Cost build-up
+    var sc85, soh, spf, stot, oem, std, tpc;
+    if (make_buy === 'BUY') {
+      // Cells at market price (no additional supplier chain); OEM transformation on pack assembly only
+      var cell_c  = mats[0].cost;
+      var pack_dc = mats.slice(1).reduce(function(s,l){return s+l.cost;},0) + tp;
+      sc85 = Math.round(cell_c*100)/100;
+      soh  = 0; spf = 0; stot = sc85;
+      oem  = Math.round(pack_dc*0.15*100)/100;
+      std  = Math.round((cell_c + pack_dc + oem)*100)/100;
+      tpc  = std;
+    } else {
+      sc85 = Math.round(dc*0.85*100)/100;
+      soh  = Math.round(sc85*0.05*100)/100;
+      spf  = Math.round(sc85*0.10*100)/100;
+      stot = Math.round(sc85*1.15*100)/100;
+      oem  = Math.round(dc*0.15*100)/100;
+      std  = Math.round((stot+oem)*100)/100;
+      tpc  = std;
+    }
+
+    // R&D (BUY = pack design + qualification only, 28% of MAKE)
+    var brd    = chem_props.rd_base || 500;
+    var kwh_d  = 0.08 * Math.max(0, target_kwh - 60) / 60;
+    var cord   = 0.10 * (Math.exp(3*co)-1) / (Math.exp(3)-1);
+    var total_rd, rd_prem_pct;
+    if (make_buy === 'BUY') {
+      total_rd    = Math.round(brd * 0.28 * (1 + cord) * 10) / 10;
+      rd_prem_pct = Math.round(cord*10000)/100;
+    } else {
+      total_rd    = Math.round(brd * (1 + kwh_d + cord) * 10) / 10;
+      rd_prem_pct = Math.round((kwh_d+cord)*10000)/100;
+    }
+    var rd_fte_cost = Math.round(total_rd*this.RD_FTE_SHARE*100)/100;
+    var rd_mat_cost = Math.round(total_rd*this.RD_MAT_SHARE*100)/100;
+    var fte_months  = Math.round(rd_fte_cost*1000000/this.US_FTE_RATE_MONTH/10)*10;
+    var pack_vol_l  = Math.round(target_kwh * 1000 / chem_props.wh_per_l * 10) / 10;
+
+    return {
+      module_type:'battery', make_buy:make_buy, chemistry:chemistry, chemistry_name:chem_props.n,
+      target_kwh:target_kwh, pack_volume_l:pack_vol_l,
+      pwt_compatibility:'any',
+      total_net_weight_kg:     Math.round(tnw*10)/10,
+      total_gross_weight_kg:   Math.round(tgw*10)/10,
+      total_material_cost_eur: Math.round(tm*100)/100,
+      total_process_cost_eur:  Math.round(tp*100)/100,
+      direct_cost_eur:         Math.round(dc*100)/100,
+      supplier_content_eur:    sc85, supplier_overhead_eur:soh,
+      supplier_profit_eur:     spf,  supplier_total_eur:stot,
+      oem_internal_eur:        oem,  total_std_direct_eur:std,
+      std_platform_tpc_eur:    Math.round(tpc*100)/100,
+      cost_opt_reduction_pct:  0,
+      base_rd_cost_eur_m:      make_buy==='BUY' ? Math.round(brd*0.28*10)/10 : brd,
+      rd_premium_pct:rd_prem_pct, total_rd_cost_eur_m:total_rd,
+      std_rd_fte_cost_eur_m:rd_fte_cost, std_rd_material_eur_m:rd_mat_cost,
+      std_fte_months:fte_months, std_fte_rate_eur_month:this.US_FTE_RATE_MONTH,
+      rd_material_index:this.RD_MAT_INDEX,
+      material_lines: mats.map(function(l){return {
+        material_code:l.code, material_name:l.name,
+        net_weight_kg:l.net, scrap_rate:l.sc, gross_weight_kg:l.gross,
+        material_price_eur_kg:l.price, material_cost_eur:l.cost,
+        spec_driven:l.spec, spec_label:l.label};}),
+      process_lines: procs.map(function(l){return {
+        process_code:l.code, process_name:l.name,
+        gross_weight_kg:l.gross, machine_cost_eur:l.mach,
+        labor_hours:l.lhrs, labor_cost_eur:l.lcost,
+        energy_kwh:l.ekwh, energy_cost_eur:l.ecost,
+        process_cost_eur:l.total, spec_driven:l.spec, spec_label:l.label};}),
+    };
+  }
+};
+
+function fetchBatteryStdCost() {
+  if (currentModType !== 'battery') return;
+  var legEl = document.getElementById('mod-cost-legacy');
+  if (legEl) legEl.style.display = 'none';
+  var configKey = document.getElementById('mod-secondary-select')?.value;
+  if (!configKey) return;
+  var target_kwh = parseFloat(document.getElementById('msr-target_kwh')?.value || 60);
+  var co = parseFloat(document.getElementById('cost-opt-slider')?.value || 0) / 100;
+  try {
+    var r = _BATTERY_PC.calc(configKey, target_kwh, co);
+    if (!r) return;
+    var bomEl  = document.getElementById('mod-cost-bom');
+    var legEl2 = document.getElementById('mod-cost-legacy');
+    var emEl   = document.getElementById('mod-cost-empty');
+    if (emEl) emEl.style.display = 'none';
+    window._lastBatteryCalc = r;
+    _renderSingleVariantLayout(r, bomEl, legEl2);
+    var tpcEl = document.getElementById('mc-tpc');
+    if (tpcEl) tpcEl.textContent = '€' + Math.round(r.std_platform_tpc_eur).toLocaleString() + '/veh';
+    // Show derived pack dimensions below TPC
+    var bom_content = document.getElementById('mod-cost-bom-content');
+    if (bom_content) {
+      var existing = bom_content.querySelector('.battery-dims');
+      if (existing) existing.remove();
+      var dims = document.createElement('div');
+      dims.className = 'battery-dims';
+      dims.style.cssText = 'background:rgba(74,222,128,.07);border:1px solid rgba(74,222,128,.2);border-radius:4px;padding:8px 12px;margin-bottom:8px;font-family:DM Mono,monospace;font-size:9px;color:var(--green);display:flex;gap:16px;';
+      dims.innerHTML = '<span>⚡ ' + r.target_kwh + ' kWh</span>' +
+        '<span>🏋 ' + r.total_net_weight_kg + ' kg</span>' +
+        '<span>📦 ' + r.pack_volume_l + ' L</span>' +
+        '<span>💰 €' + Math.round(r.std_platform_tpc_eur / r.target_kwh) + '/kWh</span>';
+      bom_content.insertAdjacentElement('afterbegin', dims);
+    }
+  } catch(e) { console.warn('Battery BOM cost error:', e); }
 }
 
 async function fetchCostPreview() {
@@ -9211,6 +9558,10 @@ var PROP_SPEC_DEFS = {
     {key:'roominess',label:'Roominess',unit:'m³',min:1.5,max:7.5,step:0.1,def:2.5,fmt:'num1'},
     {key:'premiumness',label:'Premiumness',unit:'%',min:0,max:1,step:0.01,def:0.3,fmt:'pct'},
   ],
+  'battery': [
+    {key:'target_kwh',  label:'Energy',    unit:'kWh',min:15, max:250, step:5,   def:60, fmt:'num'},
+    {key:'chemistry',   label:'Chemistry', unit:'',   min:0,  max:0,   step:0,   def:0,  fmt:'str'},
+  ],
   'eands': [
     {key:'adas_level',   label:'ADAS Level',   unit:'',  min:0, max:5,   step:1,   def:1,  fmt:'level'},
     {key:'sensor_suite', label:'Sensor Suite', unit:'%', min:0, max:100, step:5,   def:30, fmt:'pct'},
@@ -9613,6 +9964,70 @@ function buildModuleOptions(modType, propKey, nextFn) {
 
       setTimeout(function(){ if(selCfgKey) onPropEPWTChange(); }, 150);
 
+    } else if (propKey === 'battery') {
+      // ── Battery Pack BOM configurator ──
+      if (!currentSel.specs) currentSel.specs = {};
+      var batSpecs  = currentSel.specs;
+      var selChem   = batSpecs.chemistry  || '';
+      var selBatMB  = batSpecs.make_buy   || 'MAKE';
+      var selBatCfg = selChem ? selChem + '_' + selBatMB : '';
+      var selKwh    = batSpecs.target_kwh != null ? batSpecs.target_kwh : 60;
+
+      // Derive kWh range from platform + chemistry
+      var platSize  = (_prop.platform && _prop.platform.specs && _prop.platform.specs.size) || '';
+      var kwhr = (selChem && platSize) ? _BATTERY_PC.kwhRange(platSize, selChem) : {min:15, max:250};
+      selKwh = Math.min(Math.max(selKwh, kwhr.min), kwhr.max);
+
+      // Pack dimension outputs
+      var chemPropsBat = selChem ? (_BATTERY_PC.CHEM[selChem] || null) : null;
+      var packVolL  = chemPropsBat ? Math.round(selKwh * 1000 / chemPropsBat.wh_per_l * 10) / 10 : '—';
+      var packMassKg= chemPropsBat ? Math.round(selKwh * 1000 / chemPropsBat.wh_per_kg * 10) / 10 : '—';
+
+      html += '<div style="margin-top:10px;">';
+      // Chemistry + Make/Buy dropdowns
+      html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px;">';
+      var chemOpts = ['LFP','NMC_532','NMC_811','NCA','SOLID_STATE'];
+      var chemLabels = {LFP:'LFP (Iron-Phosphate)',NMC_532:'NMC-532',NMC_811:'NMC-811 (High Ni)',NCA:'NCA (High Power)',SOLID_STATE:'Solid-State'};
+      html += '<div><label class="ctrl-lbl-top">Cell Chemistry</label>' +
+        '<select id="prop-bat-chem" onchange="onPropBatteryChange()" style="width:100%;background:var(--s3);border:1px solid var(--border2);border-radius:2px;color:var(--text);padding:5px 8px;font-size:12px;font-family:inherit;outline:none;">' +
+        '<option value="">— chemistry —</option>' +
+        chemOpts.map(function(c){return '<option value="'+c+'"'+(selChem===c?' selected':'')+'>'+chemLabels[c]+'</option>';}).join('') +
+        '</select></div>';
+      html += '<div><label class="ctrl-lbl-top">Cell Manufacturing</label>' +
+        '<select id="prop-bat-mb" onchange="onPropBatteryChange()" style="width:100%;background:var(--s3);border:1px solid var(--border2);border-radius:2px;color:var(--text);padding:5px 8px;font-size:12px;font-family:inherit;outline:none;">' +
+        '<option value="MAKE"'+(selBatMB==='MAKE'?' selected':'')+'>Make (Gigafactory)</option>' +
+        '<option value="BUY"'+(selBatMB==='BUY'?' selected':'')+'>Buy (Cell Supplier)</option>' +
+        '</select></div>';
+      html += '</div>';
+      // kWh capacity slider (range from platform + chemistry)
+      html += '<div class="ctrl"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px;">';
+      html += '<label class="ctrl-lbl-top" style="margin:0;">Energy Capacity</label>';
+      html += '<span style="font-family:DM Mono,monospace;font-size:9px;color:var(--green);" id="prop-bat-kwh-val">'+selKwh+'kWh</span></div>';
+      html += '<input type="range" min="'+kwhr.min+'" max="'+kwhr.max+'" step="5" value="'+selKwh+'" id="prop-bat-kwh" class="spec-range"';
+      html += ' style="width:100%;accent-color:var(--green);margin:2px 0 4px;" oninput="document.getElementById(\'prop-bat-kwh-val\').textContent=this.value+\'kWh\';onPropBatteryChange()"></div>';
+      // Derived outputs row
+      html += '<div id="prop-bat-dims" style="display:flex;gap:14px;font-family:DM Mono,monospace;font-size:8px;color:var(--muted2);margin-bottom:8px;padding:6px 10px;background:var(--s3);border-radius:3px;">' +
+        '<span>Vol: <b style="color:var(--green)">' + packVolL + ' L</b></span>' +
+        '<span>Mass: <b style="color:var(--green)">' + packMassKg + ' kg</b></span>' +
+        (platSize ? '<span style="color:var(--muted)">Platform envelope: '+kwhr.min+'–'+kwhr.max+' kWh</span>' : '<span style="color:var(--muted)">Select platform first for volume limits</span>') +
+        '</div>';
+      // BOM preview
+      html += '<div style="font-family:DM Mono,monospace;font-size:8px;text-transform:uppercase;letter-spacing:1px;color:var(--green);margin-bottom:6px;">Standard Cost Analysis</div>';
+      html += '<div id="prop-bat-bom" style="font-size:10px;color:var(--muted2);overflow-y:auto;max-height:280px;">';
+      html += selBatCfg ? '' : 'Select chemistry to see BOM';
+      html += '</div>';
+      // Continue button
+      html += '<div style="margin-top:14px;display:flex;align-items:center;gap:12px;">';
+      html += '<button data-action="prop-continue" data-nextfn="' + nextFn + '" ';
+      html += 'style="font-family:DM Mono,monospace;font-size:9px;padding:6px 16px;border-radius:2px;';
+      html += 'border:1px solid rgba(74,222,128,.4);background:rgba(74,222,128,.08);color:var(--green);cursor:pointer;">';
+      html += 'Continue →</button>';
+      html += '<span style="font-family:DM Mono,monospace;font-size:8px;color:var(--muted2);">Chemistry + capacity drive cell raw material BOM</span>';
+      html += '</div>';
+      html += '</div>';
+
+      setTimeout(function(){ if(selBatCfg) onPropBatteryChange(); }, 150);
+
     } else if (propKey === 'eands') {
       // ── E&S BOM configurator ──
       if (!currentSel.specs) currentSel.specs = {};
@@ -9897,17 +10312,18 @@ function setPropModMode(propKey, mode, nextFn) {
   _prop[propKey].module = null;
   // Preserve specs when switching modes, initialise if missing
   if (!_prop[propKey].specs) _prop[propKey].specs = {};
-  var modTypeMap = {platform:'platform', pwt:'ice_pwt', epwt:'epwt', tophat:'tophat', eands:'eands'};
+  var modTypeMap = {platform:'platform', pwt:'ice_pwt', epwt:'epwt', battery:'battery', tophat:'tophat', eands:'eands'};
   var modType = modTypeMap[propKey] || propKey;
   var specDefs = PROP_SPEC_DEFS[modType] || [];
   specDefs.forEach(function(s) {
     if (_prop[propKey].specs[s.key] == null) _prop[propKey].specs[s.key] = s.def;
   });
   // Re-render the section
-  var secMap = {platform:2, pwt:3, epwt:3, tophat:4, eands:5};
-  var modMap = {platform:'platform', pwt:'ice_pwt', epwt:'epwt', tophat:'tophat', eands:'eands'};
+  var secMap = {platform:2, pwt:3, epwt:3, battery:3, tophat:4, eands:5};
+  var modMap = {platform:'platform', pwt:'ice_pwt', epwt:'epwt', battery:'battery', tophat:'tophat', eands:'eands'};
   var elMap  = {platform:'prop-platform-content',
-                pwt: 'prop-pwt-ice-content', epwt:'prop-pwt-epwt-content',
+                pwt:'prop-pwt-ice-content', epwt:'prop-pwt-epwt-content',
+                battery:'prop-pwt-battery-content',
                 tophat:'prop-tophat-content', eands:'prop-eands-content'};
   buildModuleSection(secMap[propKey], modMap[propKey], propKey, elMap[propKey], nextFn);
 }
@@ -9918,7 +10334,7 @@ function selectPropModule(propKey, moduleId, nextFn) {
   _prop[propKey].module = mod || null;
   _prop[propKey].specs  = mod ? (mod.specs || {}) : {};
   // Update status label
-  var secMap    = {platform:2, pwt:3, epwt:3, tophat:4, eands:5};
+  var secMap    = {platform:2, pwt:3, epwt:3, battery:3, tophat:4, eands:5};
   var secNum    = secMap[propKey];
   var statusEl  = document.getElementById('prop-sec-' + secNum + '-status');
   if (statusEl && mod) statusEl.textContent = '\u2713 ' + mod.name + ' (' + mod.config_key + ')';
@@ -9942,22 +10358,36 @@ function advanceToPWT() {
 function buildPWTSection() {
   var el = document.getElementById('prop-pwt-content');
   if (!el) return;
-  if (!_prop.pwt)  _prop.pwt  = {};
-  if (!_prop.epwt) _prop.epwt = {};
+  if (!_prop.pwt)     _prop.pwt     = {};
+  if (!_prop.epwt)    _prop.epwt    = {};
+  if (!_prop.battery) _prop.battery = {};
 
   var html = buildContextBanner();
   html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">';
 
-  // ICE PWT column — own div so mode changes only re-render this column
+  // Left: ICE PWT column
   html += '<div>';
   html += '<div style="font-family:DM Mono,monospace;font-size:8px;text-transform:uppercase;letter-spacing:1px;color:var(--orange);margin-bottom:8px;">⚙ ICE / HYBRID POWERTRAIN</div>';
   html += '<div id="prop-pwt-ice-content">' + buildModuleOptions('ice_pwt', 'pwt', 'advanceToTopHat') + '</div>';
   html += '</div>';
 
-  // ePWT column — own div
+  // Right: BEV Drivetrain — EDM sub-module + Battery Pack sub-module stacked
   html += '<div>';
-  html += '<div style="font-family:DM Mono,monospace;font-size:8px;text-transform:uppercase;letter-spacing:1px;color:var(--cyan);margin-bottom:8px;">⚡ e-MOTOR</div>';
+  html += '<div style="font-family:DM Mono,monospace;font-size:8px;text-transform:uppercase;letter-spacing:1px;color:var(--cyan);margin-bottom:8px;">⚡ BEV DRIVETRAIN</div>';
+
+  // Sub-module 1: Electric Drive Module (e-Motor)
+  html += '<div style="border:1px solid var(--border2);border-radius:4px;padding:10px;margin-bottom:10px;">';
+  html += '<div style="font-family:DM Mono,monospace;font-size:8px;color:var(--cyan);margin-bottom:6px;display:flex;align-items:center;gap:6px;">';
+  html += '<span style="background:var(--cyan);color:#000;border-radius:2px;padding:1px 5px;font-size:7px;">①</span> ELECTRIC DRIVE MODULE (EDM)</div>';
   html += '<div id="prop-pwt-epwt-content">' + buildModuleOptions('epwt', 'epwt', 'advanceToTopHat') + '</div>';
+  html += '</div>';
+
+  // Sub-module 2: Battery Pack
+  html += '<div style="border:1px solid var(--border2);border-radius:4px;padding:10px;">';
+  html += '<div style="font-family:DM Mono,monospace;font-size:8px;color:var(--green);margin-bottom:6px;display:flex;align-items:center;gap:6px;">';
+  html += '<span style="background:var(--green);color:#000;border-radius:2px;padding:1px 5px;font-size:7px;">②</span> BATTERY PACK</div>';
+  html += '<div id="prop-pwt-battery-content">' + buildModuleOptions('battery', 'battery', 'advanceToTopHat') + '</div>';
+  html += '</div>';
   html += '</div>';
 
   html += '</div>';
@@ -9966,7 +10396,7 @@ function buildPWTSection() {
     'padding:6px 16px;border-radius:2px;border:1px solid rgba(200,164,60,.4);' +
     'background:var(--goldl);color:var(--gold);cursor:pointer;">Continue →</button>' +
     '<span style="font-family:DM Mono,monospace;font-size:8px;color:var(--muted2);margin-left:10px;">' +
-    'Configure both powertrain types, then continue to Top Hat</span></div>';
+    'Configure ICE powertrain or BEV drivetrain (EDM + Battery), then continue</span></div>';
   el.innerHTML = html;
 }
 function advanceToTopHat() {
@@ -10130,6 +10560,63 @@ function onPropEandsChange() {
     var s5 = document.getElementById('prop-sec-5-status');
     if (s5) s5.textContent = '✎ ' + label;
   } catch(e) { console.warn('E&S proposal BOM error:', e); }
+}
+
+function onPropBatteryChange() {
+  var chem = document.getElementById('prop-bat-chem')?.value; if (!chem) return;
+  var mb   = document.getElementById('prop-bat-mb')?.value || 'MAKE';
+  var ck   = chem + '_' + mb;
+  var kwh  = parseFloat(document.getElementById('prop-bat-kwh')?.value || 60);
+
+  // Update slider range when chemistry changes
+  var platSize = (_prop.platform && _prop.platform.specs && _prop.platform.specs.size) || '';
+  if (platSize) {
+    var kwhr = _BATTERY_PC.kwhRange(platSize, chem);
+    var slider = document.getElementById('prop-bat-kwh');
+    if (slider) {
+      slider.min = kwhr.min; slider.max = kwhr.max;
+      kwh = Math.min(Math.max(kwh, kwhr.min), kwhr.max);
+      slider.value = kwh;
+      var kwhValEl = document.getElementById('prop-bat-kwh-val');
+      if (kwhValEl) kwhValEl.textContent = kwh + 'kWh';
+    }
+  }
+
+  // Update derived dimensions display
+  var chemPropsBat = _BATTERY_PC.CHEM[chem];
+  if (chemPropsBat) {
+    var packVol  = Math.round(kwh * 1000 / chemPropsBat.wh_per_l * 10) / 10;
+    var packMass = Math.round(kwh * 1000 / chemPropsBat.wh_per_kg * 10) / 10;
+    var dimsEl   = document.getElementById('prop-bat-dims');
+    if (dimsEl) {
+      var kwhr2 = platSize ? _BATTERY_PC.kwhRange(platSize, chem) : {min:15, max:250};
+      dimsEl.innerHTML = '<span>Vol: <b style="color:var(--green)">' + packVol + ' L</b></span>' +
+        '<span>Mass: <b style="color:var(--green)">' + packMass + ' kg</b></span>' +
+        (platSize ? '<span style="color:var(--muted)">Platform envelope: '+kwhr2.min+'–'+kwhr2.max+' kWh</span>'
+                  : '<span style="color:var(--muted)">Select platform for volume limits</span>');
+    }
+  }
+
+  if (!_prop.battery) _prop.battery = {mode:'new', specs:{}};
+  if (!_prop.battery.specs) _prop.battery.specs = {};
+  Object.assign(_prop.battery.specs, {config_key:ck, chemistry:chem, make_buy:mb, target_kwh:kwh});
+
+  try {
+    var r = _BATTERY_PC.calc(ck, kwh, 0);
+    if (!r) return;
+    var bomDiv = document.getElementById('prop-bat-bom');
+    if (!bomDiv) return;
+    var label = mb === 'BUY' ? 'Battery (Sourced · ' + r.chemistry_name + ')' : 'Battery · ' + r.chemistry_name;
+    bomDiv.innerHTML = _summaryCard(r.std_platform_tpc_eur, r.total_net_weight_kg,
+      r.total_material_cost_eur, r.total_process_cost_eur, 0, 'var(--green)', label, null)
+      + '<div style="font-family:DM Mono,monospace;font-size:8px;color:var(--green);padding:4px 0;">'
+      + '⚡ ' + r.target_kwh + ' kWh · 📦 ' + r.pack_volume_l + ' L · '
+      + '€' + Math.round(r.std_platform_tpc_eur / r.target_kwh) + '/kWh'
+      + '</div>'
+      + _rdCard(r) + _bomDetail(r.material_lines, r.process_lines, r);
+    var s3 = document.getElementById('prop-sec-3-status');
+    if (s3) s3.textContent = '✎ Battery ' + r.target_kwh + 'kWh · ' + r.chemistry_name;
+  } catch(e) { console.warn('Battery proposal BOM error:', e); }
 }
 
 function advanceToEandS() {
