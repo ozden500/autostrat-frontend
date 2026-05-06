@@ -9663,6 +9663,15 @@ function buildModuleOptions(modType, propKey, nextFn) {
       html += '<div id="prop-eands-bom" style="font-size:10px;color:var(--muted2);overflow-y:auto;max-height:300px;">';
       html += selEandsCfgKey ? '' : 'Select architecture to see BOM';
       html += '</div>';
+
+      // Continue button
+      html += '<div style="margin-top:14px;display:flex;align-items:center;gap:12px;">';
+      html += '<button data-action="prop-continue" data-nextfn="' + nextFn + '" ';
+      html += 'style="font-family:DM Mono,monospace;font-size:9px;padding:6px 16px;border-radius:2px;';
+      html += 'border:1px solid rgba(96,165,250,.4);background:rgba(96,165,250,.08);color:var(--blue);cursor:pointer;">';
+      html += 'Continue →</button>';
+      html += '<span style="font-family:DM Mono,monospace;font-size:8px;color:var(--muted2);">Select architecture to configure · development starts after proposal approval</span>';
+      html += '</div>';
       html += '</div>';
 
       setTimeout(function(){ if(selEandsCfgKey) onPropEandsChange(); }, 150);
