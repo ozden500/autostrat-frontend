@@ -10619,9 +10619,11 @@ function buildReviewSection() {
     var s = p.specs || {};
     try {
       if (propKey==='platform') {
-        var ck = s.size && s.pwt ? s.size.toUpperCase()+'_'+s.pwt : null;
-        if (!ck) return null;
-        return _PC.calc(ck,(s.reliability||50)/100,(s.comfort||50)/100,(s.safety||50)/100,(s.cost_opt||0)/100,(s.weight_opt||0)/100);
+        // _PC.calc(size, pwt, co, wo, saf, rel, com) — pwt is lowercase e.g. 'ice_only'
+        if (!s.size||!s.pwt) return null;
+        return _PC.calc(s.size, s.pwt,
+          (s.cost_opt||0)/100, (s.weight_opt||0)/100,
+          (s.safety||50)/100, (s.reliability||50)/100, (s.comfort||50)/100);
       }
       if (propKey==='pwt')     { if(!s.config_key) return null; return _ICE_PC.calc(s.config_key,s.power||100,s.emission_tech||0.1,(s.reliability||50)/100,(s.cost_opt||0)/100,(s.weight_opt||0)/100); }
       if (propKey==='epwt')    { if(!s.config_key) return null; return _EPWT_PC.calc(s.config_key,s.power_kw||150,s.efficiency||0.7,(s.reliability||50)/100,(s.cost_opt||0)/100,(s.weight_opt||0)/100); }
@@ -10634,22 +10636,44 @@ function buildReviewSection() {
 
   function _getInfo(propKey, label, color, hex) {
     var p = _prop[propKey];
-    var m = {label:label,color:color,hex:hex,mode:'',tpc:0,rd:0,fte:0,weight:0,mat_cost:0,proc_cost:0,material_lines:[],process_lines:[],specs:{},configKey:''};
+    var m = {label:label,color:color,hex:hex,mode:'',tpc:0,tpc_bev:0,rd:0,fte:0,weight:0,
+             mat_cost:0,proc_cost:0,material_lines:[],process_lines:[],specs:{},configKey:'',isMulti:false};
     if (!p||!p.mode) return m;
     m.mode=p.mode; m.specs=p.specs||{}; m.configKey=(p.specs||{}).config_key||'';
-    // Platform: reconstruct config key from size + pwt
+    // Platform display key (size_pwt for readability)
     if (propKey==='platform' && !m.configKey && m.specs.size && m.specs.pwt)
-      m.configKey = m.specs.size.toUpperCase()+'_'+m.specs.pwt;
+      m.configKey = (m.specs.size+'_'+m.specs.pwt).toUpperCase();
     if (p.mode==='new') {
       var r=_recalc(propKey);
       if (r) {
-        m.tpc=r.std_platform_tpc_eur||0; m.rd=r.total_rd_cost_eur_m||0; m.fte=r.std_fte_months||0;
-        m.weight=r.total_net_weight_kg||0; m.mat_cost=r.total_material_cost_eur||0; m.proc_cost=r.total_process_cost_eur||0;
-        m.material_lines=r.material_lines||[]; m.process_lines=r.process_lines||[];
+        if (r.is_multi_energy) {
+          // ice_and_bev: variant-specific TPC, shared R&D
+          m.isMulti = true;
+          m.tpc     = r.ice_ready.std_platform_tpc_eur||0;  // ICE-ready TPC
+          m.tpc_bev = r.bev_ready.std_platform_tpc_eur||0;  // BEV-ready TPC
+          m.rd      = r.total_rd_cost_eur_m||0;
+          m.fte     = r.std_fte_months||0;
+          m.weight  = r.ice_ready.total_net_weight_kg||0;
+          m.mat_cost= r.ice_ready.total_material_cost_eur||0;
+          m.proc_cost=r.ice_ready.total_process_cost_eur||0;
+          m.material_lines = (r.ice_ready.material_lines||[]).concat(r.bev_ready.material_lines||[]);
+          m.process_lines  = r.ice_ready.process_lines||[];
+        } else {
+          m.tpc    = r.std_platform_tpc_eur||0;
+          m.tpc_bev= r.std_platform_tpc_eur||0;
+          m.rd     = r.total_rd_cost_eur_m||0;
+          m.fte    = r.std_fte_months||0;
+          m.weight = r.total_net_weight_kg||0;
+          m.mat_cost = r.total_material_cost_eur||0;
+          m.proc_cost= r.total_process_cost_eur||0;
+          m.material_lines = r.material_lines||[];
+          m.process_lines  = r.process_lines||[];
+        }
       }
     } else if (p.module) {
       var mod=p.module;
-      m.tpc=parseFloat(mod.per_unit_tpc_eur||0); m.rd=parseFloat(mod.total_rd_spend_m||0);
+      m.tpc=parseFloat(mod.per_unit_tpc_eur||0); m.tpc_bev=m.tpc;
+      m.rd=parseFloat(mod.total_rd_spend_m||0);
       m.fte=parseFloat(mod.total_rd_fte||0);     m.weight=parseFloat(mod.total_weight_kg||0);
       m.name=mod.name; m.configKey=mod.config_key||''; m.specs=mod.specs||{};
     }
@@ -10668,16 +10692,19 @@ function buildReviewSection() {
   var plS=M.platform.specs, pwtS=M.pwt.specs, thS=M.tophat.specs;
   var edmS=M.epwt.specs, batS=M.battery.specs, esS=M.eands.specs;
 
-  var sharedTpc   = M.platform.tpc + M.tophat.tpc + M.eands.tpc;
-  var iceVarTpc   = M.pwt.tpc;
-  var edmVarTpc   = M.epwt.tpc;
-  var batVarTpc   = M.battery.tpc;
-  var bevVarTpc   = edmVarTpc + batVarTpc;
-  var iceTotalTpc = sharedTpc + iceVarTpc;
-  var bevTotalTpc = sharedTpc + bevVarTpc;
-  var hasIce      = M.pwt.mode !== '';
-  var hasBev      = M.epwt.mode !== '' || M.battery.mode !== '';
-  var dualVariant = hasIce && hasBev;
+  // ICE variant uses platform.tpc (ICE-ready); BEV variant uses platform.tpc_bev (BEV-ready)
+  var iceSharedTpc = M.platform.tpc     + M.tophat.tpc + M.eands.tpc;
+  var bevSharedTpc = M.platform.tpc_bev + M.tophat.tpc + M.eands.tpc;
+  var sharedTpc    = M.platform.tpc     + M.tophat.tpc + M.eands.tpc; // for single-variant display
+  var iceVarTpc    = M.pwt.tpc;
+  var edmVarTpc    = M.epwt.tpc;
+  var batVarTpc    = M.battery.tpc;
+  var bevVarTpc    = edmVarTpc + batVarTpc;
+  var iceTotalTpc  = iceSharedTpc + iceVarTpc;
+  var bevTotalTpc  = bevSharedTpc + bevVarTpc;
+  var hasIce       = M.pwt.mode !== '';
+  var hasBev       = M.epwt.mode !== '' || M.battery.mode !== '';
+  var dualVariant  = hasIce && hasBev;
 
   var allMods   = [M.platform, M.pwt, M.tophat, M.epwt, M.battery, M.eands];
   var totalRd   = allMods.reduce(function(s,m){return s+m.rd;},0);
@@ -10768,7 +10795,7 @@ function buildReviewSection() {
   }
 
   // Variant column (for dual view)
-  function variantCol(varLabel, varColor, varHex, varTpc, varDelta, varModCards, varSpecBlocks) {
+  function variantCol(varLabel, varColor, varHex, varTpc, varSharedTpc, varDelta, varModCards, varSpecBlocks) {
     var deltaStr = varDelta.map(function(d){
       return '<div style="display:flex;justify-content:space-between;padding:2px 0;">'+
         '<span style="font-family:DM Mono,monospace;font-size:8px;color:var(--muted2);">'+d.label+'</span>'+
@@ -10787,7 +10814,7 @@ function buildReviewSection() {
         '<div style="font-family:DM Mono,monospace;font-size:7px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:5px;">Cost Composition</div>'+
         '<div style="display:flex;justify-content:space-between;padding:2px 0;">'+
           '<span style="font-family:DM Mono,monospace;font-size:8px;color:var(--muted2);">Shared Architecture</span>'+
-          '<span style="font-family:DM Mono,monospace;font-size:8px;color:var(--gold);">€'+_f(sharedTpc).toLocaleString()+'</span></div>'+
+          '<span style="font-family:DM Mono,monospace;font-size:8px;color:var(--gold);">€'+_f(varSharedTpc).toLocaleString()+'</span></div>'+
         deltaStr+
         '<div style="border-top:1px solid var(--border2);margin-top:4px;padding-top:4px;display:flex;justify-content:space-between;">'+
           '<span style="font-family:DM Mono,monospace;font-size:8px;color:var(--muted);text-transform:uppercase;">Total TPC</span>'+
@@ -10902,9 +10929,9 @@ function buildReviewSection() {
     ];
 
     h += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px;">';
-    h += variantCol('🔶 ICE VARIANT','var(--orange)','#f97316',iceTotalTpc,iceDelta,
+    h += variantCol('🔶 ICE VARIANT','var(--orange)','#f97316',iceTotalTpc,iceSharedTpc,iceDelta,
       modCard(M.pwt,iceTotalTpc,true), iceSpecBlocks);
-    h += variantCol('⚡ BEV VARIANT','var(--green)','#4ade80',bevTotalTpc,bevDelta,
+    h += variantCol('⚡ BEV VARIANT','var(--green)','#4ade80',bevTotalTpc,bevSharedTpc,bevDelta,
       modCard(M.epwt,bevTotalTpc,true)+modCard(M.battery,bevTotalTpc,true), bevSpecBlocks);
     h += '</div>';
 
@@ -10933,7 +10960,17 @@ function buildReviewSection() {
     '<span style="width:6px;height:6px;border-radius:1px;background:var(--gold);"></span>'+
     '<span style="font-family:DM Mono,monospace;font-size:9px;font-weight:700;color:var(--white);">PLATFORM ARCHITECTURE</span>'+
   '</div>';
-  h += '<div style="font-family:Orbitron,sans-serif;font-size:12px;color:var(--gold);margin-bottom:6px;">€'+_f(M.platform.tpc).toLocaleString()+'/veh</div>';
+  // For multi-energy platform show both variant TPCs
+  if (M.platform.isMulti) {
+    h += '<div style="display:flex;gap:10px;margin-bottom:6px;">'+
+      '<div><div style="font-family:DM Mono,monospace;font-size:7px;color:var(--orange);text-transform:uppercase;margin-bottom:1px;">ICE-Ready</div>'+
+      '<div style="font-family:Orbitron,sans-serif;font-size:11px;color:var(--orange);">€'+_f(M.platform.tpc).toLocaleString()+'</div></div>'+
+      '<div><div style="font-family:DM Mono,monospace;font-size:7px;color:var(--green);text-transform:uppercase;margin-bottom:1px;">BEV-Ready</div>'+
+      '<div style="font-family:Orbitron,sans-serif;font-size:11px;color:var(--green);">€'+_f(M.platform.tpc_bev).toLocaleString()+'</div></div>'+
+    '</div>';
+  } else {
+    h += '<div style="font-family:Orbitron,sans-serif;font-size:12px;color:var(--gold);margin-bottom:6px;">€'+_f(M.platform.tpc).toLocaleString()+'/veh</div>';
+  }
   var platCk = M.platform.configKey;
   h += specRow('Config', platCk||null);
   h += specRow('Size',   plS.size?(sizeL[plS.size]||plS.size):null);
