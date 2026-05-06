@@ -1753,40 +1753,7 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
       <div class="prop-sec-chevron" id="prop-chev-6">▼</div>
     </div>
     <div class="prop-sec-body" id="prop-sec-6-body" style="display:none;">
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
-
-        <!-- Left: spec summary table -->
-        <div>
-          <div class="card-title" style="margin-bottom:10px;">Proposed Vehicle Specs</div>
-          <div id="prop-spec-table"></div>
-          <div style="margin-top:14px;">
-            <div class="card-title" style="margin-bottom:8px;">Investment Summary</div>
-            <div id="prop-invest-table"></div>
-          </div>
-        </div>
-
-        <!-- Right: radar chart -->
-        <div>
-          <div class="card-title" style="margin-bottom:10px;">Spec Radar — vs Segment Benchmark</div>
-          <div style="display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap;" id="prop-radar-legend"></div>
-          <canvas id="prop-radar-canvas" width="380" height="320" style="display:block;margin:0 auto;"></canvas>
-          <div style="margin-top:6px;font-family:'DM Mono',monospace;font-size:7px;color:var(--muted2);text-align:center;">
-            ▲ axes: bigger = better · dashed = segment benchmark
-          </div>
-        </div>
-      </div>
-
-      <!-- Continue to step 7 -->
-      <div style="margin-top:20px;padding:14px 16px;background:var(--s2);border-radius:4px;border:1px solid var(--border2);display:flex;align-items:center;gap:16px;">
-        <div style="flex:1;font-family:'DM Mono',monospace;font-size:9px;color:var(--muted2);">
-          Specs look good? Continue to define the commercial plan.
-        </div>
-        <button onclick="goBackToEditProposal()" style="font-family:'DM Mono',monospace;font-size:10px;padding:8px 16px;border-radius:3px;border:1px solid var(--border2);background:var(--s1);color:var(--muted2);cursor:pointer;">← Edit Modules</button>
-        <button onclick="advanceToCommercial()"
-          style="font-family:'DM Mono',monospace;font-size:11px;font-weight:700;padding:10px 24px;
-          border-radius:3px;border:1px solid rgba(200,164,60,.5);background:var(--goldl);
-          color:var(--gold);cursor:pointer;letter-spacing:.5px;">Continue → Commercial Plan</button>
-      </div>
+      <div id="prop-review-content"></div>
     </div>
   </div>
 
@@ -10641,69 +10608,312 @@ function advanceToReview() {
   buildReviewSection();
 }
 
-// ── Step 6: Review + Radar ─────────────────────────────────
+// ── Step 6: Review + Confirm (Executive) ────────────────────
 function buildReviewSection() {
-  // Roll up specs from selected modules
-  var rolled = {};
-  ['platform','pwt','epwt','tophat','eands'].forEach(function(key) {
-    var p = _prop[key];
-    if (p && p.module && p.module.specs) Object.assign(rolled, p.module.specs);
-  });
+  var el = document.getElementById('prop-review-content');
+  if (!el) return;
 
-  // Investment summary
-  var totalTpc = 0, totalRd = 0, totalFte = 0;
-  ['platform','pwt','epwt','tophat','eands'].forEach(function(key) {
-    var p = _prop[key];
-    if (!p) return;
-    if (p.module) {
-      totalTpc += parseFloat(p.module.per_unit_tpc_eur  || 0);
-      totalRd  += parseFloat(p.module.total_rd_spend_m  || 0);
-      totalFte += parseFloat(p.module.total_rd_fte      || 0);
+  function _recalc(propKey) {
+    var p = _prop[propKey]; if (!p || p.mode !== 'new') return null;
+    var s = p.specs || {};
+    try {
+      if (propKey==='platform') {
+        if (!s.size||!s.pwt) return null;
+        return _PC.calc(s.size.toUpperCase()+'_'+s.pwt,(s.reliability||50)/100,(s.comfort||50)/100,(s.safety||50)/100,(s.cost_opt||0)/100,(s.weight_opt||0)/100);
+      }
+      if (propKey==='pwt') {
+        if (!s.config_key) return null;
+        return _ICE_PC.calc(s.config_key,s.power||100,s.emission_tech||0.1,(s.reliability||50)/100,(s.cost_opt||0)/100,(s.weight_opt||0)/100);
+      }
+      if (propKey==='epwt') {
+        if (!s.config_key) return null;
+        return _EPWT_PC.calc(s.config_key,s.power_kw||150,s.efficiency||0.7,(s.reliability||50)/100,(s.cost_opt||0)/100,(s.weight_opt||0)/100);
+      }
+      if (propKey==='battery') {
+        if (!s.chemistry||!s.make_buy) return null;
+        return _BATTERY_PC.calc(s.chemistry+'_'+s.make_buy,s.target_kwh||60,(s.cost_opt||0)/100);
+      }
+      if (propKey==='tophat') {
+        if (!s.config_key) return null;
+        return _TOPHAT_PC.calc(s.config_key,s.reliability||0.5,s.comfort||0.5,s.safety||0.5,s.roominess||2.5,s.premiumness||0.3,(s.cost_opt||0)/100,(s.weight_opt||0)/100);
+      }
+      if (propKey==='eands') {
+        if (!s.config_key) return null;
+        return _EANDS_PC.calc(s.config_key,s.adas_level||1,s.sensor_suite||30,s.connectivity||30,s.infotainment||30,s.cybersecurity||20,(s.cost_opt||0)/100,(s.weight_opt||0)/100);
+      }
+    } catch(e) { console.warn('Review recalc',propKey,e); }
+    return null;
+  }
+
+  function _getInfo(propKey, label, color, hex) {
+    var p = _prop[propKey];
+    var m = {label:label,color:color,hex:hex,mode:'',tpc:0,rd:0,fte:0,weight:0,
+             mat_cost:0,proc_cost:0,material_lines:[],process_lines:[],specs:{},configKey:''};
+    if (!p||!p.mode) return m;
+    m.mode=p.mode; m.specs=p.specs||{}; m.configKey=(p.specs||{}).config_key||'';
+    if (p.mode==='new') {
+      var r=_recalc(propKey);
+      if (r) {
+        m.tpc=r.std_platform_tpc_eur||0; m.rd=r.total_rd_cost_eur_m||0;
+        m.fte=r.std_fte_months||0;       m.weight=r.total_net_weight_kg||0;
+        m.mat_cost=r.total_material_cost_eur||0; m.proc_cost=r.total_process_cost_eur||0;
+        m.material_lines=r.material_lines||[];   m.process_lines=r.process_lines||[];
+      }
+    } else if (p.module) {
+      var mod=p.module;
+      m.tpc=parseFloat(mod.per_unit_tpc_eur||0); m.rd=parseFloat(mod.total_rd_spend_m||0);
+      m.fte=parseFloat(mod.total_rd_fte||0);     m.weight=parseFloat(mod.total_weight_kg||0);
+      m.name=mod.name; m.configKey=mod.config_key||''; m.specs=mod.specs||{};
     }
+    return m;
+  }
+
+  var M = {
+    platform: _getInfo('platform','Platform Architecture','var(--gold)',  '#c8a43c'),
+    pwt:      _getInfo('pwt',     'ICE Powertrain',       'var(--orange)','#f97316'),
+    tophat:   _getInfo('tophat',  'Top Hat',              'var(--purple)','#a78bfa'),
+    epwt:     _getInfo('epwt',    'Electric Drive Module','var(--cyan)',  '#22d3ee'),
+    battery:  _getInfo('battery', 'Battery Pack',         'var(--green)', '#4ade80'),
+    eands:    _getInfo('eands',   'E&S / ADAS',           'var(--blue)',  '#60a5fa'),
+  };
+
+  var sharedTpc = M.platform.tpc + M.tophat.tpc + M.eands.tpc;
+  var iceTpc    = sharedTpc + M.pwt.tpc;
+  var bevTpc    = sharedTpc + M.epwt.tpc + M.battery.tpc;
+  var hasBev    = M.epwt.tpc > 0 || M.battery.tpc > 0;
+  var hasIce    = M.pwt.tpc > 0;
+  var allMods   = [M.platform,M.pwt,M.tophat,M.epwt,M.battery,M.eands];
+  var totalRd   = allMods.reduce(function(s,m){return s+m.rd;},0);
+  var totalFte  = allMods.reduce(function(s,m){return s+m.fte;},0);
+  var sharedWt  = M.platform.weight+M.tophat.weight+M.eands.weight;
+  var featTpc   = hasBev?bevTpc:hasIce?iceTpc:sharedTpc;
+
+  // Radar specs — merge from all modules
+  var rsp={};
+  var thS=M.tophat.specs,plS=M.platform.specs,pwtS=M.pwt.specs,edmS=M.epwt.specs,batS=M.battery.specs,esS=M.eands.specs;
+  if (thS.reliability!=null) rsp.reliability=parseFloat(thS.reliability); else if (plS.reliability!=null) rsp.reliability=(plS.reliability||50)/100;
+  if (thS.comfort!=null)     rsp.comfort=parseFloat(thS.comfort);         else if (plS.comfort!=null)     rsp.comfort=(plS.comfort||50)/100;
+  if (thS.safety!=null)      rsp.safety=parseFloat(thS.safety);           else if (plS.safety!=null)      rsp.safety=(plS.safety||50)/100;
+  if (thS.premiumness!=null) rsp.premiumness=parseFloat(thS.premiumness);
+  if (thS.roominess!=null)   rsp.roominess=parseFloat(thS.roominess);
+  if (pwtS.power!=null)         rsp.power=parseFloat(pwtS.power);
+  if (pwtS.emission_tech!=null) rsp.emission_tech=parseFloat(pwtS.emission_tech);
+  if (edmS.power_kw!=null)      rsp.power_kw=parseFloat(edmS.power_kw);
+  if (edmS.efficiency!=null)    rsp.efficiency=parseFloat(edmS.efficiency);
+  if (esS.adas_level!=null)     rsp.adas_level=parseFloat(esS.adas_level);
+
+  // Aggregate material BOM
+  var allMats=[];
+  allMods.forEach(function(mod){
+    (mod.material_lines||[]).forEach(function(ln){
+      allMats.push({name:ln.material_name,code:ln.material_code,net:ln.net_weight_kg,cost:ln.material_cost_eur,hex:mod.hex,color:mod.color});
+    });
   });
+  allMats.sort(function(a,b){return b.cost-a.cost;});
+  var topMats=allMats.slice(0,28);
+  var maxMC=topMats.length>0?topMats[0].cost:1;
+  var totMC=allMats.reduce(function(s,m){return s+m.cost;},0);
+  var totPW=allMats.reduce(function(s,m){return s+m.net;},0);
 
-  // Spec table
-  var specDefs = [
-    {key:'reliability',  label:'Reliability',       fmt:function(v){return (v*100).toFixed(0)+'%';}},
-    {key:'comfort',      label:'Comfort',           fmt:function(v){return (v*100).toFixed(0)+'%';}},
-    {key:'safety',       label:'Safety',            fmt:function(v){return (v*100).toFixed(0)+'%';}},
-    {key:'premiumness',  label:'Premiumness',       fmt:function(v){return (v*100).toFixed(0)+'%';}},
-    {key:'roominess',    label:'Roominess',         fmt:function(v){return parseFloat(v).toFixed(1)+'m\u00b3';}},
-    {key:'power',        label:'ICE Power',         fmt:function(v){return Math.round(v)+'hp';}},
-    {key:'power_kw',     label:'BEV Power',         fmt:function(v){return Math.round(v)+'kW';}},
-    {key:'emission_tech',label:'Emission Tech',     fmt:function(v){return (v*100).toFixed(0)+'%';}},
-    {key:'efficiency',   label:'e-Motor Eff.',      fmt:function(v){return (v*100).toFixed(0)+'%';}},
-    {key:'adas_level',   label:'ADAS Level',        fmt:function(v){return 'Level '+Math.round(v);}},
-  ];
-  var filled = specDefs.filter(function(s){ return rolled[s.key] != null; });
-  var specHtml = '<table style="width:100%;border-collapse:collapse;">' +
-    filled.map(function(s) {
-      return '<tr style="border-bottom:1px solid var(--border);">' +
-        '<td style="font-family:DM Mono,monospace;font-size:9px;color:var(--muted2);padding:5px 0;">' + s.label + '</td>' +
-        '<td style="font-family:DM Mono,monospace;font-size:10px;color:var(--text);text-align:right;padding:5px 0;">' + s.fmt(rolled[s.key]) + '</td>' +
-      '</tr>';
-    }).join('') +
-    (filled.length===0?'<tr><td colspan="2" style="color:var(--muted2);text-align:center;padding:12px;">No module specs yet — select completed modules</td></tr>':'') +
-    '</table>';
-  var stEl = document.getElementById('prop-spec-table');
-  if (stEl) stEl.innerHTML = specHtml;
+  var SEG_NL=typeof SEG_NAMES!=='undefined'?SEG_NAMES:{};
+  var studySeg=_prop.study?(SEG_NL[_prop.study.segment_code]||_prop.study.segment_code||'—'):'—';
+  var studyBrand=_prop.study?(_prop.study.brand_code||''):'';
+  var pwtBadge=hasIce&&hasBev?'Multi-Energy Program':hasBev?'BEV Program':hasIce?'ICE Program':'Architecture TBD';
+  var sizeL={micro:'Micro',small:'Small',medium:'Medium',large:'Large',frame:'Frame',performance:'Performance',commercial:'Commercial'};
+  var pwtL={ICE_ONLY:'ICE Only',BEV_ONLY:'BEV Only',ICE_AND_BEV:'Multi-Energy',ice_only:'ICE Only',bev_only:'BEV Only',ice_and_bev:'Multi-Energy'};
+  var archL={DECENTRALIZED:'Decentralized (80+ ECUs)',ZONAL:'Zonal (5-6 Zones)',CENTRALIZED:'Centralized (HPC)'};
+  var chemN=typeof _BATTERY_PC!=='undefined'?_BATTERY_PC.CHEM:{};
 
-  // Investment table
-  var invHtml = '<table style="width:100%;border-collapse:collapse;">' +
-    '<tr style="border-bottom:1px solid var(--border);"><td style="font-family:DM Mono,monospace;font-size:9px;color:var(--muted2);padding:5px 0;">Unit TPC (\u20ac/vehicle)</td><td style="font-family:DM Mono,monospace;font-size:10px;color:var(--gold);text-align:right;padding:5px 0;">\u20ac'+Math.round(totalTpc).toLocaleString()+'</td></tr>' +
-    '<tr style="border-bottom:1px solid var(--border);"><td style="font-family:DM Mono,monospace;font-size:9px;color:var(--muted2);padding:5px 0;">R&D Investment</td><td style="font-family:DM Mono,monospace;font-size:10px;color:var(--text);text-align:right;padding:5px 0;">\u20ac'+Math.round(totalRd)+'M</td></tr>' +
-    '<tr><td style="font-family:DM Mono,monospace;font-size:9px;color:var(--muted2);padding:5px 0;">Engineering FTE</td><td style="font-family:DM Mono,monospace;font-size:10px;color:var(--text);text-align:right;padding:5px 0;">'+Math.round(totalFte)+' months</td></tr>' +
-    '</table>';
-  var invEl = document.getElementById('prop-invest-table');
-  if (invEl) invEl.innerHTML = invHtml;
+  function _f(n,d){return d?parseFloat(n||0).toFixed(d):Math.round(parseFloat(n||0));}
+  function kpi(lbl,val,sub,col){
+    return '<div style="background:var(--s2);border:1px solid var(--border2);border-top:2px solid '+col+';border-radius:4px;padding:11px 14px;">'+
+      '<div style="font-family:DM Mono,monospace;font-size:7px;letter-spacing:1.5px;color:var(--muted);text-transform:uppercase;margin-bottom:3px;">'+lbl+'</div>'+
+      '<div style="font-family:Orbitron,sans-serif;font-size:15px;font-weight:700;color:'+col+';">'+val+'</div>'+
+      '<div style="font-family:DM Mono,monospace;font-size:8px;color:var(--muted2);margin-top:2px;">'+sub+'</div></div>';
+  }
+  function modCard(mod,refTpc){
+    if(!mod.mode) return '';
+    var pct=refTpc>0?Math.min(100,Math.round(mod.tpc/refTpc*100)):0;
+    var barW=Math.min(100,pct*1.8);
+    var mTag=mod.mode==='new'?'NEW DEV':mod.mode==='reuse'?'REUSE':'MODIFY';
+    var mCol=mod.mode==='new'?mod.color:'var(--green)';
+    var ck=mod.configKey||(mod.name||'');
+    return '<div style="border:1px solid var(--border2);border-left:3px solid '+mod.color+';border-radius:3px;padding:10px 12px;margin-bottom:6px;background:var(--s2);">'+
+      '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:7px;">'+
+        '<div style="display:flex;align-items:center;gap:6px;">'+
+          '<span style="width:7px;height:7px;border-radius:1px;background:'+mod.color+';flex-shrink:0;"></span>'+
+          '<span style="font-family:DM Mono,monospace;font-size:9px;font-weight:700;color:var(--white);letter-spacing:.5px;">'+mod.label.toUpperCase()+'</span>'+
+        '</div>'+
+        '<div style="display:flex;align-items:center;gap:6px;">'+
+          (ck?'<span style="font-family:DM Mono,monospace;font-size:7px;color:var(--muted2);">'+ck+'</span>':'')+
+          '<span style="font-family:DM Mono,monospace;font-size:6px;padding:1px 5px;border-radius:2px;border:1px solid '+mCol+';color:'+mCol+';">'+mTag+'</span>'+
+        '</div>'+
+      '</div>'+
+      '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">'+
+        '<div style="flex:1;height:3px;background:var(--border);border-radius:2px;overflow:hidden;">'+
+          '<div style="height:100%;width:'+barW+'%;background:'+mod.color+';border-radius:2px;"></div>'+
+        '</div>'+
+        '<span style="font-family:Orbitron,sans-serif;font-size:12px;color:'+mod.color+';white-space:nowrap;">€'+_f(mod.tpc).toLocaleString()+'/veh</span>'+
+        '<span style="font-family:DM Mono,monospace;font-size:8px;color:var(--muted2);">'+pct+'%</span>'+
+      '</div>'+
+      '<div style="display:flex;gap:14px;flex-wrap:wrap;font-family:DM Mono,monospace;font-size:8px;color:var(--muted2);">'+
+        (mod.weight>0?'<span>⚤ '+_f(mod.weight)+' kg</span>':'')+
+        (mod.rd>0?'<span>\u{1F52C} €'+_f(mod.rd)+'M R&D</span>':'')+
+        (mod.fte>0?'<span>\u{1F465} '+_f(mod.fte/1000,1)+'k FTE-mos</span>':'')+
+        (mod.mat_cost>0?'<span>\u{1F9F1} €'+_f(mod.mat_cost).toLocaleString()+' mat</span>':'')+
+      '</div></div>';
+  }
+  function specRow(lbl,val){
+    if(val==null||val==='') return '';
+    return '<div style="display:flex;justify-content:space-between;align-items:center;padding:3px 0;border-bottom:1px solid rgba(255,255,255,.04);">'+
+      '<span style="font-family:DM Mono,monospace;font-size:8px;color:var(--muted2);">'+lbl+'</span>'+
+      '<span style="font-family:DM Mono,monospace;font-size:8px;color:var(--white);font-weight:600;">'+val+'</span></div>';
+  }
+  function specSec(title,col,rows){
+    var inner=rows.join(''); if(!inner) return '';
+    return '<div style="margin-bottom:10px;">'+
+      '<div style="font-family:DM Mono,monospace;font-size:7px;color:'+col+';letter-spacing:1.5px;text-transform:uppercase;padding:3px 0;border-bottom:1px solid rgba(255,255,255,.08);margin-bottom:4px;">'+title+'</div>'+
+      inner+'</div>';
+  }
+  function sRule(lbl){
+    return '<div style="font-family:DM Mono,monospace;font-size:7px;letter-spacing:2px;color:var(--muted);text-transform:uppercase;margin-bottom:8px;display:flex;align-items:center;gap:8px;">'+
+      '<span style="flex:1;height:1px;background:var(--border2);display:inline-block;"></span>'+lbl+
+      '<span style="flex:1;height:1px;background:var(--border2);display:inline-block;"></span></div>';
+  }
+  function vDiv(lbl,col){
+    return '<div style="font-family:DM Mono,monospace;font-size:7px;letter-spacing:1.5px;color:'+col+';text-transform:uppercase;margin:10px 0 5px;padding-top:8px;border-top:1px solid '+col+'33;">——— '+lbl+'</div>';
+  }
 
-  // Radar chart
-  drawProposalRadar(rolled, totalTpc);
+  var h='';
+  // Header banner
+  h+='<div style="background:linear-gradient(135deg,rgba(200,164,60,.10) 0%,rgba(0,0,0,0) 55%);border:1px solid rgba(200,164,60,.22);border-radius:6px;padding:16px 20px;margin-bottom:14px;display:flex;justify-content:space-between;align-items:center;">';
+  h+='<div>';
+  h+='<div style="font-family:DM Mono,monospace;font-size:7px;letter-spacing:3px;color:var(--gold);text-transform:uppercase;margin-bottom:5px;">▌ Vehicle Program · Technical Definition</div>';
+  h+='<div style="font-family:Orbitron,sans-serif;font-size:20px;font-weight:800;color:var(--white);letter-spacing:1px;line-height:1.1;">'+(studyBrand?studyBrand.toUpperCase()+' ':'')+studySeg.toUpperCase()+'</div>';
+  h+='<div style="font-family:DM Mono,monospace;font-size:9px;color:var(--muted2);margin-top:5px;">'+pwtBadge+' · Platform '+(plS.size?sizeL[plS.size]||plS.size:'TBD').toUpperCase()+(plS.pwt?' · '+(pwtL[plS.pwt]||plS.pwt.replace(/_/g,'-')):'')+'</div>';
+  h+='</div><div style="text-align:right;">';
+  h+='<div style="font-family:DM Mono,monospace;font-size:7px;letter-spacing:1px;color:var(--muted);text-transform:uppercase;margin-bottom:2px;">Total Program R&D</div>';
+  h+='<div style="font-family:Orbitron,sans-serif;font-size:26px;font-weight:800;color:var(--gold);">€'+_f(totalRd)+'<span style="font-size:14px;font-weight:400;color:var(--muted2);"> M</span></div>';
+  h+='<div style="font-family:DM Mono,monospace;font-size:8px;color:var(--muted2);margin-top:2px;">'+_f(totalFte/1000,1)+'k FTE-months engineering investment</div>';
+  h+='</div></div>';
 
-  // Update status
-  var s6 = document.getElementById('prop-sec-6-status');
-  if (s6) s6.textContent = totalTpc > 0 ? '\u20ac'+Math.round(totalTpc)+'/veh TPC' : '\u2713 Ready to confirm';
+  // KPI strip
+  h+='<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:14px;">';
+  h+=kpi('Shared Architecture TPC','€'+_f(sharedTpc).toLocaleString(),'Platform + Top Hat + E&S','var(--gold)');
+  h+=kpi('ICE Variant TPC',hasIce?'€'+_f(iceTpc).toLocaleString():'—',hasIce?'incl. ICE powertrain':'not configured',hasIce?'var(--orange)':'var(--border2)');
+  h+=kpi('BEV Variant TPC',hasBev?'€'+_f(bevTpc).toLocaleString():'—',hasBev?'incl. EDM + battery':'not configured',hasBev?'var(--green)':'var(--border2)');
+  h+=kpi('BOM Weight',totPW>0?_f(totPW).toLocaleString()+' kg':sharedWt>0?_f(sharedWt)+' kg':'—',totPW>0?'all modules aggregated':'shared modules only','var(--cyan)');
+  h+='</div>';
+
+  // Main 2-col grid
+  h+='<div style="display:grid;grid-template-columns:3fr 2fr;gap:14px;">';
+  h+='<div>';
+  h+=sRule('MODULE ARCHITECTURE');
+  h+=modCard(M.platform,featTpc); h+=modCard(M.tophat,featTpc); h+=modCard(M.eands,featTpc);
+  h+=vDiv('ICE VARIANT POWERTRAIN','var(--orange)');
+  h+=modCard(M.pwt,iceTpc>0?iceTpc:featTpc);
+  h+=vDiv('BEV VARIANT DRIVETRAIN','var(--green)');
+  h+=modCard(M.epwt,bevTpc>0?bevTpc:featTpc);
+  h+=modCard(M.battery,bevTpc>0?bevTpc:featTpc);
+
+  // BOM table
+  h+='<div style="margin-top:14px;">';
+  h+=sRule('AGGREGATED MATERIAL BOM'+(topMats.length>0?' · TOP '+topMats.length+' OF '+allMats.length+' LINES':''));
+  if(topMats.length>0){
+    h+='<table style="width:100%;border-collapse:collapse;font-family:DM Mono,monospace;font-size:8px;">';
+    h+='<thead><tr style="border-bottom:1px solid var(--border2);">';
+    ['Material','Mod','Net kg','Cost €',''].forEach(function(c,i){
+      h+='<th style="text-align:'+(i>=2?'right':'left')+';padding:5px '+(i===1?'6px':'8px')+';color:var(--muted);font-weight:normal;font-size:7px;text-transform:uppercase;letter-spacing:.5px;'+(i===4?'min-width:70px;':'')+'">'+c+'</th>';
+    });
+    h+='</tr></thead><tbody>';
+    topMats.forEach(function(mat,i){
+      var bw=Math.round(mat.cost/maxMC*100);
+      h+='<tr style="border-bottom:1px solid rgba(255,255,255,.04);'+(i%2===0?'':'background:rgba(255,255,255,.018);')+'">';
+      h+='<td style="padding:4px 8px;color:var(--text);">'+mat.name+'</td>';
+      h+='<td style="padding:4px 6px;text-align:center;"><span style="display:inline-block;width:7px;height:7px;border-radius:1px;background:'+mat.hex+';"></span></td>';
+      h+='<td style="padding:4px 8px;text-align:right;color:var(--muted2);">'+mat.net.toFixed(1)+'</td>';
+      h+='<td style="padding:4px 8px;text-align:right;color:var(--white);font-weight:600;">'+_f(mat.cost).toLocaleString()+'</td>';
+      h+='<td style="padding:4px 8px;"><div style="height:3px;background:var(--border);border-radius:2px;overflow:hidden;"><div style="height:100%;width:'+bw+'%;background:'+mat.hex+';border-radius:2px;"></div></div></td>';
+      h+='</tr>';
+    });
+    h+='<tr style="border-top:1px solid var(--border2);">';
+    h+='<td colspan="2" style="padding:5px 8px;font-size:7px;color:var(--muted2);text-transform:uppercase;letter-spacing:.5px;">Total ('+allMats.length+' lines)</td>';
+    h+='<td style="padding:5px 8px;text-align:right;color:var(--muted2);">'+_f(totPW,1)+' kg</td>';
+    h+='<td style="padding:5px 8px;text-align:right;color:var(--gold);font-weight:700;">€'+_f(totMC).toLocaleString()+'</td>';
+    h+='<td></td></tr>';
+    h+='</tbody></table>';
+  } else {
+    h+='<div style="color:var(--muted2);font-size:9px;padding:12px 14px;background:var(--s3);border-radius:3px;border:1px solid var(--border2);">Material BOM is generated for <b>New Development</b> modules. Select New Development in each step to see the full raw-material breakdown.</div>';
+  }
+  h+='</div></div>';
+
+  // RIGHT column
+  h+='<div>';
+  h+=sRule('PERFORMANCE PROFILE');
+  h+='<div id="prop-radar-legend" style="display:flex;gap:8px;margin-bottom:6px;flex-wrap:wrap;font-family:DM Mono,monospace;font-size:8px;"></div>';
+  h+='<canvas id="prop-radar-canvas" width="320" height="285" style="display:block;margin:0 auto;"></canvas>';
+  h+='<div style="font-family:DM Mono,monospace;font-size:7px;color:var(--muted2);text-align:center;margin-top:3px;">▲ outer = better · dashed = segment benchmark</div>';
+  h+='<div style="margin-top:14px;">';
+  h+=sRule('TECHNICAL SPECIFICATION');
+
+  h+=specSec('Platform Architecture','var(--gold)',[
+    specRow('Size',plS.size?sizeL[plS.size]||plS.size:null),
+    specRow('Propulsion',plS.pwt?pwtL[plS.pwt]||plS.pwt.replace(/_/g,'-'):null),
+    specRow('Reliability',plS.reliability!=null?_f(plS.reliability)+'%':null),
+    specRow('Comfort',plS.comfort!=null?_f(plS.comfort)+'%':null),
+    specRow('Safety',plS.safety!=null?_f(plS.safety)+'%':null),
+  ]);
+  h+=specSec('Top Hat','var(--purple)',[
+    specRow('Body / Config',thS.config_key?thS.config_key.replace(/_/g,' '):null),
+    specRow('Roominess',thS.roominess!=null?parseFloat(thS.roominess).toFixed(1)+' m³':null),
+    specRow('Premiumness',thS.premiumness!=null?_f(parseFloat(thS.premiumness)*100)+'%':null),
+    specRow('Comfort',thS.comfort!=null?_f(parseFloat(thS.comfort)*100)+'%':null),
+    specRow('Safety',thS.safety!=null?_f(parseFloat(thS.safety)*100)+'%':null),
+  ]);
+  h+=specSec('ICE Powertrain','var(--orange)',[
+    specRow('Engine Config',pwtS.config_key?pwtS.config_key.replace(/_/g,' '):null),
+    specRow('Peak Power',pwtS.power!=null?_f(pwtS.power)+' hp':null),
+    specRow('Emission Tech',pwtS.emission_tech!=null?_f(parseFloat(pwtS.emission_tech)*100)+'%':null),
+    specRow('Sourcing',pwtS.make_buy||null),
+  ]);
+  h+=specSec('Electric Drive Module','var(--cyan)',[
+    specRow('Motor Class',edmS.epwt_class?edmS.epwt_class.replace(/_/g,' '):null),
+    specRow('Sourcing',edmS.make_buy||null),
+    specRow('Peak Power',edmS.power_kw!=null?_f(edmS.power_kw)+' kW':null),
+    specRow('Efficiency',edmS.efficiency!=null?_f(parseFloat(edmS.efficiency)*100)+'%':null),
+  ]);
+  var batPV=null;
+  try{ if(batS.chemistry&&batS.make_buy&&batS.target_kwh&&typeof _BATTERY_PC!=='undefined'){var _br=_BATTERY_PC.calc(batS.chemistry+'_'+batS.make_buy,batS.target_kwh,0);if(_br)batPV=_br.pack_volume_l;} }catch(e){}
+  h+=specSec('Battery Pack','var(--green)',[
+    specRow('Chemistry',batS.chemistry?(chemN[batS.chemistry]?chemN[batS.chemistry].n:batS.chemistry.replace(/_/g,'-')):null),
+    specRow('Cell Mfg.',batS.make_buy==='MAKE'?'Make (Gigafactory)':batS.make_buy==='BUY'?'Buy (Cell Supplier)':batS.make_buy||null),
+    specRow('Energy',batS.target_kwh!=null?batS.target_kwh+' kWh':null),
+    specRow('Pack Volume',batPV!=null?batPV+' L':null),
+  ]);
+  h+=specSec('E&S / ADAS','var(--blue)',[
+    specRow('E/E Architecture',esS.ee_arch?archL[esS.ee_arch]||esS.ee_arch:null),
+    specRow('Sourcing',esS.make_buy==='MAKE'?'Make (Own Dev)':esS.make_buy==='BUY'?'Buy (Tier-1)':esS.make_buy||null),
+    specRow('ADAS Level',esS.adas_level!=null?'SAE Level '+esS.adas_level:null),
+    specRow('Sensor Suite',esS.sensor_suite!=null?esS.sensor_suite+'%':null),
+    specRow('Connectivity',esS.connectivity!=null?esS.connectivity+'%':null),
+    specRow('Infotainment',esS.infotainment!=null?esS.infotainment+'%':null),
+    specRow('Cybersecurity',esS.cybersecurity!=null?esS.cybersecurity+'%':null),
+  ]);
+  h+='</div></div></div>';
+
+  // Action bar
+  h+='<div style="margin-top:18px;padding:14px 18px;background:var(--s2);border-radius:4px;border:1px solid var(--border2);display:flex;align-items:center;gap:12px;">';
+  h+='<div style="flex:1;font-family:DM Mono,monospace;font-size:9px;color:var(--muted2);">Technical definition complete · Proceed to set pricing, launch volumes and market strategy.</div>';
+  h+='<button onclick="goBackToEditProposal()" style="font-family:DM Mono,monospace;font-size:9px;padding:7px 14px;border-radius:2px;border:1px solid var(--border2);background:var(--s1);color:var(--muted2);cursor:pointer;">← Edit Modules</button>';
+  h+='<button onclick="advanceToCommercial()" style="font-family:DM Mono,monospace;font-size:10px;font-weight:700;padding:9px 22px;border-radius:3px;border:1px solid rgba(200,164,60,.5);background:var(--goldl);color:var(--gold);cursor:pointer;letter-spacing:.5px;">Continue → Commercial Plan</button>';
+  h+='</div>';
+
+  el.innerHTML=h;
+  setTimeout(function(){ drawProposalRadar(rsp,featTpc); },60);
+  var s6=document.getElementById('prop-sec-6-status');
+  if(s6) s6.textContent=featTpc>0?'€'+_f(featTpc).toLocaleString()+'/veh · €'+_f(totalRd)+'M R&D':'✓ Ready to confirm';
 }
+
 
 function drawProposalRadar(specs, tpcEur) {
   var canvas = document.getElementById('prop-radar-canvas');
