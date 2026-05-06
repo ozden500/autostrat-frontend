@@ -2792,7 +2792,11 @@ const MOD_SPECS = {
     {id:'premiumness', name:'Premiumness', unit:'%',  min:0,   max:1,   step:0.01, def:0.3},
   ],
   eands: [
-    {id:'adas_level', name:'ADAS Level', unit:'', min:0, max:5, step:1, def:1},
+    {id:'adas_level',   name:'ADAS Level',    unit:'',  min:0, max:5,   step:1,   def:1,  tooltip:'SAE Level 0–5. L3+ requires Zonal architecture minimum; L4/5 requires Centralized.'},
+    {id:'sensor_suite', name:'Sensor Suite',  unit:'%', min:0, max:100, step:5,   def:30, tooltip:'Camera, radar and LiDAR content. Above 60% adds radar; above 85% adds LiDAR.'},
+    {id:'connectivity', name:'Connectivity',  unit:'%', min:0, max:100, step:5,   def:30, tooltip:'5G modem, V2X, OTA capability and remote diagnostics hardware.'},
+    {id:'infotainment', name:'Infotainment',  unit:'%', min:0, max:100, step:5,   def:30, tooltip:'Display grade, HMI quality, audio system, AR-HUD at high levels.'},
+    {id:'cybersecurity',name:'Cybersecurity', unit:'%', min:0, max:100, step:5,   def:20, tooltip:'HSM security chips, ISO 21434 compliance hardware, secure boot silicon.'},
   ],
 };
 
@@ -2819,7 +2823,7 @@ const MOD_STEP_LABELS = {
   ice_pwt:  {a:'Cylinder Count',   b:'Hybrid Technology'},
   epwt:     {a:'Performance Class',b:'Make or Buy'},
   tophat:   {a:'Vehicle Segment',  b:'Body Type'},
-  eands:    {a:'ADAS Level',       b:null},
+  eands:    {a:'E/E Architecture', b:'Make or Buy'},
 };
 
 // Unique primary values per type (extracted from configs)
@@ -2828,7 +2832,7 @@ function getPrimaryOptions(type, configs) {
   if (type==='ice_pwt')  return [...new Set(configs.map(c=>String(c.cylinders)))];
   if (type==='epwt')     return configs.map(c=>c.epwt_class);
   if (type==='tophat')   return [...new Set(configs.map(c=>c.segment_code))];
-  if (type==='eands')    return configs.map(c=>String(c.adas_level));
+  if (type==='eands')    return ['DECENTRALIZED','ZONAL','CENTRALIZED'];
   return [];
 }
 
@@ -2837,6 +2841,7 @@ function getSecondaryOptions(type, configs, primaryVal) {
   if (type==='ice_pwt')  return configs.filter(c=>String(c.cylinders)===primaryVal).map(c=>({val:c.config_key, label:c.hybrid_tech}));
   if (type==='tophat')   return configs.filter(c=>c.segment_code===primaryVal).map(c=>({val:c.config_key, label:c.body_type}));
   if (type==='epwt')     return [{val:primaryVal+'_MAKE',label:'Make (Own Development)'},{val:primaryVal+'_BUY',label:'Buy (Sourced from Supplier)'}];
+  if (type==='eands')    return [{val:primaryVal+'_MAKE',label:'Make (Own Development)'},{val:primaryVal+'_BUY',label:'Buy (Tier-1 Sourced)'}];
   return [];
 }
 
@@ -2846,6 +2851,7 @@ function formatPrimaryLabel(type, val) {
   if (type==='ice_pwt')  return `${val}-Cylinder`;
   if (type==='epwt')     return val.replace(/_/g,'-');
   if (type==='tophat')   return val.replace(/_/g,' ').replace(/\b\w/g,c=>c.toUpperCase());
+  if (type==='eands')    return {DECENTRALIZED:'Decentralized (80+ ECUs)',ZONAL:'Zonal (5-6 Zones)',CENTRALIZED:'Centralized (HPC)'}[val]||val;
   return val;
 }
 
@@ -2925,7 +2931,7 @@ function onBaseConfigChange() {
   // Show cost optimization slider for platform module
   var costOptRow = document.getElementById('mod-cost-opt-row');
   var weightOptRow = document.getElementById('mod-weight-opt-row');
-  var showOpt = (currentModType === 'platform' || currentModType === 'ice_pwt' || currentModType === 'epwt' || currentModType === 'tophat');
+  var showOpt = (currentModType === 'platform' || currentModType === 'ice_pwt' || currentModType === 'epwt' || currentModType === 'tophat' || currentModType === 'eands');
   if (costOptRow) costOptRow.style.display = showOpt ? '' : 'none';
   if (weightOptRow) weightOptRow.style.display = showOpt ? '' : 'none';
   // For types with secondary, read from secondary select
@@ -2944,6 +2950,7 @@ function onBaseConfigChange() {
   else if (currentModType === 'ice_pwt') fetchICEPWTStdCost();
   else if (currentModType === 'epwt') fetchEPWTStdCost();
   else if (currentModType === 'tophat') fetchTopHatStdCost();
+  else if (currentModType === 'eands') fetchEandsStdCost();
   document.getElementById('mod-submit-area').style.display='block';
   setDevPath('new', document.getElementById('path-new'));
   scheduleCostCalc();
@@ -3043,12 +3050,12 @@ function buildSpecSliders(type) {
     return `<div class="ctrl">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
         <label class="ctrl-lbl-top" style="margin:0;">${sp.name}${tooltipHtml}</label>
-        <span style="font-family:DM Mono,monospace;font-size:9px;color:var(--gold);" id="msv-${sp.id}">${sp.def}%</span>
+        <span style="font-family:DM Mono,monospace;font-size:9px;color:var(--gold);" id="msv-${sp.id}">${sp.def}${sp.unit}</span>
       </div>
       <input type="range" min="${sp.min}" max="${sp.max}" step="${sp.step}" value="${sp.def}"
         id="msr-${sp.id}" class="spec-range"
         style="width:100%;margin:2px 0 6px;"
-        oninput="document.getElementById('msv-${sp.id}').textContent=this.value+'%';scheduleCostCalc()">
+        oninput="document.getElementById('msv-${sp.id}').textContent=this.value+'${sp.unit}';scheduleCostCalc()">
     </div>`;
   }).join('');
 }
@@ -3075,6 +3082,8 @@ function scheduleCostCalc() {
     costDebounceTimer = setTimeout(fetchEPWTStdCost, 400);
   } else if (currentModType === 'tophat') {
     costDebounceTimer = setTimeout(fetchTopHatStdCost, 400);
+  } else if (currentModType === 'eands') {
+    costDebounceTimer = setTimeout(fetchEandsStdCost, 400);
   } else {
     costDebounceTimer = setTimeout(fetchCostPreview, 400);
   }
@@ -3607,6 +3616,8 @@ function _renderSingleVariantLayout(r, bomEl, legEl) {
     color = 'var(--cyan)'; label = r.make_buy === 'BUY' ? 'e-Motor (Sourced)' : 'e-Motor (Make)';
   } else if (r.module_type === 'tophat') {
     color = 'var(--purple)'; label = 'Top Hat';
+  } else if (r.module_type === 'eands') {
+    color = 'var(--blue)'; label = r.make_buy === 'BUY' ? 'E&S (Sourced)' : 'E&S · ' + r.ee_arch;
   } else {
     var isIce = pwt === 'ice_only';
     color = isIce ? 'var(--gold)' : 'var(--green)';
@@ -4786,6 +4797,356 @@ function fetchTopHatStdCost() {
     var tpcEl = document.getElementById('mc-tpc');
     if (tpcEl) tpcEl.textContent = '€' + Math.round(r.std_platform_tpc_eur).toLocaleString() + '/veh';
   } catch(e) { console.warn('TopHat BOM cost error:', e); }
+}
+
+// ════════════════════════════════════════════════════════════════════
+// E&S COST ENGINE v1.0.0 — Client-Side JavaScript
+// E/E Architecture × Make/Buy × 5 Tech Spec Drivers
+// ════════════════════════════════════════════════════════════════════
+var _EANDS_PC = {
+  VERSION: "1.0.0",
+  US_LABOR: 58.0, US_ELEC: 0.08,
+  US_FTE_RATE_MONTH: 13333, RD_FTE_SHARE: 0.60, RD_MAT_SHARE: 0.40, RD_MAT_INDEX: 1.00,
+  MAT: {
+    DOMAIN_ECU:  {p:30.0,  sc:1.02, sm:1.01, sd:1.01, n:"Domain ECU Array"},
+    ZONE_CTRL:   {p:100.0, sc:1.02, sm:1.01, sd:1.01, n:"Zone Controller Hardware"},
+    HPC_UNIT:    {p:500.0, sc:1.01, sm:1.00, sd:1.00, n:"High-Performance Compute"},
+    WIRING:      {p:6.0,   sc:1.08, sm:1.05, sd:1.05, n:"Wiring Harness & Connectors"},
+    CAMERA_HW:   {p:150.0, sc:1.02, sm:1.01, sd:1.01, n:"Camera Modules"},
+    RADAR_HW:    {p:120.0, sc:1.02, sm:1.01, sd:1.01, n:"Radar Sensors"},
+    LIDAR_HW:    {p:900.0, sc:1.01, sm:1.01, sd:1.01, n:"LiDAR Units"},
+    DISPLAY_HW:  {p:60.0,  sc:1.05, sm:1.03, sd:1.03, n:"Display & HMI Hardware"},
+    AUDIO_HW:    {p:40.0,  sc:1.05, sm:1.03, sd:1.03, n:"Audio System"},
+    COMMS_HW:    {p:150.0, sc:1.02, sm:1.01, sd:1.01, n:"5G / V2X Comm Module"},
+    SECURE_HW:   {p:500.0, sc:1.01, sm:1.01, sd:1.01, n:"Security Chip (HSM)"},
+  },
+  PROC: {
+    ECU_ASSEMBLY:    {m:0.30, l:2.50, e:5.0, n:"ECU Programming & Integration"},
+    HARNESS_INSTALL: {m:0.15, l:3.00, e:2.0, n:"Harness Routing & Installation"},
+    SENSOR_INSTALL:  {m:0.20, l:4.00, e:3.0, n:"Sensor Calibration & Fitting"},
+    SW_INTEGRATION:  {m:0.00, l:4.00, e:4.0, n:"Software Integration & Testing"},
+    VALIDATION:      {m:0.50, l:3.00, e:8.0, n:"System Validation & Homologation"},
+  },
+  BASE_BOM: {
+    "DECENTRALIZED": [["DOMAIN_ECU",3.5,"ECU_ASSEMBLY"],["WIRING",20.0,"HARNESS_INSTALL"],
+                      ["CAMERA_HW",0.4,"SENSOR_INSTALL"],["DISPLAY_HW",1.2,"ECU_ASSEMBLY"],
+                      ["COMMS_HW",0.08,"ECU_ASSEMBLY"],["SECURE_HW",0.01,"ECU_ASSEMBLY"]],
+    "ZONAL":         [["ZONE_CTRL",3.0,"ECU_ASSEMBLY"],["WIRING",15.0,"HARNESS_INSTALL"],
+                      ["CAMERA_HW",0.4,"SENSOR_INSTALL"],["RADAR_HW",0.5,"SENSOR_INSTALL"],
+                      ["DISPLAY_HW",1.2,"ECU_ASSEMBLY"],["COMMS_HW",0.08,"ECU_ASSEMBLY"],
+                      ["SECURE_HW",0.01,"ECU_ASSEMBLY"]],
+    "CENTRALIZED":   [["HPC_UNIT",1.4,"ECU_ASSEMBLY"],["WIRING",11.0,"HARNESS_INSTALL"],
+                      ["CAMERA_HW",0.4,"SENSOR_INSTALL"],["RADAR_HW",0.5,"SENSOR_INSTALL"],
+                      ["DISPLAY_HW",1.2,"ECU_ASSEMBLY"],["COMMS_HW",0.08,"ECU_ASSEMBLY"],
+                      ["SECURE_HW",0.02,"ECU_ASSEMBLY"]],
+  },
+  BASE_PROCS: {
+    "DECENTRALIZED": [["ECU_ASSEMBLY",3.57],["HARNESS_INSTALL",21.6],["SENSOR_INSTALL",0.41],
+                      ["SW_INTEGRATION",25.2],["VALIDATION",25.2]],
+    "ZONAL":         [["ECU_ASSEMBLY",3.06],["HARNESS_INSTALL",16.2],["SENSOR_INSTALL",0.92],
+                      ["SW_INTEGRATION",21.2],["VALIDATION",21.2]],
+    "CENTRALIZED":   [["ECU_ASSEMBLY",1.41],["HARNESS_INSTALL",11.9],["SENSOR_INSTALL",0.92],
+                      ["SW_INTEGRATION",15.4],["VALIDATION",15.4]],
+  },
+  BASE_RD: {"DECENTRALIZED":60, "ZONAL":140, "CENTRALIZED":250},
+  scrap: function(code, proc) {
+    var m = this.MAT[code]; if (!m) return 1.05;
+    if (proc==='HARNESS_INSTALL') return m.sc;
+    if (proc.indexOf('MACH')>=0) return m.sm;
+    return m.sd;
+  },
+  calc: function(config_key, adas_level, sensor_suite, connectivity, infotainment, cybersecurity, co, wo) {
+    co = co||0; wo = wo||0;
+    adas_level   = adas_level   != null ? adas_level   : 1;
+    sensor_suite = sensor_suite != null ? sensor_suite : 30;
+    connectivity = connectivity != null ? connectivity : 30;
+    infotainment = infotainment != null ? infotainment : 30;
+    cybersecurity= cybersecurity!= null ? cybersecurity: 20;
+
+    // Step 1 — Parse config key: 'ZONAL_MAKE' → ee_arch='ZONAL', make_buy='MAKE'
+    var parts    = config_key.split('_');
+    var make_buy = parts[parts.length-1];
+    var ee_arch  = parts.slice(0,-1).join('_');
+
+    var base_bom   = this.BASE_BOM[ee_arch];
+    var base_procs = this.BASE_PROCS[ee_arch];
+    if (!base_bom) return null;
+
+    // Step 2 — Build base material lines
+    var mats = base_bom.map(function(r) {
+      var ms = _EANDS_PC.MAT[r[0]] || {p:1.0,sc:1.05,sm:1.05,sd:1.05,n:r[0]};
+      var sc = _EANDS_PC.scrap(r[0], r[2]);
+      return {code:r[0],name:ms.n,net:r[1],sc:sc,gross:r[1]*sc,price:ms.p,cost:r[1]*sc*ms.p,proc:r[2],spec:false,label:""};
+    });
+
+    // Step 3 — Build base process lines
+    var procs = base_procs.map(function(r) {
+      var ps = _EANDS_PC.PROC[r[0]] || {m:0.5,l:1.0,e:5.0,n:r[0]};
+      return {code:r[0],name:ps.n,gross:r[1],m:ps.m,l:ps.l,e:ps.e,spec:false,label:""};
+    });
+
+    // Cache base net quantities for spec drivers
+    var camEntry  = base_bom.find(function(r){return r[0]==='CAMERA_HW';});
+    var commsEntry= base_bom.find(function(r){return r[0]==='COMMS_HW';});
+    var dispEntry = base_bom.find(function(r){return r[0]==='DISPLAY_HW';});
+    var secEntry  = base_bom.find(function(r){return r[0]==='SECURE_HW';});
+    var base_cam_net   = camEntry   ? camEntry[1]   : 0.4;
+    var base_comms_net = commsEntry ? commsEntry[1] : 0.08;
+    var base_display_net=dispEntry  ? dispEntry[1]  : 1.2;
+    var base_secure_net = secEntry  ? secEntry[1]   : 0.01;
+
+    // Step 4 — ADAS Level driver (above L1 baseline)
+    var adas_f = Math.max(0, adas_level - 1) / 4;
+    if (adas_f > 0.001) {
+      var extra_cam = base_cam_net * adas_f * 0.50;
+      mats.push({code:'CAMERA_HW',name:'Extra Cameras (ADAS L'+adas_level+')',
+        net:extra_cam,sc:1.02,gross:extra_cam*1.02,price:150.0,cost:extra_cam*1.02*150.0,
+        proc:'SENSOR_INSTALL',spec:true,label:'ADAS Level'});
+      procs.push({code:'SENSOR_INSTALL',name:'Extra Camera Fitting (ADAS L'+adas_level+')',
+        gross:extra_cam*1.02,m:0.20,l:4.00,e:3.0,spec:true,label:'ADAS Level'});
+      // Radar required from L2+ for DECENTRALIZED (not already in base)
+      if (adas_level >= 2 && ee_arch === 'DECENTRALIZED') {
+        mats.push({code:'RADAR_HW',name:'Radar Sensors (ADAS L'+adas_level+')',
+          net:0.5,sc:1.02,gross:0.5*1.02,price:120.0,cost:0.5*1.02*120.0,
+          proc:'SENSOR_INSTALL',spec:true,label:'ADAS Level'});
+        procs.push({code:'SENSOR_INSTALL',name:'Radar Calibration (ADAS L'+adas_level+')',
+          gross:0.51,m:0.20,l:4.00,e:3.0,spec:true,label:'ADAS Level'});
+      }
+      // LiDAR required from L4+
+      if (adas_level >= 4) {
+        var lidar_kg = 0.4 * (adas_level - 3);
+        mats.push({code:'LIDAR_HW',name:'LiDAR Units (ADAS L'+adas_level+')',
+          net:lidar_kg,sc:1.01,gross:lidar_kg*1.01,price:900.0,cost:lidar_kg*1.01*900.0,
+          proc:'SENSOR_INSTALL',spec:true,label:'ADAS Level'});
+        procs.push({code:'SENSOR_INSTALL',name:'LiDAR Calibration (ADAS L'+adas_level+')',
+          gross:lidar_kg*1.01,m:0.20,l:5.00,e:3.0,spec:true,label:'ADAS Level'});
+      }
+      // Extra validation + SW for higher ADAS
+      procs.forEach(function(l){
+        if (!l.spec) {
+          if (l.code==='VALIDATION')     l.l = l.l * (1 + adas_f * 0.40);
+          if (l.code==='SW_INTEGRATION') l.l = l.l * (1 + adas_f * 0.30);
+        }
+      });
+    }
+
+    // Step 5 — Sensor Suite driver (above 30% baseline)
+    var ss_f = Math.max(0, sensor_suite - 30) / 70;
+    if (ss_f > 0.01) {
+      var extra_cam2 = base_cam_net * ss_f * 0.40;
+      mats.push({code:'CAMERA_HW',name:'Extended Camera Array (Sensor Suite)',
+        net:extra_cam2,sc:1.02,gross:extra_cam2*1.02,price:150.0,cost:extra_cam2*1.02*150.0,
+        proc:'SENSOR_INSTALL',spec:true,label:'Sensor Suite'});
+      procs.push({code:'SENSOR_INSTALL',name:'Camera Array Integration (Sensor Suite)',
+        gross:extra_cam2*1.02,m:0.20,l:4.00,e:3.0,spec:true,label:'Sensor Suite'});
+      if (sensor_suite >= 60) {
+        var radar_kg2 = 0.4 * ss_f;
+        mats.push({code:'RADAR_HW',name:'Radar Coverage (Sensor Suite)',
+          net:radar_kg2,sc:1.02,gross:radar_kg2*1.02,price:120.0,cost:radar_kg2*1.02*120.0,
+          proc:'SENSOR_INSTALL',spec:true,label:'Sensor Suite'});
+        procs.push({code:'SENSOR_INSTALL',name:'Radar Integration (Sensor Suite)',
+          gross:radar_kg2*1.02,m:0.20,l:4.00,e:3.0,spec:true,label:'Sensor Suite'});
+      }
+      if (sensor_suite >= 85) {
+        var lidar2_kg = 0.4 * (sensor_suite-85)/15;
+        if (lidar2_kg > 0.001) {
+          mats.push({code:'LIDAR_HW',name:'LiDAR Suite (Sensor Suite)',
+            net:lidar2_kg,sc:1.01,gross:lidar2_kg*1.01,price:900.0,cost:lidar2_kg*1.01*900.0,
+            proc:'SENSOR_INSTALL',spec:true,label:'Sensor Suite'});
+          procs.push({code:'SENSOR_INSTALL',name:'LiDAR Integration (Sensor Suite)',
+            gross:lidar2_kg*1.01,m:0.20,l:5.00,e:3.0,spec:true,label:'Sensor Suite'});
+        }
+      }
+    }
+
+    // Step 6 — Connectivity driver (above 30%)
+    var conn_f = Math.max(0, connectivity - 30) / 70;
+    if (conn_f > 0.01) {
+      var extra_comms = base_comms_net * conn_f * 1.50;
+      mats.push({code:'COMMS_HW',name:'5G/V2X Upgrade (Connectivity)',
+        net:extra_comms,sc:1.02,gross:extra_comms*1.02,price:150.0,cost:extra_comms*1.02*150.0,
+        proc:'ECU_ASSEMBLY',spec:true,label:'Connectivity'});
+      procs.push({code:'ECU_ASSEMBLY',name:'Comms Integration (Connectivity)',
+        gross:extra_comms*1.02,m:0.30,l:2.50,e:5.0,spec:true,label:'Connectivity'});
+    }
+
+    // Step 7 — Infotainment driver (above 30%)
+    var info_f = Math.max(0, infotainment - 30) / 70;
+    if (info_f > 0.01) {
+      var extra_disp = base_display_net * info_f * 0.60;
+      mats.push({code:'DISPLAY_HW',name:'Premium Display (Infotainment)',
+        net:extra_disp,sc:1.05,gross:extra_disp*1.05,price:60.0,cost:extra_disp*1.05*60.0,
+        proc:'ECU_ASSEMBLY',spec:true,label:'Infotainment'});
+      var audio_kg = 0.30 * info_f;
+      mats.push({code:'AUDIO_HW',name:'Audio System (Infotainment)',
+        net:audio_kg,sc:1.05,gross:audio_kg*1.05,price:40.0,cost:audio_kg*1.05*40.0,
+        proc:'ECU_ASSEMBLY',spec:true,label:'Infotainment'});
+      procs.push({code:'ECU_ASSEMBLY',name:'Infotainment Integration',
+        gross:(extra_disp*1.05+audio_kg*1.05),m:0.30,l:2.50,e:5.0,spec:true,label:'Infotainment'});
+    }
+
+    // Step 8 — Cybersecurity driver (above 20%)
+    var cyber_f = Math.max(0, cybersecurity - 20) / 80;
+    if (cyber_f > 0.01) {
+      var extra_sec = base_secure_net * cyber_f * 3.0;
+      mats.push({code:'SECURE_HW',name:'HSM Security Upgrade (Cybersecurity)',
+        net:extra_sec,sc:1.01,gross:extra_sec*1.01,price:500.0,cost:extra_sec*1.01*500.0,
+        proc:'ECU_ASSEMBLY',spec:true,label:'Cybersecurity'});
+      procs.push({code:'ECU_ASSEMBLY',name:'Security Chip Integration (Cybersecurity)',
+        gross:extra_sec*1.01,m:0.30,l:2.50,e:5.0,spec:true,label:'Cybersecurity'});
+    }
+
+    // Step 9 — Weight Optimization: OTA consolidation reduces wiring harness
+    if (wo > 0.001) {
+      mats.forEach(function(l){
+        if (l.code==='WIRING' && !l.spec) {
+          l.net = l.net * (1 - wo * 0.25);
+          l.gross = l.net * l.sc;
+          l.cost = l.gross * l.price;
+        }
+      });
+    }
+
+    // Step 10 — Cost Optimization: reduce scrap rates + labor hours, embedded in BOM
+    if (co > 0.001) {
+      var sr = co * 0.20, lr = co * 0.10;
+      mats.forEach(function(l){l.sc=Math.max(1.0,l.sc*(1-sr));l.gross=l.net*l.sc;l.cost=l.gross*l.price;});
+      procs.forEach(function(l){l.l=l.l*(1-lr);});
+    }
+
+    // Step 11 — Compute process costs
+    procs.forEach(function(l){
+      l.mach  = Math.round(l.gross*l.m*100)/100;
+      l.lhrs  = Math.round(l.gross*l.l/100*1000)/1000;
+      l.lcost = Math.round(l.lhrs*_EANDS_PC.US_LABOR*100)/100;
+      l.ekwh  = Math.round(l.gross*l.e/100*1000)/1000;
+      l.ecost = Math.round(l.ekwh*_EANDS_PC.US_ELEC*100)/100;
+      l.total = Math.round((l.mach+l.lcost+l.ecost)*100)/100;
+    });
+    mats.forEach(function(l){
+      l.gross = Math.round(l.gross*100)/100;
+      l.net   = Math.round(l.net*100)/100;
+      l.cost  = Math.round(l.gross*l.price*100)/100;
+    });
+
+    var tm  = mats.reduce(function(s,l){return s+l.cost;},0);
+    var tp  = procs.reduce(function(s,l){return s+l.total;},0);
+    var tnw = mats.reduce(function(s,l){return s+l.net;},0);
+    var tgw = mats.reduce(function(s,l){return s+l.gross;},0);
+    var dc  = tm + tp;
+
+    // Step 12 — Cost build-up: Make 85/15; Buy full supplier margin (×1.30)
+    var sc85, soh, spf, stot, oem, std, tpc;
+    if (make_buy === 'BUY') {
+      sc85 = Math.round(dc*1.00*100)/100;
+      soh  = Math.round(dc*0.05*100)/100;
+      spf  = Math.round(dc*0.20*100)/100;
+      stot = Math.round(dc*1.25*100)/100;
+      oem  = Math.round(dc*0.05*100)/100;
+      std  = Math.round((stot+oem)*100)/100;
+      tpc  = std;
+    } else {
+      sc85 = Math.round(dc*0.85*100)/100;
+      soh  = Math.round(sc85*0.05*100)/100;
+      spf  = Math.round(sc85*0.10*100)/100;
+      stot = Math.round(sc85*1.15*100)/100;
+      oem  = Math.round(dc*0.15*100)/100;
+      std  = Math.round((stot+oem)*100)/100;
+      tpc  = std;
+    }
+
+    // Step 13 — R&D (Buy: 28% of Make)
+    var brd = this.BASE_RD[ee_arch] || 140;
+    var adas_d  = 0.12 * Math.max(0, adas_level-1) / 4;
+    var ss_d    = 0.08 * sensor_suite / 100;
+    var conn_d  = 0.06 * connectivity / 100;
+    var info_d  = 0.05 * infotainment / 100;
+    var cyber_d = 0.10 * cybersecurity / 100;
+    var cord    = 0.10 * (Math.exp(3*co)-1) / (Math.exp(3)-1);
+    var word    = 0.10 * (Math.exp(3*wo)-1) / (Math.exp(3)-1);
+    var total_rd, rd_prem_pct;
+    if (make_buy === 'BUY') {
+      total_rd    = Math.round(brd*0.28*(1+cyber_d+cord)*10)/10;
+      rd_prem_pct = Math.round((cyber_d+cord)*10000)/100;
+    } else {
+      total_rd    = Math.round(brd*(1+adas_d+ss_d+conn_d+info_d+cyber_d+cord+word)*10)/10;
+      rd_prem_pct = Math.round((adas_d+ss_d+conn_d+info_d+cyber_d+cord+word)*10000)/100;
+    }
+    var rd_fte_cost = Math.round(total_rd*this.RD_FTE_SHARE*100)/100;
+    var rd_mat_cost = Math.round(total_rd*this.RD_MAT_SHARE*100)/100;
+    var fte_months  = Math.round(rd_fte_cost*1000000/this.US_FTE_RATE_MONTH/10)*10;
+
+    return {
+      module_type: 'eands', make_buy: make_buy, ee_arch: ee_arch,
+      pwt_compatibility: 'any',
+      total_net_weight_kg:     Math.round(tnw*10)/10,
+      total_gross_weight_kg:   Math.round(tgw*10)/10,
+      total_material_cost_eur: Math.round(tm*100)/100,
+      total_process_cost_eur:  Math.round(tp*100)/100,
+      direct_cost_eur:         Math.round(dc*100)/100,
+      supplier_content_eur:    sc85,
+      supplier_overhead_eur:   soh,
+      supplier_profit_eur:     spf,
+      supplier_total_eur:      stot,
+      oem_internal_eur:        oem,
+      total_std_direct_eur:    std,
+      std_platform_tpc_eur:    Math.round(tpc*100)/100,
+      cost_opt_reduction_pct:  0,
+      base_rd_cost_eur_m:      make_buy==='BUY' ? Math.round(brd*0.28*10)/10 : brd,
+      rd_premium_pct:          rd_prem_pct,
+      total_rd_cost_eur_m:     total_rd,
+      std_rd_fte_cost_eur_m:   rd_fte_cost,
+      std_rd_material_eur_m:   rd_mat_cost,
+      std_fte_months:          fte_months,
+      std_fte_rate_eur_month:  this.US_FTE_RATE_MONTH,
+      rd_material_index:       this.RD_MAT_INDEX,
+      material_lines: mats.map(function(l){return {
+        material_code:l.code, material_name:l.name,
+        net_weight_kg:l.net, scrap_rate:l.sc, gross_weight_kg:l.gross,
+        material_price_eur_kg:l.price, material_cost_eur:l.cost,
+        spec_driven:l.spec, spec_label:l.label};}),
+      process_lines: procs.map(function(l){return {
+        process_code:l.code, process_name:l.name,
+        gross_weight_kg:l.gross, machine_cost_eur:l.mach,
+        labor_hours:l.lhrs, labor_cost_eur:l.lcost,
+        energy_kwh:l.ekwh, energy_cost_eur:l.ecost,
+        process_cost_eur:l.total, spec_driven:l.spec, spec_label:l.label};}),
+    };
+  }
+};
+
+function fetchEandsStdCost() {
+  if (currentModType !== 'eands') return;
+  var legEl = document.getElementById('mod-cost-legacy');
+  if (legEl) legEl.style.display = 'none';
+  var configKey = document.getElementById('mod-secondary-select')?.value;
+  if (!configKey) return;
+  var adas  = parseFloat(document.getElementById('msr-adas_level')?.value    || 1);
+  var sensor= parseFloat(document.getElementById('msr-sensor_suite')?.value  || 30);
+  var conn  = parseFloat(document.getElementById('msr-connectivity')?.value  || 30);
+  var info  = parseFloat(document.getElementById('msr-infotainment')?.value  || 30);
+  var cyber = parseFloat(document.getElementById('msr-cybersecurity')?.value || 20);
+  var co = parseFloat(document.getElementById('cost-opt-slider')?.value  || 0) / 100;
+  var wo = parseFloat(document.getElementById('weight-opt-slider')?.value || 0) / 100;
+  try {
+    var r = _EANDS_PC.calc(configKey, adas, sensor, conn, info, cyber, co, wo);
+    if (!r) return;
+    var bomEl  = document.getElementById('mod-cost-bom');
+    var legEl2 = document.getElementById('mod-cost-legacy');
+    var emEl   = document.getElementById('mod-cost-empty');
+    if (emEl) emEl.style.display = 'none';
+    window._lastEandsCalc = r;
+    _renderSingleVariantLayout(r, bomEl, legEl2);
+    var tpcEl = document.getElementById('mc-tpc');
+    if (tpcEl) tpcEl.textContent = '€' + Math.round(r.std_platform_tpc_eur).toLocaleString() + '/veh';
+    // Architecture gate warning
+    if ((adas >= 3 && r.ee_arch==='DECENTRALIZED') || (adas >= 4 && r.ee_arch==='ZONAL')) {
+      var warnContainer = document.getElementById('mod-cost-bom-content');
+      if (warnContainer) warnContainer.insertAdjacentHTML('afterbegin',
+        '<div style="background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.3);border-radius:4px;padding:8px 12px;margin-bottom:8px;font-family:DM Mono,monospace;font-size:9px;color:#f87171;">' +
+        '⚠ ADAS L' + adas + ' requires ' + (adas>=4?'Centralized':'Zonal minimum') + ' architecture — upgrade for optimal performance</div>');
+    }
+  } catch(e) { console.warn('E&S BOM cost error:', e); }
 }
 
 async function fetchCostPreview() {
@@ -8851,7 +9212,11 @@ var PROP_SPEC_DEFS = {
     {key:'premiumness',label:'Premiumness',unit:'%',min:0,max:1,step:0.01,def:0.3,fmt:'pct'},
   ],
   'eands': [
-    {key:'adas_level',label:'ADAS Level',unit:'',min:0,max:5,step:1,def:1,fmt:'level'},
+    {key:'adas_level',   label:'ADAS Level',   unit:'',  min:0, max:5,   step:1,   def:1,  fmt:'level'},
+    {key:'sensor_suite', label:'Sensor Suite', unit:'%', min:0, max:100, step:5,   def:30, fmt:'pct'},
+    {key:'connectivity', label:'Connectivity', unit:'%', min:0, max:100, step:5,   def:30, fmt:'pct'},
+    {key:'infotainment', label:'Infotainment', unit:'%', min:0, max:100, step:5,   def:30, fmt:'pct'},
+    {key:'cybersecurity',label:'Cybersecurity',unit:'%', min:0, max:100, step:5,   def:20, fmt:'pct'},
   ],
 };
 
@@ -9247,6 +9612,60 @@ function buildModuleOptions(modType, propKey, nextFn) {
       html += '</div>';
 
       setTimeout(function(){ if(selCfgKey) onPropEPWTChange(); }, 150);
+
+    } else if (propKey === 'eands') {
+      // ── E&S BOM configurator ──
+      if (!currentSel.specs) currentSel.specs = {};
+      var eandsSpecs = currentSel.specs;
+
+      var selArch  = eandsSpecs.ee_arch   || '';
+      var selEandsMB = eandsSpecs.make_buy || 'MAKE';
+      var selEandsCfgKey = selArch ? selArch + '_' + selEandsMB : '';
+
+      html += '<div style="margin-top:10px;">';
+      // Architecture + Make/Buy dropdowns
+      html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px;">';
+      html += '<div><label class="ctrl-lbl-top">E/E Architecture</label>' +
+        '<select id="prop-eands-arch" onchange="onPropEandsChange()" style="width:100%;background:var(--s3);border:1px solid var(--border2);border-radius:2px;color:var(--text);padding:5px 8px;font-size:12px;font-family:inherit;outline:none;">' +
+        '<option value="">— architecture —</option>' +
+        '<option value="DECENTRALIZED"'+(selArch==='DECENTRALIZED'?' selected':'')+'>Decentralized (80+ ECUs)</option>' +
+        '<option value="ZONAL"'+(selArch==='ZONAL'?' selected':'')+'>Zonal (5-6 Zones)</option>' +
+        '<option value="CENTRALIZED"'+(selArch==='CENTRALIZED'?' selected':'')+'>Centralized (HPC)</option>' +
+        '</select></div>';
+      html += '<div><label class="ctrl-lbl-top">Make or Buy</label>' +
+        '<select id="prop-eands-mb" onchange="onPropEandsChange()" style="width:100%;background:var(--s3);border:1px solid var(--border2);border-radius:2px;color:var(--text);padding:5px 8px;font-size:12px;font-family:inherit;outline:none;">' +
+        '<option value="MAKE"'+(selEandsMB==='MAKE'?' selected':'')+'>Make (Own Development)</option>' +
+        '<option value="BUY"'+(selEandsMB==='BUY'?' selected':'')+'>Buy (Tier-1 Sourced)</option>' +
+        '</select></div>';
+      html += '</div>';
+
+      // Spec sliders
+      function eandsPropSlider(id, label, min, max, step, defVal, unitStr, color) {
+        var cur = eandsSpecs[id] != null ? eandsSpecs[id] : defVal;
+        var disp = cur + unitStr;
+        var oninput = 'document.getElementById(\'prop-eands-'+id+'-val\').textContent=this.value+\''+unitStr+'\';onPropEandsChange()';
+        return '<div class="ctrl"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px;">'
+          +'<label class="ctrl-lbl-top" style="margin:0;">'+label+'</label>'
+          +'<span style="font-family:DM Mono,monospace;font-size:9px;color:'+color+';" id="prop-eands-'+id+'-val">'+disp+'</span></div>'
+          +'<input type="range" min="'+min+'" max="'+max+'" step="'+step+'" value="'+cur+'" id="prop-eands-'+id+'" class="spec-range"'
+          +' style="width:100%;accent-color:'+color+';margin:2px 0 4px;" oninput="'+oninput+'"></div>';
+      }
+      html += eandsPropSlider('adas_level',   'ADAS Level',    0,  5,   1,   1,  '',  'var(--blue)');
+      html += eandsPropSlider('sensor_suite', 'Sensor Suite',  0,  100, 5,   30, '%', 'var(--blue)');
+      html += eandsPropSlider('connectivity', 'Connectivity',  0,  100, 5,   30, '%', 'var(--cyan)');
+      html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:4px;">';
+      html += eandsPropSlider('infotainment', 'Infotainment',  0,  100, 5,   30, '%', 'var(--purple)');
+      html += eandsPropSlider('cybersecurity','Cybersecurity', 0,  100, 5,   20, '%', 'var(--gold)');
+      html += '</div>';
+
+      // BOM preview
+      html += '<div style="margin-top:8px;font-family:DM Mono,monospace;font-size:8px;text-transform:uppercase;letter-spacing:1px;color:var(--blue);margin-bottom:6px;">Standard Cost Analysis</div>';
+      html += '<div id="prop-eands-bom" style="font-size:10px;color:var(--muted2);overflow-y:auto;max-height:300px;">';
+      html += selEandsCfgKey ? '' : 'Select architecture to see BOM';
+      html += '</div>';
+      html += '</div>';
+
+      setTimeout(function(){ if(selEandsCfgKey) onPropEandsChange(); }, 150);
 
     } else {
       // ── Generic new-development for non-platform modules ──
@@ -9669,6 +10088,39 @@ function onPropEPWTChange() {
     var s3 = document.getElementById('prop-sec-3-status');
     if (s3) s3.textContent = '✎ ' + label + ' ' + cls;
   } catch(e) { console.warn('ePWT proposal BOM error:', e); }
+}
+
+function onPropEandsChange() {
+  var arch = document.getElementById('prop-eands-arch')?.value; if (!arch) return;
+  var mb   = document.getElementById('prop-eands-mb')?.value || 'MAKE';
+  var ck   = arch + '_' + mb;
+  var adas  = parseFloat(document.getElementById('prop-eands-adas_level')?.value    || 1);
+  var sensor= parseFloat(document.getElementById('prop-eands-sensor_suite')?.value  || 30);
+  var conn  = parseFloat(document.getElementById('prop-eands-connectivity')?.value  || 30);
+  var info  = parseFloat(document.getElementById('prop-eands-infotainment')?.value  || 30);
+  var cyber = parseFloat(document.getElementById('prop-eands-cybersecurity')?.value || 20);
+
+  if (!_prop.eands) _prop.eands = {mode:'new', specs:{}};
+  if (!_prop.eands.specs) _prop.eands.specs = {};
+  Object.assign(_prop.eands.specs, {
+    config_key: ck, ee_arch: arch, make_buy: mb,
+    adas_level: adas, sensor_suite: sensor,
+    connectivity: conn, infotainment: info, cybersecurity: cyber,
+  });
+
+  try {
+    var r = _EANDS_PC.calc(ck, adas, sensor, conn, info, cyber, 0, 0);
+    if (!r) return;
+    var bomDiv = document.getElementById('prop-eands-bom');
+    if (!bomDiv) return;
+    var color = 'var(--blue)';
+    var label = mb === 'BUY' ? 'E&S (Sourced)' : 'E&S · ' + arch;
+    bomDiv.innerHTML = _summaryCard(r.std_platform_tpc_eur, r.total_net_weight_kg,
+      r.total_material_cost_eur, r.total_process_cost_eur, 0, color, label, null)
+      + _rdCard(r) + _bomDetail(r.material_lines, r.process_lines, r);
+    var s5 = document.getElementById('prop-sec-5-status');
+    if (s5) s5.textContent = '✎ ' + label;
+  } catch(e) { console.warn('E&S proposal BOM error:', e); }
 }
 
 function advanceToEandS() {
