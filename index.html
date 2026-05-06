@@ -8628,7 +8628,9 @@ loadBaseConfigs('platform').catch(()=>{});
 // VEHICLE PROPOSAL WIZARD
 // ══════════════════════════════════════════
 
-var _propTopHatConfigs = [];   // loaded by loadVehicleProposal for body-type dropdown
+var _propTopHatConfigs  = [];   // loaded by loadVehicleProposal for body-type dropdown
+var _propICEPWTConfigs  = [];   // loaded by loadVehicleProposal for cylinder/hybrid dropdowns
+var _propEPWTConfigs    = [];   // loaded by loadVehicleProposal for perf-class dropdown
 
 var _prop = {
   study:       null,   // selected study vehicle object
@@ -8663,14 +8665,18 @@ async function modTabTopHat(el) {
 async function loadVehicleProposal() {
   if (!teamId) return;
   try {
-    const [vRes, mRes, thRes] = await Promise.all([
+    const [vRes, mRes, thRes, iceRes, epwtRes] = await Promise.all([
       fetch(API_URL + '/teams/' + teamId + '/vehicles'),
       fetch(API_URL + '/teams/' + teamId + '/modules'),
       fetch(API_URL + '/module-configs/tophat'),
+      fetch(API_URL + '/module-configs/ice-pwt'),
+      fetch(API_URL + '/module-configs/epwt'),
     ]);
     const vehicles = (await vRes.json()).vehicles || [];
-    _prop.modules  = (await mRes.json()).modules  || [];
-    _propTopHatConfigs = (await thRes.json()).configs || [];
+    _prop.modules      = (await mRes.json()).modules   || [];
+    _propTopHatConfigs = (await thRes.json()).configs  || [];
+    _propICEPWTConfigs = (await iceRes.json()).configs || [];
+    _propEPWTConfigs   = (await epwtRes.json()).configs|| [];
     const studies  = vehicles.filter(function(v) {
       return v.status === 'study' || v.status === 'draft';
     });
@@ -9135,6 +9141,113 @@ function buildModuleOptions(modType, propKey, nextFn) {
 
       setTimeout(function(){ onPropTopHatChange(); }, 150);
 
+    } else if (propKey === 'pwt') {
+      // ── ICE PWT BOM configurator ──
+      if (!currentSel.specs) currentSel.specs = {};
+      var iceSpecs = currentSel.specs;
+
+      // Build cylinder + hybrid dropdowns from loaded configs
+      var cylinders = [...new Set((_propICEPWTConfigs||[]).map(function(c){return String(c.cylinders);}))];
+      var selCyl = iceSpecs.cylinders || '';
+      var cylOpts = cylinders.map(function(v){return '<option value="'+v+'"'+(selCyl===v?' selected':'')+'>'+v+'-Cylinder</option>';}).join('');
+      var hybridConfigs = selCyl ? (_propICEPWTConfigs||[]).filter(function(c){return String(c.cylinders)===selCyl;}) : [];
+      var selCfg = iceSpecs.config_key || '';
+      var hybOpts = hybridConfigs.map(function(c){return '<option value="'+c.config_key+'"'+(selCfg===c.config_key?' selected':'')+'>'+c.hybrid_tech+'</option>';}).join('');
+
+      html += '<div style="margin-top:10px;">';
+      // Config selectors
+      html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px;">';
+      html += '<div><label class="ctrl-lbl-top">Cylinder Count</label>' +
+        '<select id="prop-ice-cyl" onchange="onPropICECylChange()" style="width:100%;background:var(--s3);border:1px solid var(--border2);border-radius:2px;color:var(--text);padding:5px 8px;font-size:12px;font-family:inherit;outline:none;">' +
+        '<option value="">— cylinders —</option>' + cylOpts + '</select></div>';
+      html += '<div><label class="ctrl-lbl-top">Engine Type</label>' +
+        '<select id="prop-ice-config" onchange="onPropICEPWTChange()" style="width:100%;background:var(--s3);border:1px solid var(--border2);border-radius:2px;color:var(--text);padding:5px 8px;font-size:12px;font-family:inherit;outline:none;">' +
+        '<option value="">— type —</option>' + hybOpts + '</select></div>';
+      html += '</div>';
+
+      // Spec sliders
+      function icePropSlider(id, label, min, max, step, defVal, unit, color) {
+        var cur = iceSpecs[id] != null ? iceSpecs[id] : defVal;
+        var disp = unit==='hp' ? cur+'hp' : (unit==='et' ? (cur*100).toFixed(0)+'%' : cur+'%');
+        return '<div class="ctrl"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px;">'
+          +'<label class="ctrl-lbl-top" style="margin:0;">'+label+'</label>'
+          +'<span style="font-family:DM Mono,monospace;font-size:9px;color:'+color+';" id="prop-ice-'+id+'-val">'+disp+'</span></div>'
+          +'<input type="range" min="'+min+'" max="'+max+'" step="'+step+'" value="'+cur+'" id="prop-ice-'+id+'" class="spec-range"'
+          +' style="width:100%;accent-color:'+color+';margin:2px 0 4px;" oninput="'
+          +'document.getElementById(\'prop-ice-'+id+'-val\').textContent=this.value+\''+unit+'\';onPropICEPWTChange()"></div>';
+      }
+      html += icePropSlider('power',        'Power',        60,  640, 10,   100, 'hp', 'var(--orange)');
+      html += icePropSlider('emission_tech','Emission Tech',0,   100,  1,    10, '%',  'var(--green)');
+      html += icePropSlider('reliability',  'Reliability',  0,   100,  1,    50, '%',  'var(--gold)');
+      html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:4px;">';
+      html += icePropSlider('cost_opt',   'Cost Opt',   0, 100, 1, 0, '%', 'var(--gold)');
+      html += icePropSlider('weight_opt', 'Weight Opt', 0, 100, 1, 0, '%', 'var(--cyan)');
+      html += '</div>';
+
+      // BOM preview
+      html += '<div style="margin-top:8px;font-family:DM Mono,monospace;font-size:8px;text-transform:uppercase;letter-spacing:1px;color:var(--orange);margin-bottom:6px;">Standard Cost Analysis</div>';
+      html += '<div id="prop-pwt-bom" style="font-size:10px;color:var(--muted2);overflow-y:auto;max-height:300px;">';
+      html += selCfg ? '' : 'Select cylinder count and engine type to see BOM';
+      html += '</div>';
+      html += '</div>';
+
+      setTimeout(function(){ if(selCfg) onPropICEPWTChange(); }, 150);
+
+    } else if (propKey === 'epwt') {
+      // ── ePWT BOM configurator ──
+      if (!currentSel.specs) currentSel.specs = {};
+      var epwtSpecs = currentSel.specs;
+
+      // Build class + make/buy dropdowns
+      var epwtClasses = (_propEPWTConfigs||[]).map(function(c){return c.epwt_class;});
+      if (!epwtClasses.length) epwtClasses = ['LOW_POWER','MAINSTREAM','PERFORMANCE','HIGH_PERF','ULTRA_HP'];
+      var selClass = epwtSpecs.epwt_class || '';
+      var selMB    = epwtSpecs.make_buy   || 'MAKE';
+      var classOpts = epwtClasses.map(function(v){return '<option value="'+v+'"'+(selClass===v?' selected':'')+'>'+v.replace(/_/g,' ')+'</option>';}).join('');
+      var selCfgKey = selClass ? selClass + '_' + selMB : '';
+
+      html += '<div style="margin-top:10px;">';
+      // Config selectors
+      html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px;">';
+      html += '<div><label class="ctrl-lbl-top">Performance Class</label>' +
+        '<select id="prop-epwt-class" onchange="onPropEPWTChange()" style="width:100%;background:var(--s3);border:1px solid var(--border2);border-radius:2px;color:var(--text);padding:5px 8px;font-size:12px;font-family:inherit;outline:none;">' +
+        '<option value="">— class —</option>' + classOpts + '</select></div>';
+      html += '<div><label class="ctrl-lbl-top">Make or Buy</label>' +
+        '<select id="prop-epwt-mb" onchange="onPropEPWTChange()" style="width:100%;background:var(--s3);border:1px solid var(--border2);border-radius:2px;color:var(--text);padding:5px 8px;font-size:12px;font-family:inherit;outline:none;">' +
+        '<option value="MAKE"'+(selMB==='MAKE'?' selected':'')+'>Make (Own Development)</option>' +
+        '<option value="BUY"'+(selMB==='BUY'?' selected':'')+'>Buy (Sourced)</option>' +
+        '</select></div>';
+      html += '</div>';
+
+      // Spec sliders
+      function epwtPropSlider(id, label, min, max, step, defVal, unit, color) {
+        var cur = epwtSpecs[id] != null ? epwtSpecs[id] : defVal;
+        var disp = unit==='kw' ? cur+'kW' : (unit==='ef' ? (cur*100).toFixed(0)+'%' : cur+'%');
+        var oninput = 'document.getElementById(\'prop-epwt-'+id+'-val\').textContent=this.value+\''+unit+'\';onPropEPWTChange()';
+        if (unit==='ef') oninput = 'document.getElementById(\'prop-epwt-'+id+'-val\').textContent=(parseFloat(this.value)*100).toFixed(0)+\'%\';onPropEPWTChange()';
+        return '<div class="ctrl"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px;">'
+          +'<label class="ctrl-lbl-top" style="margin:0;">'+label+'</label>'
+          +'<span style="font-family:DM Mono,monospace;font-size:9px;color:'+color+';" id="prop-epwt-'+id+'-val">'+disp+'</span></div>'
+          +'<input type="range" min="'+min+'" max="'+max+'" step="'+step+'" value="'+cur+'" id="prop-epwt-'+id+'" class="spec-range"'
+          +' style="width:100%;accent-color:'+color+';margin:2px 0 4px;" oninput="'+oninput+'"></div>';
+      }
+      html += epwtPropSlider('power_kw',   'Power',      30, 1500, 10,  150, 'kw', 'var(--cyan)');
+      html += epwtPropSlider('efficiency', 'Efficiency', 0,  1,    0.01,0.7, 'ef', 'var(--green)');
+      html += epwtPropSlider('reliability','Reliability',0,  100,  1,   50,  '%',  'var(--gold)');
+      html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:4px;">';
+      html += epwtPropSlider('cost_opt',   'Cost Opt',   0, 100, 1, 0, '%', 'var(--gold)');
+      html += epwtPropSlider('weight_opt', 'Weight Opt', 0, 100, 1, 0, '%', 'var(--cyan)');
+      html += '</div>';
+
+      // BOM preview
+      html += '<div style="margin-top:8px;font-family:DM Mono,monospace;font-size:8px;text-transform:uppercase;letter-spacing:1px;color:var(--cyan);margin-bottom:6px;">Standard Cost Analysis</div>';
+      html += '<div id="prop-epwt-bom" style="font-size:10px;color:var(--muted2);overflow-y:auto;max-height:300px;">';
+      html += selCfgKey ? '' : 'Select performance class to see BOM';
+      html += '</div>';
+      html += '</div>';
+
+      setTimeout(function(){ if(selCfgKey) onPropEPWTChange(); }, 150);
+
     } else {
       // ── Generic new-development for non-platform modules ──
       var sliderId = 'prop-new-' + propKey;
@@ -9363,9 +9476,10 @@ function setPropModMode(propKey, mode, nextFn) {
     if (_prop[propKey].specs[s.key] == null) _prop[propKey].specs[s.key] = s.def;
   });
   // Re-render the section
-  var secMap = {platform:2, pwt:3, tophat:4, eands:5};
-  var modMap = {platform:'platform', pwt:'ice_pwt', tophat:'tophat', eands:'eands'};
-  var elMap  = {platform:'prop-platform-content', pwt:'prop-pwt-content',
+  var secMap = {platform:2, pwt:3, epwt:3, tophat:4, eands:5};
+  var modMap = {platform:'platform', pwt:'ice_pwt', epwt:'epwt', tophat:'tophat', eands:'eands'};
+  var elMap  = {platform:'prop-platform-content',
+                pwt: 'prop-pwt-ice-content', epwt:'prop-pwt-epwt-content',
                 tophat:'prop-tophat-content', eands:'prop-eands-content'};
   buildModuleSection(secMap[propKey], modMap[propKey], propKey, elMap[propKey], nextFn);
 }
@@ -9376,7 +9490,7 @@ function selectPropModule(propKey, moduleId, nextFn) {
   _prop[propKey].module = mod || null;
   _prop[propKey].specs  = mod ? (mod.specs || {}) : {};
   // Update status label
-  var secMap    = {platform:2, pwt:3, tophat:4, eands:5};
+  var secMap    = {platform:2, pwt:3, epwt:3, tophat:4, eands:5};
   var secNum    = secMap[propKey];
   var statusEl  = document.getElementById('prop-sec-' + secNum + '-status');
   if (statusEl && mod) statusEl.textContent = '\u2713 ' + mod.name + ' (' + mod.config_key + ')';
@@ -9400,37 +9514,33 @@ function advanceToPWT() {
 function buildPWTSection() {
   var el = document.getElementById('prop-pwt-content');
   if (!el) return;
-  // PWT: show both ICE PWT and e-Motor options
-  var rs  = (_prop.study && _prop.study.rolled_up_specs) || {};
-  var pwtIntent = rs.pwt_type || '';
-  var showICE   = ['ICE','HEV','PHEV','REEV'].indexOf(pwtIntent) >= 0 || !pwtIntent;
-  var showEV    = ['BEV','FCEV','REEV'].indexOf(pwtIntent) >= 0 || !pwtIntent;
+  if (!_prop.pwt)  _prop.pwt  = {};
+  if (!_prop.epwt) _prop.epwt = {};
 
   var html = buildContextBanner();
-  html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">';
+  html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">';
 
-  // ICE PWT
-  html += '<div><div style="font-family:DM Mono,monospace;font-size:8px;text-transform:uppercase;' +
-    'letter-spacing:1px;color:var(--orange);margin-bottom:8px;">⚙ ICE / HYBRID POWERTRAIN</div>' +
-    buildModuleOptions('ice_pwt', 'pwt', 'advanceToTopHat') + '</div>';
+  // ICE PWT column — own div so mode changes only re-render this column
+  html += '<div>';
+  html += '<div style="font-family:DM Mono,monospace;font-size:8px;text-transform:uppercase;letter-spacing:1px;color:var(--orange);margin-bottom:8px;">⚙ ICE / HYBRID POWERTRAIN</div>';
+  html += '<div id="prop-pwt-ice-content">' + buildModuleOptions('ice_pwt', 'pwt', 'advanceToTopHat') + '</div>';
+  html += '</div>';
 
-  // e-Motor
-  html += '<div><div style="font-family:DM Mono,monospace;font-size:8px;text-transform:uppercase;' +
-    'letter-spacing:1px;color:var(--cyan);margin-bottom:8px;">⚡ e-MOTOR</div>' +
-    buildModuleOptions('epwt', 'epwt', 'advanceToTopHat') + '</div>';
+  // ePWT column — own div
+  html += '<div>';
+  html += '<div style="font-family:DM Mono,monospace;font-size:8px;text-transform:uppercase;letter-spacing:1px;color:var(--cyan);margin-bottom:8px;">⚡ e-MOTOR</div>';
+  html += '<div id="prop-pwt-epwt-content">' + buildModuleOptions('epwt', 'epwt', 'advanceToTopHat') + '</div>';
+  html += '</div>';
 
   html += '</div>';
-  html += '<div style="margin-top:12px;"><button onclick="advanceToTopHat()" style="' +
-    'font-family:DM Mono,monospace;font-size:9px;padding:5px 14px;border-radius:2px;' +
-    'border:1px solid rgba(200,164,60,.4);background:var(--goldl);color:var(--gold);cursor:pointer;">' +
-    'Continue \u2192</button></div>';
+  html += '<div style="margin-top:14px;">' +
+    '<button onclick="advanceToTopHat()" style="font-family:DM Mono,monospace;font-size:9px;' +
+    'padding:6px 16px;border-radius:2px;border:1px solid rgba(200,164,60,.4);' +
+    'background:var(--goldl);color:var(--gold);cursor:pointer;">Continue →</button>' +
+    '<span style="font-family:DM Mono,monospace;font-size:8px;color:var(--muted2);margin-left:10px;">' +
+    'Configure both powertrain types, then continue to Top Hat</span></div>';
   el.innerHTML = html;
-
-  // Update status if already selected
-  if (!_prop.pwt) _prop.pwt = {};
-  if (!_prop.epwt) _prop.epwt = {};
 }
-
 function advanceToTopHat() {
   var s3 = document.getElementById('prop-sec-3-status');
   if (s3) {
@@ -9483,6 +9593,84 @@ function onPropTopHatChange() {
     if (s4) s4.textContent = '✎ ' + ck + ' configured';
   } catch(e) { console.warn('TopHat proposal BOM error:', e); }
 }
+
+// Repopulates hybrid-type dropdown when cylinder count changes
+function onPropICECylChange() {
+  var cyl = document.getElementById('prop-ice-cyl')?.value;
+  var sel = document.getElementById('prop-ice-config');
+  if (!sel) return;
+  var opts = cyl ? (_propICEPWTConfigs||[]).filter(function(c){return String(c.cylinders)===cyl;}) : [];
+  sel.innerHTML = '<option value="">— type —</option>' +
+    opts.map(function(c){return '<option value="'+c.config_key+'">'+c.hybrid_tech+'</option>';}).join('');
+  if (!_prop.pwt) _prop.pwt = {mode:'new', specs:{}};
+  if (!_prop.pwt.specs) _prop.pwt.specs = {};
+  _prop.pwt.specs.cylinders = cyl;
+  _prop.pwt.specs.config_key = '';
+  var bomDiv = document.getElementById('prop-pwt-bom');
+  if (bomDiv) bomDiv.innerHTML = '<span style="color:var(--muted2);">Select engine type to see BOM</span>';
+}
+
+function onPropICEPWTChange() {
+  var ck  = document.getElementById('prop-ice-config')?.value; if (!ck) return;
+  var pw  = parseFloat(document.getElementById('prop-ice-power')?.value        || 100);
+  var et  = parseFloat(document.getElementById('prop-ice-emission_tech')?.value || 10) / 100;
+  var rel = parseFloat(document.getElementById('prop-ice-reliability')?.value   || 50) / 100;
+  var co  = parseFloat(document.getElementById('prop-ice-cost_opt')?.value      || 0)  / 100;
+  var wo  = parseFloat(document.getElementById('prop-ice-weight_opt')?.value    || 0)  / 100;
+
+  if (!_prop.pwt) _prop.pwt = {mode:'new', specs:{}};
+  if (!_prop.pwt.specs) _prop.pwt.specs = {};
+  Object.assign(_prop.pwt.specs, {
+    config_key: ck, power: pw, emission_tech: et*100, reliability: rel*100,
+    cost_opt: co*100, weight_opt: wo*100,
+  });
+
+  try {
+    var r = _ICE_PC.calc(ck, pw, et, rel, co, wo);
+    if (!r) return;
+    var bomDiv = document.getElementById('prop-pwt-bom');
+    if (!bomDiv) return;
+    bomDiv.innerHTML = _summaryCard(r.std_platform_tpc_eur, r.total_net_weight_kg,
+      r.total_material_cost_eur, r.total_process_cost_eur, 0, 'var(--orange)', 'ICE Powertrain', null)
+      + _rdCard(r) + _bomDetail(r.material_lines, r.process_lines, r);
+    var s3 = document.getElementById('prop-sec-3-status');
+    if (s3) s3.textContent = '✎ ICE ' + ck;
+  } catch(e) { console.warn('ICE PWT proposal BOM error:', e); }
+}
+
+function onPropEPWTChange() {
+  var cls = document.getElementById('prop-epwt-class')?.value; if (!cls) return;
+  var mb  = document.getElementById('prop-epwt-mb')?.value || 'MAKE';
+  var ck  = cls + '_' + mb;
+  var pw  = parseFloat(document.getElementById('prop-epwt-power_kw')?.value    || 150);
+  var ef  = parseFloat(document.getElementById('prop-epwt-efficiency')?.value  || 0.7);
+  var rel = parseFloat(document.getElementById('prop-epwt-reliability')?.value || 50) / 100;
+  var co  = parseFloat(document.getElementById('prop-epwt-cost_opt')?.value    || 0)  / 100;
+  var wo  = parseFloat(document.getElementById('prop-epwt-weight_opt')?.value  || 0)  / 100;
+
+  if (!_prop.epwt) _prop.epwt = {mode:'new', specs:{}};
+  if (!_prop.epwt.specs) _prop.epwt.specs = {};
+  Object.assign(_prop.epwt.specs, {
+    config_key: ck, epwt_class: cls, make_buy: mb,
+    power_kw: pw, efficiency: ef, reliability: rel*100,
+    cost_opt: co*100, weight_opt: wo*100,
+  });
+
+  try {
+    var r = _EPWT_PC.calc(ck, pw, ef, rel, co, wo);
+    if (!r) return;
+    var bomDiv = document.getElementById('prop-epwt-bom');
+    if (!bomDiv) return;
+    var color = mb === 'BUY' ? 'var(--cyan)' : 'var(--cyan)';
+    var label = mb === 'BUY' ? 'e-Motor (Sourced)' : 'e-Motor (Make)';
+    bomDiv.innerHTML = _summaryCard(r.std_platform_tpc_eur, r.total_net_weight_kg,
+      r.total_material_cost_eur, r.total_process_cost_eur, 0, color, label, null)
+      + _rdCard(r) + _bomDetail(r.material_lines, r.process_lines, r);
+    var s3 = document.getElementById('prop-sec-3-status');
+    if (s3) s3.textContent = '✎ ' + label + ' ' + cls;
+  } catch(e) { console.warn('ePWT proposal BOM error:', e); }
+}
+
 function advanceToEandS() {
   var s4 = document.getElementById('prop-sec-4-status');
   if (s4 && _prop.tophat) {
