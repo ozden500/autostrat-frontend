@@ -7178,6 +7178,19 @@ function buildMktBars() {
 // ══════════════════════════════════════════
 const API_URL = 'https://web-production-07d36.up.railway.app';
 
+// Pre-warm the Railway backend on page load so it's ready when user hits login
+(async function warmBackend() {
+  const btn = document.getElementById('pin-btn');
+  const lbl = document.getElementById('login-error');
+  if (btn) { btn.disabled = true; btn.textContent = 'Connecting...'; }
+  if (lbl) lbl.textContent = 'Warming up server...';
+  try {
+    await fetch(API_URL + '/health', { method: 'GET', signal: AbortSignal.timeout(25000) });
+  } catch(e) { /* ignore — even a timeout wakes the dyno */ }
+  if (btn) { btn.disabled = false; btn.textContent = 'Continue →'; }
+  if (lbl) lbl.textContent = '';
+})();
+
 // ══════════════════════════════════════════
 // STATE
 // ══════════════════════════════════════════
@@ -7353,14 +7366,21 @@ async function teamJoinSession() {
       roundId = latest.id;
       updateRoundDisplay(latest);
     }
-    const tRes  = await fetch(`${API_URL}/teams`, {
-      method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({session_id:sessionId, name:currentUser.team_name, color_hex:currentUser.color_hex, team_type:'human'})
-    });
-    const tData = await tRes.json();
-    teamId = tData.team.id;
-    // Initialize plants for this team if not already done
-    await fetch(`${API_URL}/teams/${teamId}/plants/initialize`, {method:'POST'});
+    // Check if team already exists in this session to avoid duplicates on re-login
+    const existRes = await fetch(`${API_URL}/sessions/${sessionId}/teams`);
+    const existData = await existRes.json();
+    const existingTeam = (existData.teams||[]).find(t => t.name === currentUser.team_name && t.team_type === 'human');
+    if (existingTeam) {
+      teamId = existingTeam.id;
+    } else {
+      const tRes  = await fetch(`${API_URL}/teams`, {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({session_id:sessionId, name:currentUser.team_name, color_hex:currentUser.color_hex, team_type:'human'})
+      });
+      const tData = await tRes.json();
+      teamId = tData.team.id;
+      await fetch(`${API_URL}/teams/${teamId}/plants/initialize`, {method:'POST'});
+    }
     enterSimulator();
   } catch(e) {
     err.textContent = 'Error joining: ' + e.message;
@@ -7903,7 +7923,7 @@ function startRoundStatePolling() {
         }
       }
     } catch(e) { /* keep polling */ }
-  }, 15000); // check every 15 seconds
+  }, 30000); // check every 30 seconds
 }
 
 function showWaitingModal() {
