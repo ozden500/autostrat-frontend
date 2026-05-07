@@ -9752,6 +9752,9 @@ async function modTabTopHat(el) {
 // ── Main loader ────────────────────────────────────────────
 async function loadVehicleProposal() {
   if (!teamId) return;
+  // Always reset the submit button — it may be stuck from a previous proposal
+  var confirmBtn = document.getElementById('prop-confirm-btn');
+  if (confirmBtn) { confirmBtn.disabled = false; confirmBtn.textContent = '✓ SUBMIT PROPOSAL'; }
   try {
     const [vRes, mRes, thRes, iceRes, epwtRes] = await Promise.all([
       fetch(API_URL + '/teams/' + teamId + '/vehicles'),
@@ -12112,7 +12115,8 @@ async function confirmProposal() {
       if (eandsId)    params.set('eands_module_id',  eandsId);
       params.set('sop_year', sopYear);
       params.set('sop_quarter', sopQuarter||1);
-      var chk = await fetch(API_URL + '/vehicles/readiness-check?' + params.toString());
+      var chk = await fetch(API_URL + '/vehicles/readiness-check?' + params.toString(),
+        { signal: AbortSignal.timeout(5000) });
       var chkData = await chk.json();
       if (!chkData.ok) {
         var blockers = (chkData.modules||[]).filter(function(m){return m.blocks_sop;});
@@ -12137,9 +12141,11 @@ async function confirmProposal() {
 
     if (data.success) {
       toast('\u2713 Proposal submitted \u2014 vehicle moved to PLAN');
-      // Reset proposal state
+      // Full reset of proposal state
       _prop.study = null; _prop.platform = null; _prop.pwt = null;
       _prop.epwt  = null; _prop.tophat   = null; _prop.eands = null;
+      _prop.commercial = null; _prop.operations = null; _prop.currentSec = 1;
+      if (confirmBtn) { confirmBtn.disabled = false; confirmBtn.textContent = '\u2713 SUBMIT PROPOSAL'; }
       // Navigate to Vehicle Plan
             var planNav = null; // navigation handled below
       activeVehicles = [];
