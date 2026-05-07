@@ -5575,11 +5575,21 @@ async function submitModule() {
     const data = await res.json();
     if (data.success) {
       // Save full BOM cost breakdown to module_cost_calculations
-      if (currentModType === 'platform' && window._lastPlatformCalc && data.module_id) {
-        await savePlatformBOM(data.module_id, window._lastPlatformCalc);
+      if (data.module_id) {
+        var calcMap = {
+          platform:    window._lastPlatformCalc,
+          ice_pwt:     window._lastICEPWTCalc,
+          epwt:        window._lastEPWTCalc,
+          tophat:      window._lastTopHatCalc,
+          eands:       window._lastEandsCalc,
+          battery:     window._lastBatteryCalc,
+        };
+        var calc = calcMap[currentModType];
+        if (calc) await savePlatformBOM(data.module_id, calc);
       }
-      msgEl.textContent=`✓ "${name}" development started — ${data.lead_time_quarters} quarters`;
-      toast(`✓ ${name} — R&D started!`);
+      const readyStr=data.ready_year?` — ready Y${data.ready_year-2024}Q${data.ready_quarter}`:'';
+      msgEl.textContent=`✓ "${name}" development started — ${data.lead_time_quarters} quarters${readyStr}`;
+      toast(`✓ ${name} — R&D started${readyStr}!`);
       await loadModuleLibrary(); resetModuleForm();
     } else { msgEl.style.color='var(--red)'; msgEl.textContent='⚠ '+(data.detail||'Error'); }
   } catch(e) { msgEl.style.color='var(--red)'; msgEl.textContent='⚠ '+e.message; }
@@ -5608,17 +5618,20 @@ async function loadModuleLibrary() {
     if(filtered.length===0){ emptyEl.style.display='block'; libEl.innerHTML=''; return; }
     emptyEl.style.display='none';
     libEl.innerHTML=filtered.map(m=>{
-      const sc=m.development_status==='completed'?'var(--green)':m.development_status==='cancelled'?'var(--red)':'var(--gold)';
-      const si=m.development_status==='completed'?'✓':m.development_status==='cancelled'?'✗':'⏳';
+      const done=m.development_status==='completed', cancelled=m.development_status==='cancelled';
+      const sc=done?'var(--green)':cancelled?'var(--red)':'var(--gold)';
+      const si=done?'✓':cancelled?'✗':'⏳';
       const tpc=m.per_unit_tpc_eur?'€'+Math.round(m.per_unit_tpc_eur).toLocaleString()+'/veh':'—';
       const wt=m.total_weight_kg?Math.round(m.total_weight_kg)+'kg':'—';
+      const readyLabel=done?'READY':(m.ready_year?`READY Y${m.ready_year-2024}Q${m.ready_quarter}`:'IN DEV');
+      const devBadge=m.development_type==='modify'?' <span style="color:var(--purple);font-size:8px;">MOD</span>':'';
       return `<div style="padding:8px 0;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;">
         <div style="font-family:'DM Mono',monospace;font-size:11px;color:${sc};width:14px;">${si}</div>
         <div style="flex:1;">
-          <div style="font-size:11px;font-weight:600;color:var(--text);">${m.name}</div>
-          <div style="font-family:'DM Mono',monospace;font-size:9px;color:var(--muted2);">${m.config_key}·${tpc}·${wt}</div>
+          <div style="font-size:11px;font-weight:600;color:var(--text);">${m.name}${devBadge}</div>
+          <div style="font-family:'DM Mono',monospace;font-size:9px;color:var(--muted2);">${m.config_key} · ${tpc} · ${wt}</div>
         </div>
-        <div style="font-family:'DM Mono',monospace;font-size:8px;color:${sc};">${m.development_status.toUpperCase()}</div>
+        <div style="font-family:'DM Mono',monospace;font-size:8px;color:${sc};">${readyLabel}</div>
       </div>`;
     }).join('');
     await loadModulePipeline();
@@ -10710,6 +10723,36 @@ function buildReviewSection() {
   var totalRd   = allMods.reduce(function(s,m){return s+m.rd;},0);
   var totalFte  = allMods.reduce(function(s,m){return s+m.fte;},0);
 
+  // ── Readiness banner: show ready dates for reuse/modify modules ──
+  var sopYear = _prop.study&&_prop.study.start_year;
+  var sopQ    = _prop.study&&_prop.study.start_quarter;
+  var sopLabel= sopYear ? 'Y'+(sopYear-2024)+'Q'+(sopQ||1) : '—';
+  var reuseSlots=[{k:'platform',m:_prop.platform},{k:'pwt',m:_prop.pwt},{k:'tophat',m:_prop.tophat},{k:'eands',m:_prop.eands}];
+  var readinessBanner='';
+  var anyConflict=false;
+  reuseSlots.forEach(function(s){
+    if (!s.m||!s.m.module) return;
+    var mod=s.m.module;
+    var ry=mod.ready_year, rq=mod.ready_quarter, st=mod.development_status;
+    if (!ry) return;
+    var ok=st==='completed';
+    var sopQnum=sopYear?(sopYear-2025)*4+(sopQ-1):null;
+    var readyQnum=(ry-2025)*4+(rq-1);
+    var sopConflict=sopQnum!==null&&readyQnum>sopQnum;
+    if (sopConflict) anyConflict=true;
+    var color=sopConflict?'var(--red)':ok?'var(--green)':'var(--gold)';
+    var readyStr='Y'+(ry-2024)+'Q'+rq;
+    readinessBanner+='<div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid rgba(255,255,255,.04);">'+
+      '<span style="font-family:DM Mono,monospace;font-size:9px;color:var(--muted2);">'+s.k.toUpperCase()+'</span>'+
+      '<span style="font-family:DM Mono,monospace;font-size:9px;color:'+color+';">'+(ok?'READY':readyStr)+(sopConflict?' ⚠ conflicts SOP '+sopLabel:'')+'</span></div>';
+  });
+  if (readinessBanner) {
+    readinessBanner='<div style="background:rgba(255,255,255,.03);border:1px solid '+(anyConflict?'rgba(239,68,68,.4)':'rgba(255,255,255,.08)')+
+      ';border-radius:4px;padding:10px 12px;margin-bottom:12px;">'+
+      '<div style="font-family:DM Mono,monospace;font-size:7px;letter-spacing:2px;color:'+(anyConflict?'var(--red)':'var(--muted)')+
+      ';margin-bottom:6px;">MODULE READINESS'+(sopYear?' vs SOP '+sopLabel:'')+'</div>'+readinessBanner+'</div>';
+  }
+
   // Shared specs for radar
   var sharedRsp = {};
   if (thS.reliability!=null) sharedRsp.reliability=parseFloat(thS.reliability); else if (plS.reliability!=null) sharedRsp.reliability=(plS.reliability||50)/100;
@@ -10868,6 +10911,7 @@ function buildReviewSection() {
   var h = '';
 
   // Header banner
+  if (readinessBanner) h += readinessBanner;
   h += '<div style="background:linear-gradient(135deg,rgba(200,164,60,.10) 0%,rgba(0,0,0,0) 55%);border:1px solid rgba(200,164,60,.22);border-radius:6px;padding:14px 20px;margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;">';
   h += '<div>';
   h += '<div style="font-family:DM Mono,monospace;font-size:7px;letter-spacing:3px;color:var(--gold);text-transform:uppercase;margin-bottom:4px;">▌ Vehicle Program · Technical Definition</div>';
@@ -11645,13 +11689,41 @@ async function confirmProposal() {
   // Collect module IDs
   var pwtId  = (_prop.pwt  && _prop.pwt.module)  ? _prop.pwt.module.id  : null;
   var epwtId = (_prop.epwt && _prop.epwt.module) ? _prop.epwt.module.id : null;
+  var platformId = (_prop.platform && _prop.platform.module) ? _prop.platform.module.id : null;
+  var tophatId   = (_prop.tophat   && _prop.tophat.module)   ? _prop.tophat.module.id   : null;
+  var eandsId    = (_prop.eands    && _prop.eands.module)    ? _prop.eands.module.id    : null;
   var patch  = {
     status:            'plan',
-    platform_module_id: (_prop.platform && _prop.platform.module) ? _prop.platform.module.id : null,
+    platform_module_id: platformId,
     pwt_module_id:      pwtId || epwtId || null,
-    tophat_module_id:   (_prop.tophat && _prop.tophat.module) ? _prop.tophat.module.id : null,
-    eands_module_id:    (_prop.eands  && _prop.eands.module)  ? _prop.eands.module.id  : null,
+    tophat_module_id:   tophatId,
+    eands_module_id:    eandsId,
   };
+
+  // SOP readiness check \u2014 only for reuse/modify modules (new modules are saved at submission)
+  var sopYear    = _prop.study.start_year    || null;
+  var sopQuarter = _prop.study.start_quarter || null;
+  if (sopYear && (platformId || pwtId || epwtId || tophatId || eandsId)) {
+    try {
+      var params = new URLSearchParams();
+      if (platformId) params.set('platform_module_id', platformId);
+      if (pwtId||epwtId) params.set('pwt_module_id', pwtId||epwtId);
+      if (tophatId)   params.set('tophat_module_id', tophatId);
+      if (eandsId)    params.set('eands_module_id',  eandsId);
+      params.set('sop_year', sopYear);
+      params.set('sop_quarter', sopQuarter||1);
+      var chk = await fetch(API_URL + '/vehicles/readiness-check?' + params.toString());
+      var chkData = await chk.json();
+      if (!chkData.ok) {
+        var blockers = (chkData.modules||[]).filter(function(m){return m.blocks_sop;});
+        var msg = blockers.map(function(m){
+          return (m.name||m.slot) + ' ready ' + (m.ready_year?'Y'+(m.ready_year-2024)+'Q'+m.ready_quarter:'TBD');
+        }).join(', ');
+        toast('\u26a0 SOP conflict: ' + msg);
+        return;
+      }
+    } catch(e) { console.warn('Readiness check failed, continuing:', e); }
+  }
 
   try {
     var btn = document.getElementById('prop-confirm-btn');
