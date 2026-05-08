@@ -9968,6 +9968,41 @@ function propFmtSpec(key, val, fmt) {
   return v;
 }
 
+function _isPropModuleCompatible(mod, modType) {
+  var study = _prop.study;
+  if (!study) return {ok:true};
+  var seg    = study.segment_code || '';
+  var pwtInt = ((study.rolled_up_specs || {}).pwt_type || '').toUpperCase();
+  var ck     = mod.config_key || '';
+  if (modType === 'platform') {
+    var sizeMap = {MICRO:'micro',SMALL:'small',MEDIUM:'medium',LARGE:'large',
+                   FRAME:'frame',PERF:'performance',COMMERCIAL:'commercial'};
+    var sizePart = sizeMap[ck.split('_')[0]];
+    if (!sizePart) return {ok:false, reason:'Unknown platform size'};
+    var compatSizes = SEGMENT_PLATFORM_COMPAT[seg] || [];
+    if (compatSizes.indexOf(sizePart) === -1)
+      return {ok:false, reason:'Wrong size for '+seg};
+    var pwtPart = ck.indexOf('MULTI') !== -1 ? 'MULTI' :
+                  ck.indexOf('BEV')  !== -1 ? 'BEV' : 'ICE';
+    if (pwtInt === 'ICE'   && pwtPart !== 'ICE'   && pwtPart !== 'MULTI')
+      return {ok:false, reason:'Need ICE-capable platform'};
+    if (pwtInt === 'BEV'   && pwtPart !== 'BEV'   && pwtPart !== 'MULTI')
+      return {ok:false, reason:'Need BEV-capable platform'};
+    if (pwtInt === 'MULTI' && pwtPart !== 'MULTI')
+      return {ok:false, reason:'Need multi-energy platform'};
+  }
+  if (modType === 'ice_pwt' && pwtInt === 'BEV')
+    return {ok:false, reason:'BEV vehicle — no ICE module needed'};
+  if (modType === 'epwt'    && pwtInt === 'ICE')
+    return {ok:false, reason:'ICE vehicle — no e-Motor needed'};
+  if (modType === 'tophat') {
+    var thConf = (_propTopHatConfigs || []).find(function(c){ return c.config_key === ck; });
+    if (thConf && thConf.segment_code && thConf.segment_code !== seg)
+      return {ok:false, reason:'Wrong segment ('+thConf.segment_code+')'};
+  }
+  return {ok:true};
+}
+
 function buildModuleOptions(modType, propKey, nextFn) {
   var mods      = _prop.modules.filter(function(m){ return m.module_type === modType; });
   var completed = mods.filter(function(m){ return m.development_status==='completed'; });
@@ -9997,9 +10032,10 @@ function buildModuleOptions(modType, propKey, nextFn) {
   // ── Reuse / Modify: side-by-side comparison table ──
   if (currentSel && (currentSel.mode==='reuse' || currentSel.mode==='modify')) {
     var list = currentSel.mode==='reuse' ? completed : mods;
+    list = list.filter(function(m){ return _isPropModuleCompatible(m, modType).ok; });
     if (list.length === 0) {
       html += '<div style="color:var(--muted2);font-size:11px;padding:12px;background:var(--s3);border-radius:3px;">' +
-        'No ' + (currentSel.mode==='reuse'?'completed ':'') + 'modules available. Switch to New Development.</div>';
+        'No compatible ' + (currentSel.mode==='reuse'?'completed ':'') + 'modules for this segment / PWT type. Switch to New Development.</div>';
     } else {
       // Table header
       html += '<div style="overflow-x:auto;margin-top:10px;">';
