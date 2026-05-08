@@ -5616,6 +5616,7 @@ async function submitModule() {
       msgEl.textContent=`✓ "${name}" development started — ${data.lead_time_quarters} quarters${readyStr}`;
       toast(`✓ ${name} — R&D started${readyStr}!`);
       await loadModuleLibrary(); resetModuleForm();
+      buildEngineeringDashboard(); // refresh dashboard so new module appears immediately
     } else { msgEl.style.color='var(--red)'; msgEl.textContent='⚠ '+(data.detail||'Error'); }
   } catch(e) { msgEl.style.color='var(--red)'; msgEl.textContent='⚠ '+e.message; }
 }
@@ -7411,11 +7412,14 @@ async function checkRoundStateOnEntry() {
     if (rounds.length === 0) return;
     const latest = rounds.filter(r=>!r.is_historical&&r.round_number>0).slice(-1)[0];
 
-    // Always use the latest round
+    // Always sync round year/quarter globals (session-restore skips the normal login path)
+    updateRoundDisplay(latest);
+
+    // New round opened since last visit
     if (latest.id !== roundId) {
       roundId = latest.id;
       sessionStorage.setItem('as_roundId', roundId);
-      updateRoundDisplay(latest);
+
     }
 
     // Only fetch/show results if round is in results phase
