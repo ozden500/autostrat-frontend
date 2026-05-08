@@ -12092,50 +12092,110 @@ function calcPropBizCase() {
 async function confirmProposal() {
   if (!_prop.study) { toast('\u26a0 No study selected'); return; }
   var vid = _prop.study.id;
-
-  // Collect module IDs
-  var pwtId  = (_prop.pwt  && _prop.pwt.module)  ? _prop.pwt.module.id  : null;
-  var epwtId = (_prop.epwt && _prop.epwt.module) ? _prop.epwt.module.id : null;
-  var platformId = (_prop.platform && _prop.platform.module) ? _prop.platform.module.id : null;
-  var tophatId   = (_prop.tophat   && _prop.tophat.module)   ? _prop.tophat.module.id   : null;
-  var eandsId    = (_prop.eands    && _prop.eands.module)    ? _prop.eands.module.id    : null;
-  var patch  = {
-    status:            'plan',
-    platform_module_id: platformId,
-    pwt_module_id:      pwtId || epwtId || null,
-    tophat_module_id:   tophatId,
-    eands_module_id:    eandsId,
-  };
-
-  // SOP readiness check \u2014 only for reuse/modify modules (new modules are saved at submission)
-  var sopYear    = _prop.study.start_year    || null;
-  var sopQuarter = _prop.study.start_quarter || null;
-  if (sopYear && (platformId || pwtId || epwtId || tophatId || eandsId)) {
-    try {
-      var params = new URLSearchParams();
-      if (platformId) params.set('platform_module_id', platformId);
-      if (pwtId||epwtId) params.set('pwt_module_id', pwtId||epwtId);
-      if (tophatId)   params.set('tophat_module_id', tophatId);
-      if (eandsId)    params.set('eands_module_id',  eandsId);
-      params.set('sop_year', sopYear);
-      params.set('sop_quarter', sopQuarter||1);
-      var chk = await fetch(API_URL + '/vehicles/readiness-check?' + params.toString(),
-        { signal: AbortSignal.timeout(5000) });
-      var chkData = await chk.json();
-      if (!chkData.ok) {
-        var blockers = (chkData.modules||[]).filter(function(m){return m.blocks_sop;});
-        var msg = blockers.map(function(m){
-          return (m.name||m.slot) + ' ready ' + (m.ready_year?'Y'+(m.ready_year-2024)+'Q'+m.ready_quarter:'TBD');
-        }).join(', ');
-        toast('\u26a0 SOP conflict: ' + msg);
-        return;
-      }
-    } catch(e) { console.warn('Readiness check failed, continuing:', e); }
-  }
+  var btn = document.getElementById('prop-confirm-btn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Submitting...'; }
 
   try {
-    var btn = document.getElementById('prop-confirm-btn');
-    if (btn) { btn.disabled = true; btn.textContent = 'Submitting...'; }
+    // \u2500\u2500 Create 'new development' modules that aren't in DB yet \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+    var studyName  = (_prop.study.name || 'Vehicle').substring(0, 30);
+    var _sizeAbbr  = {micro:'MICRO',small:'SMALL',medium:'MEDIUM',large:'LARGE',frame:'FRAME',performance:'PERF',commercial:'COMMERCIAL'};
+    var _pwtAbbr   = {'ice_only':'ICE','bev_only':'BEV','ice_and_bev':'MULTI'};
+
+    async function _savePropNew(slot, modType, ck, specs, autoName) {
+      if (!slot || slot.mode !== 'new' || !ck) return;
+      if (slot.module && slot.module.id) return; // already saved
+      var r = await fetch(API_URL + '/teams/' + teamId + '/modules', {
+        method: 'POST', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({team_id:teamId, session_id:sessionId,
+          module_type:modType, config_key:ck, name:autoName, specs:specs,
+          developed_from_module_id: null})
+      });
+      var d = await r.json();
+      if (d.success && d.module_id) {
+        slot.module = {id: d.module_id};
+        toast('\u23f3 New ' + modType + ' module queued: ' + autoName);
+      } else console.warn('createPropModule failed', modType, d.detail || d);
+    }
+
+    if (_prop.platform && _prop.platform.mode === 'new') {
+      var ps = _prop.platform.specs || {};
+      var ck = ps.size && ps.pwt ? (_sizeAbbr[ps.size]||'MEDIUM')+'_'+(_pwtAbbr[ps.pwt]||'ICE') : null;
+      await _savePropNew(_prop.platform, 'platform', ck,
+        {reliability:(ps.reliability||50)/100, comfort:(ps.comfort||50)/100,
+         safety:(ps.safety||50)/100, cost_opt:(ps.cost_opt||0)/100, weight_opt:(ps.weight_opt||0)/100},
+        studyName+' Platform '+(_sizeAbbr[ps.size]||ps.size||'')+'-'+(ps.pwt||''));
+    }
+    if (_prop.pwt && _prop.pwt.mode === 'new') {
+      var ps = _prop.pwt.specs || {};
+      await _savePropNew(_prop.pwt, 'ice_pwt', ps.config_key||null,
+        {reliability:(ps.reliability||50)/100, emission_tech:(ps.emission_tech||10)/100,
+         power:ps.power||100, cost_opt:(ps.cost_opt||0)/100, weight_opt:(ps.weight_opt||0)/100},
+        studyName+' ICE '+(ps.config_key||''));
+    }
+    if (_prop.epwt && _prop.epwt.mode === 'new') {
+      var ps = _prop.epwt.specs || {};
+      await _savePropNew(_prop.epwt, 'epwt', ps.config_key||null,
+        {reliability:(ps.reliability||50)/100, efficiency:ps.efficiency||0.7,
+         power_kw:ps.power_kw||150, cost_opt:(ps.cost_opt||0)/100, weight_opt:(ps.weight_opt||0)/100},
+        studyName+' ePWT '+(ps.epwt_class||''));
+    }
+    if (_prop.tophat && _prop.tophat.mode === 'new') {
+      var ps = _prop.tophat.specs || {};
+      await _savePropNew(_prop.tophat, 'tophat', ps.config_key||null,
+        {reliability:(ps.reliability||50)/100, comfort:(ps.comfort||50)/100,
+         safety:(ps.safety||50)/100, roominess:ps.roominess||2.5,
+         premiumness:ps.premiumness||0.3, cost_opt:0, weight_opt:0},
+        studyName+' TopHat '+(ps.config_key||''));
+    }
+    if (_prop.eands && _prop.eands.mode === 'new') {
+      var ps = _prop.eands.specs || {};
+      await _savePropNew(_prop.eands, 'eands', ps.config_key||null,
+        {adas_level:ps.adas_level||1, sensor_suite:(ps.sensor_suite||30)/100,
+         connectivity:(ps.connectivity||30)/100, infotainment:(ps.infotainment||30)/100,
+         cybersecurity:(ps.cybersecurity||20)/100},
+        studyName+' E&S L'+(ps.adas_level||1)+' '+(ps.ee_arch||''));
+    }
+
+    // \u2500\u2500 Collect module IDs (new ones now in slot.module.id) \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+    var pwtId      = (_prop.pwt    && _prop.pwt.module)    ? _prop.pwt.module.id    : null;
+    var epwtId     = (_prop.epwt   && _prop.epwt.module)   ? _prop.epwt.module.id   : null;
+    var platformId = (_prop.platform && _prop.platform.module) ? _prop.platform.module.id : null;
+    var tophatId   = (_prop.tophat && _prop.tophat.module) ? _prop.tophat.module.id : null;
+    var eandsId    = (_prop.eands  && _prop.eands.module)  ? _prop.eands.module.id  : null;
+    var patch = {
+      status:             'plan',
+      platform_module_id: platformId,
+      pwt_module_id:      pwtId || epwtId || null,
+      tophat_module_id:   tophatId,
+      eands_module_id:    eandsId,
+    };
+
+    // \u2500\u2500 SOP readiness check \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+    var sopYear    = _prop.study.start_year    || null;
+    var sopQuarter = _prop.study.start_quarter || null;
+    if (sopYear && (platformId || pwtId || epwtId || tophatId || eandsId)) {
+      try {
+        var params = new URLSearchParams();
+        if (platformId) params.set('platform_module_id', platformId);
+        if (pwtId||epwtId) params.set('pwt_module_id', pwtId||epwtId);
+        if (tophatId)   params.set('tophat_module_id', tophatId);
+        if (eandsId)    params.set('eands_module_id',  eandsId);
+        params.set('sop_year', sopYear);
+        params.set('sop_quarter', sopQuarter||1);
+        var chk = await fetch(API_URL + '/vehicles/readiness-check?' + params.toString(),
+          { signal: AbortSignal.timeout(5000) });
+        var chkData = await chk.json();
+        if (!chkData.ok) {
+          var blockers = (chkData.modules||[]).filter(function(m){return m.blocks_sop;});
+          var msg = blockers.map(function(m){
+            return (m.name||m.slot) + ' ready ' + (m.ready_year?'Y'+(m.ready_year-2024)+'Q'+m.ready_quarter:'TBD');
+          }).join(', ');
+          toast('\u26a0 SOP conflict: ' + msg);
+          if (btn) { btn.disabled = false; btn.textContent = '\u2713 SUBMIT PROPOSAL'; }
+          return;
+        }
+      } catch(e) { console.warn('Readiness check failed, continuing:', e); }
+    }
 
     const res  = await fetch(API_URL + '/vehicles/' + vid, {
       method: 'PATCH', headers: {'Content-Type':'application/json'},
@@ -12149,9 +12209,7 @@ async function confirmProposal() {
       _prop.study = null; _prop.platform = null; _prop.pwt = null;
       _prop.epwt  = null; _prop.tophat   = null; _prop.eands = null;
       _prop.commercial = null; _prop.operations = null; _prop.currentSec = 1;
-      if (confirmBtn) { confirmBtn.disabled = false; confirmBtn.textContent = '\u2713 SUBMIT PROPOSAL'; }
       // Navigate to Vehicle Plan
-            var planNav = null; // navigation handled below
       activeVehicles = [];
       // Show footprint config toast
       setTimeout(function() {
@@ -12170,7 +12228,6 @@ async function confirmProposal() {
     }
   } catch(e) {
     toast('\u26a0 ' + e.message);
-    var btn = document.getElementById('prop-confirm-btn');
     if (btn) { btn.disabled = false; btn.textContent = '\u2713 SUBMIT PROPOSAL'; }
   }
 }
