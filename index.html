@@ -5761,7 +5761,7 @@ function _renderEngineeringDashboard(mods, vehicles, todayQabs) {
   h += '</div></div></div>';
 
   // ── Vehicle-module matrix ──
-  var planV = vehicles.filter(function(v){return v.status!=='draft'&&v.status!=='cancelled';});
+  var planV = vehicles.filter(function(v){return v.status!=='cancelled';});
   if (planV.length>0) {
     h += '<div style="background:var(--s2);border-radius:4px;border:1px solid var(--border2);overflow:hidden;">';
     h += '<div style="padding:10px 14px;border-bottom:1px solid var(--border);">';
@@ -5847,7 +5847,7 @@ function _buildModuleGantt(mods, vehicles, todayQabs) {
   });
 
   // Vehicle SOP markers
-  var sopVehicles=vehicles.filter(function(v){return v.start_year&&v.status!=='draft'&&v.status!=='cancelled';});
+  var sopVehicles=vehicles.filter(function(v){return v.start_year&&v.status!=='cancelled';});
   if(sopVehicles.length>0){
     h+='<div style="display:flex;align-items:flex-end;margin-top:12px;padding-top:8px;border-top:1px solid rgba(255,255,255,.05);">';
     h+='<div style="width:170px;flex-shrink:0;font-family:DM Mono,monospace;font-size:7px;color:var(--muted2);text-transform:uppercase;letter-spacing:1px;padding-bottom:4px;">Vehicle SOP</div>';
@@ -5988,7 +5988,7 @@ function _buildVehicleModuleMatrix(mods, vehicles) {
   vehicles.forEach(function(v,i){
     var sop=v.start_year?'Y'+(v.start_year-2024)+'Q'+(v.start_quarter||1):'—';
     var sopQ=v.start_year?(v.start_year-2025)*4+(v.start_quarter-1):null;
-    var statusColor={draft:'var(--muted2)',plan:'var(--gold)',approved:'var(--green)',cancelled:'var(--red)'}[v.status]||'var(--muted2)';
+    var statusColor={study:'var(--orange)',draft:'var(--muted2)',plan:'var(--gold)',approved:'var(--green)',on_sale:'var(--cyan)',cancelled:'var(--red)'}[v.status]||'var(--muted2)';
     h+='<tr style="border-top:1px solid rgba(255,255,255,.04);'+(i%2===0?'':'background:rgba(255,255,255,.015);')+'">';
     h+='<td style="padding:5px 8px;color:var(--text);">'+(v.name||'—')+'</td>';
     h+='<td style="padding:5px 8px;text-align:center;color:var(--muted2);">'+sop+'</td>';
