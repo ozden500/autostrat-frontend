@@ -5695,12 +5695,8 @@ async function buildEngineeringDashboard() {
     var vr = await fetch(API_URL+'/teams/'+teamId+'/vehicles');
     var vd = await vr.json(); var vehicles = vd.vehicles||[];
 
-    // Current quarter: latest submitted module, or 0
-    var todayQabs = 0;
-    mods.filter(function(m){return m.submitted_year;}).forEach(function(m){
-      var q=(m.submitted_year-2025)*4+(m.submitted_quarter-1);
-      if(q>todayQabs) todayQabs=q;
-    });
+    // Current quarter from game round (falls back to latest submitted module)
+    var todayQabs = (currentRoundYear - 2025) * 4 + (currentRoundQuarter - 1);
     _renderEngineeringDashboard(mods, vehicles, todayQabs);
   } catch(e) {
     el.innerHTML='<div style="color:var(--red);font-family:DM Mono,monospace;font-size:11px;padding:20px;">Error: '+e.message+'</div>';
@@ -7194,12 +7190,14 @@ const API_URL = 'https://web-production-07d36.up.railway.app';
 // ══════════════════════════════════════════
 // STATE
 // ══════════════════════════════════════════
-let currentUser  = null;
-let sessionId    = null;
-let teamId       = null;
-let roundId      = null;
-let submissionId = null;
-let submitted    = false;
+let currentUser       = null;
+let sessionId         = null;
+let teamId            = null;
+let roundId           = null;
+let submissionId      = null;
+let submitted         = false;
+let currentRoundYear  = 2025;
+let currentRoundQuarter = 1;
 
 // ══════════════════════════════════════════
 // AUTH — STEP 1: PIN
@@ -8036,6 +8034,8 @@ function showResults(data, tid) {
 
 function updateRoundDisplay(roundData) {
   if (!roundData) return;
+  currentRoundYear    = roundData.year    || 2025;
+  currentRoundQuarter = roundData.quarter || 1;
   const q    = `Q${roundData.quarter}`;
   const yr   = roundData.year;
   const rNum = roundData.round_number;
