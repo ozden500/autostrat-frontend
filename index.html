@@ -10787,6 +10787,10 @@ function buildPWTSection() {
   el.innerHTML = html;
 }
 function advanceToTopHat() {
+  if (_prop.pwt  && _prop.pwt.mode  !== 'new' && !_prop.pwt.module)
+    { toast('⚠ Select an ICE powertrain module to continue'); return; }
+  if (_prop.epwt && _prop.epwt.mode !== 'new' && !_prop.epwt.module)
+    { toast('⚠ Select an e-Motor module to continue'); return; }
   var s3 = document.getElementById('prop-sec-3-status');
   if (s3) {
     var pwtName  = _prop.pwt  && _prop.pwt.module  ? _prop.pwt.module.name  : (_prop.pwt&&_prop.pwt.mode==='new'?'New ICE':'—');
