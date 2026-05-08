@@ -9968,11 +9968,35 @@ function propFmtSpec(key, val, fmt) {
   return v;
 }
 
+function _getEffectivePwtType() {
+  // 1. Infer from already-selected/configured platform (most reliable)
+  var pm = _prop.platform;
+  if (pm) {
+    if ((pm.mode === 'reuse' || pm.mode === 'modify') && pm.module) {
+      var pck = pm.module.config_key || '';
+      if (pck.indexOf('MULTI') !== -1) return 'MULTI';
+      if (pck.indexOf('BEV')  !== -1) return 'BEV';
+      if (pck.indexOf('ICE')  !== -1) return 'ICE';
+    }
+    if (pm.mode === 'new' && pm.specs && pm.specs.pwt) {
+      var pw = pm.specs.pwt;
+      if (pw === 'ice_and_bev') return 'MULTI';
+      if (pw === 'bev_only')    return 'BEV';
+      if (pw === 'ice_only')    return 'ICE';
+    }
+  }
+  // 2. Fall back to study pwt_type with extended-type mapping
+  var raw = _prop.study && _prop.study.rolled_up_specs ?
+    (_prop.study.rolled_up_specs.pwt_type || '') : '';
+  var PWT_MAP = {ICE:'ICE',HEV:'ICE',PHEV:'MULTI',REEV:'MULTI',BEV:'BEV',FCEV:'BEV',MULTI:'MULTI'};
+  return PWT_MAP[raw.toUpperCase()] || '';
+}
+
 function _isPropModuleCompatible(mod, modType) {
   var study = _prop.study;
   if (!study) return {ok:true};
   var seg    = study.segment_code || '';
-  var pwtInt = ((study.rolled_up_specs || {}).pwt_type || '').toUpperCase();
+  var pwtInt = _getEffectivePwtType();
   var ck     = mod.config_key || '';
   if (modType === 'platform') {
     var sizeMap = {MICRO:'micro',SMALL:'small',MEDIUM:'medium',LARGE:'large',
@@ -9982,19 +10006,23 @@ function _isPropModuleCompatible(mod, modType) {
     var compatSizes = SEGMENT_PLATFORM_COMPAT[seg] || [];
     if (compatSizes.indexOf(sizePart) === -1)
       return {ok:false, reason:'Wrong size for '+seg};
-    var pwtPart = ck.indexOf('MULTI') !== -1 ? 'MULTI' :
-                  ck.indexOf('BEV')  !== -1 ? 'BEV' : 'ICE';
-    if (pwtInt === 'ICE'   && pwtPart !== 'ICE'   && pwtPart !== 'MULTI')
-      return {ok:false, reason:'Need ICE-capable platform'};
-    if (pwtInt === 'BEV'   && pwtPart !== 'BEV'   && pwtPart !== 'MULTI')
-      return {ok:false, reason:'Need BEV-capable platform'};
-    if (pwtInt === 'MULTI' && pwtPart !== 'MULTI')
-      return {ok:false, reason:'Need multi-energy platform'};
+    if (pwtInt) {
+      var pwtPart = ck.indexOf('MULTI') !== -1 ? 'MULTI' :
+                    ck.indexOf('BEV')  !== -1 ? 'BEV' : 'ICE';
+      if (pwtInt === 'ICE'   && pwtPart !== 'ICE'   && pwtPart !== 'MULTI')
+        return {ok:false, reason:'Need ICE-capable platform'};
+      if (pwtInt === 'BEV'   && pwtPart !== 'BEV'   && pwtPart !== 'MULTI')
+        return {ok:false, reason:'Need BEV-capable platform'};
+      if (pwtInt === 'MULTI' && pwtPart !== 'MULTI')
+        return {ok:false, reason:'Need multi-energy platform'};
+    }
   }
-  if (modType === 'ice_pwt' && pwtInt === 'BEV')
-    return {ok:false, reason:'BEV vehicle — no ICE module needed'};
-  if (modType === 'epwt'    && pwtInt === 'ICE')
-    return {ok:false, reason:'ICE vehicle — no e-Motor needed'};
+  if (pwtInt) {
+    if (modType === 'ice_pwt' && pwtInt === 'BEV')
+      return {ok:false, reason:'BEV vehicle — no ICE module needed'};
+    if (modType === 'epwt'    && pwtInt === 'ICE')
+      return {ok:false, reason:'ICE vehicle — no e-Motor needed'};
+  }
   if (modType === 'tophat') {
     var thConf = (_propTopHatConfigs || []).find(function(c){ return c.config_key === ck; });
     if (thConf && thConf.segment_code && thConf.segment_code !== seg)
