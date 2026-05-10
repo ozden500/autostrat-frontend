@@ -5493,6 +5493,224 @@ function fetchBatteryStdCost() {
   } catch(e) { console.warn('Battery BOM cost error:', e); }
 }
 
+// ════════════════════════════════════════════════════════════════════
+// CONSUMPTION ENGINE v1.0.0 — Client-Side JavaScript
+// Estimates WLTP fuel/energy consumption from aggregated vehicle specs.
+// Uses empirical WLTP baselines per segment × body type + physics deltas.
+// ════════════════════════════════════════════════════════════════════
+var _CONS_E = {
+  VERSION: "1.0.0",
+
+  // Estimated baseline kerb mass (kg) — ICE, no battery, C-HB equivalent sizing
+  PLAT_MASS: {
+    micro:900, small:1150, medium:1380, large:1700,
+    performance:1650, frame:2600, commercial:3800
+  },
+
+  // Aerodynamic drag coefficient by body type
+  CD: { HB:0.30, SUV:0.36, SEDAN:0.27, COUPE:0.25, VAN:0.42 },
+
+  // Frontal area (m²) by market segment
+  FRONTAL: {
+    a_segment:1.95, b_segment:2.10, c_segment:2.25, d_segment:2.40,
+    e_segment:2.55, f_segment:2.65, sports:2.10, mpv:2.50,
+    pickup:2.90, c_van:2.70, d_van:3.10, e_van:3.50
+  },
+
+  // Map segment_code → consumption lookup key
+  SEG: {
+    a_segment:'A', b_segment:'B', c_segment:'C', d_segment:'D',
+    e_segment:'E', f_segment:'F', sports:'C', mpv:'D',
+    pickup:'E', c_van:'D', d_van:'E', e_van:'F'
+  },
+
+  // WLTP baseline ICE consumption (L/100km): 4CYL naturally-aspirated, 100 hp/ton, no aero/weight opt
+  BASE_ICE: { A:5.0, B:6.0, C:6.8, D:8.0, E:9.5, F:11.5 },
+
+  // WLTP baseline BEV energy consumption (kWh/100km): MAINSTREAM motor, 60 kWh pack, no opt
+  BASE_BEV: { A:13.5, B:15.5, C:17.5, D:20.5, E:24.0, F:28.5 },
+
+  // Body-type consumption delta vs HB baseline
+  BODY_ICE: { HB:0.0, SUV:1.2, SEDAN:-0.2, COUPE:-0.5, VAN:2.0 },
+  BODY_BEV: { HB:0.0, SUV:2.0, SEDAN:-0.3, COUPE:-0.8, VAN:3.5 },
+
+  // Body-type mass factor vs HB baseline (before weight opt)
+  BODY_MASS: { HB:1.00, SUV:1.10, SEDAN:1.04, COUPE:0.95, VAN:1.28 },
+
+  // ICE engine config delta vs 4CYL_ICE baseline (L/100km)
+  ICE_DELTA: {
+    '3CYL_ICE':-0.5, '4CYL_ICE':0.0,   '4CYL_TURBO':-0.3,
+    '4CYL_HEV':-1.8, '4CYL_PHEV':-0.8, '4CYL_REEV':-0.5,
+    '6CYL_ICE':0.9,  '6CYL_TURBO':0.6, '6CYL_HEV':-0.8,
+    '8CYL_ICE':2.0,  '8CYL_TURBO':1.6, '12CYL_ICE':3.5
+  },
+
+  // ePWT power class BEV consumption delta vs MAINSTREAM baseline (kWh/100km)
+  EPWT_DELTA: {
+    LOW_POWER:-1.5, MAINSTREAM:0.0, PERFORMANCE:1.5,
+    HIGH_PERF:3.0, ULTRA_HP:5.5
+  },
+
+  GASOLINE_CO2_G_L: 2310,   // g CO₂ per litre petrol (combustion only)
+  FUEL_EUR_L: 1.65,          // reference pump price
+  ELEC_EUR_KWH: 0.28,        // reference electricity price
+
+  calc: function(o) {
+    o = o || {};
+    var seg  = this.SEG[o.segment_code] || 'C';
+    var size = o.platform_size || 'medium';
+    var rawBody = (o.body_type || 'HB').toUpperCase();
+    // Collapse compound body names
+    if (rawBody === 'MINIVAN' || rawBody === 'MPV') rawBody = 'VAN';
+    var body = (rawBody in this.BODY_ICE) ? rawBody : 'HB';
+
+    var pwt    = o.pwt_type || 'ice_only';
+    var hasIce = (pwt === 'ice_only' || pwt === 'ice_and_bev');
+    var hasBev = (pwt === 'bev_only' || pwt === 'ice_and_bev');
+
+    // Normalise to 0-1 — handles sliders stored as 0-100 or 0-1 decimal
+    function d01(v, def) {
+      if (v == null || v === '') return (def != null ? def : 0);
+      v = parseFloat(v);
+      return isNaN(v) ? (def != null ? def : 0) : (v > 1 ? v / 100 : v);
+    }
+
+    var wo      = Math.min(1, Math.max(0, d01(o.weight_opt, 0)));
+    var safety  = Math.min(1, Math.max(0, d01(o.safety, 0.5)));
+
+    // ── 1. Kerb mass estimate ────────────────────────────────────
+    var baseMass   = this.PLAT_MASS[size] || 1380;
+    var bodyMassF  = this.BODY_MASS[body] || 1.00;
+    var battMassKg = 0;
+    if (hasBev && o.battery_kwh) {
+      // Pack-level energy density from chemistry (Wh/kg) + 15% pack overhead
+      var chemWh = (typeof _BATTERY_PC !== 'undefined' && o.battery_chemistry &&
+                    _BATTERY_PC.CHEM[o.battery_chemistry])
+        ? _BATTERY_PC.CHEM[o.battery_chemistry].wh_per_kg : 220;
+      battMassKg = Math.round(parseFloat(o.battery_kwh) * 1000 / chemWh * 1.15);
+    }
+    var massReduct = wo * 0.12;       // weight opt → up to -12% platform mass
+    var safetyAdd  = safety * 0.03;   // UHSS reinforcement → up to +3% platform mass
+    var kerbMass   = Math.round(baseMass * bodyMassF * (1 - massReduct) * (1 + safetyAdd) + battMassKg);
+
+    // ── 2. Aerodynamics ──────────────────────────────────────────
+    var cd0 = this.CD[body] || 0.32;
+    var Af  = this.FRONTAL[o.segment_code] || 2.25;
+    // Weight opt correlates with aero discipline: Cd reduced up to 4%
+    var Cd  = Math.round(cd0 * (1 - wo * 0.04) * 1000) / 1000;
+    var CdA = Math.round(Cd * Af * 1000) / 1000;
+
+    // ── 3. ICE fuel consumption ──────────────────────────────────
+    var ice = null;
+    if (hasIce) {
+      var base   = this.BASE_ICE[seg] || 6.8;
+      var bdelt  = this.BODY_ICE[body] || 0;
+      var eck    = o.ice_config_key || '4CYL_ICE';
+      var edelt  = this.ICE_DELTA[eck] || 0;
+
+      // Hybrid classification
+      var hybrid = 'ICE';
+      if (eck.indexOf('HEV')  >= 0) hybrid = 'HEV';
+      if (eck.indexOf('PHEV') >= 0) hybrid = 'PHEV';
+      if (eck.indexOf('REEV') >= 0) hybrid = 'REEV';
+      var isTurbo = eck.indexOf('TURBO') >= 0;
+
+      // Power density effect: additional fuel beyond ~25 hp/cylinder baseline
+      var cylinders = parseInt((eck.split('_')[0]) || '4') || 4;
+      var hp = parseFloat(o.power_hp || (cylinders * 25));
+      var hpPerCyl = hp / cylinders;
+      var pwrDelt  = Math.max(0, (hpPerCyl - 25) / 25 * 0.15); // +0.15 L per doubling of spec power/cyl
+
+      // Mass effect vs medium platform reference (~1380 kg)
+      var massRef  = this.PLAT_MASS['medium'];
+      var massDelt = (kerbMass - battMassKg - massRef) / 100 * 0.5; // +0.5 L per 100 kg over ref
+
+      // Weight + aero optimisation saving
+      var optDelt = -(wo * 0.20 + wo * 0.05 * (CdA / 0.70));
+
+      var fuelL = Math.max(2.5, base + bdelt + edelt + pwrDelt + massDelt + optDelt);
+      fuelL = Math.round(fuelL * 10) / 10;
+
+      var co2Gkm   = Math.round(fuelL * this.GASOLINE_CO2_G_L / 100);
+      var runEur   = Math.round(fuelL * this.FUEL_EUR_L * 100) / 100;
+
+      ice = {
+        fuel_L100km:         fuelL,
+        co2_g_km:            co2Gkm,
+        fuel_cost_eur_100km: runEur,
+        hybrid_type:         hybrid,
+        is_turbo:            isTurbo
+      };
+
+      // PHEV: add electric-only city range (CD mode)
+      if (hybrid === 'PHEV' && o.battery_kwh) {
+        var bevConsPhev = (this.BASE_BEV[seg] || 17.5) + (this.BODY_BEV[body] || 0);
+        var phevKwh     = Math.max(7, parseFloat(o.battery_kwh));
+        ice.phev_elec_range_km = Math.round(phevKwh * 0.85 / (bevConsPhev / 100));
+        ice.phev_blended_co2   = Math.round(co2Gkm * 0.35); // EU weighted-average estimate
+      }
+    }
+
+    // ── 4. BEV energy consumption ────────────────────────────────
+    var bev = null;
+    if (hasBev) {
+      var baseBev  = this.BASE_BEV[seg] || 17.5;
+      var bdeltBev = this.BODY_BEV[body] || 0;
+
+      var motorClass = (o.epwt_class || 'MAINSTREAM').replace(/_(?:MAKE|BUY)$/, '');
+      var motorDelt  = this.EPWT_DELTA[motorClass] || 0;
+
+      // Motor efficiency: base assumption 88%; each % above/below shifts consumption by 1.2 kWh
+      var eff    = o.motor_efficiency != null
+        ? Math.min(0.97, Math.max(0.70, parseFloat(o.motor_efficiency)))
+        : 0.88;
+      var effDel = -(eff - 0.88) / 0.10 * 1.2;
+
+      // Battery mass adds rolling resistance
+      var massDeltBev = battMassKg / 100 * 0.40; // +0.4 kWh per 100 kg of pack
+
+      // Weight + aero opt saving
+      var optDeltBev  = -(wo * 0.30 + wo * 0.08 * (CdA / 0.70));
+
+      // ADAS L3+ adds measurable auxiliary load
+      var adasLevel   = parseFloat(o.adas_level || 0);
+      var adasDelt    = adasLevel >= 3 ? (adasLevel - 2) * 0.30 : 0;
+
+      var kwh100 = Math.max(8.0, baseBev + bdeltBev + motorDelt + effDel + massDeltBev + optDeltBev + adasDelt);
+      kwh100 = Math.round(kwh100 * 10) / 10;
+
+      var rangeKm = null;
+      if (o.battery_kwh) {
+        var usable = parseFloat(o.battery_kwh) * 0.90; // 10% buffer reserve
+        rangeKm = Math.round(usable / (kwh100 / 100));
+      }
+
+      var runEurBev = Math.round(kwh100 * this.ELEC_EUR_KWH * 100) / 100;
+
+      bev = {
+        kwh_100km:              kwh100,
+        range_km:               rangeKm,
+        energy_cost_eur_100km:  runEurBev,
+        motor_class:            motorClass,
+        motor_eff_pct:          Math.round(eff * 100),
+        battery_kwh:            o.battery_kwh ? parseFloat(o.battery_kwh) : null,
+        battery_chemistry:      o.battery_chemistry || null
+      };
+    }
+
+    return {
+      pwt_type:        pwt,
+      kerb_mass_kg:    kerbMass,
+      drag_coeff:      Cd,
+      frontal_area_m2: Af,
+      CdA:             CdA,
+      mass_battery_kg: battMassKg,
+      ice:             ice,
+      bev:             bev
+    };
+  }
+};
+
 async function fetchCostPreview() {
   const configKey = getSelectedConfigKey();
   if (!configKey || currentDevPath==='reuse') return;
@@ -11642,6 +11860,83 @@ function buildReviewSection() {
   h += (M.eands.weight>0?'<div style="margin-top:5px;font-family:DM Mono,monospace;font-size:8px;color:var(--muted2);">⚤ '+_f(M.eands.weight)+' kg · R&D €'+_f(M.eands.rd)+'M</div>':'');
   h += '</div>';
   h += '</div>'; // end 3-col shared grid
+
+  // ── WLTP PERFORMANCE PROFILE ──────────────────────────────────
+  (function() {
+    if (typeof _CONS_E === 'undefined') return;
+    var consBody = thS.config_key ? thS.config_key.split('_').slice(1).join('_') : 'HB';
+    var cons;
+    try {
+      cons = _CONS_E.calc({
+        platform_size:    plS.size || 'medium',
+        segment_code:     _prop.study ? _prop.study.segment_code : 'c_segment',
+        body_type:        consBody,
+        pwt_type:         plS.pwt || (hasIce ? 'ice_only' : hasBev ? 'bev_only' : 'ice_only'),
+        ice_config_key:   pwtS.config_key || null,
+        power_hp:         pwtS.power || null,
+        emission_tech:    pwtS.emission_tech != null ? pwtS.emission_tech : null,
+        epwt_class:       edmS.epwt_class || null,
+        power_kw:         edmS.power_kw || null,
+        motor_efficiency: edmS.efficiency != null ? parseFloat(edmS.efficiency) : null,
+        battery_kwh:      batS.target_kwh || null,
+        battery_chemistry:batS.chemistry || null,
+        weight_opt:       plS.weight_opt || 0,
+        safety:           thS.safety != null ? thS.safety : (plS.safety || 50),
+        adas_level:       esS.adas_level || 0
+      });
+    } catch(e) { console.warn('Consumption engine error:', e); return; }
+
+    h += sRule('WLTP PERFORMANCE PROFILE — ESTIMATED FROM TECHNICAL SPECIFICATIONS');
+
+    var cols = (cons.ice && cons.bev) ? '1fr 1fr 1fr' : '1fr 1fr';
+    h += '<div style="display:grid;grid-template-columns:'+cols+';gap:8px;margin-bottom:14px;">';
+
+    // ICE card
+    if (cons.ice) {
+      var ic = cons.ice;
+      var hybLabel = {HEV:'Hybrid',PHEV:'Plug-In Hybrid',REEV:'Range-Extender',ICE:'ICE'}[ic.hybrid_type] || 'ICE';
+      h += '<div style="border:1px solid var(--border2);border-top:3px solid var(--orange);border-radius:4px;padding:12px;background:var(--s2);">';
+      h += '<div style="font-family:DM Mono,monospace;font-size:7px;letter-spacing:2px;color:var(--orange);text-transform:uppercase;margin-bottom:8px;">'+hybLabel+' FUEL ECONOMY</div>';
+      h += '<div style="font-family:Orbitron,sans-serif;font-size:28px;font-weight:800;color:var(--orange);line-height:1;margin-bottom:2px;">'+ic.fuel_L100km+'</div>';
+      h += '<div style="font-family:DM Mono,monospace;font-size:8px;color:var(--muted2);margin-bottom:8px;">L / 100 km &nbsp;·&nbsp; WLTP est.</div>';
+      h += '<div style="border-top:1px solid var(--border2);padding-top:7px;">';
+      h += specRow('CO₂ Emissions',   ic.co2_g_km + ' g/km');
+      h += specRow('Running Cost',    '€' + ic.fuel_cost_eur_100km + ' / 100 km');
+      if (ic.is_turbo)            h += specRow('Engine Tech',    'Turbocharged');
+      if (ic.phev_elec_range_km)  h += specRow('e-Range (CD)',   ic.phev_elec_range_km + ' km');
+      if (ic.phev_blended_co2)    h += specRow('Blended CO₂',   ic.phev_blended_co2 + ' g/km');
+      h += '</div></div>';
+    }
+
+    // BEV card
+    if (cons.bev) {
+      var bc = cons.bev;
+      h += '<div style="border:1px solid var(--border2);border-top:3px solid var(--cyan);border-radius:4px;padding:12px;background:var(--s2);">';
+      h += '<div style="font-family:DM Mono,monospace;font-size:7px;letter-spacing:2px;color:var(--cyan);text-transform:uppercase;margin-bottom:8px;">BEV ENERGY CONSUMPTION</div>';
+      h += '<div style="font-family:Orbitron,sans-serif;font-size:28px;font-weight:800;color:var(--cyan);line-height:1;margin-bottom:2px;">'+bc.kwh_100km+'</div>';
+      h += '<div style="font-family:DM Mono,monospace;font-size:8px;color:var(--muted2);margin-bottom:8px;">kWh / 100 km &nbsp;·&nbsp; WLTP est.</div>';
+      h += '<div style="border-top:1px solid var(--border2);padding-top:7px;">';
+      if (bc.range_km)            h += specRow('WLTP Range',     bc.range_km + ' km');
+      h += specRow('Charging Cost',   '€' + bc.energy_cost_eur_100km + ' / 100 km');
+      h += specRow('Motor Efficiency',bc.motor_eff_pct + '%');
+      if (bc.battery_kwh)         h += specRow('Pack Capacity',  bc.battery_kwh + ' kWh');
+      h += '</div></div>';
+    }
+
+    // Vehicle physics card
+    h += '<div style="border:1px solid var(--border2);border-top:3px solid rgba(255,255,255,.2);border-radius:4px;padding:12px;background:var(--s2);">';
+    h += '<div style="font-family:DM Mono,monospace;font-size:7px;letter-spacing:2px;color:var(--muted);text-transform:uppercase;margin-bottom:8px;">VEHICLE PHYSICS</div>';
+    h += '<div style="font-family:Orbitron,sans-serif;font-size:24px;font-weight:800;color:var(--white);line-height:1;margin-bottom:2px;">'+cons.kerb_mass_kg.toLocaleString()+'</div>';
+    h += '<div style="font-family:DM Mono,monospace;font-size:8px;color:var(--muted2);margin-bottom:8px;">kg &nbsp;·&nbsp; estimated kerb mass</div>';
+    h += '<div style="border-top:1px solid var(--border2);padding-top:7px;">';
+    h += specRow('Drag Coefficient', 'Cd ' + cons.drag_coeff.toFixed(3));
+    h += specRow('Frontal Area',     cons.frontal_area_m2.toFixed(2) + ' m²');
+    h += specRow('Aero Product Cd×A',cons.CdA.toFixed(3) + ' m²');
+    if (cons.mass_battery_kg > 0) h += specRow('Battery Pack Mass', cons.mass_battery_kg + ' kg');
+    h += '</div></div>';
+
+    h += '</div>'; // end WLTP grid
+  })();
 
   // ── BOM + RADAR side by side ──────────────────────────────────
   h += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;">';
