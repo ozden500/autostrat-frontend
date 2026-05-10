@@ -1930,6 +1930,29 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
       </table>
     </div>
   </div>
+
+  <!-- Market Results Section -->
+  <div class="card" style="padding:0;overflow:hidden;margin-top:14px;" id="mkt-results-card">
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid var(--border);cursor:pointer;"
+         onclick="toggleMktResults()">
+      <div style="display:flex;align-items:center;gap:10px;">
+        <div class="card-title" style="margin:0;">Market Simulation Results</div>
+        <span id="mkt-results-round-badge" style="font-family:'DM Mono',monospace;font-size:8px;color:var(--muted2);"></span>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;">
+        <button id="mkt-run-btn" onclick="event.stopPropagation();runMarketClearing()"
+          style="font-family:'DM Mono',monospace;font-size:8px;padding:4px 12px;
+          border-radius:2px;border:1px solid rgba(74,222,128,.4);background:rgba(74,222,128,.08);
+          color:var(--green);cursor:pointer;">▶ Run Simulation</button>
+        <span id="mkt-results-toggle" style="font-family:'DM Mono',monospace;font-size:10px;color:var(--muted);">▲</span>
+      </div>
+    </div>
+    <div id="mkt-results-body" style="padding:14px;">
+      <div style="color:var(--muted2);font-family:'DM Mono',monospace;font-size:11px;padding:8px 0;">
+        Click ▶ Run Simulation to compute market share and revenue for the current round.
+      </div>
+    </div>
+  </div>
 </div>
 
 <!-- ████ BRANDS ████ -->
@@ -6700,6 +6723,8 @@ async function loadVehiclePlan() {
     }
     buildVehicleGantt();
     buildVehicleTable();
+    // Load any already-cleared market results for the latest round
+    loadMarketResults().catch(function(){});
   } catch(e){ console.warn('loadVehiclePlan:',e); }
 }
 
@@ -13375,13 +13400,66 @@ async function confirmProposal() {
     var platformId = (_prop.platform && _prop.platform.module) ? _prop.platform.module.id : null;
     var tophatId   = (_prop.tophat && _prop.tophat.module) ? _prop.tophat.module.id : null;
     var eandsId    = (_prop.eands  && _prop.eands.module)  ? _prop.eands.module.id  : null;
+
+    // ── Compute performance & market specs for simulation ─────────────────────────
+    function _getS(propKey) {
+      var p = _prop[propKey] || {};
+      return (p.mode === 'new' ? p.specs : (p.module ? p.module.specs : null)) || {};
+    }
+    var _plS  = _getS('platform'), _pwtS = _getS('pwt'),    _thS  = _getS('tophat');
+    var _edmS = _getS('epwt'),     _batS = _getS('battery'), _esS  = _getS('eands');
+    var _pwtType = _plS.pwt || 'ice_only';
+    var _bodyC = _thS.config_key ? _thS.config_key.split('_').slice(1).join('_') : 'HB';
+
+    var _cons = null, _perf = null;
+    try { if (typeof _CONS_E !== 'undefined') _cons = _CONS_E.calc({
+      platform_size: _plS.size||'medium', segment_code: _prop.study.segment_code,
+      body_type: _bodyC, pwt_type: _pwtType,
+      ice_config_key: _pwtS.config_key||null, power_hp: _pwtS.power||null,
+      emission_tech: _pwtS.emission_tech||null,
+      epwt_class: _edmS.epwt_class||null, power_kw: _edmS.power_kw||null,
+      motor_efficiency: _edmS.efficiency!=null?parseFloat(_edmS.efficiency):null,
+      battery_kwh: _batS.target_kwh||null, battery_chemistry: _batS.chemistry||null,
+      weight_opt: _plS.weight_opt||0, safety: _thS.safety||_plS.safety||50, adas_level: _esS.adas_level||0
+    }); } catch(e) {}
+    try { if (typeof _PERF_E !== 'undefined') _perf = _PERF_E.calc({
+      pwt_type: _pwtType, platform_size: _plS.size||'medium', body_type: _bodyC,
+      ice_config_key: _pwtS.config_key||null, power_hp: _pwtS.power||null,
+      epwt_class: _edmS.epwt_class||null, power_kw: _edmS.power_kw||null,
+      motor_efficiency: _edmS.efficiency!=null?parseFloat(_edmS.efficiency):null,
+      battery_kwh: _batS.target_kwh||null, battery_chemistry: _batS.chemistry||null,
+      weight_opt: _plS.weight_opt||0, safety: _thS.safety||_plS.safety||50,
+      kerb_mass_kg: _cons?_cons.kerb_mass_kg:null, CdA: _cons?_cons.CdA:null
+    }); } catch(e) {}
+
+    var _rolledSpecs = {
+      pwt_type: _pwtType, platform_size: _plS.size||'medium',
+      body_type: _bodyC, segment_code: _prop.study.segment_code,
+      safety:      parseFloat(_thS.safety||_plS.safety||50),
+      comfort:     parseFloat(_thS.comfort||_plS.comfort||50),
+      reliability: parseFloat(_thS.reliability||_plS.reliability||50),
+      premiumness: parseFloat(_thS.premiumness||0.3),
+      adas_level:  parseFloat(_esS.adas_level||1),
+      connectivity:parseFloat(_esS.connectivity||30),
+    };
+    if (_cons && _cons.ice) { _rolledSpecs.ice_fuel_L100km=_cons.ice.fuel_L100km; _rolledSpecs.ice_co2_g_km=_cons.ice.co2_g_km; }
+    if (_cons && _cons.bev) { _rolledSpecs.bev_kwh_100km=_cons.bev.kwh_100km; _rolledSpecs.bev_range_km=_cons.bev.range_km; }
+    if (_cons) _rolledSpecs.kerb_mass_kg=_cons.kerb_mass_kg;
+    if (_perf) { _rolledSpecs.t_0_100_s=_perf.t_0_100_s; _rolledSpecs.top_speed_kmh=_perf.top_speed_kmh; _rolledSpecs.perf_class=_perf.perf_class; }
+
+    var _comPlan = (_prop.commercial&&_prop.commercial.years) ? _prop.commercial : null;
+    var _priceK  = _comPlan&&_comPlan.years[0] ? parseFloat(_comPlan.years[0].price) : null;
+
     var patch = {
       status:             'plan',
       platform_module_id: platformId,
       pwt_module_id:      pwtId || epwtId || null,
       tophat_module_id:   tophatId,
       eands_module_id:    eandsId,
+      rolled_up_specs:    _rolledSpecs,
     };
+    if (_priceK)  patch.price_eur_k    = _priceK;
+    if (_comPlan) patch.commercial_plan = _comPlan;
 
     // \u2500\u2500 SOP readiness check \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
     var sopYear    = _prop.study.start_year    || null;
@@ -13452,6 +13530,132 @@ async function confirmProposal() {
 function goBackToEditProposal() {
   setPropStep(2);
   buildPlatformSection();
+}
+
+// ══════════════════════════════════════════════════════════
+// MARKET RESULTS DASHBOARD
+// ══════════════════════════════════════════════════════════
+
+var _mktResultsOpen = true;
+
+function toggleMktResults() {
+  _mktResultsOpen = !_mktResultsOpen;
+  var body = document.getElementById('mkt-results-body');
+  var tog  = document.getElementById('mkt-results-toggle');
+  if (body) body.style.display = _mktResultsOpen ? '' : 'none';
+  if (tog)  tog.textContent    = _mktResultsOpen ? '▲' : '▼';
+}
+
+async function runMarketClearing() {
+  var btn = document.getElementById('mkt-run-btn');
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Running…'; }
+
+  // Get current round id
+  try {
+    var rRes  = await fetch(API_URL + '/sessions/' + sessionId + '/rounds');
+    var rData = await rRes.json();
+    var rounds = (rData.rounds || []).filter(function(r){ return !r.is_historical; });
+    if (!rounds.length) { toast('⚠ No rounds found — advance the round first'); return; }
+    var latestRound = rounds.reduce(function(a,b){ return a.round_number > b.round_number ? a : b; });
+
+    var badge = document.getElementById('mkt-results-round-badge');
+    if (badge) badge.textContent = 'Y' + (latestRound.year - 2024) + 'Q' + latestRound.quarter;
+
+    var res  = await fetch(API_URL + '/sessions/' + sessionId + '/rounds/' + latestRound.id + '/market-clear', { method:'POST' });
+    var data = await res.json();
+    if (!data.success) throw new Error(data.detail || 'Clearing failed');
+    renderMarketResults(data);
+    toast('✓ Market cleared — ' + data.vehicles_processed + ' vehicles, ' + (data.segments_cleared||[]).length + ' segments');
+  } catch(e) {
+    toast('⚠ ' + e.message);
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '▶ Run Simulation'; }
+  }
+}
+
+async function loadMarketResults() {
+  try {
+    var rRes  = await fetch(API_URL + '/sessions/' + sessionId + '/rounds');
+    var rData = await rRes.json();
+    var rounds = (rData.rounds || []).filter(function(r){ return !r.is_historical; });
+    if (!rounds.length) return;
+    var latest = rounds.reduce(function(a,b){ return a.round_number > b.round_number ? a : b; });
+
+    var badge = document.getElementById('mkt-results-round-badge');
+    if (badge) badge.textContent = 'Y' + (latest.year - 2024) + 'Q' + latest.quarter;
+
+    var res  = await fetch(API_URL + '/sessions/' + sessionId + '/rounds/' + latest.id + '/market-results');
+    var data = await res.json();
+    if (data.vehicle_outcomes && data.vehicle_outcomes.length > 0) renderMarketResults(data);
+  } catch(e) { /* silent — no results yet */ }
+}
+
+function renderMarketResults(data) {
+  var el = document.getElementById('mkt-results-body');
+  if (!el) return;
+
+  var vos = data.vehicle_outcomes || [];
+  var ros = data.round_outcomes   || [];
+  if (!vos.length && !ros.length) {
+    el.innerHTML = '<div style="color:var(--muted2);font-family:DM Mono,monospace;font-size:11px;">No vehicles on-sale this round.</div>';
+    return;
+  }
+
+  // ── Team summary strip ──
+  var h = '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:8px;margin-bottom:14px;">';
+  ros.forEach(function(ro) {
+    var revM  = parseFloat(ro.revenue_m || 0).toFixed(1);
+    var gm    = ro.gross_margin_pct != null ? ro.gross_margin_pct : (ro.cogs_m ? Math.round((1 - ro.cogs_m/ro.revenue_m)*100) : '—');
+    var gmCol = parseFloat(gm) > 20 ? 'var(--green)' : parseFloat(gm) > 10 ? 'var(--gold)' : 'var(--red)';
+    var rank  = ro.revenue_rank || '—';
+    h += '<div style="background:var(--s2);border:1px solid var(--border2);border-radius:3px;padding:8px 12px;">';
+    h += '<div style="font-family:DM Mono,monospace;font-size:8px;color:var(--muted2);margin-bottom:4px;">'+(ro.team_name||'Team')+'</div>';
+    h += '<div style="font-family:Orbitron,sans-serif;font-size:14px;color:var(--cyan);">€'+revM+'M</div>';
+    h += '<div style="font-family:DM Mono,monospace;font-size:8px;color:var(--muted2);">'+ro.total_units_sold+' units</div>';
+    h += '<div style="display:flex;justify-content:space-between;margin-top:4px;">';
+    h += '<span style="font-family:DM Mono,monospace;font-size:8px;color:'+gmCol+';">GM '+gm+'%</span>';
+    h += '<span style="font-family:DM Mono,monospace;font-size:8px;color:var(--muted2);">#'+rank+'</span>';
+    h += '</div></div>';
+  });
+  h += '</div>';
+
+  // ── Vehicle outcomes table ──
+  h += '<div style="overflow-x:auto;">';
+  h += '<table style="width:100%;border-collapse:collapse;font-family:DM Mono,monospace;font-size:9px;">';
+  h += '<thead><tr style="border-bottom:2px solid var(--border2);">';
+  ['Team','Vehicle','Segment','Units/Q','Share','Revenue €M','Avg Price','Utility','EBIT €M'].forEach(function(col) {
+    h += '<th style="padding:6px 10px;text-align:left;color:var(--muted);font-size:7px;text-transform:uppercase;letter-spacing:1px;white-space:nowrap;">'+col+'</th>';
+  });
+  h += '</tr></thead><tbody>';
+
+  vos.sort(function(a,b){ return (b.units_sold||0)-(a.units_sold||0); });
+  vos.forEach(function(vo, i) {
+    var revM      = parseFloat(vo.revenue_m||0).toFixed(2);
+    var share     = vo.market_share_pct != null ? parseFloat(vo.market_share_pct).toFixed(1)+'%' : '—';
+    var shareNum  = parseFloat(vo.market_share_pct||0);
+    var shareCol  = shareNum > 20 ? 'var(--green)' : shareNum > 10 ? 'var(--gold)' : 'var(--text)';
+    var priceK    = vo.avg_price_eur ? '€'+(vo.avg_price_eur/1000).toFixed(1)+'k' : '—';
+    var util      = vo.utility_score != null ? vo.utility_score : '—';
+    var utilCol   = parseInt(util) >= 65 ? 'var(--green)' : parseInt(util) >= 45 ? 'var(--gold)' : 'var(--red)';
+    var ebitM     = vo.ebit_m != null ? parseFloat(vo.ebit_m).toFixed(2) : '—';
+    var segN      = (typeof SEG_NAMES !== 'undefined' && SEG_NAMES[vo.segment_code]) || vo.segment_code || '—';
+    var bg        = i%2===0 ? '' : 'background:rgba(255,255,255,.02);';
+    h += '<tr style="border-bottom:1px solid rgba(255,255,255,.04);'+bg+'">';
+    h += '<td style="padding:5px 10px;color:var(--muted2);">'+(vo.team_name||'—')+'</td>';
+    h += '<td style="padding:5px 10px;color:var(--white);font-weight:600;">'+(vo.vehicle_name||'—')+'</td>';
+    h += '<td style="padding:5px 10px;color:var(--muted2);">'+segN+'</td>';
+    h += '<td style="padding:5px 10px;color:var(--text);">'+((vo.units_sold||0).toLocaleString())+'</td>';
+    h += '<td style="padding:5px 10px;color:'+shareCol+';font-weight:700;">'+share+'</td>';
+    h += '<td style="padding:5px 10px;color:var(--cyan);">€'+revM+'M</td>';
+    h += '<td style="padding:5px 10px;color:var(--muted2);">'+priceK+'</td>';
+    h += '<td style="padding:5px 10px;color:'+utilCol+';">'+util+'</td>';
+    h += '<td style="padding:5px 10px;color:var(--orange);">'+(ebitM!=='—'?'€'+ebitM+'M':ebitM)+'</td>';
+    h += '</tr>';
+  });
+  h += '</tbody></table></div>';
+
+  el.innerHTML = h;
+  if (!_mktResultsOpen) { el.style.display = 'none'; }
 }
 
 
