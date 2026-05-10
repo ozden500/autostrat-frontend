@@ -5901,6 +5901,232 @@ var _PERF_E = {
   }
 };
 
+// ════════════════════════════════════════════════════════════════════
+// MARKET COMPETITION ENGINE v1.0.0 — Client-Side JavaScript
+// Scores vehicle attractiveness against segment benchmarks using a
+// weighted utility model (price, efficiency, performance, safety,
+// comfort, technology, reliability). Logit model converts utility
+// to estimated market share vs a field of 5 benchmark competitors.
+// ════════════════════════════════════════════════════════════════════
+var _MARKET_E = {
+  VERSION: "1.0.0",
+
+  // Total addressable market per segment (k units / year in simulator)
+  SEG_SIZE_K: {
+    a_segment:1200, b_segment:1800, c_segment:2500, d_segment:1200,
+    e_segment:500,  f_segment:120,  sports:200,     mpv:400,
+    pickup:350,     c_van:500,      d_van:380,      e_van:200
+  },
+
+  // Segment reference retail price (€k) for a competitive benchmark vehicle
+  SEG_PRICE: {
+    a_segment:14,  b_segment:20,  c_segment:28,  d_segment:42,
+    e_segment:62,  f_segment:95,  sports:58,     mpv:38,
+    pickup:52,     c_van:32,      d_van:45,      e_van:65
+  },
+
+  // Segment benchmarks for technical scoring
+  SEG_BENCH: {
+    a_segment: {fuel:5.0,  bev:14.0, t100:12.0, safety:50, comfort:40, adas:1, reliability:55},
+    b_segment: {fuel:6.0,  bev:15.5, t100:10.5, safety:55, comfort:50, adas:1, reliability:60},
+    c_segment: {fuel:6.8,  bev:17.5, t100:9.5,  safety:60, comfort:55, adas:2, reliability:60},
+    d_segment: {fuel:8.0,  bev:20.5, t100:8.5,  safety:65, comfort:65, adas:2, reliability:65},
+    e_segment: {fuel:9.5,  bev:24.0, t100:7.0,  safety:70, comfort:75, adas:3, reliability:65},
+    f_segment: {fuel:11.0, bev:28.0, t100:5.5,  safety:72, comfort:85, adas:3, reliability:70},
+    sports:    {fuel:9.5,  bev:22.0, t100:5.5,  safety:65, comfort:60, adas:2, reliability:60},
+    mpv:       {fuel:8.0,  bev:21.0, t100:10.0, safety:68, comfort:72, adas:2, reliability:65},
+    pickup:    {fuel:10.0, bev:25.0, t100:9.0,  safety:65, comfort:60, adas:2, reliability:65},
+    c_van:     {fuel:8.5,  bev:22.0, t100:12.5, safety:60, comfort:50, adas:1, reliability:70},
+    d_van:     {fuel:9.5,  bev:24.0, t100:13.0, safety:62, comfort:55, adas:1, reliability:70},
+    e_van:     {fuel:11.0, bev:28.0, t100:14.0, safety:65, comfort:58, adas:2, reliability:72}
+  },
+
+  // Attribute purchase weights per segment (must sum to 1.00)
+  SEG_WEIGHTS: {
+    a_segment: {price:0.32,efficiency:0.25,performance:0.05,safety:0.14,comfort:0.10,technology:0.07,reliability:0.07},
+    b_segment: {price:0.26,efficiency:0.22,performance:0.08,safety:0.14,comfort:0.12,technology:0.10,reliability:0.08},
+    c_segment: {price:0.22,efficiency:0.18,performance:0.12,safety:0.14,comfort:0.14,technology:0.11,reliability:0.09},
+    d_segment: {price:0.18,efficiency:0.14,performance:0.16,safety:0.14,comfort:0.18,technology:0.13,reliability:0.07},
+    e_segment: {price:0.12,efficiency:0.09,performance:0.20,safety:0.12,comfort:0.23,technology:0.16,reliability:0.08},
+    f_segment: {price:0.08,efficiency:0.06,performance:0.25,safety:0.10,comfort:0.28,technology:0.16,reliability:0.07},
+    sports:    {price:0.08,efficiency:0.05,performance:0.40,safety:0.08,comfort:0.20,technology:0.12,reliability:0.07},
+    mpv:       {price:0.18,efficiency:0.15,performance:0.07,safety:0.18,comfort:0.22,technology:0.12,reliability:0.08},
+    pickup:    {price:0.20,efficiency:0.13,performance:0.14,safety:0.17,comfort:0.15,technology:0.10,reliability:0.11},
+    c_van:     {price:0.23,efficiency:0.20,performance:0.05,safety:0.14,comfort:0.12,technology:0.10,reliability:0.16},
+    d_van:     {price:0.20,efficiency:0.18,performance:0.05,safety:0.14,comfort:0.13,technology:0.10,reliability:0.20},
+    e_van:     {price:0.17,efficiency:0.15,performance:0.04,safety:0.14,comfort:0.13,technology:0.10,reliability:0.27}
+  },
+
+  // Brand positioning: best-fit segments, price band, PWT preference, attribute bonuses
+  BRAND_FIT: {
+    ALPHA: {segments:['a_segment','b_segment','c_segment','d_segment'],band:[0.75,1.10],pwt:null,     bonus:{efficiency:5,reliability:5}},
+    APEX:  {segments:['d_segment','e_segment','f_segment','sports'],    band:[1.05,1.80],pwt:null,     bonus:{comfort:8,performance:5}},
+    ARROW: {segments:['b_segment','c_segment','d_segment','e_segment'], band:[1.00,1.50],pwt:'bev_only',bonus:{efficiency:10,technology:8}}
+  },
+
+  // CO2 compliance thresholds (g/km)
+  CO2_TIERS: [
+    {max:0,   label:'ZERO EMISSION', color:'#4ade80'},
+    {max:50,  label:'EXCELLENT',     color:'#86efac'},
+    {max:95,  label:'GOOD',          color:'#fde047'},
+    {max:130, label:'AVERAGE',       color:'#fb923c'},
+    {max:180, label:'POOR',          color:'#f87171'},
+    {max:9999,label:'VERY POOR',     color:'#ef4444'}
+  ],
+
+  // Sigmoid utility score: 50 at benchmark, asymptotic to 0/100
+  // dir 'lo' = lower actual is better (e.g. fuel, 0-100 time)
+  // dir 'hi' = higher actual is better (e.g. safety, comfort)
+  _score: function(actual, bench, dir, k) {
+    k = k || 3;
+    var delta = (dir === 'lo') ? (actual - bench) / bench : (bench - actual) / bench;
+    return Math.max(0, Math.min(100, Math.round(100 / (1 + Math.exp(k * delta)))));
+  },
+
+  calc: function(o) {
+    o = o || {};
+    var seg     = o.segment_code || 'c_segment';
+    var bench   = this.SEG_BENCH[seg]   || this.SEG_BENCH.c_segment;
+    var weights = this.SEG_WEIGHTS[seg] || this.SEG_WEIGHTS.c_segment;
+    var refPrice = this.SEG_PRICE[seg]  || 28;
+    var price    = (o.price_eur_k != null) ? parseFloat(o.price_eur_k) : refPrice;
+    var pwt      = o.pwt_type || 'ice_only';
+    var hasBev   = (pwt === 'bev_only' || pwt === 'ice_and_bev');
+    var hasIce   = (pwt === 'ice_only' || pwt === 'ice_and_bev');
+
+    function d01(v, def) {
+      if (v == null || v === '') return (def != null ? def : 0);
+      var n = parseFloat(v); return isNaN(n) ? (def||0) : (n>1 ? n/100 : n);
+    }
+
+    // ── 1. Per-attribute utility scores (0–100) ──────────────────
+    var sc = {};
+
+    // Price: sigmoid, steeper sensitivity in lower segments
+    sc.price = this._score(price, refPrice, 'lo', 4);
+
+    // Efficiency: favour best available powertrain
+    if (hasBev && o.bev_kwh_100km) {
+      sc.efficiency = this._score(parseFloat(o.bev_kwh_100km), bench.bev, 'lo', 3);
+    } else if (hasIce && o.ice_fuel_L100km) {
+      sc.efficiency = this._score(parseFloat(o.ice_fuel_L100km), bench.fuel, 'lo', 3);
+    } else {
+      sc.efficiency = 50;
+    }
+
+    // Performance: 0-100 time
+    sc.performance = o.t_0_100_s ? this._score(parseFloat(o.t_0_100_s), bench.t100, 'lo', 3) : 50;
+
+    // Safety: 0-100%
+    sc.safety = this._score(d01(o.safety, 0.5) * 100, bench.safety, 'hi', 2.5);
+
+    // Comfort: blend of comfort slider and premiumness
+    var effComfort = d01(o.comfort, 0.5) * 60 + d01(o.premiumness, 0.3) * 40;
+    sc.comfort = this._score(effComfort, bench.comfort, 'hi', 2.5);
+
+    // Technology: ADAS level + connectivity normalised to 0-100 composite
+    var techActual = (parseFloat(o.adas_level || 1) / 5) * 65 + (parseFloat(o.connectivity || 30) / 100) * 35;
+    var techBench  = (bench.adas / 5) * 65 + 0.30 * 35;
+    sc.technology  = this._score(techActual, techBench, 'hi', 2.5);
+
+    // Reliability: 0-100%
+    sc.reliability = this._score(d01(o.reliability, 0.5) * 100, bench.reliability, 'hi', 2.0);
+
+    // ── 2. Brand bonus ───────────────────────────────────────────
+    var brand = (o.brand_code || '').toUpperCase();
+    var bf    = this.BRAND_FIT[brand];
+    if (bf) {
+      var bonus = bf.bonus || {};
+      Object.keys(bonus).forEach(function(a) {
+        if (sc[a] != null) sc[a] = Math.min(100, sc[a] + bonus[a]);
+      });
+    }
+
+    // ── 3. Weighted utility ──────────────────────────────────────
+    var utility = 0;
+    var attrs   = ['price','efficiency','performance','safety','comfort','technology','reliability'];
+    attrs.forEach(function(a) { utility += (sc[a]||50) * (weights[a]||0); });
+    utility = Math.round(utility);
+
+    // ── 4. Market share (logit vs N-1 benchmark competitors) ─────
+    var N   = 5;                        // assumed competitor count in segment
+    var lam = 0.04;                     // logit scale (sensitivity)
+    var expU = Math.exp(lam * utility);
+    var expB = Math.exp(lam * 50);      // benchmark competitor utility
+    var share = Math.round(expU / (expU + expB * (N - 1)) * 100 * 10) / 10;
+    var segK  = this.SEG_SIZE_K[seg] || 500;
+    var volK  = Math.round(share / 100 * segK * 10) / 10;
+
+    // ── 5. CO2 compliance tier ───────────────────────────────────
+    var co2 = parseFloat(o.co2_g_km || 0);
+    if (pwt === 'bev_only') co2 = 0;
+    var co2Tier = this.CO2_TIERS.find(function(t) { return co2 <= t.max; }) || this.CO2_TIERS[5];
+
+    // ── 6. Positioning ───────────────────────────────────────────
+    var ratio = price / refPrice;
+    var pos, posCol;
+    if      (ratio < 0.85) { pos='VALUE';       posCol='#4ade80'; }
+    else if (ratio < 1.15) { pos='BALANCED';    posCol='#60a5fa'; }
+    else if (ratio < 1.50) { pos='PREMIUM';     posCol='#c8a43c'; }
+    else                   { pos='ULTRA PREMIUM';posCol='#e879f9'; }
+
+    // ── 7. Brand fit score ───────────────────────────────────────
+    var bfScore = 50, bfNotes = [];
+    if (bf) {
+      if (bf.segments.indexOf(seg) >= 0)  { bfScore += 20; }
+      else { bfScore -= 15; bfNotes.push('Segment outside ' + brand + ' core market'); }
+      if (ratio >= bf.band[0] && ratio <= bf.band[1]) { bfScore += 15; }
+      else if (ratio < bf.band[0]) { bfScore -= 10; bfNotes.push('Price below ' + brand + ' floor'); }
+      else                         { bfScore -= 10; bfNotes.push('Price above ' + brand + ' ceiling'); }
+      if (bf.pwt === 'bev_only' && !hasBev) {
+        bfScore -= 20; bfNotes.push('ARROW requires BEV — ICE conflicts with brand identity');
+      } else if (bf.pwt === 'bev_only' && hasBev) { bfScore += 10; }
+      bfScore = Math.max(0, Math.min(100, bfScore));
+    }
+
+    // ── 8. Build per-attribute display data ──────────────────────
+    var benchLabels = {
+      price:       '€' + refPrice + 'k ref',
+      efficiency:  hasBev ? bench.bev + ' kWh/100' : bench.fuel + ' L/100',
+      performance: bench.t100 + 's target',
+      safety:      bench.safety + '% target',
+      comfort:     bench.comfort + '% target',
+      technology:  'ADAS L' + bench.adas,
+      reliability: bench.reliability + '% target'
+    };
+
+    var scoreDetails = {};
+    attrs.forEach(function(a) {
+      scoreDetails[a] = {
+        score:         sc[a] || 50,
+        weight_pct:    Math.round((weights[a] || 0) * 100),
+        bench_label:   benchLabels[a] || '—',
+        contribution:  Math.round((sc[a]||50) * (weights[a]||0))
+      };
+    });
+
+    return {
+      utility_score:   utility,
+      scores:          scoreDetails,
+      positioning:     pos,
+      positioning_color: posCol,
+      price_eur_k:     price,
+      ref_price_eur_k: refPrice,
+      price_ratio_pct: Math.round(ratio * 100),
+      used_ref_price:  (o.price_eur_k == null),
+      market: {
+        segment_size_k:  segK,
+        est_share_pct:   share,
+        est_volume_k:    volK,
+        num_competitors: N
+      },
+      co2: { g_km: co2, label: co2Tier.label, color: co2Tier.color },
+      brand_fit: { score: bfScore, notes: bfNotes },
+      segment_bench: bench
+    };
+  }
+};
+
 async function fetchCostPreview() {
   const configKey = getSelectedConfigKey();
   if (!configKey || currentDevPath==='reuse') return;
@@ -12130,11 +12356,11 @@ function buildReviewSection() {
   })();
 
   // ── ACCELERATION PERFORMANCE ──────────────────────────────────
+  var _propPerf = null; // shared with market engine below
   (function() {
     if (typeof _PERF_E === 'undefined') return;
-    var perf;
     try {
-      perf = _PERF_E.calc({
+      _propPerf = _PERF_E.calc({
         pwt_type:         plS.pwt || (hasIce ? 'ice_only' : hasBev ? 'bev_only' : 'ice_only'),
         platform_size:    plS.size || 'medium',
         body_type:        thS.config_key ? thS.config_key.split('_').slice(1).join('_') : 'HB',
@@ -12152,6 +12378,8 @@ function buildReviewSection() {
         CdA:              _propCons ? _propCons.CdA : null
       });
     } catch(e) { console.warn('Acceleration engine error:', e); return; }
+    var perf = _propPerf;
+    if (!perf) return;
 
     h += sRule('ACCELERATION PERFORMANCE — DERIVED FROM POWERTRAIN & MASS SPECS');
 
@@ -12256,6 +12484,152 @@ function buildReviewSection() {
   h += '</div>';
 
   h += '</div>'; // end BOM+radar grid
+
+  // ── MARKET COMPETITIVENESS ────────────────────────────────────
+  (function() {
+    if (typeof _MARKET_E === 'undefined') return;
+
+    // Price: use actual commercial price if set in Section 7, else segment reference
+    var comPrice = (_prop.commercial && _prop.commercial.years && _prop.commercial.years.length > 0)
+      ? _prop.commercial.years[0].price : null;
+
+    var mkt;
+    try {
+      mkt = _MARKET_E.calc({
+        segment_code:   _prop.study ? _prop.study.segment_code : 'c_segment',
+        price_eur_k:    comPrice,
+        pwt_type:       plS.pwt || (hasIce ? 'ice_only' : hasBev ? 'bev_only' : 'ice_only'),
+        ice_fuel_L100km:(_propCons && _propCons.ice) ? _propCons.ice.fuel_L100km : null,
+        bev_kwh_100km:  (_propCons && _propCons.bev) ? _propCons.bev.kwh_100km  : null,
+        co2_g_km:       (_propCons && _propCons.ice) ? _propCons.ice.co2_g_km   : 0,
+        t_0_100_s:      _propPerf ? _propPerf.t_0_100_s : null,
+        safety:         thS.safety     != null ? thS.safety     : (plS.safety     || 50),
+        comfort:        thS.comfort    != null ? thS.comfort    : (plS.comfort    || 50),
+        premiumness:    thS.premiumness != null ? thS.premiumness : 0.3,
+        reliability:    thS.reliability!= null ? thS.reliability : (plS.reliability || 50),
+        adas_level:     esS.adas_level  || 1,
+        connectivity:   esS.connectivity|| 30,
+        brand_code:     _prop.study ? (_prop.study.brand_code || '') : ''
+      });
+    } catch(e) { console.warn('Market engine error:', e); return; }
+
+    var attrs = ['price','efficiency','performance','safety','comfort','technology','reliability'];
+    var attrLabels = {
+      price:'Price',efficiency:'Efficiency',performance:'Performance',
+      safety:'Safety',comfort:'Comfort / Premium',technology:'Technology / ADAS',reliability:'Reliability'
+    };
+    var attrColors = {
+      price:'#4ade80',efficiency:'#22d3ee',performance:'#f97316',
+      safety:'#60a5fa',comfort:'#a78bfa',technology:'#fbbf24',reliability:'#86efac'
+    };
+
+    // Utility score meter color
+    var utilColor = mkt.utility_score >= 70 ? '#4ade80' : mkt.utility_score >= 50 ? '#fbbf24' : '#f87171';
+
+    h += sRule('MARKET COMPETITIVENESS — ' + ((_prop.study&&_prop.study.segment_code)||'SEGMENT').toUpperCase() + ' BENCHMARK ANALYSIS');
+
+    // ── Top row: utility + market share + positioning ──
+    h += '<div style="display:grid;grid-template-columns:auto 1fr auto;gap:12px;align-items:stretch;'
+       + 'background:var(--s2);border:1px solid var(--border2);border-left:4px solid '+utilColor+';'
+       + 'border-radius:4px;padding:14px 18px;margin-bottom:8px;">';
+
+    // Left: big utility score
+    h += '<div style="padding-right:14px;border-right:1px solid var(--border2);">';
+    h += '<div style="font-family:DM Mono,monospace;font-size:7px;letter-spacing:2px;color:var(--muted);text-transform:uppercase;margin-bottom:4px;">Utility Score</div>';
+    h += '<div style="font-family:Orbitron,sans-serif;font-size:40px;font-weight:800;color:'+utilColor+';line-height:1;">'+mkt.utility_score+'</div>';
+    h += '<div style="font-family:DM Mono,monospace;font-size:8px;color:var(--muted2);margin-top:3px;">out of 100</div>';
+    h += '</div>';
+
+    // Middle: KPI tiles
+    h += '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;align-content:start;">';
+
+    function mktKpi(val, lbl, col) {
+      return '<div style="background:var(--s3);border-radius:3px;padding:7px 10px;text-align:center;">'
+        + '<div style="font-family:Orbitron,sans-serif;font-size:12px;font-weight:700;color:'+(col||'var(--white)')+';margin-bottom:2px;">'+val+'</div>'
+        + '<div style="font-family:DM Mono,monospace;font-size:7px;color:var(--muted2);text-transform:uppercase;letter-spacing:.5px;">'+lbl+'</div>'
+        + '</div>';
+    }
+    h += mktKpi(mkt.market.est_share_pct + '%',     'Est. Mkt Share',   utilColor);
+    h += mktKpi(mkt.market.est_volume_k + 'k/yr',   'Volume Estimate',  'var(--white)');
+    h += mktKpi(mkt.market.segment_size_k + 'k/yr', 'Segment Size',     'var(--muted2)');
+    h += mktKpi((mkt.used_ref_price ? '~' : '') + '€' + mkt.price_eur_k + 'k',
+               mkt.used_ref_price ? 'Ref Price' : 'List Price', 'var(--gold)');
+    h += '</div>';
+
+    // Right: positioning + CO2 badges
+    h += '<div style="padding-left:14px;border-left:1px solid var(--border2);text-align:center;">';
+    h += '<div style="font-family:DM Mono,monospace;font-size:7px;letter-spacing:1.5px;color:var(--muted);margin-bottom:5px;">Positioning</div>';
+    h += '<div style="font-family:Orbitron,sans-serif;font-size:9px;font-weight:700;'
+       + 'border:2px solid '+mkt.positioning_color+';color:'+mkt.positioning_color+';'
+       + 'border-radius:3px;padding:4px 8px;margin-bottom:6px;white-space:nowrap;">'+mkt.positioning+'</div>';
+    h += '<div style="font-family:DM Mono,monospace;font-size:7px;letter-spacing:1.5px;color:var(--muted);margin-bottom:5px;">CO₂ Compliance</div>';
+    h += '<div style="font-family:DM Mono,monospace;font-size:8px;font-weight:700;'
+       + 'background:rgba('+mkt.co2.color.slice(1).match(/../g).map(function(x){return parseInt(x,16);}).join(',')+',.15);'
+       + 'border:1px solid '+mkt.co2.color+';color:'+mkt.co2.color+';'
+       + 'border-radius:3px;padding:4px 8px;white-space:nowrap;">'+mkt.co2.label+'</div>';
+    if (mkt.used_ref_price) {
+      h += '<div style="font-family:DM Mono,monospace;font-size:7px;color:var(--muted2);margin-top:6px;">set price in §7</div>';
+    }
+    h += '</div>';
+
+    h += '</div>'; // end top row
+
+    // ── Attribute breakdown table ──
+    h += '<div style="background:var(--s2);border:1px solid var(--border2);border-radius:4px;padding:12px 14px;margin-bottom:8px;">';
+    h += '<div style="display:grid;grid-template-columns:120px 1fr 40px 48px 90px;gap:0;margin-bottom:6px;'
+       + 'font-family:DM Mono,monospace;font-size:7px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;'
+       + 'border-bottom:1px solid var(--border2);padding-bottom:5px;">';
+    h += '<span>Attribute</span><span>Score Bar</span><span style="text-align:right;">Score</span><span style="text-align:right;">Weight</span><span style="text-align:right;">vs Benchmark</span>';
+    h += '</div>';
+
+    attrs.forEach(function(a) {
+      var sd    = mkt.scores[a];
+      var s     = sd.score;
+      var col   = attrColors[a] || 'var(--white)';
+      var sCol  = s >= 65 ? '#4ade80' : s >= 45 ? '#fbbf24' : '#f87171';
+      var barW  = s; // 0-100 → use as %
+      h += '<div style="display:grid;grid-template-columns:120px 1fr 40px 48px 90px;gap:0;'
+         + 'padding:5px 0;border-bottom:1px solid rgba(255,255,255,.03);align-items:center;">';
+      // Attribute name
+      h += '<span style="font-family:DM Mono,monospace;font-size:8px;color:var(--muted2);">'+attrLabels[a]+'</span>';
+      // Score bar
+      h += '<div style="height:6px;background:var(--border);border-radius:3px;overflow:hidden;margin:0 8px;">'
+         + '<div style="height:100%;width:'+barW+'%;background:'+sCol+';border-radius:3px;"></div></div>';
+      // Score value
+      h += '<span style="font-family:DM Mono,monospace;font-size:9px;font-weight:700;color:'+sCol+';text-align:right;">'+s+'</span>';
+      // Weight
+      h += '<span style="font-family:DM Mono,monospace;font-size:8px;color:var(--muted2);text-align:right;">'+sd.weight_pct+'%</span>';
+      // Benchmark label
+      h += '<span style="font-family:DM Mono,monospace;font-size:7px;color:var(--muted2);text-align:right;">'+sd.bench_label+'</span>';
+      h += '</div>';
+    });
+
+    h += '</div>'; // end attribute table
+
+    // ── Brand fit + notes row ──
+    if (mkt.brand_fit.score !== 50 || mkt.brand_fit.notes.length > 0) {
+      var bfCol = mkt.brand_fit.score >= 70 ? '#4ade80' : mkt.brand_fit.score >= 45 ? '#fbbf24' : '#f87171';
+      h += '<div style="display:flex;gap:8px;align-items:stretch;margin-bottom:14px;">';
+      // Brand fit score
+      h += '<div style="background:var(--s2);border:1px solid var(--border2);border-radius:3px;padding:8px 14px;'
+         + 'display:flex;flex-direction:column;align-items:center;justify-content:center;min-width:90px;">';
+      h += '<div style="font-family:DM Mono,monospace;font-size:7px;color:var(--muted);letter-spacing:1px;margin-bottom:3px;">BRAND FIT</div>';
+      h += '<div style="font-family:Orbitron,sans-serif;font-size:20px;font-weight:800;color:'+bfCol+';">'+mkt.brand_fit.score+'</div>';
+      h += '</div>';
+      // Notes
+      if (mkt.brand_fit.notes.length > 0) {
+        h += '<div style="flex:1;background:rgba(251,191,36,.06);border:1px solid rgba(251,191,36,.2);border-radius:3px;padding:8px 12px;">';
+        h += '<div style="font-family:DM Mono,monospace;font-size:7px;color:var(--gold);letter-spacing:1px;margin-bottom:5px;">BRAND POSITIONING NOTES</div>';
+        mkt.brand_fit.notes.forEach(function(n) {
+          h += '<div style="font-family:DM Mono,monospace;font-size:8px;color:var(--text);margin-bottom:3px;">· '+n+'</div>';
+        });
+        h += '</div>';
+      }
+      h += '</div>'; // end brand fit row
+    } else {
+      h += '<div style="height:14px;"></div>';
+    }
+  })();
 
   // Action bar
   h += '<div style="padding:13px 18px;background:var(--s2);border-radius:4px;border:1px solid var(--border2);display:flex;align-items:center;gap:12px;">';
