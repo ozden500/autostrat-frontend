@@ -1110,6 +1110,7 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
       <div class="nav-item" onclick="navInstr('instr-monitor',this)"><span class="nav-icon">👁</span> Team Monitor</div>
       <div class="nav-item" onclick="navInstr('instr-footprint',this)"><span class="nav-icon">🏭</span> Footprint Manager</div>
       <div class="nav-item" onclick="navInstr('instr-events',this)"><span class="nav-icon">⚠</span> Event Injector</div>
+      <div class="nav-item" onclick="navInstr('instr-market',this)"><span class="nav-icon">🎯</span> Market Control</div>
       <div class="nav-item" onclick="navInstr('instr-demand',this)"><span class="nav-icon">📊</span> Demand Model</div>
       <div class="nav-item" onclick="navInstr('instr-history',this)"><span class="nav-icon">📅</span> Historical Data</div>
     </div>
@@ -2148,9 +2149,10 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
       <div id="hub-phase" style="font-size:11px;color:#94a3b8;margin-top:2px">Waiting to start</div>
     </div>
     <div style="display:flex;flex-direction:column;gap:8px;min-width:220px">
-      <button id="hub-btn-close" onclick="instructorCloseRound()" disabled style="background:#7c3aed;color:#fff;border:none;border-radius:8px;padding:12px 20px;font-size:13px;font-weight:700;cursor:pointer;opacity:.5">⏹ Close Round & Run Simulation</button>
-      <button id="hub-btn-next" onclick="instructorNextRound()" disabled style="background:#059669;color:#fff;border:none;border-radius:8px;padding:12px 20px;font-size:13px;font-weight:700;cursor:pointer;opacity:.5">▶ Open Next Round</button>
-      <button onclick="openFootprintSetup()" style="background:#1e3a5f;color:#93c5fd;border:none;border-radius:8px;padding:10px 20px;font-size:12px;font-weight:600;cursor:pointer">🏭 Setup Starting Footprint</button>
+      <button id="hub-btn-clear" onclick="hubRunMarketClearing()" style="background:#0f766e;color:#2dd4bf;border:none;border-radius:8px;padding:12px 20px;font-size:13px;font-weight:700;cursor:pointer">🎯 Run Market Clearing</button>
+      <button id="hub-btn-next" onclick="instructorNextRound()" disabled style="background:#059669;color:#fff;border:none;border-radius:8px;padding:12px 20px;font-size:13px;font-weight:700;cursor:pointer;opacity:.5">▶ Advance Round + Clear</button>
+      <button id="hub-btn-close" onclick="instructorCloseRound()" disabled style="background:#4c1d95;color:#c4b5fd;border:none;border-radius:8px;padding:10px 20px;font-size:12px;font-weight:600;cursor:pointer;opacity:.5">⏹ Legacy Simulation Run</button>
+      <button onclick="openFootprintSetup()" style="background:#1e3a5f;color:#93c5fd;border:none;border-radius:8px;padding:8px 16px;font-size:11px;font-weight:600;cursor:pointer">🏭 Footprint Setup</button>
     </div>
     <div style="min-width:180px;text-align:right">
       <div style="font-family:'DM Mono',monospace;font-size:9px;color:#a78bfa;letter-spacing:1.5px;margin-bottom:4px">SESSION ID</div>
@@ -2170,13 +2172,40 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
     </div>
   </div>
 
-  <!-- Quick Results Preview -->
+  <!-- Vehicle Status Row -->
+  <div style="background:var(--s1);border:1px solid var(--border);border-radius:10px;padding:14px;margin-bottom:14px">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+      <div style="font-family:'DM Mono',monospace;font-size:9px;text-transform:uppercase;letter-spacing:1.5px;color:#a78bfa">Vehicle Competition Status</div>
+      <button onclick="navInstr('instr-market',document.querySelector('#instructor-nav .nav-item:nth-child(3)'))" style="background:none;border:1px solid #0f766e;color:#2dd4bf;border-radius:6px;padding:4px 12px;font-size:11px;cursor:pointer">Full Market Control →</button>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:10px;">
+      <div style="background:var(--s2);border-radius:6px;padding:10px;text-align:center;">
+        <div style="font-family:'Orbitron',sans-serif;font-size:18px;font-weight:700;color:#2dd4bf;" id="hub-veh-onsale">—</div>
+        <div style="font-family:'DM Mono',monospace;font-size:8px;color:#475569;text-transform:uppercase;margin-top:2px;">On-Sale</div>
+      </div>
+      <div style="background:var(--s2);border-radius:6px;padding:10px;text-align:center;">
+        <div style="font-family:'Orbitron',sans-serif;font-size:18px;font-weight:700;color:#fbbf24;" id="hub-veh-approved">—</div>
+        <div style="font-family:'DM Mono',monospace;font-size:8px;color:#475569;text-transform:uppercase;margin-top:2px;">Approved</div>
+      </div>
+      <div style="background:var(--s2);border-radius:6px;padding:10px;text-align:center;">
+        <div style="font-family:'Orbitron',sans-serif;font-size:18px;font-weight:700;color:#a78bfa;" id="hub-veh-plan">—</div>
+        <div style="font-family:'DM Mono',monospace;font-size:8px;color:#475569;text-transform:uppercase;margin-top:2px;">Plan/Study</div>
+      </div>
+      <div style="background:var(--s2);border-radius:6px;padding:10px;text-align:center;">
+        <div style="font-family:'DM Mono',monospace;font-size:11px;font-weight:700;" id="hub-veh-clearing" style="color:#475569">—</div>
+        <div style="font-family:'DM Mono',monospace;font-size:8px;color:#475569;text-transform:uppercase;margin-top:2px;">Last Clearing</div>
+      </div>
+    </div>
+    <div id="hub-veh-list" style="color:var(--muted2);font-size:11px;font-family:'DM Mono',monospace;">Loading vehicle status...</div>
+  </div>
+
+  <!-- Market Clearing Results Preview -->
   <div style="background:var(--s1);border:1px solid var(--border);border-radius:10px;padding:16px">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
-      <div style="font-family:'DM Mono',monospace;font-size:9px;text-transform:uppercase;letter-spacing:1.5px;color:#a78bfa">Last Round Results</div>
+      <div style="font-family:'DM Mono',monospace;font-size:9px;text-transform:uppercase;letter-spacing:1.5px;color:#a78bfa">Latest Market Clearing Results</div>
       <button onclick="navInstr('instr-results',document.querySelector('#instructor-nav .nav-item:nth-child(2)'))" style="background:none;border:1px solid #4c1d95;color:#a78bfa;border-radius:6px;padding:4px 12px;font-size:11px;cursor:pointer">Full Analysis →</button>
     </div>
-    <div id="hub-quick-results" style="color:var(--muted2);font-size:12px">No results yet.</div>
+    <div id="hub-quick-results" style="color:var(--muted2);font-size:12px">No clearing results yet — click 🎯 Run Market Clearing above.</div>
   </div>
 </div>
 
@@ -2233,6 +2262,58 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
     <div id="analyst-bs-content">
       <div style="color:var(--muted2);font-size:13px;padding:40px 0;text-align:center">Select a round above to load Balance Sheet.</div>
     </div>
+  </div>
+</div>
+
+<!-- ████ INSTRUCTOR: MARKET ROUND CONTROL ████ -->
+<div class="instr-page" id="page-instr-market">
+  <div class="pg-title" style="color:#2dd4bf">MARKET ROUND CONTROL</div>
+  <div class="pg-sub" id="mc-sub">Vehicle competition · Market clearing · Round progression</div>
+
+  <!-- Round state + action controls -->
+  <div style="background:linear-gradient(135deg,#042f2e,#0f3d38);border:1px solid #0f766e;border-radius:12px;padding:18px;margin-bottom:14px;display:flex;align-items:stretch;gap:16px;flex-wrap:wrap;">
+    <!-- Round info -->
+    <div style="flex:1;min-width:180px;">
+      <div style="font-family:'DM Mono',monospace;font-size:8px;color:#2dd4bf;letter-spacing:1.5px;margin-bottom:4px;">ACTIVE ROUND</div>
+      <div id="mc-round-label" style="font-family:'Orbitron',sans-serif;font-size:24px;font-weight:700;color:#fff;">—</div>
+      <div id="mc-round-stats" style="font-family:'DM Mono',monospace;font-size:10px;color:#64748b;margin-top:4px;">—</div>
+      <div id="mc-phase-badge" style="font-family:'DM Mono',monospace;font-size:10px;margin-top:4px;">—</div>
+    </div>
+    <!-- Stat tiles -->
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;align-self:center;min-width:260px;">
+      <div style="background:rgba(0,0,0,.25);border-radius:6px;padding:10px;text-align:center;">
+        <div style="font-family:'Orbitron',sans-serif;font-size:18px;font-weight:700;color:#2dd4bf;" id="mc-tile-onsale">—</div>
+        <div style="font-family:'DM Mono',monospace;font-size:7px;color:#475569;text-transform:uppercase;margin-top:2px;">On-Sale</div>
+      </div>
+      <div style="background:rgba(0,0,0,.25);border-radius:6px;padding:10px;text-align:center;">
+        <div style="font-family:'Orbitron',sans-serif;font-size:18px;font-weight:700;color:#a78bfa;" id="mc-tile-segs">—</div>
+        <div style="font-family:'DM Mono',monospace;font-size:7px;color:#475569;text-transform:uppercase;margin-top:2px;">Segments</div>
+      </div>
+      <div style="background:rgba(0,0,0,.25);border-radius:6px;padding:10px;text-align:center;">
+        <div style="font-family:'DM Mono',monospace;font-size:11px;font-weight:700;" id="mc-tile-cleared">—</div>
+        <div style="font-family:'DM Mono',monospace;font-size:7px;color:#475569;text-transform:uppercase;margin-top:2px;">Clearing</div>
+      </div>
+    </div>
+    <!-- Action buttons -->
+    <div style="display:flex;flex-direction:column;gap:8px;justify-content:center;min-width:200px;">
+      <button id="mc-btn-clear" onclick="mcRunClearing()" style="background:#0f766e;color:#2dd4bf;border:none;border-radius:8px;padding:12px 18px;font-size:13px;font-weight:700;cursor:pointer;">🎯 Run Market Clearing</button>
+      <button id="mc-btn-advance" onclick="mcAdvanceRound()" style="background:#059669;color:#fff;border:none;border-radius:8px;padding:12px 18px;font-size:13px;font-weight:700;cursor:pointer;">▶ Advance Round</button>
+      <button onclick="loadInstrMarketControl()" style="background:rgba(255,255,255,.06);color:#94a3b8;border:1px solid rgba(255,255,255,.1);border-radius:6px;padding:8px 14px;font-size:11px;cursor:pointer;">↻ Refresh</button>
+    </div>
+  </div>
+
+  <!-- Tab bar -->
+  <div style="display:flex;gap:4px;border-bottom:1px solid var(--border);margin-bottom:14px;padding-bottom:0;">
+    <button class="mc-tab active" onclick="mcTab('vehicles',this)" style="font-family:'DM Mono',monospace;font-size:9px;letter-spacing:1px;padding:7px 16px;border:none;border-bottom:2px solid #2dd4bf;background:none;color:#2dd4bf;cursor:pointer;text-transform:uppercase;">🚗 Active Vehicles</button>
+    <button class="mc-tab" onclick="mcTab('results',this)" style="font-family:'DM Mono',monospace;font-size:9px;letter-spacing:1px;padding:7px 16px;border:none;border-bottom:2px solid transparent;background:none;color:var(--muted);cursor:pointer;text-transform:uppercase;">📊 Clearing Results</button>
+    <button class="mc-tab" onclick="mcTab('timeline',this)" style="font-family:'DM Mono',monospace;font-size:9px;letter-spacing:1px;padding:7px 16px;border:none;border-bottom:2px solid transparent;background:none;color:var(--muted);cursor:pointer;text-transform:uppercase;">📅 Round Timeline</button>
+  </div>
+
+  <!-- Tab panels -->
+  <div id="mc-content">
+    <div id="mc-panel-vehicles"><div style="color:var(--muted2);font-size:12px;padding:24px 0;">Loading vehicle data...</div></div>
+    <div id="mc-panel-results" style="display:none;"><div style="color:var(--muted2);font-size:12px;padding:24px 0;">Run Market Clearing to see results.</div></div>
+    <div id="mc-panel-timeline" style="display:none;"><div style="color:var(--muted2);font-size:12px;padding:24px 0;">Loading timeline...</div></div>
   </div>
 </div>
 
@@ -8950,13 +9031,11 @@ function activateInstructorMode() {
 function navInstr(page, el) {
   document.querySelectorAll('#instructor-nav .nav-item').forEach(n => n.classList.remove('active'));
   if (el) el.classList.add('active');
-  // Hide all team pages and instructor pages
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   document.querySelectorAll('.instr-page').forEach(p => p.classList.remove('active'));
-  // Show target instructor page
   const target = document.getElementById('page-' + page);
   if (target) target.classList.add('active');
-  // Load data for the page
+  if (page === 'instr-market')    loadInstrMarketControl();
   if (page === 'instr-monitor')   loadTeamMonitor();
   if (page === 'instr-footprint') loadFootprintManager();
   if (page === 'instr-results')   loadAnalystRounds();
@@ -9046,26 +9125,494 @@ async function refreshInstructorHub() {
           </div>`
         ).join('');
 
-      // Quick results preview
-      if (latest.phase === 'results') {
-        const oRes  = await fetch(`${API_URL}/sessions/${sessionId}/rounds/${latest.id}/outcomes`);
-        const oData = await oRes.json();
-        const scores = oData.scores || [];
-        const humanIds = new Set(humanTeams.map(t => t.id));
-        if (scores.length > 0) {
-          document.getElementById('hub-quick-results').innerHTML = scores.map((s,i) => {
-            const isHuman = humanIds.has(s.team_id);
-            const rc = s.rank===1?'#fbbf24':s.rank===2?'#94a3b8':s.rank===3?'#b45309':'var(--muted2)';
-            return `<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border);${isHuman?'background:rgba(167,139,250,.06);border-radius:4px;padding:6px 8px;':''}">
-              <span style="font-family:'Orbitron',sans-serif;font-size:11px;color:${rc}">#${s.rank}</span>
-              <span style="font-size:12px;font-weight:${isHuman?'700':'500'};color:${isHuman?'#fff':'var(--muted2)'};flex:1">${s.team_name||'—'}${isHuman?' 👤':' 🤖'}</span>
-              <span style="font-family:'DM Mono',monospace;font-size:11px;color:${isHuman?'#a78bfa':'#475569'}">${parseFloat(s.composite_score||0).toFixed(1)}</span>
-            </div>`;
-          }).join('');
+      // Vehicle status (new market-clearing system)
+      try {
+        const vRes  = await fetch(`${API_URL}/sessions/${sessionId}/vehicles`);
+        const vData = await vRes.json();
+        const veh   = vData.vehicles || [];
+        const year2   = latest ? latest.year  : 2025;
+        const qtr2    = latest ? latest.quarter : 1;
+        const curQabs = (year2 - 2025) * 4 + (qtr2 - 1);
+
+        const onSaleVeh    = veh.filter(v => v.status === 'on_sale');
+        const approvedVeh  = veh.filter(v => v.status === 'approved');
+        const planVeh      = veh.filter(v => v.status === 'plan' || v.status === 'study');
+        const activeVeh    = veh.filter(v => {
+          if (v.status !== 'on_sale' && v.status !== 'approved') return false;
+          const sy = v.start_year || 9999, sq = v.start_quarter || 1;
+          return (sy - 2025) * 4 + (sq - 1) <= curQabs;
+        });
+
+        const _setText2 = (id, val) => { const e=document.getElementById(id); if(e) e.textContent=val; };
+        _setText2('hub-veh-onsale',   onSaleVeh.length);
+        _setText2('hub-veh-approved', approvedVeh.length);
+        _setText2('hub-veh-plan',     planVeh.length);
+
+        // Vehicle list by team
+        const teamVeh = {};
+        activeVeh.forEach(v => {
+          const tn = v.team_name || (teamMap[v.team_id]||{}).name || '?';
+          if (!teamVeh[tn]) teamVeh[tn] = [];
+          teamVeh[tn].push(v);
+        });
+        const SEG_NL = (typeof SEG_NAMES !== 'undefined') ? SEG_NAMES : {};
+        document.getElementById('hub-veh-list').innerHTML = activeVeh.length === 0
+          ? '<span style="color:#475569">No vehicles on-sale this round. Approve vehicle proposals to enable market competition.</span>'
+          : Object.entries(teamVeh).map(([tn, vs]) =>
+              `<div style="margin-bottom:4px;"><span style="color:#a78bfa;font-weight:700;">${tn}:</span> `
+            + vs.map(v => `<span style="margin-right:8px;">${v.name||'—'} <span style="color:#64748b;">(${SEG_NL[v.segment_code]||v.segment_code||'?'})</span></span>`).join('')
+            + '</div>'
+          ).join('');
+
+        // Market clearing results
+        const crRes  = await fetch(`${API_URL}/sessions/${sessionId}/rounds/${latest.id}/market-results`);
+        const crData = await crRes.json();
+        const vos    = crData.vehicle_outcomes || [];
+        const ros    = crData.round_outcomes   || [];
+
+        const clearEl = document.getElementById('hub-veh-clearing');
+        if (clearEl) {
+          if (vos.length > 0) { clearEl.textContent = '✓ Cleared'; clearEl.style.color = '#2dd4bf'; }
+          else { clearEl.textContent = 'Pending'; clearEl.style.color = '#fbbf24'; }
         }
-      }
+
+        if (vos.length > 0) {
+          const topRos = [...ros].sort((a,b) => parseFloat(b.revenue_m||0)-parseFloat(a.revenue_m||0));
+          const humanIds = new Set(humanTeams.map(t => t.id));
+          document.getElementById('hub-quick-results').innerHTML =
+            '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:8px;">'
+            + topRos.map((ro, i) => {
+                const isH = humanIds.has(ro.team_id);
+                const rev = parseFloat(ro.revenue_m||0).toFixed(1);
+                const gm  = ro.gross_margin_pct != null ? parseFloat(ro.gross_margin_pct).toFixed(1)+'%' : '—';
+                const gmC = parseFloat(ro.gross_margin_pct||0) > 20 ? '#4ade80' : parseFloat(ro.gross_margin_pct||0) > 10 ? '#fbbf24' : '#f87171';
+                const rC  = i===0?'#fbbf24':i===1?'#b0c0d0':i===2?'#c8a060':'#475569';
+                return `<div style="background:var(--s2);border:1px solid ${isH?'rgba(167,139,250,.3)':'var(--border)'};border-radius:6px;padding:8px 10px;">
+                  <div style="display:flex;align-items:center;gap:5px;margin-bottom:3px;">
+                    <span style="font-family:'Orbitron',monospace;font-size:10px;color:${rC};">#${i+1}</span>
+                    <span style="font-size:11px;font-weight:${isH?'700':'500'};color:${isH?'#fff':'#94a3b8'}">${ro.team_name||'?'}${isH?' 👤':''}</span>
+                  </div>
+                  <div style="font-family:'Orbitron',sans-serif;font-size:13px;color:#2dd4bf;">€${rev}M</div>
+                  <div style="font-family:'DM Mono',monospace;font-size:8px;color:${gmC};">GM ${gm}</div>
+                </div>`;
+              }).join('')
+            + '</div>';
+        } else {
+          document.getElementById('hub-quick-results').innerHTML =
+            '<div style="color:#475569;font-size:12px;">No market clearing data yet — click 🎯 Run Market Clearing above.</div>';
+        }
+      } catch(e) { /* vehicle status non-critical */ }
     }
   } catch(e) { console.warn('Hub refresh error:', e); }
+}
+
+// ════════════════════════════════════════════════════════════════════
+// INSTRUCTOR: MARKET ROUND CONTROL
+// ════════════════════════════════════════════════════════════════════
+
+var _mcData = null;        // cached page data
+var _mcActiveTab = 'vehicles';
+
+async function loadInstrMarketControl() {
+  if (!sessionId) return;
+  try {
+    var [rRes, tRes, vRes] = await Promise.all([
+      fetch(API_URL + '/sessions/' + sessionId + '/rounds'),
+      fetch(API_URL + '/sessions/' + sessionId + '/teams'),
+      fetch(API_URL + '/sessions/' + sessionId + '/vehicles'),
+    ]);
+    var rData = await rRes.json(), tData = await tRes.json(), vData = await vRes.json();
+    var rounds   = (rData.rounds||[]).filter(function(r){ return !r.is_historical && r.round_number > 0; });
+    var allTeams = (tData.teams||[]).filter(function(t){ return t.name !== 'Instructor'; });
+    var vehicles = vData.vehicles || [];
+
+    var teamMap = {};
+    allTeams.forEach(function(t, i) { teamMap[t.id] = Object.assign({}, t, { color: TEAM_COLORS[i % TEAM_COLORS.length] }); });
+
+    var latestRnd    = rounds.length ? rounds.reduce(function(a,b){ return a.round_number > b.round_number ? a : b; }) : null;
+    var year2        = latestRnd ? latestRnd.year  : 2025;
+    var qtr2         = latestRnd ? latestRnd.quarter : 1;
+    var currentQabs  = (year2 - 2025) * 4 + (qtr2 - 1);
+
+    // Active vehicles (on_sale or approved with SOP ≤ round)
+    var activeVeh = vehicles.filter(function(v) {
+      if (v.status !== 'on_sale' && v.status !== 'approved') return false;
+      var sy = v.start_year || 9999, sq = v.start_quarter || 1;
+      return (sy - 2025) * 4 + (sq - 1) <= currentQabs;
+    });
+
+    // Compute client-side utility scores
+    activeVeh.forEach(function(v) {
+      v._team = teamMap[v.team_id] || { name: '?', color: '#888', id: v.team_id };
+      try {
+        if (typeof _MARKET_E !== 'undefined') {
+          var sp = Object.assign({}, v.rolled_up_specs || {});
+          if (v.price_eur_k) sp.price_eur_k = v.price_eur_k;
+          var mr = _MARKET_E.calc({
+            segment_code: v.segment_code, price_eur_k: sp.price_eur_k,
+            pwt_type: sp.pwt_type || 'ice_only',
+            ice_fuel_L100km: sp.ice_fuel_L100km, bev_kwh_100km: sp.bev_kwh_100km,
+            co2_g_km: sp.ice_co2_g_km || 0, t_0_100_s: sp.t_0_100_s,
+            safety: sp.safety, comfort: sp.comfort, premiumness: sp.premiumness,
+            reliability: sp.reliability, adas_level: sp.adas_level, connectivity: sp.connectivity,
+          });
+          v._utility   = mr.utility_score;
+          v._est_share = mr.market.est_share_pct;
+          v._pos       = mr.positioning;
+        }
+      } catch(e) { v._utility = null; v._est_share = null; }
+    });
+
+    // Latest clearing results
+    var clearing = null;
+    if (latestRnd) {
+      try {
+        var crRes = await fetch(API_URL + '/sessions/' + sessionId + '/rounds/' + latestRnd.id + '/market-results');
+        clearing  = await crRes.json();
+      } catch(e) {}
+    }
+
+    _mcData = { rounds: rounds, allTeams: allTeams, teamMap: teamMap, vehicles: vehicles, activeVeh: activeVeh, latestRnd: latestRnd, clearing: clearing };
+
+    // Update top bar
+    var lbl = document.getElementById('mc-round-label');
+    if (lbl) lbl.textContent = latestRnd ? 'Y'+(latestRnd.year-2024)+'Q'+latestRnd.quarter+' · Round '+latestRnd.round_number : '—';
+    var stats = document.getElementById('mc-round-stats');
+    var segs  = (function(){ var s={}; activeVeh.forEach(function(v){ s[v.segment_code]=1; }); return Object.keys(s).length; })();
+    if (stats) stats.textContent = activeVeh.length + ' vehicle' + (activeVeh.length!==1?'s':'') + ' competing · ' + segs + ' segment' + (segs!==1?'s':'');
+    var phase = document.getElementById('mc-phase-badge');
+    if (phase && latestRnd) { var ph=latestRnd.phase||'decision'; phase.textContent = ph==='results'?'📊 Results Phase':'⚡ Decision Phase'; phase.style.color = ph==='results'?'#4ade80':'#fbbf24'; }
+    var tOS = document.getElementById('mc-tile-onsale');   if(tOS) tOS.textContent = activeVeh.length;
+    var tSG = document.getElementById('mc-tile-segs');     if(tSG) tSG.textContent = segs;
+    var tCL = document.getElementById('mc-tile-cleared');
+    if (tCL) { var hv=(clearing&&(clearing.vehicle_outcomes||[]).length>0); tCL.textContent=hv?'✓ Cleared':'Pending'; tCL.style.color=hv?'#2dd4bf':'#fbbf24'; }
+    var sub = document.getElementById('mc-sub');
+    if (sub && latestRnd) sub.textContent = 'Session '+sessionId.slice(0,8)+'… · Round '+latestRnd.round_number+' · '+allTeams.length+' teams';
+
+    mcRenderCurrentTab();
+  } catch(e) { console.warn('MC load error:', e); }
+}
+
+function mcTab(tab, btn) {
+  _mcActiveTab = tab;
+  document.querySelectorAll('.mc-tab').forEach(function(b) {
+    b.style.borderBottomColor = 'transparent';
+    b.style.color = 'var(--muted)';
+  });
+  if (btn) { btn.style.borderBottomColor = '#2dd4bf'; btn.style.color = '#2dd4bf'; }
+  ['vehicles','results','timeline'].forEach(function(t) {
+    var el = document.getElementById('mc-panel-'+t);
+    if (el) el.style.display = t === tab ? '' : 'none';
+  });
+  mcRenderCurrentTab();
+}
+
+function mcRenderCurrentTab() {
+  if (!_mcData) return;
+  if (_mcActiveTab === 'vehicles') mcRenderVehicles();
+  if (_mcActiveTab === 'results')  mcRenderResults();
+  if (_mcActiveTab === 'timeline') mcRenderTimeline();
+}
+
+function mcRenderVehicles() {
+  var el = document.getElementById('mc-panel-vehicles');
+  if (!el || !_mcData) return;
+  var activeVeh = _mcData.activeVeh;
+  var SEG_NL = typeof SEG_NAMES !== 'undefined' ? SEG_NAMES : {};
+  var SEG_ORDER = ['a_segment','b_segment','c_segment','d_segment','e_segment','f_segment','sports','mpv','pickup','c_van','d_van','e_van'];
+
+  if (!activeVeh.length) {
+    el.innerHTML = '<div style="color:var(--muted2);font-size:12px;padding:24px;text-align:center;">'
+      + '<div style="font-size:24px;margin-bottom:8px;">🚗</div>'
+      + '<div>No vehicles on-sale or approved this round.</div>'
+      + '<div style="font-size:11px;margin-top:6px;color:#475569;">Teams need to submit vehicle proposals and get them approved before competing.</div></div>';
+    return;
+  }
+
+  var bySegment = {};
+  activeVeh.forEach(function(v) { var s=v.segment_code||'unknown'; if(!bySegment[s]) bySegment[s]=[]; bySegment[s].push(v); });
+  var segsToShow = SEG_ORDER.filter(function(s){ return bySegment[s]; });
+
+  var h = '';
+  segsToShow.forEach(function(seg) {
+    var segVeh = bySegment[seg];
+    var segName = SEG_NL[seg] || seg;
+    h += '<div style="margin-bottom:14px;">';
+    h += '<div style="font-family:DM Mono,monospace;font-size:8px;letter-spacing:2px;color:#2dd4bf;text-transform:uppercase;padding:5px 0;border-bottom:1px solid rgba(45,212,191,.2);margin-bottom:6px;">'
+       + segName + ' <span style="color:var(--muted2);">· ' + segVeh.length + ' vehicle' + (segVeh.length>1?'s':'') + ' competing</span></div>';
+    h += '<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-family:DM Mono,monospace;font-size:9px;">';
+    h += '<thead><tr style="border-bottom:1px solid var(--border2);">';
+    ['Team','Vehicle','Status','Price €k','TPC','Utility Score','Est Share','Perf Class','0-100'].forEach(function(c) {
+      h += '<th style="padding:4px 10px;text-align:left;color:var(--muted);font-size:7px;text-transform:uppercase;letter-spacing:.8px;white-space:nowrap;">'+c+'</th>';
+    });
+    h += '</tr></thead><tbody>';
+    segVeh.sort(function(a,b){ return (b._utility||0)-(a._utility||0); });
+    segVeh.forEach(function(v, i) {
+      var team    = v._team || {};
+      var util    = v._utility;
+      var uC      = util!=null ? (util>=65?'#4ade80':util>=45?'#fbbf24':'#f87171') : 'var(--muted2)';
+      var sp      = v.rolled_up_specs || {};
+      var priceK  = (v.price_eur_k||sp.price_eur_k) ? parseFloat(v.price_eur_k||sp.price_eur_k).toFixed(1) : '—';
+      var tpcK    = v.total_unit_tpc_eur ? '€'+(v.total_unit_tpc_eur/1000).toFixed(1)+'k' : '—';
+      var perf    = sp.perf_class || '—';
+      var t100    = sp.t_0_100_s ? sp.t_0_100_s+'s' : '—';
+      var estSh   = v._est_share ? parseFloat(v._est_share).toFixed(1)+'%' : '—';
+      var stCol   = v.status==='on_sale'?'#4ade80':'#fbbf24';
+      var bg      = i%2===0?'':'background:rgba(255,255,255,.02);';
+      h += '<tr style="border-bottom:1px solid rgba(255,255,255,.04);'+bg+'">';
+      h += '<td style="padding:5px 10px;"><span style="color:'+team.color+';font-weight:700;">'+(team.name||'?')+'</span></td>';
+      h += '<td style="padding:5px 10px;color:var(--white);font-weight:600;">'+(v.name||'—')+'</td>';
+      h += '<td style="padding:5px 10px;"><span style="font-size:7px;padding:2px 5px;border-radius:2px;background:'+stCol+'22;color:'+stCol+';">'+v.status.toUpperCase().replace('_',' ')+'</span></td>';
+      h += '<td style="padding:5px 10px;color:#fbbf24;">€'+priceK+'k</td>';
+      h += '<td style="padding:5px 10px;color:var(--muted2);">'+tpcK+'</td>';
+      h += '<td style="padding:5px 10px;">';
+      if (util!=null) {
+        h += '<div style="display:flex;align-items:center;gap:6px;">'
+           + '<span style="font-weight:700;color:'+uC+';">'+util+'</span>'
+           + '<div style="flex:1;max-width:60px;height:4px;background:var(--border2);border-radius:2px;overflow:hidden;">'
+             + '<div style="height:100%;width:'+util+'%;background:'+uC+';border-radius:2px;"></div>'
+           + '</div></div>';
+      } else { h += '—'; }
+      h += '</td>';
+      h += '<td style="padding:5px 10px;color:#2dd4bf;">'+estSh+'</td>';
+      h += '<td style="padding:5px 10px;color:var(--muted2);font-size:8px;">'+perf+'</td>';
+      h += '<td style="padding:5px 10px;color:#f97316;">'+t100+'</td>';
+      h += '</tr>';
+    });
+    h += '</tbody></table></div></div>';
+  });
+  el.innerHTML = h;
+}
+
+function mcRenderResults() {
+  var el = document.getElementById('mc-panel-results');
+  if (!el || !_mcData) return;
+  var clearing = _mcData.clearing;
+  var SEG_NL   = typeof SEG_NAMES !== 'undefined' ? SEG_NAMES : {};
+
+  if (!clearing || !(clearing.vehicle_outcomes||[]).length) {
+    el.innerHTML = '<div style="color:var(--muted2);font-size:12px;padding:32px;text-align:center;">'
+      + '<div style="font-size:32px;margin-bottom:10px;">🎯</div>'
+      + '<div style="font-size:14px;font-weight:600;margin-bottom:6px;">No clearing results for this round</div>'
+      + '<div style="font-size:11px;">Click <strong>Run Market Clearing</strong> in the control bar to compute market shares and revenue.</div></div>';
+    return;
+  }
+
+  var vos = clearing.vehicle_outcomes || [];
+  var ros = clearing.round_outcomes   || [];
+  var h = '';
+
+  // ── Team revenue podium ──
+  var sortedRos = [...ros].sort(function(a,b){ return parseFloat(b.revenue_m||0)-parseFloat(a.revenue_m||0); });
+  h += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(155px,1fr));gap:8px;margin-bottom:16px;">';
+  sortedRos.forEach(function(ro, i) {
+    var rev   = parseFloat(ro.revenue_m||0).toFixed(1);
+    var cogs  = parseFloat(ro.cogs_m||0);
+    var gp    = parseFloat(ro.gross_profit_m || (parseFloat(ro.revenue_m||0)-cogs));
+    var gm    = parseFloat(ro.revenue_m||0)>0 ? (gp/parseFloat(ro.revenue_m||0)*100).toFixed(1) : '0.0';
+    var units = parseInt(ro.total_units_sold||0).toLocaleString();
+    var gmC   = parseFloat(gm)>20?'#4ade80':parseFloat(gm)>10?'#fbbf24':'#f87171';
+    var rC    = i===0?'#fbbf24':i===1?'#b0c0d0':i===2?'#c8a060':'#475569';
+    var bdr   = i<3 ? '2px solid '+rC : '1px solid var(--border2)';
+    h += '<div style="background:var(--s2);border:'+bdr+';border-radius:6px;padding:10px 12px;">'
+      + '<div style="display:flex;align-items:center;gap:5px;margin-bottom:5px;">'
+        + '<span style="font-family:Orbitron,monospace;font-size:11px;font-weight:700;color:'+rC+';">#'+(i+1)+'</span>'
+        + '<span style="font-size:11px;font-weight:700;color:var(--white);">'+(ro.team_name||'?')+'</span>'
+      + '</div>'
+      + '<div style="font-family:Orbitron,sans-serif;font-size:14px;color:#2dd4bf;">€'+rev+'M</div>'
+      + '<div style="font-family:DM Mono,monospace;font-size:8px;color:var(--muted2);">'+units+' units</div>'
+      + '<div style="font-family:DM Mono,monospace;font-size:8px;color:'+gmC+';">GM '+gm+'%</div>'
+    + '</div>';
+  });
+  h += '</div>';
+
+  // ── Per-segment breakdown ──
+  h += '<div style="font-family:DM Mono,monospace;font-size:7px;letter-spacing:2px;color:#2dd4bf;text-transform:uppercase;margin-bottom:8px;border-bottom:1px solid rgba(45,212,191,.2);padding-bottom:5px;">Segment-by-Segment Results</div>';
+
+  var SEG_ORDER = ['a_segment','b_segment','c_segment','d_segment','e_segment','f_segment','sports','mpv','pickup','c_van','d_van','e_van'];
+  var bySegment = {};
+  vos.forEach(function(vo){ var s=vo.segment_code||'unknown'; if(!bySegment[s]) bySegment[s]=[]; bySegment[s].push(vo); });
+  var segsWithData = SEG_ORDER.filter(function(s){ return bySegment[s]; });
+
+  segsWithData.forEach(function(seg) {
+    var segVos  = bySegment[seg];
+    var segName = SEG_NL[seg] || seg;
+    h += '<div style="margin-bottom:10px;background:var(--s2);border:1px solid var(--border2);border-radius:5px;overflow:hidden;">';
+    h += '<div style="padding:8px 12px;background:rgba(45,212,191,.06);border-bottom:1px solid rgba(45,212,191,.1);display:flex;justify-content:space-between;align-items:center;">'
+       + '<span style="font-family:DM Mono,monospace;font-size:8px;color:#2dd4bf;font-weight:700;">'+segName+'</span>'
+       + '<span style="font-family:DM Mono,monospace;font-size:7px;color:var(--muted2);">'+segVos.length+' vehicle'+(segVos.length>1?'s':'')+' · logit clearing</span>'
+    + '</div>';
+    h += '<table style="width:100%;border-collapse:collapse;font-family:DM Mono,monospace;font-size:9px;">';
+    h += '<thead><tr style="border-bottom:1px solid var(--border2);">';
+    ['Team','Vehicle','Units/Q','Share %','Revenue €M','Avg Price','Utility','EBIT €M'].forEach(function(c) {
+      h += '<th style="padding:4px 10px;text-align:left;color:var(--muted);font-size:7px;text-transform:uppercase;letter-spacing:.5px;white-space:nowrap;">'+c+'</th>';
+    });
+    h += '</tr></thead><tbody>';
+    segVos.sort(function(a,b){ return parseFloat(b.market_share_pct||0)-parseFloat(a.market_share_pct||0); });
+    segVos.forEach(function(vo, i) {
+      var share   = parseFloat(vo.market_share_pct||0).toFixed(1);
+      var sC      = parseFloat(share)>25?'#4ade80':parseFloat(share)>12?'#fbbf24':'var(--text)';
+      var util    = vo.utility_score;
+      var uC      = util!=null?(util>=65?'#4ade80':util>=45?'#fbbf24':'#f87171'):'var(--muted2)';
+      var ebit    = vo.ebit_m!=null ? '€'+parseFloat(vo.ebit_m).toFixed(2)+'M' : '—';
+      var priceK  = vo.avg_price_eur ? '€'+(vo.avg_price_eur/1000).toFixed(1)+'k' : '—';
+      var bg      = i%2===0?'':'background:rgba(255,255,255,.02);';
+      h += '<tr style="border-bottom:1px solid rgba(255,255,255,.03);'+bg+'">';
+      h += '<td style="padding:4px 10px;color:var(--muted2);">'+(vo.team_name||'?')+'</td>';
+      h += '<td style="padding:4px 10px;color:var(--white);font-weight:600;">'+(vo.vehicle_name||'—')+'</td>';
+      h += '<td style="padding:4px 10px;">'+parseInt(vo.units_sold||0).toLocaleString()+'</td>';
+      h += '<td style="padding:4px 10px;font-weight:700;color:'+sC+';">'+share+'%</td>';
+      h += '<td style="padding:4px 10px;color:#2dd4bf;">€'+parseFloat(vo.revenue_m||0).toFixed(2)+'M</td>';
+      h += '<td style="padding:4px 10px;color:#fbbf24;">'+priceK+'</td>';
+      h += '<td style="padding:4px 10px;font-weight:700;color:'+uC+';">'+(util!=null?util:'—')+'</td>';
+      h += '<td style="padding:4px 10px;color:#f97316;">'+ebit+'</td>';
+      h += '</tr>';
+    });
+    h += '</tbody></table></div>';
+  });
+
+  el.innerHTML = h;
+}
+
+function mcRenderTimeline() {
+  var el = document.getElementById('mc-panel-timeline');
+  if (!el || !_mcData) return;
+  var { rounds } = _mcData;
+
+  if (!rounds.length) { el.innerHTML='<div style="color:var(--muted2);font-size:12px;padding:24px;">No rounds yet.</div>'; return; }
+
+  var latestNum = rounds[rounds.length-1].round_number;
+  var h = '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:8px;margin-bottom:16px;">';
+  rounds.forEach(function(rnd) {
+    var isLast = rnd.round_number === latestNum;
+    var bdrCol = isLast ? '#2dd4bf' : 'var(--border2)';
+    var phC    = rnd.phase==='results'?'#4ade80':rnd.phase==='decision'?'#fbbf24':'#475569';
+    var phT    = rnd.phase==='results'?'✓ Results':'⚡ Decision';
+    h += '<div style="background:var(--s2);border:1px solid '+bdrCol+';border-radius:6px;padding:10px 12px;'+(isLast?'box-shadow:0 0 10px rgba(45,212,191,.15);':'')+'">';
+    h += '<div style="font-family:DM Mono,monospace;font-size:7px;color:var(--muted);margin-bottom:3px;">ROUND '+rnd.round_number+'</div>';
+    h += '<div style="font-family:Orbitron,sans-serif;font-size:14px;font-weight:700;color:'+(isLast?'#2dd4bf':'var(--white)')+';">Y'+(rnd.year-2024)+'Q'+rnd.quarter+'</div>';
+    h += '<div style="font-family:DM Mono,monospace;font-size:8px;color:'+phC+';margin-top:4px;">'+phT+'</div>';
+    if (isLast) h += '<div style="font-family:DM Mono,monospace;font-size:6px;color:#2dd4bf;margin-top:3px;letter-spacing:1px;">◄ CURRENT</div>';
+    h += '</div>';
+  });
+  h += '</div>';
+
+  // Round outcomes table
+  h += '<div style="font-family:DM Mono,monospace;font-size:7px;letter-spacing:2px;color:#2dd4bf;text-transform:uppercase;margin-bottom:8px;border-bottom:1px solid rgba(45,212,191,.2);padding-bottom:5px;">Historical Revenue by Round</div>';
+  h += '<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-family:DM Mono,monospace;font-size:9px;">';
+  h += '<thead><tr style="border-bottom:1px solid var(--border2);">';
+  ['Round','Year/Q','Team','Revenue €M','Units','GM%','EBIT €M','Rank'].forEach(function(c) {
+    h += '<th style="padding:4px 10px;text-align:left;color:var(--muted);font-size:7px;text-transform:uppercase;letter-spacing:.5px;white-space:nowrap;">'+c+'</th>';
+  });
+  h += '</tr></thead><tbody>';
+
+  // Fetch round_outcomes for all rounds — use cached data
+  var roundOutcomesAll = [];
+  rounds.forEach(function(rnd) {
+    // We don't have multi-round outcomes cached; show summary from clearing results if latest
+    if (_mcData.clearing && _mcData.clearing.round_outcomes && rnd.round_number === latestNum) {
+      _mcData.clearing.round_outcomes.forEach(function(ro) {
+        roundOutcomesAll.push(Object.assign({}, ro, { round_number: rnd.round_number, year: rnd.year, quarter: rnd.quarter }));
+      });
+    }
+  });
+
+  if (!roundOutcomesAll.length) {
+    h += '<tr><td colspan="8" style="padding:16px;color:var(--muted2);text-align:center;">Run market clearing for round data to appear here.</td></tr>';
+  } else {
+    roundOutcomesAll.sort(function(a,b){ return parseFloat(b.revenue_m||0)-parseFloat(a.revenue_m||0); });
+    roundOutcomesAll.forEach(function(ro, i) {
+      var rev  = parseFloat(ro.revenue_m||0).toFixed(1);
+      var cogs = parseFloat(ro.cogs_m||0);
+      var gp   = parseFloat(ro.gross_profit_m||(parseFloat(ro.revenue_m||0)-cogs));
+      var gm   = parseFloat(ro.revenue_m||0)>0 ? (gp/parseFloat(ro.revenue_m||0)*100).toFixed(1) : '0.0';
+      var gmC  = parseFloat(gm)>20?'#4ade80':parseFloat(gm)>10?'#fbbf24':'#f87171';
+      var ebit = parseFloat(ro.ebit_m||gp*0.7).toFixed(1);
+      var rank = ro.revenue_rank || (i+1);
+      var rC   = rank===1?'#fbbf24':rank===2?'#b0c0d0':rank===3?'#c8a060':'var(--muted2)';
+      h += '<tr style="border-bottom:1px solid rgba(255,255,255,.04);">';
+      h += '<td style="padding:4px 10px;color:#a78bfa;font-weight:600;">R'+ro.round_number+'</td>';
+      h += '<td style="padding:4px 10px;color:var(--muted2);">Y'+(ro.year-2024)+'Q'+ro.quarter+'</td>';
+      h += '<td style="padding:4px 10px;color:var(--text);font-weight:600;">'+(ro.team_name||'?')+'</td>';
+      h += '<td style="padding:4px 10px;color:#2dd4bf;">€'+rev+'M</td>';
+      h += '<td style="padding:4px 10px;">'+parseInt(ro.total_units_sold||0).toLocaleString()+'</td>';
+      h += '<td style="padding:4px 10px;color:'+gmC+';">'+gm+'%</td>';
+      h += '<td style="padding:4px 10px;color:#f97316;">€'+ebit+'M</td>';
+      h += '<td style="padding:4px 10px;font-weight:700;color:'+rC+';">#'+rank+'</td>';
+      h += '</tr>';
+    });
+  }
+  h += '</tbody></table></div>';
+
+  el.innerHTML = h;
+}
+
+async function mcRunClearing() {
+  var btn = document.getElementById('mc-btn-clear');
+  var hubBtn = document.getElementById('hub-btn-clear');
+  [btn, hubBtn].forEach(function(b){ if(b){b.disabled=true;b.textContent='⏳ Running...';} });
+  if (!sessionId || !_mcData || !_mcData.latestRnd) {
+    toast('⚠ No active round — advance the session first');
+    [btn, hubBtn].forEach(function(b){ if(b){b.disabled=false;b.textContent=b===hubBtn?'🎯 Run Market Clearing':'🎯 Run Market Clearing';} });
+    return;
+  }
+  try {
+    var res  = await fetch(API_URL + '/sessions/' + sessionId + '/rounds/' + _mcData.latestRnd.id + '/market-clear', { method: 'POST' });
+    var data = await res.json();
+    if (!data.success) throw new Error(data.detail || 'Clearing failed');
+    toast('✓ Market cleared · ' + (data.vehicles_processed||0) + ' vehicles · ' + (data.segments_cleared||[]).length + ' segments');
+    await loadInstrMarketControl();
+    mcTab('results', document.querySelectorAll('.mc-tab')[1]);
+    refreshInstructorHub();
+  } catch(e) {
+    toast('⚠ ' + e.message);
+  } finally {
+    [btn, hubBtn].forEach(function(b){ if(b){b.disabled=false;b.textContent='🎯 Run Market Clearing';} });
+  }
+}
+
+async function hubRunMarketClearing() {
+  // Shortcut to market clearing from Session Hub
+  if (!sessionId) { toast('⚠ No active session'); return; }
+  var btn = document.getElementById('hub-btn-clear');
+  if (btn) { btn.disabled=true; btn.textContent='⏳ Clearing...'; }
+  try {
+    var rRes  = await fetch(API_URL + '/sessions/' + sessionId + '/rounds');
+    var rData = await rRes.json();
+    var rounds = (rData.rounds||[]).filter(function(r){ return !r.is_historical && r.round_number > 0; });
+    if (!rounds.length) { toast('⚠ No rounds found — open a round first'); return; }
+    var latest = rounds.reduce(function(a,b){ return a.round_number>b.round_number?a:b; });
+    var res    = await fetch(API_URL + '/sessions/' + sessionId + '/rounds/' + latest.id + '/market-clear', { method: 'POST' });
+    var data   = await res.json();
+    if (!data.success) throw new Error(data.detail || 'Failed');
+    toast('✓ Market cleared · ' + (data.vehicles_processed||0) + ' vehicles · ' + (data.segments_cleared||[]).length + ' segments');
+    refreshInstructorHub();
+  } catch(e) {
+    toast('⚠ ' + e.message);
+  } finally {
+    if (btn) { btn.disabled=false; btn.textContent='🎯 Run Market Clearing'; }
+  }
+}
+
+async function mcAdvanceRound() {
+  var btn = document.getElementById('mc-btn-advance');
+  if (btn) { btn.disabled=true; btn.textContent='⏳ Advancing...'; }
+  try {
+    var res  = await fetch(API_URL + '/sessions/' + sessionId + '/rounds/next', { method: 'POST' });
+    var data = await res.json();
+    if (!data.success && !data.round) throw new Error(data.detail || 'Failed');
+    var rnd = data.round;
+    roundId = rnd.id;
+    sessionStorage.setItem('as_roundId', roundId);
+    updateRoundDisplay(rnd);
+    toast('✓ Round ' + rnd.round_number + ' · Y'+(rnd.year-2024)+'Q'+rnd.quarter + (data.market_clearing?' · market cleared':''));
+    await loadInstrMarketControl();
+    refreshInstructorHub();
+  } catch(e) {
+    toast('⚠ ' + e.message);
+  } finally {
+    if (btn) { btn.disabled=false; btn.textContent='▶ Advance Round'; }
+  }
 }
 
 // ── BALANCE SHEET ────────────────────────
