@@ -2478,7 +2478,7 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
       </div>
       <div class="study-field">
         <label>Market Segment</label>
-        <select id="st-segment" style="width:100%;"><option value="">— loading —</option></select>
+        <select id="st-segment" onchange="updateStudyBodyTypes()" style="width:100%;"><option value="">— loading —</option></select>
       </div>
       <div class="study-field">
         <label>Body Type</label>
@@ -6813,6 +6813,29 @@ async function autoPromoteStudyForSegment(segmentCode, newVehicleId) {
 
 
 // ── STUDY MODAL ────────────────────────────────────────────
+var _STUDY_BODY_OPTS = {
+  a_segment: [['HB','Hatchback']],
+  b_segment: [['HB','Hatchback'],['SEDAN','Sedan'],['SUV','SUV / Crossover']],
+  c_segment: [['HB','Hatchback'],['SEDAN','Sedan'],['SUV','SUV / Crossover']],
+  d_segment: [['SEDAN','Sedan'],['SUV','SUV / Crossover'],['COUPE','Coupé']],
+  e_segment: [['SEDAN','Sedan'],['SUV','SUV / Crossover'],['COUPE','Coupé']],
+  f_segment: [['COUPE','Coupé'],['SEDAN','Sedan'],['SUV','SUV / Crossover']],
+  sports:    [['COUPE','Coupé']],
+  mpv:       [['HB','Hatchback'],['SUV','SUV / Crossover']],
+  pickup:    [['VAN','Pickup / Van']],
+  c_van:     [['VAN','Van']],
+  d_van:     [['VAN','Van']],
+  e_van:     [['VAN','Van']],
+};
+
+function updateStudyBodyTypes() {
+  var seg = (document.getElementById('st-segment')||{}).value || '';
+  var bodyEl = document.getElementById('st-body');
+  if (!bodyEl) return;
+  var opts = _STUDY_BODY_OPTS[seg] || [['HB','Hatchback'],['SEDAN','Sedan'],['SUV','SUV / Crossover'],['COUPE','Coupé'],['VAN','Van']];
+  bodyEl.innerHTML = opts.map(function(o){ return '<option value="'+o[0]+'">'+o[1]+'</option>'; }).join('');
+}
+
 async function openStudyModal() {
   if (!teamId) { toast('⚠ Join a session first'); return; }
   _populateYearDropdowns(['st-start-yr','st-end-yr']);
@@ -6824,6 +6847,7 @@ async function openStudyModal() {
     const sel = document.getElementById('st-segment');
     if (sel) sel.innerHTML = '<option value="">— select —</option>' + segs.map(s=>`<option value="${s.code}">${s.name}</option>`).join('');
   } catch(e){}
+  updateStudyBodyTypes(); // reset body types to defaults
   document.getElementById('studyModal').classList.add('open');
 }
 
@@ -10316,9 +10340,14 @@ function buildModuleOptions(modType, propKey, nextFn) {
       var thAvail   = (_propTopHatConfigs||[]).filter(function(c){return c.segment_code===thSeg;});
       if (!thAvail.length && (_propTopHatConfigs||[]).length) thAvail = _propTopHatConfigs;
       var studyBody = _prop.study && _prop.study.rolled_up_specs ? (_prop.study.rolled_up_specs.body_type||'').toUpperCase() : '';
-      if (studyBody) { var bf=thAvail.filter(function(c){ return (c.body_type||'').toUpperCase()===studyBody; }); if (bf.length) thAvail=bf; }
+      var thBodyMatched = false;
+      if (studyBody) { var bf=thAvail.filter(function(c){ return (c.body_type||'').toUpperCase()===studyBody; }); if (bf.length) { thAvail=bf; thBodyMatched=true; } }
+      // Auto-select must happen BEFORE thBodyOpts so 'selected' attribute is applied correctly
+      if (thAvail.length===1 && !thSpecs.config_key) { thSpecs.config_key=thAvail[0].config_key; setTimeout(onPropTopHatChange,160); }
       var thBodyOpts = thAvail.map(function(c){return '<option value="'+c.config_key+'"'+(thSpecs.config_key===c.config_key?' selected':'')+'>'+c.body_type+'</option>';}).join('');
       var thCfgKey   = thSpecs.config_key || '';
+      // Only lock when study body type actually matched an available config for this segment
+      var thBodyLocked = thBodyMatched;
 
       html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:12px;">';
 
@@ -10326,9 +10355,6 @@ function buildModuleOptions(modType, propKey, nextFn) {
       html += '<div>';
       html += '<div style="margin-bottom:10px;">';
       html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">';
-            // Auto-select + lock body type from study
-      if (thAvail.length===1 && !thSpecs.config_key) { thSpecs.config_key=thAvail[0].config_key; setTimeout(onPropTopHatChange,160); }
-      var thBodyLocked = !!studyBody;
       html += '<label class="ctrl-lbl-top" style="margin:0;">Body Type'+(thSeg?'<span style="font-size:9px;color:var(--green);margin-left:6px;">· '+thSegUp+'-Segment</span>':'')+(thBodyLocked?' <span style="font-size:9px;color:var(--gold);">🔒 locked</span>':'')+'</label>';
       html += '</div>';
       html += '<select id="prop-th-config" onchange="onPropTopHatChange()" '+(thBodyLocked?'disabled ':'')+'style="width:100%;background:var(--s3);border:1px solid var(--border2);border-radius:2px;color:var(--text);padding:6px 8px;font-size:12px;font-family:inherit;outline:none;'+(thBodyLocked?'opacity:0.7;cursor:not-allowed;':'')+';">';
