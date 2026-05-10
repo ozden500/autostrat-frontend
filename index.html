@@ -10234,9 +10234,16 @@ function buildModuleOptions(modType, propKey, nextFn) {
       var pSize  = ps.size  || '';
       var _STUDY_PWT_MAP = {ICE:'ice_only',HEV:'ice_only',PHEV:'ice_and_bev',REEV:'ice_and_bev',BEV:'bev_only',FCEV:'bev_only',MULTI:'ice_and_bev'};
       var _studyPwtRaw = _prop.study && _prop.study.rolled_up_specs ? (_prop.study.rolled_up_specs.pwt_type||'') : '';
-      var _lockedPwt = _STUDY_PWT_MAP[_studyPwtRaw.toUpperCase()] || '';
-      var pPwt = _lockedPwt || ps.pwt || '';
+      var _studyPwtMapped = _STUDY_PWT_MAP[_studyPwtRaw.toUpperCase()] || '';
+      // Lock only when study is MULTI (single valid platform type). ICE/BEV studies also allow multi-energy platforms.
+      var _lockedPwt = (_studyPwtMapped === 'ice_and_bev') ? 'ice_and_bev' : '';
+      // Allowed PWT options: ICE study → ice_only + ice_and_bev; BEV study → bev_only + ice_and_bev; MULTI → locked to ice_and_bev; none → all
+      var _allowedPwts = _studyPwtMapped === 'ice_only' ? ['ice_only','ice_and_bev'] :
+                         _studyPwtMapped === 'bev_only' ? ['bev_only','ice_and_bev'] : null;
+      var _defaultPwt = _studyPwtMapped || '';
       if (_lockedPwt && ps.pwt !== _lockedPwt) ps.pwt = _lockedPwt;
+      if (!ps.pwt && _defaultPwt) ps.pwt = _defaultPwt;
+      var pPwt = ps.pwt || '';
       var pRel   = ps.reliability  != null ? ps.reliability  : 50;
       var pCom   = ps.comfort      != null ? ps.comfort      : 50;
       var pSaf   = ps.safety       != null ? ps.safety       : 50;
@@ -10268,13 +10275,17 @@ function buildModuleOptions(modType, propKey, nextFn) {
         '</select></div>';
 
       // PWT
+      var _allPwtOpts = [['ice_only','ICE Only'],['bev_only','BEV Only'],['ice_and_bev','Multi-Energy (ICE+BEV)']];
+      var _pwtOpts = _allowedPwts ? _allPwtOpts.filter(function(o){ return _allowedPwts.indexOf(o[0]) !== -1; }) : _allPwtOpts;
+      var _pwtBadge = _lockedPwt ? ' <span style="color:var(--gold);">🔒 locked from study</span>' :
+                      _allowedPwts ? ' <span style="font-size:7px;color:var(--muted2);">(filtered by study)</span>' : '';
       html += '<div style="margin-bottom:10px;">' +
-        '<div style="font-family:DM Mono,monospace;font-size:8px;text-transform:uppercase;letter-spacing:1px;color:var(--muted2);margin-bottom:4px;">PWT Compatibility'+(_lockedPwt?' <span style="color:var(--gold);">🔒 locked from study</span>':'')+'</div>' +
+        '<div style="font-family:DM Mono,monospace;font-size:8px;text-transform:uppercase;letter-spacing:1px;color:var(--muted2);margin-bottom:4px;">PWT Compatibility' + _pwtBadge + '</div>' +
         '<select id="prop-plat-pwt" onchange="onPropPlatformChange()" ' +
         (_lockedPwt?'disabled ':'') +
         'style="width:100%;background:var(--s3);border:1px solid var(--border2);border-radius:2px;color:var(--text);padding:6px 8px;font-size:12px;font-family:inherit;outline:none;'+(_lockedPwt?'opacity:0.7;cursor:not-allowed;':'')+';">' +
         '<option value="">— select PWT —</option>' +
-        [['ice_only','ICE Only'],['bev_only','BEV Only'],['ice_and_bev','Multi-Energy (ICE+BEV)']].map(function(o){
+        _pwtOpts.map(function(o){
           return '<option value="'+o[0]+'"'+(pPwt===o[0]?' selected':'')+'>'+o[1]+'</option>';
         }).join('') +
         '</select></div>';
