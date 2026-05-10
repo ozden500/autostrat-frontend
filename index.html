@@ -10052,7 +10052,15 @@ function propFmtSpec(key, val, fmt) {
 }
 
 function _getEffectivePwtType() {
-  // 1. Infer from already-selected/configured platform (most reliable)
+  // 1. Study definition is the primary source — determines PWT columns shown in Section 3.
+  //    A multi-energy platform can be used for an ICE or BEV study; the platform capability
+  //    does NOT override the study intent (e.g. ICE study + MULTI platform → ICE PWT only).
+  var raw = _prop.study && _prop.study.rolled_up_specs ?
+    (_prop.study.rolled_up_specs.pwt_type || '') : '';
+  var PWT_MAP = {ICE:'ICE',HEV:'ICE',PHEV:'MULTI',REEV:'MULTI',BEV:'BEV',FCEV:'BEV',MULTI:'MULTI'};
+  var studyPwt = PWT_MAP[raw.toUpperCase()] || '';
+  if (studyPwt) return studyPwt;
+  // 2. Fallback: infer from platform when study has no PWT defined
   var pm = _prop.platform;
   if (pm) {
     if ((pm.mode === 'reuse' || pm.mode === 'modify') && pm.module) {
@@ -10068,11 +10076,7 @@ function _getEffectivePwtType() {
       if (pw === 'ice_only')    return 'ICE';
     }
   }
-  // 2. Fall back to study pwt_type with extended-type mapping
-  var raw = _prop.study && _prop.study.rolled_up_specs ?
-    (_prop.study.rolled_up_specs.pwt_type || '') : '';
-  var PWT_MAP = {ICE:'ICE',HEV:'ICE',PHEV:'MULTI',REEV:'MULTI',BEV:'BEV',FCEV:'BEV',MULTI:'MULTI'};
-  return PWT_MAP[raw.toUpperCase()] || '';
+  return '';
 }
 
 function _isPropModuleCompatible(mod, modType) {
