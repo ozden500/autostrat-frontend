@@ -6011,7 +6011,7 @@ function _buildVehicleModuleMatrix(mods, vehicles) {
       var sameQ   =sopQ!==null&&readyQ!==null&&readyQ===sopQ;
       var col=isDone?'var(--green)':conflict?'var(--red)':sameQ?'var(--gold)':'var(--gold)';
       var icon=isDone?'✓':conflict?'⚠':'⏳';
-      var lbl=isDone?'READY':(ry?_qLabel((ry-2025)*4+(rq-1)):'IN DEV');
+      var lbl=isDone?'READY':(ry?ry+' Q'+rq:'IN DEV');
       h+='<td style="padding:5px 8px;text-align:center;color:'+col+';" title="'+mod.name+'">'+icon+' '+lbl+'</td>';
     });
     h+='</tr>';
