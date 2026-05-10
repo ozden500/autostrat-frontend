@@ -1860,7 +1860,7 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
 <!-- ████ VEHICLE PLAN ████ -->
 <div class="page" id="page-plan">
   <div class="pg-title">VEHICLE PLAN</div>
-  <div class="pg-sub">Product lifecycle · Study → Plan → Approved · 5-year portfolio roadmap 2025–2030</div>
+  <div class="pg-sub" id="plan-sub">Product lifecycle · Study → Plan → Approved · Portfolio roadmap 2025–2030</div>
 
   <!-- Status legend + toolbar -->
   <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap;">
@@ -2744,12 +2744,15 @@ const SEG_NAMES = {
 };
 const BRAND_DATA = {alpha:{name:'Alpha',color:'#4a8ce0'},apex:{name:'Apex',color:'#c8a43c'},arrow:{name:'Arrow',color:'#38d486'}};
 
-const QUARTERS = ['Q1 2025','Q2 2025','Q3 2025','Q4 2025','Q1 2026','Q2 2026','Q3 2026','Q4 2026',
-                  'Q1 2027','Q2 2027','Q3 2027','Q4 2027','Q1 2028','Q2 2028','Q3 2028','Q4 2028',
-                  'Q1 2029','Q2 2029','Q3 2029','Q4 2029','Q1 2030','Q2 2030','Q3 2030','Q4 2030'];
-const CURRENT_Q = 'Q2 2025';
-const CURRENT_QI = QUARTERS.indexOf(CURRENT_Q);
-
+function genQuarters(startYear, endYear) {
+  const qs = [];
+  for (let y = startYear; y <= endYear; y++)
+    for (let q = 1; q <= 4; q++) qs.push(`Q${q} ${y}`);
+  return qs;
+}
+const QUARTERS = genQuarters(2025, 2040); // 64-entry lookup table, not display range
+function getCurrentQ()  { return `Q${currentRoundQuarter} ${currentRoundYear}`; }
+function getCurrentQI() { return QUARTERS.indexOf(getCurrentQ()); }
 function qIdx(q) { return QUARTERS.indexOf(q); }
 
 let activeVehicles = [];
@@ -6051,6 +6054,14 @@ async function loadVehiclePlan() {
     const res=await fetch(`${API_URL}/teams/${teamId}/vehicles`);
     const data=await res.json();
     activeVehicles=data.vehicles||[];
+    _rebuildYearTabs();
+    const planSub=document.getElementById('plan-sub');
+    if(planSub){
+      const allYrs=activeVehicles.flatMap(v=>[v.start_year,v.end_year]).filter(Boolean);
+      const minY=allYrs.length?Math.min(...allYrs,currentRoundYear):currentRoundYear;
+      const maxY=allYrs.length?Math.max(...allYrs,currentRoundYear+5):currentRoundYear+5;
+      planSub.textContent=`Product lifecycle · Study → Plan → Approved · Portfolio roadmap ${minY}–${maxY}`;
+    }
     buildVehicleGantt();
     buildVehicleTable();
   } catch(e){ console.warn('loadVehiclePlan:',e); }
@@ -6477,14 +6488,34 @@ function buildVehicleGantt() {
 
   if(vehicles.length===0){ wrap.innerHTML='<div style="padding:24px;color:var(--muted2);font-size:12px;">No vehicles match the selected filter.</div>'; return; }
   const colsTemplate='180px 80px 90px 1fr';
-  const totalQ=QUARTERS.length;
-  const todayPct=(CURRENT_QI/totalQ)*100;
+  const todayQI = getCurrentQI();
+
+  // Compute dynamic window from vehicle SOP/EOP dates (mirrors _buildModuleGantt)
+  const allQI = [todayQI];
+  vehicles.forEach(v => {
+    if (v.start_year && v.start_quarter) { const i=qIdx(`Q${v.start_quarter} ${v.start_year}`); if(i>=0) allQI.push(i); }
+    if (v.end_year   && v.end_quarter)   { const i=qIdx(`Q${v.end_quarter} ${v.end_year}`);     if(i>=0) allQI.push(i); }
+  });
+  const defEopI = qIdx(`Q4 ${currentRoundYear+6}`); if(defEopI>=0) allQI.push(defEopI);
+  const rawMin = Math.min(...allQI), rawMax = Math.max(...allQI);
+  const qStart = Math.max(0, rawMin-1);
+  let   qEnd   = rawMax+2;
+  if (qEnd-qStart < 12) qEnd = qStart+12;
+  const numQ   = qEnd-qStart;
+  const toLeft  = qi => Math.max(0, (qi-qStart)/numQ*100);
+  const toWidth = (qiS,qiE) => Math.max(1.5, (qiE-qiS+1)/numQ*100);
+  const todayPct = (todayQI-qStart+0.5)/numQ*100;
+
+  // Dynamic year header
+  const startYear = 2025+Math.floor(qStart/4), endYear = 2025+Math.floor((qEnd-1)/4);
+  const years = []; for(let y=startYear; y<=endYear; y++) years.push(y);
+
   let html=`<div class="gantt-header" style="grid-template-columns:${colsTemplate};">
     <div class="gantt-cell gh">Vehicle</div>
     <div class="gantt-cell gh">Brand</div>
     <div class="gantt-cell gh">Status</div>
-    <div class="gantt-cell gh" style="padding:0;"><div style="display:grid;grid-template-columns:repeat(6,1fr);width:100%;">
-      ${['2025','2026','2027','2028','2029','2030'].map(y=>`<div style="padding:7px 0;text-align:center;font-family:'DM Mono',monospace;font-size:8px;color:var(--muted);border-left:1px solid var(--border);">${y}</div>`).join('')}
+    <div class="gantt-cell gh" style="padding:0;"><div style="display:grid;grid-template-columns:repeat(${years.length},1fr);width:100%;">
+      ${years.map(y=>`<div style="padding:7px 0;text-align:center;font-family:'DM Mono',monospace;font-size:8px;color:var(--muted);border-left:1px solid var(--border);">${y}</div>`).join('')}
     </div></div></div>`;
 
   vehicles.forEach(v=>{
@@ -6494,12 +6525,11 @@ function buildVehicleGantt() {
     const brand = v.brand_id ? (BRAND_DATA[v.brand_id]?.name||v.brand_id) : '—';
     let barHtml='';
     if(v.start_year&&v.start_quarter){
-      const sq=`Q${v.start_quarter} ${v.start_year}`, eq=v.end_year?`Q${v.end_quarter} ${v.end_year}`:'Q4 2030';
+      const sq=`Q${v.start_quarter} ${v.start_year}`, eq=v.end_year?`Q${v.end_quarter} ${v.end_year}`:`Q4 ${currentRoundYear+6}`;
       const si=qIdx(sq), ei=qIdx(eq);
       if(si>=0&&ei>=0){
-        const lp=(si/totalQ)*100, wp=((ei-si+1)/totalQ)*100;
-        const active=si<=CURRENT_QI&&ei>=CURRENT_QI;
-        // Pattern: study=dashed, plan=solid dim, approved=solid bright
+        const lp=toLeft(si), wp=toWidth(si,ei);
+        const active=si<=todayQI&&ei>=todayQI;
         const opacity = v.status==='approved'?1:(v.status==='plan'?0.7:0.4);
         const dashStyle= v.status==='study'?'repeating-linear-gradient(90deg,'+bc+' 0,'+bc+' 8px,transparent 8px,transparent 14px)':'';
         const bg = v.status==='study'?dashStyle:bc;
@@ -6736,6 +6766,21 @@ function planYr(yr, el) {
   buildVehicleGantt();
 }
 
+function _rebuildYearTabs() {
+  const container=document.getElementById('plan-yr-tabs'); if(!container) return;
+  const yearSet=new Set();
+  activeVehicles.forEach(v=>{
+    const sy=v.start_year||currentRoundYear, ey=v.end_year||(currentRoundYear+8);
+    for(let y=sy;y<=ey;y++) yearSet.add(y);
+  });
+  for(let y=currentRoundYear;y<=currentRoundYear+3;y++) yearSet.add(y);
+  const years=Array.from(yearSet).sort((a,b)=>a-b);
+  const activeText=(container.querySelector('.plan-yr.active')||{}).textContent||'ALL';
+  container.innerHTML=
+    `<div class="plan-yr${activeText==='ALL'?' active':''}" onclick="planYr('all',this)">ALL</div>`+
+    years.map(y=>`<div class="plan-yr${String(y)===activeText?' active':''}" onclick="planYr('${y}',this)">${y}</div>`).join('');
+}
+
 // ── AUTO-TRANSITION HELPERS ──────────────────────────────
 
 // Called after a vehicle is assembled: promotes any Study in the same segment to Plan
@@ -6768,6 +6813,7 @@ async function autoPromoteStudyForSegment(segmentCode, newVehicleId) {
 // ── STUDY MODAL ────────────────────────────────────────────
 async function openStudyModal() {
   if (!teamId) { toast('⚠ Join a session first'); return; }
+  _populateYearDropdowns(['st-start-yr','st-end-yr']);
   // Populate segment selector
   try {
     const res = await fetch(`${API_URL}/product-segments`);
@@ -6835,8 +6881,16 @@ async function saveStudy() {
   } catch(e){ toast('⚠ '+e.message); }
 }
 
+function _populateYearDropdowns(ids) {
+  const minY=currentRoundYear-1, maxY=currentRoundYear+12;
+  const opts='<option value="">—</option>'+
+    Array.from({length:maxY-minY+1},(_,i)=>minY+i).map(y=>`<option>${y}</option>`).join('');
+  ids.forEach(id=>{ const el=document.getElementById(id); if(el) el.innerHTML=opts; });
+}
+
 function openVehicleModal() {
   if (!teamId) { toast('⚠ Join a session first'); return; }
+  _populateYearDropdowns(['vm-start-yr','vm-end-yr']);
   document.getElementById('vehicleModal').classList.add('open');
   loadCompletedModulesIntoModal();
 }
@@ -8054,6 +8108,9 @@ function updateRoundDisplay(roundData) {
   if (el('mkt-sub'))         el('mkt-sub').textContent         = `12-OEM competitive landscape · ${q} ${yr}`;
   if (el('lb-sub'))          el('lb-sub').textContent          = `Cumulative · Round ${rNum} · 12 OEMs`;
   if (el('ip-round-label'))  el('ip-round-label').textContent  = `Round ${rNum} · ${q} ${yr}`;
+  // Refresh Vehicle Plan Gantt today-marker if the page is visible
+  const planPage=el('page-plan');
+  if(planPage && planPage.style.display!=='none') { buildVehicleGantt(); _rebuildYearTabs(); }
 }
 
 
