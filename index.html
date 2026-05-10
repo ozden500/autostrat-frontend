@@ -1885,7 +1885,6 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
       <div class="plan-yr" onclick="planYr('2030',this)">2030</div>
     </div>
     <button class="btn-add-model" onclick="openStudyModal()">＋ New Product Study</button>
-    <button class="btn-add-model" style="background:var(--cyanl);border-color:rgba(50,204,192,.4);color:var(--cyan);" onclick="openVehicleModal()">⚙ Assemble Vehicle</button>
   </div>
 
   <!-- Gantt chart -->
@@ -10308,6 +10307,8 @@ function buildModuleOptions(modType, propKey, nextFn) {
       var thSegUp   = thSeg ? thSeg.split('_')[0].toUpperCase() : '';
       var thAvail   = (_propTopHatConfigs||[]).filter(function(c){return c.segment_code===thSeg;});
       if (!thAvail.length && (_propTopHatConfigs||[]).length) thAvail = _propTopHatConfigs;
+      var studyBody = _prop.study && _prop.study.rolled_up_specs ? (_prop.study.rolled_up_specs.body_type||'').toUpperCase() : '';
+      if (studyBody) { var bf=thAvail.filter(function(c){ return (c.body_type||'').toUpperCase()===studyBody; }); if (bf.length) thAvail=bf; }
       var thBodyOpts = thAvail.map(function(c){return '<option value="'+c.config_key+'"'+(thSpecs.config_key===c.config_key?' selected':'')+'>'+c.body_type+'</option>';}).join('');
       var thCfgKey   = thSpecs.config_key || '';
 
@@ -10866,51 +10867,53 @@ function advanceToPWT() {
 function buildPWTSection() {
   var el = document.getElementById('prop-pwt-content');
   if (!el) return;
-  if (!_prop.pwt)     _prop.pwt     = {};
-  if (!_prop.epwt)    _prop.epwt    = {};
-  if (!_prop.battery) _prop.battery = {};
-
+  var pwtType = _getEffectivePwtType();
+  var showIce = (pwtType !== 'BEV');
+  var showBev = (pwtType !== 'ICE');
+  if (!showIce) _prop.pwt = null;
+  else if (!_prop.pwt) _prop.pwt = {};
+  if (!showBev) { _prop.epwt = null; _prop.battery = null; }
+  else { if (!_prop.epwt) _prop.epwt = {}; if (!_prop.battery) _prop.battery = {}; }
+  var cols = (showIce && showBev) ? '1fr 1fr' : '1fr';
   var html = buildContextBanner();
-  html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">';
-
-  // Left: ICE PWT column
-  html += '<div>';
-  html += '<div style="font-family:DM Mono,monospace;font-size:8px;text-transform:uppercase;letter-spacing:1px;color:var(--orange);margin-bottom:8px;">⚙ ICE / HYBRID POWERTRAIN</div>';
-  html += '<div id="prop-pwt-ice-content">' + buildModuleOptions('ice_pwt', 'pwt', 'advanceToTopHat') + '</div>';
+  html += '<div style="display:grid;grid-template-columns:'+cols+';gap:16px;">';
+  if (showIce) {
+    html += '<div>';
+    html += '<div style="font-family:DM Mono,monospace;font-size:8px;text-transform:uppercase;letter-spacing:1px;color:var(--orange);margin-bottom:8px;">⚙ ICE / HYBRID POWERTRAIN</div>';
+    html += '<div id="prop-pwt-ice-content">' + buildModuleOptions('ice_pwt', 'pwt', 'advanceToTopHat') + '</div>';
+    html += '</div>';
+  }
+  if (showBev) {
+    html += '<div>';
+    html += '<div style="font-family:DM Mono,monospace;font-size:8px;text-transform:uppercase;letter-spacing:1px;color:var(--cyan);margin-bottom:8px;">⚡ BEV DRIVETRAIN</div>';
+    html += '<div style="border:1px solid var(--border2);border-radius:4px;padding:10px;margin-bottom:10px;">';
+    html += '<div style="font-family:DM Mono,monospace;font-size:8px;color:var(--cyan);margin-bottom:6px;display:flex;align-items:center;gap:6px;">';
+    html += '<span style="background:var(--cyan);color:#000;border-radius:2px;padding:1px 5px;font-size:7px;">①</span> ELECTRIC DRIVE MODULE (EDM)</div>';
+    html += '<div id="prop-pwt-epwt-content">' + buildModuleOptions('epwt', 'epwt', 'advanceToTopHat') + '</div>';
+    html += '</div>';
+    html += '<div style="border:1px solid var(--border2);border-radius:4px;padding:10px;">';
+    html += '<div style="font-family:DM Mono,monospace;font-size:8px;color:var(--green);margin-bottom:6px;display:flex;align-items:center;gap:6px;">';
+    html += '<span style="background:var(--green);color:#000;border-radius:2px;padding:1px 5px;font-size:7px;">②</span> BATTERY PACK</div>';
+    html += '<div id="prop-pwt-battery-content">' + buildModuleOptions('battery', 'battery', 'advanceToTopHat') + '</div>';
+    html += '</div>';
+    html += '</div>';
+  }
   html += '</div>';
-
-  // Right: BEV Drivetrain — EDM sub-module + Battery Pack sub-module stacked
-  html += '<div>';
-  html += '<div style="font-family:DM Mono,monospace;font-size:8px;text-transform:uppercase;letter-spacing:1px;color:var(--cyan);margin-bottom:8px;">⚡ BEV DRIVETRAIN</div>';
-
-  // Sub-module 1: Electric Drive Module (e-Motor)
-  html += '<div style="border:1px solid var(--border2);border-radius:4px;padding:10px;margin-bottom:10px;">';
-  html += '<div style="font-family:DM Mono,monospace;font-size:8px;color:var(--cyan);margin-bottom:6px;display:flex;align-items:center;gap:6px;">';
-  html += '<span style="background:var(--cyan);color:#000;border-radius:2px;padding:1px 5px;font-size:7px;">①</span> ELECTRIC DRIVE MODULE (EDM)</div>';
-  html += '<div id="prop-pwt-epwt-content">' + buildModuleOptions('epwt', 'epwt', 'advanceToTopHat') + '</div>';
-  html += '</div>';
-
-  // Sub-module 2: Battery Pack
-  html += '<div style="border:1px solid var(--border2);border-radius:4px;padding:10px;">';
-  html += '<div style="font-family:DM Mono,monospace;font-size:8px;color:var(--green);margin-bottom:6px;display:flex;align-items:center;gap:6px;">';
-  html += '<span style="background:var(--green);color:#000;border-radius:2px;padding:1px 5px;font-size:7px;">②</span> BATTERY PACK</div>';
-  html += '<div id="prop-pwt-battery-content">' + buildModuleOptions('battery', 'battery', 'advanceToTopHat') + '</div>';
-  html += '</div>';
-  html += '</div>';
-
-  html += '</div>';
+  var hint = pwtType==='ICE' ? 'Configure ICE powertrain, then continue' :
+             pwtType==='BEV' ? 'Configure BEV drivetrain (EDM + Battery), then continue' :
+             'Configure ICE powertrain or BEV drivetrain (EDM + Battery), then continue';
   html += '<div style="margin-top:14px;">' +
     '<button onclick="advanceToTopHat()" style="font-family:DM Mono,monospace;font-size:9px;' +
     'padding:6px 16px;border-radius:2px;border:1px solid rgba(200,164,60,.4);' +
     'background:var(--goldl);color:var(--gold);cursor:pointer;">Continue →</button>' +
-    '<span style="font-family:DM Mono,monospace;font-size:8px;color:var(--muted2);margin-left:10px;">' +
-    'Configure ICE powertrain or BEV drivetrain (EDM + Battery), then continue</span></div>';
+    '<span style="font-family:DM Mono,monospace;font-size:8px;color:var(--muted2);margin-left:10px;">' + hint + '</span></div>';
   el.innerHTML = html;
 }
 function advanceToTopHat() {
-  if (_prop.pwt  && _prop.pwt.mode  !== 'new' && !_prop.pwt.module)
+  var _pwtT = _getEffectivePwtType();
+  if (_pwtT !== 'BEV' && _prop.pwt  && _prop.pwt.mode  !== 'new' && !_prop.pwt.module)
     { toast('⚠ Select an ICE powertrain module to continue'); return; }
-  if (_prop.epwt && _prop.epwt.mode !== 'new' && !_prop.epwt.module)
+  if (_pwtT !== 'ICE' && _prop.epwt && _prop.epwt.mode !== 'new' && !_prop.epwt.module)
     { toast('⚠ Select an e-Motor module to continue'); return; }
   var s3 = document.getElementById('prop-sec-3-status');
   if (s3) {
