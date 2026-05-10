@@ -1839,6 +1839,9 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
         </div>
       </div>
 
+      <!-- SOP conflict panel — shown when modules aren't ready before SOP -->
+      <div id="prop-sop-conflict" style="display:none;margin-bottom:12px;"></div>
+
       <!-- Final submit -->
       <div style="padding:16px;background:var(--s2);border-radius:4px;border:1px solid var(--border2);display:flex;align-items:center;gap:16px;">
         <div style="flex:1;">
@@ -12225,6 +12228,72 @@ function calcPropBizCase() {
 }
 
 
+function _showSOPConflict(blockers, sopYear, sopQuarter) {
+  var el = document.getElementById('prop-sop-conflict');
+  if (!el) return;
+
+  // Compute earliest viable SOP from max ready date across blockers
+  var maxQ = 0;
+  blockers.forEach(function(m) {
+    if (m.ready_year) {
+      var q = (m.ready_year - 2025) * 4 + (m.ready_quarter - 1);
+      if (q > maxQ) maxQ = q;
+    }
+  });
+  var minSopYear = 2025 + Math.floor(maxQ / 4);
+  var minSopQtr  = (maxQ % 4) + 1;
+  var sopLabel   = 'Q' + sopQuarter + ' ' + sopYear;
+  var minSopLabel= 'Q' + minSopQtr + ' ' + minSopYear;
+
+  var MOD_TYPE_LABELS = {platform:'Platform', ice_pwt:'ICE PWT', epwt:'e-Motor', tophat:'Top Hat', eands:'E&S / ADAS'};
+
+  var rows = blockers.map(function(m) {
+    var readyLabel = m.ready_year ? 'Q' + m.ready_quarter + ' ' + m.ready_year : 'TBD';
+    var sopQ  = (sopYear - 2025) * 4 + (sopQuarter - 1);
+    var modQ  = m.ready_year ? (m.ready_year - 2025) * 4 + (m.ready_quarter - 1) : sopQ + 99;
+    var late  = modQ - sopQ;
+    var typeL = MOD_TYPE_LABELS[m.slot] || m.slot || '\u2014';
+    return '<tr style="border-top:1px solid rgba(255,255,255,.05);">' +
+      '<td style="padding:6px 10px;color:var(--text);font-size:11px;">' + (m.name||'\u2014') + '</td>' +
+      '<td style="padding:6px 10px;font-family:DM Mono,monospace;font-size:9px;color:var(--muted2);">' + typeL + '</td>' +
+      '<td style="padding:6px 10px;font-family:DM Mono,monospace;font-size:10px;color:var(--red);">' + readyLabel + '</td>' +
+      '<td style="padding:6px 10px;font-family:DM Mono,monospace;font-size:10px;color:var(--orange);">+' + late + ' qtr' + (late!==1?'s':'') + '</td>' +
+    '</tr>';
+  }).join('');
+
+  el.style.display = 'block';
+  el.innerHTML =
+    '<div style="background:rgba(224,58,82,.08);border:1px solid rgba(224,58,82,.4);border-radius:5px;padding:18px;">' +
+      '<div style="font-family:DM Mono,monospace;font-size:9px;letter-spacing:2px;color:var(--red);text-transform:uppercase;margin-bottom:10px;">\u26a0 Start of Production Conflict \u2014 Cannot Submit</div>' +
+      '<p style="font-size:12px;color:var(--text);margin:0 0 10px;">Your vehicle is planned to launch <strong>' + sopLabel + '</strong>, but the following modules will not be ready in time:</p>' +
+      '<table style="width:100%;border-collapse:collapse;margin-bottom:14px;">' +
+        '<thead><tr>' +
+          '<th style="text-align:left;padding:5px 10px;font-family:DM Mono,monospace;font-size:8px;color:var(--muted);background:rgba(0,0,0,.2);border-radius:2px;">Module</th>' +
+          '<th style="text-align:left;padding:5px 10px;font-family:DM Mono,monospace;font-size:8px;color:var(--muted);background:rgba(0,0,0,.2);">Type</th>' +
+          '<th style="text-align:left;padding:5px 10px;font-family:DM Mono,monospace;font-size:8px;color:var(--muted);background:rgba(0,0,0,.2);">Ready</th>' +
+          '<th style="text-align:left;padding:5px 10px;font-family:DM Mono,monospace;font-size:8px;color:var(--muted);background:rgba(0,0,0,.2);">Delay</th>' +
+        '</tr></thead><tbody>' + rows + '</tbody>' +
+      '</table>' +
+      '<div style="background:rgba(255,193,7,.06);border:1px solid rgba(255,193,7,.25);border-radius:3px;padding:10px 14px;margin-bottom:12px;">' +
+        '<div style="font-family:DM Mono,monospace;font-size:8px;color:var(--gold);letter-spacing:1px;margin-bottom:4px;">EARLIEST VIABLE SOP</div>' +
+        '<div style="font-size:13px;font-weight:700;color:var(--gold);">' + minSopLabel + '</div>' +
+      '</div>' +
+      '<div style="font-family:DM Mono,monospace;font-size:9px;color:var(--muted2);margin-bottom:6px;letter-spacing:1px;">TO RESOLVE, CHOOSE ONE:</div>' +
+      '<div style="display:flex;flex-direction:column;gap:6px;">' +
+        '<div style="display:flex;align-items:flex-start;gap:10px;background:var(--s3);border-radius:3px;padding:10px;">' +
+          '<span style="font-size:16px;flex-shrink:0;">\ud83d\udcc5</span>' +
+          '<div><div style="font-size:11px;font-weight:600;color:var(--text);margin-bottom:2px;">Move the SOP date to ' + minSopLabel + ' or later</div>' +
+          '<div style="font-family:DM Mono,monospace;font-size:9px;color:var(--muted2);">Go to Vehicle Plan \u2192 edit the study to push SOP by ' + (minSopQtr === sopQuarter && minSopYear === sopYear ? 0 : (maxQ - ((sopYear-2025)*4+(sopQuarter-1)))) + ' quarter(s)</div></div>' +
+        '</div>' +
+        '<div style="display:flex;align-items:flex-start;gap:10px;background:var(--s3);border-radius:3px;padding:10px;">' +
+          '<span style="font-size:16px;flex-shrink:0;">\ud83d\udd04</span>' +
+          '<div><div style="font-size:11px;font-weight:600;color:var(--text);margin-bottom:2px;">Replace the conflicting module with one ready before ' + sopLabel + '</div>' +
+          '<div style="font-family:DM Mono,monospace;font-size:9px;color:var(--muted2);">Use the Back buttons above to go to Section 3, 4 or 5 and select a different (completed or earlier-ready) module</div></div>' +
+        '</div>' +
+      '</div>' +
+    '</div>';
+}
+
 async function confirmProposal() {
   if (!_prop.study) { toast('\u26a0 No study selected'); return; }
   var vid = _prop.study.id;
@@ -12323,10 +12392,7 @@ async function confirmProposal() {
         var chkData = await chk.json();
         if (!chkData.ok) {
           var blockers = (chkData.modules||[]).filter(function(m){return m.blocks_sop;});
-          var msg = blockers.map(function(m){
-            return (m.name||m.slot) + ' ready ' + (m.ready_year?'Y'+(m.ready_year-2024)+'Q'+m.ready_quarter:'TBD');
-          }).join(', ');
-          toast('\u26a0 SOP conflict: ' + msg);
+          _showSOPConflict(blockers, sopYear, sopQuarter||1);
           if (btn) { btn.disabled = false; btn.textContent = '\u2713 SUBMIT PROPOSAL'; }
           return;
         }
@@ -12345,6 +12411,8 @@ async function confirmProposal() {
       _prop.study = null; _prop.platform = null; _prop.pwt = null;
       _prop.epwt  = null; _prop.tophat   = null; _prop.eands = null;
       _prop.commercial = null; _prop.operations = null; _prop.currentSec = 1;
+      var sopConflictEl = document.getElementById('prop-sop-conflict');
+      if (sopConflictEl) sopConflictEl.style.display = 'none';
       // Navigate to Vehicle Plan
       activeVehicles = [];
       // Show footprint config toast
