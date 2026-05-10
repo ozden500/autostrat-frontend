@@ -763,8 +763,29 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
 .perf-legend { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
 .perf-legend-item { display: flex; align-items: center; gap: 4px; font-size: 10px; color: var(--muted2); }
 .perf-legend-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
-.perf-refresh { background: var(--s2); border: 1px solid var(--border2); color: var(--muted2); border-radius: 6px; padding: 6px 14px; font-size: 11px; cursor: pointer; margin-bottom: 16px; }
+.perf-refresh { background: var(--s2); border: 1px solid var(--border2); color: var(--muted2); border-radius: 6px; padding: 6px 14px; font-size: 11px; cursor: pointer; }
 .perf-refresh:hover { color: var(--text); border-color: var(--border3); }
+/* Vehicle performance card */
+.pvc { background:var(--s2);border:1px solid var(--border2);border-radius:6px;padding:12px;position:relative;overflow:hidden; }
+.pvc-name { font-size:12px;font-weight:700;color:var(--white);margin-bottom:2px; }
+.pvc-seg { font-family:'DM Mono',monospace;font-size:8px;color:var(--muted2);margin-bottom:8px; }
+.pvc-stat { display:flex;justify-content:space-between;padding:2px 0;border-bottom:1px solid rgba(255,255,255,.04);font-family:'DM Mono',monospace;font-size:8px; }
+.pvc-stat span:first-child { color:var(--muted2); }
+.pvc-stat span:last-child { color:var(--white);font-weight:600; }
+.pvc-util-bar { height:3px;background:var(--border2);border-radius:2px;margin-top:7px;overflow:hidden; }
+.pvc-util-fill { height:100%;border-radius:2px;transition:width .4s; }
+/* Segment grid cell */
+.sgc { background:var(--s2);border:1px solid var(--border2);border-radius:4px;padding:8px;text-align:center; }
+.sgc-name { font-family:'DM Mono',monospace;font-size:7px;color:var(--muted2);margin-bottom:4px;text-transform:uppercase;letter-spacing:.5px; }
+.sgc-score { font-family:'Orbitron',sans-serif;font-size:14px;font-weight:700;margin-bottom:2px; }
+.sgc-share { font-family:'DM Mono',monospace;font-size:8px;color:var(--muted2); }
+/* Rankings table */
+.rk-row { display:grid;grid-template-columns:24px 1fr 70px 50px 50px;gap:0;padding:5px 0;border-bottom:1px solid rgba(255,255,255,.04);align-items:center; }
+.rk-hdr { font-family:'DM Mono',monospace;font-size:7px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;border-bottom:1px solid var(--border2);padding-bottom:6px;margin-bottom:4px; }
+/* History table */
+.ht { width:100%;border-collapse:collapse;font-family:'DM Mono',monospace;font-size:9px; }
+.ht th { padding:6px 10px;text-align:left;color:var(--muted);font-size:7px;text-transform:uppercase;letter-spacing:1px;border-bottom:2px solid var(--border2);white-space:nowrap; }
+.ht td { padding:5px 10px;border-bottom:1px solid rgba(255,255,255,.04);color:var(--text); }
 
 /* ══ INSTRUCTOR RESULTS SUMMARY ══ */
 #instructor-results-modal {
@@ -2004,41 +2025,93 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
   </div>
 </div>
 
-<!-- ████ LEADERBOARD ████ -->
+<!-- ████ PERFORMANCE DASHBOARD ████ -->
 <div class="page" id="page-performance">
-  <div class="pg-title">PERFORMANCE</div>
-  <div class="pg-sub">Multi-round evolution · Your team vs competitors</div>
-  <button class="perf-refresh" onclick="loadPerformanceData()">↻ Refresh Data</button>
-  <div id="perf-no-session" style="display:none;color:var(--muted2);font-size:13px;padding:40px 0">Join a session and complete at least one round to see performance charts.</div>
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
+    <div>
+      <div class="pg-title" style="margin-bottom:2px;">PERFORMANCE DASHBOARD</div>
+      <div class="pg-sub" id="perf-sub">Multi-round results · Your team vs competitors</div>
+    </div>
+    <button class="perf-refresh" onclick="loadPerformanceData()">↻ Refresh</button>
+  </div>
+
+  <div id="perf-no-session" style="display:none;color:var(--muted2);font-size:13px;padding:40px 0;">
+    Join a session and run at least one market simulation to see performance data.
+  </div>
+
   <div id="perf-content">
-    <div class="perf-grid">
+
+    <!-- ── KPI Strip ────────────────────────────────── -->
+    <div id="perf-kpi-strip" style="display:grid;grid-template-columns:repeat(6,1fr);gap:8px;margin-bottom:14px;">
+      <div class="kpi kk-c"><div class="kl">Revenue / Quarter</div><div class="kv" id="pk-rev" style="color:var(--cyan)">—</div><div class="kd neu" id="pk-rev-d">latest round</div></div>
+      <div class="kpi kk-g"><div class="kl">Gross Margin</div><div class="kv" id="pk-gm" style="color:var(--gold)">—</div><div class="kd neu">this quarter</div></div>
+      <div class="kpi kk-b"><div class="kl">EBIT</div><div class="kv" id="pk-ebit" style="color:var(--blue)">—</div><div class="kd neu">this quarter</div></div>
+      <div class="kpi"><div class="kl">Units Sold</div><div class="kv" id="pk-units">—</div><div class="kd neu">this quarter</div></div>
+      <div class="kpi kk-g"><div class="kl">Revenue Rank</div><div class="kv" id="pk-rank" style="color:var(--green)">—</div><div class="kd neu" id="pk-rank-sub">of — teams</div></div>
+      <div class="kpi kk-p"><div class="kl">Avg Utility Score</div><div class="kv" id="pk-util" style="color:var(--purple)">—</div><div class="kd neu">portfolio avg</div></div>
+    </div>
+
+    <!-- ── Charts grid (existing + new Revenue+Margin canvas) ── -->
+    <div class="perf-grid" style="margin-bottom:14px;">
       <div class="perf-card">
-        <div class="perf-card-title">Revenue (€M) — Round by Round</div>
+        <div class="perf-card-title">Revenue (€M) — All Teams, All Rounds</div>
         <div class="perf-chart" id="chart-revenue"><div class="perf-no-data">No data yet</div></div>
         <div class="perf-legend" id="legend-revenue"></div>
       </div>
       <div class="perf-card">
-        <div class="perf-card-title">EBIT Margin % — Round by Round</div>
+        <div class="perf-card-title">EBIT Margin % — All Teams</div>
         <div class="perf-chart" id="chart-ebit"><div class="perf-no-data">No data yet</div></div>
         <div class="perf-legend" id="legend-ebit"></div>
       </div>
       <div class="perf-card">
-        <div class="perf-card-title">Market Share % — Round by Round</div>
+        <div class="perf-card-title">Market Share % — Vehicle Clearing Results</div>
         <div class="perf-chart" id="chart-share"><div class="perf-no-data">No data yet</div></div>
         <div class="perf-legend" id="legend-share"></div>
       </div>
       <div class="perf-card">
-        <div class="perf-card-title">Composite Score — Round by Round</div>
-        <div class="perf-chart" id="chart-score"><div class="perf-no-data">No data yet</div></div>
-        <div class="perf-legend" id="legend-score"></div>
+        <div class="perf-card-title">Units Sold — All Teams</div>
+        <div class="perf-chart" id="chart-units"><div class="perf-no-data">No data yet</div></div>
+        <div class="perf-legend" id="legend-units"></div>
       </div>
     </div>
-    <div class="perf-card" style="margin-bottom:16px">
-      <div class="perf-card-title">Units Sold — Round by Round</div>
-      <div class="perf-chart" id="chart-units" style="height:120px"><div class="perf-no-data">No data yet</div></div>
-      <div class="perf-legend" id="legend-units"></div>
+
+    <!-- ── Vehicle Performance Cards ─────────────────────── -->
+    <div class="perf-card" style="margin-bottom:14px;" id="perf-vehicle-section">
+      <div class="perf-card-title">Your Vehicle Portfolio — Latest Round Performance</div>
+      <div id="perf-vehicle-cards" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px;margin-top:4px;">
+        <div style="color:var(--muted2);font-size:11px;padding:16px 0;">Run market simulation to see vehicle results.</div>
+      </div>
     </div>
-  </div>
+
+    <!-- ── Segment Competitive Grid + Team Rankings ───────── -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;">
+
+      <!-- Segment Grid -->
+      <div class="perf-card">
+        <div class="perf-card-title">Segment Competitive Grid — Your Portfolio vs Benchmark</div>
+        <div id="perf-segment-grid" style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-top:6px;">
+          <div style="color:var(--muted2);font-size:11px;grid-column:1/-1;padding:8px 0;">Run market simulation to see segment data.</div>
+        </div>
+      </div>
+
+      <!-- Team Rankings -->
+      <div class="perf-card">
+        <div class="perf-card-title">Current Round — All-Team Revenue Rankings</div>
+        <div id="perf-rankings" style="margin-top:6px;">
+          <div style="color:var(--muted2);font-size:11px;padding:8px 0;">No ranking data yet.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Multi-round History Table ─────────────────────── -->
+    <div class="perf-card" style="margin-bottom:14px;" id="perf-history-section">
+      <div class="perf-card-title">Your Round-by-Round History — Vehicle Market Clearing Results</div>
+      <div id="perf-history-table" style="overflow-x:auto;margin-top:6px;">
+        <div style="color:var(--muted2);font-size:11px;padding:8px 0;">No history yet — run the market simulation.</div>
+      </div>
+    </div>
+
+  </div><!-- /perf-content -->
 </div>
 <div class="page" id="page-leaderboard">
   <div class="pg-title">LEADERBOARD</div><div class="pg-sub" id="lb-sub">Cumulative · Round 1 · 12 OEMs</div>
@@ -10065,74 +10138,305 @@ const TEAM_COLORS = [
 async function loadPerformanceData() {
   if (!sessionId) {
     document.getElementById('perf-no-session').style.display = 'block';
-    document.getElementById('perf-content').style.display = 'none';
+    document.getElementById('perf-content').style.display    = 'none';
     return;
   }
   document.getElementById('perf-no-session').style.display = 'none';
-  document.getElementById('perf-content').style.display = 'block';
+  document.getElementById('perf-content').style.display    = 'block';
 
   try {
-    // Get all rounds for this session
-    const rRes  = await fetch(`${API_URL}/sessions/${sessionId}/rounds`);
-    const rData = await rRes.json();
-    const rounds = rData.rounds || [];
-    if (rounds.length === 0) { showPerfNoData(); return; }
+    // ── 1. Fetch aggregated dashboard data ───────────────────
+    var dashUrl = API_URL + '/sessions/' + sessionId + '/performance-dashboard'
+                + (teamId ? '?team_id=' + teamId : '');
+    var [dashRes, oldRoundsRes, teamsRes] = await Promise.all([
+      fetch(dashUrl),
+      fetch(API_URL + '/sessions/' + sessionId + '/rounds'),
+      fetch(API_URL + '/sessions/' + sessionId + '/teams'),
+    ]);
+    var dash      = await dashRes.json();
+    var rData     = await oldRoundsRes.json();
+    var tData     = await teamsRes.json();
 
-    // Get all teams
-    const tRes  = await fetch(`${API_URL}/sessions/${sessionId}/teams`);
-    const tData = await tRes.json();
-    const teams = (tData.teams || []).filter(t => t.name !== 'Instructor');
-    const teamMap = {};
-    teams.forEach((t, i) => { teamMap[t.id] = {...t, color: TEAM_COLORS[i % TEAM_COLORS.length]}; });
+    var rounds     = rData.rounds || [];
+    var allTeams   = (tData.teams||[]).filter(function(t){ return t.name !== 'Instructor'; });
+    if (!rounds.length && !(dash.rounds||[]).length) { showPerfNoData(); return; }
 
-    // Fetch outcomes for each completed round
-    const roundLabels = [];
-    const teamSeries  = {}; // teamId -> {revenue, ebit, share, score, units}[]
-    teams.forEach(t => { teamSeries[t.id] = {revenue:[], ebit:[], share:[], score:[], units:[]}; });
+    var teamMap = {};
+    allTeams.forEach(function(t, i) {
+      teamMap[t.id] = Object.assign({}, t, { color: TEAM_COLORS[i % TEAM_COLORS.length] });
+    });
+    // Merge color from dash data if available
+    (dash.rankings||[]).forEach(function(ro) {
+      if (!teamMap[ro.team_id]) teamMap[ro.team_id] = { id: ro.team_id, name: ro.team_name, color: ro.color_hex || '#888' };
+    });
 
-    for (const round of rounds) {
-      const oRes  = await fetch(`${API_URL}/sessions/${sessionId}/rounds/${round.id}/outcomes`);
-      const oData = await oRes.json();
-      if (!oData.outcomes || oData.outcomes.length === 0) continue;
-
-      roundLabels.push(`Q${round.quarter} ${round.year}`);
-
-      // Build segment lookup per team
-      const teamSegs = {};
-      (oData.segments || []).forEach(s => {
-        if (!teamSegs[s.team_id]) teamSegs[s.team_id] = {};
-        if (!teamSegs[s.team_id][s.segment_code]) teamSegs[s.team_id][s.segment_code] = s;
-      });
-
-      teams.forEach(t => {
-        const outcome = oData.outcomes.find(o => o.team_id === t.id);
-        const score   = oData.scores?.find(s => s.team_id === t.id);
-        const segs    = Object.values(teamSegs[t.id] || {});
-        const share   = segs.length > 0 ? segs.reduce((a,s) => a + parseFloat(s.market_share_pct||0), 0) / segs.length : 0;
-        const rev     = parseFloat(outcome?.revenue_m || 0);
-        const ebit    = rev > 0 ? (parseFloat(outcome?.ebit_m || 0) / rev * 100) : 0;
-
-        teamSeries[t.id].revenue.push(rev);
-        teamSeries[t.id].ebit.push(ebit);
-        teamSeries[t.id].share.push(share);
-        teamSeries[t.id].score.push(score?.composite_score || 0);
-        teamSeries[t.id].units.push(parseInt(outcome?.total_units_sold || 0));
-      });
+    var sub = document.getElementById('perf-sub');
+    if (sub && dash.latest_round) {
+      var lr = dash.latest_round;
+      sub.textContent = 'Latest: Y'+(lr.year-2024)+'Q'+lr.quarter+' · Round '+lr.round_number+' · '+allTeams.length+' teams';
     }
 
-    if (roundLabels.length === 0) { showPerfNoData(); return; }
+    // ── 2. Update KPI strip from market-clearing data ────────
+    var kpis = dash.kpis || {};
+    if (kpis.revenue_m != null) {
+      _setText('pk-rev',   '€' + kpis.revenue_m.toFixed(1) + 'M');
+      _setText('pk-gm',    (kpis.gross_margin_pct || 0).toFixed(1) + '%');
+      _setText('pk-ebit',  '€' + (kpis.ebit_m||0).toFixed(1) + 'M');
+      _setText('pk-units', (kpis.total_units||0).toLocaleString());
+      _setText('pk-rank',  kpis.revenue_rank ? '#' + kpis.revenue_rank : '—');
+      _setText('pk-rank-sub', 'of ' + (kpis.total_teams||'—') + ' teams');
+      _setText('pk-util',  kpis.avg_utility != null ? kpis.avg_utility : '—');
+      var dEl = document.getElementById('pk-rev-d');
+      if (dEl && kpis.revenue_delta_pct != null) {
+        var dp = kpis.revenue_delta_pct;
+        dEl.textContent = (dp >= 0 ? '▲ +' : '▼ ') + dp + '% vs prev Q';
+        dEl.className = 'kd ' + (dp >= 0 ? 'up' : 'dn');
+      }
+      // Also update Command Center KPI tiles if they're visible
+      _setText('kpi-revenue', '€' + kpis.revenue_m.toFixed(1) + 'M');
+      _setText('kpi-ebit',    (kpis.gross_margin_pct||0).toFixed(1) + '%');
+      _setText('kpi-rank',    kpis.revenue_rank ? '#' + kpis.revenue_rank : '#—');
+    }
+    function _setText(id, val) { var e=document.getElementById(id); if(e) e.textContent=val; }
 
-    // Draw all 5 charts
-    drawLineChart('chart-revenue', 'legend-revenue', roundLabels, teams, teamMap, teamSeries, 'revenue', '€', 'M');
-    drawLineChart('chart-ebit',    'legend-ebit',    roundLabels, teams, teamMap, teamSeries, 'ebit',    '',  '%');
-    drawLineChart('chart-share',   'legend-share',   roundLabels, teams, teamMap, teamSeries, 'share',   '',  '%');
-    drawLineChart('chart-score',   'legend-score',   roundLabels, teams, teamMap, teamSeries, 'score',   '',  '');
-    drawLineChart('chart-units',   'legend-units',   roundLabels, teams, teamMap, teamSeries, 'units',   '',  '');
+    // ── 3. Market-clearing line charts (revenue, share, units) using new data ──
+    var allRos    = dash.round_outcomes || [];
+    var allVos    = dash.vehicle_outcomes || [];
+    var dashRounds = dash.rounds || rounds;
+
+    if (allRos.length > 0 && dashRounds.length > 0) {
+      var rndLabels = dashRounds.map(function(r) { return 'Y'+(r.year-2024)+'Q'+r.quarter; });
+      var mktSeries = {}; // teamId -> { revenue, ebit, share, units }
+      allTeams.forEach(function(t) { mktSeries[t.id] = { revenue:[], ebit:[], share:[], units:[], score:[] }; });
+      // Collect any teams seen in round outcomes but not in allTeams
+      allRos.forEach(function(ro) {
+        if (!mktSeries[ro.team_id]) mktSeries[ro.team_id] = { revenue:[], ebit:[], share:[], units:[], score:[] };
+      });
+
+      dashRounds.forEach(function(rnd) {
+        var ros_for_round = allRos.filter(function(ro){ return ro.round_id === rnd.id; });
+        var vos_for_round = allVos.filter(function(vo){ return vo.round_id === rnd.id; });
+        Object.keys(mktSeries).forEach(function(tid) {
+          var ro = ros_for_round.find(function(r){ return r.team_id === tid; });
+          var rev  = parseFloat(ro && ro.revenue_m || 0);
+          var cogs = parseFloat(ro && ro.cogs_m || 0);
+          var gp   = parseFloat(ro && ro.gross_profit_m || rev - cogs);
+          var ebit = parseFloat(ro && ro.ebit_m || gp * 0.7);
+          var units = parseInt(ro && ro.total_units_sold || 0);
+          var ebitPct = rev > 0 ? ebit / rev * 100 : 0;
+          var myVos = vos_for_round.filter(function(v){ return v.team_id === tid; });
+          var totalSharePct = myVos.reduce(function(s,v){ return s + parseFloat(v.market_share_pct||0); }, 0);
+          mktSeries[tid].revenue.push(rev);
+          mktSeries[tid].ebit.push(Math.round(ebitPct * 10) / 10);
+          mktSeries[tid].share.push(Math.round(totalSharePct * 10) / 10);
+          mktSeries[tid].units.push(units);
+          mktSeries[tid].score.push(0);
+        });
+      });
+
+      var allTeamsForChart = Object.keys(mktSeries).map(function(tid) {
+        return teamMap[tid] || { id:tid, name: (allRos.find(function(r){ return r.team_id===tid; })||{}).team_name||tid };
+      });
+
+      // Try to draw with market clearing data; fall back to old charts if no data
+      var hasData = Object.values(mktSeries).some(function(s){ return s.revenue.some(function(v){ return v>0; }); });
+      if (hasData) {
+        drawLineChart('chart-revenue','legend-revenue',rndLabels,allTeamsForChart,teamMap,mktSeries,'revenue','€','M');
+        drawLineChart('chart-ebit',   'legend-ebit',   rndLabels,allTeamsForChart,teamMap,mktSeries,'ebit',   '','%');
+        drawLineChart('chart-share',  'legend-share',  rndLabels,allTeamsForChart,teamMap,mktSeries,'share',  '','%');
+        drawLineChart('chart-units',  'legend-units',  rndLabels,allTeamsForChart,teamMap,mktSeries,'units',  '','');
+      }
+    }
+
+    // Fallback: try old simulation outcomes if market clearing has nothing
+    if (allRos.length === 0 && rounds.length > 0) {
+      await _loadLegacyCharts(rounds, allTeams, teamMap);
+    }
+
+    // ── 4. Vehicle performance cards ─────────────────────────
+    var myLatestVos = (allVos).filter(function(vo) {
+      return vo.team_id === teamId && vo.round_id === (dash.latest_round||{}).id;
+    });
+    renderVehicleCards(myLatestVos);
+
+    // ── 5. Segment competitive grid ──────────────────────────
+    renderSegmentGrid(dash.segment_grid || []);
+
+    // ── 6. All-team rankings ─────────────────────────────────
+    renderRankings(dash.rankings || [], teamId);
+
+    // ── 7. Multi-round history table ─────────────────────────
+    var myRos = allRos.filter(function(ro){ return ro.team_id === teamId; });
+    renderHistoryTable(myRos, allVos, teamId);
 
   } catch(e) {
     console.error('Performance data error:', e);
     showPerfNoData();
   }
+}
+
+async function _loadLegacyCharts(rounds, teams, teamMap) {
+  var roundLabels = [], teamSeries = {};
+  teams.forEach(function(t) { teamSeries[t.id] = {revenue:[],ebit:[],share:[],score:[],units:[]}; });
+  for (var ri = 0; ri < rounds.length; ri++) {
+    var rnd = rounds[ri];
+    try {
+      var oRes  = await fetch(API_URL+'/sessions/'+sessionId+'/rounds/'+rnd.id+'/outcomes');
+      var oData = await oRes.json();
+      if (!oData.outcomes || !oData.outcomes.length) continue;
+      roundLabels.push('Q'+rnd.quarter+' '+rnd.year);
+      var teamSegs = {};
+      (oData.segments||[]).forEach(function(s) {
+        if (!teamSegs[s.team_id]) teamSegs[s.team_id]={};
+        if (!teamSegs[s.team_id][s.segment_code]) teamSegs[s.team_id][s.segment_code]=s;
+      });
+      teams.forEach(function(t) {
+        var out   = (oData.outcomes||[]).find(function(o){ return o.team_id===t.id; });
+        var score = (oData.scores||[]).find(function(s){ return s.team_id===t.id; });
+        var segs  = Object.values(teamSegs[t.id]||{});
+        var share = segs.length ? segs.reduce(function(a,s){ return a+parseFloat(s.market_share_pct||0); },0)/segs.length : 0;
+        var rev   = parseFloat(out&&out.revenue_m||0);
+        var ebit  = rev>0 ? parseFloat(out&&out.ebit_m||0)/rev*100 : 0;
+        teamSeries[t.id].revenue.push(rev);
+        teamSeries[t.id].ebit.push(ebit);
+        teamSeries[t.id].share.push(share);
+        teamSeries[t.id].score.push(score&&score.composite_score||0);
+        teamSeries[t.id].units.push(parseInt(out&&out.total_units_sold||0));
+      });
+    } catch(e) {}
+  }
+  if (roundLabels.length > 0) {
+    drawLineChart('chart-revenue','legend-revenue',roundLabels,teams,teamMap,teamSeries,'revenue','€','M');
+    drawLineChart('chart-ebit',   'legend-ebit',   roundLabels,teams,teamMap,teamSeries,'ebit',   '','%');
+    drawLineChart('chart-share',  'legend-share',  roundLabels,teams,teamMap,teamSeries,'share',  '','%');
+    drawLineChart('chart-units',  'legend-units',  roundLabels,teams,teamMap,teamSeries,'units',  '','');
+  }
+}
+
+function renderVehicleCards(vos) {
+  var el = document.getElementById('perf-vehicle-cards');
+  if (!el) return;
+  if (!vos || !vos.length) {
+    el.innerHTML = '<div style="color:var(--muted2);font-size:11px;padding:12px 0;grid-column:1/-1;">No vehicles on-sale this round — submit a vehicle proposal to see performance data.</div>';
+    return;
+  }
+  var SEG_NL = typeof SEG_NAMES !== 'undefined' ? SEG_NAMES : {};
+  el.innerHTML = vos.map(function(vo) {
+    var util     = parseInt(vo.utility_score || 50);
+    var utilCol  = util >= 65 ? '#38d486' : util >= 45 ? '#c8a43c' : '#e03a52';
+    var share    = vo.market_share_pct != null ? parseFloat(vo.market_share_pct).toFixed(1)+'%' : '—';
+    var shareCol = parseFloat(vo.market_share_pct||0) > 20 ? 'var(--green)' : parseFloat(vo.market_share_pct||0) > 10 ? 'var(--gold)' : 'var(--text)';
+    var rev      = vo.revenue_m != null ? '€'+parseFloat(vo.revenue_m).toFixed(2)+'M' : '—';
+    var priceK   = vo.avg_price_eur ? '€'+(vo.avg_price_eur/1000).toFixed(1)+'k' : '—';
+    var units    = (vo.units_sold||0).toLocaleString();
+    var ebit     = vo.ebit_m != null ? '€'+parseFloat(vo.ebit_m).toFixed(2)+'M' : '—';
+    var segN     = SEG_NL[vo.segment_code] || vo.segment_code || '—';
+    return '<div class="pvc">'
+      + '<div class="pvc-name">'+(vo.vehicle_name||'Vehicle')+'</div>'
+      + '<div class="pvc-seg">'+segN+'</div>'
+      + '<div class="pvc-stat"><span>Market Share</span><span style="color:'+shareCol+';font-size:11px;font-weight:800;">'+share+'</span></div>'
+      + '<div class="pvc-stat"><span>Units / Q</span><span>'+units+'</span></div>'
+      + '<div class="pvc-stat"><span>Revenue</span><span style="color:var(--cyan)">'+rev+'</span></div>'
+      + '<div class="pvc-stat"><span>Avg Price</span><span>'+priceK+'</span></div>'
+      + '<div class="pvc-stat"><span>EBIT</span><span style="color:var(--orange)">'+ebit+'</span></div>'
+      + '<div style="display:flex;justify-content:space-between;align-items:center;margin-top:7px;">'
+        + '<span style="font-family:DM Mono,monospace;font-size:7px;color:var(--muted2);">UTILITY SCORE</span>'
+        + '<span style="font-family:Orbitron,sans-serif;font-size:11px;font-weight:700;color:'+utilCol+';">'+util+'</span>'
+      + '</div>'
+      + '<div class="pvc-util-bar"><div class="pvc-util-fill" style="width:'+util+'%;background:'+utilCol+';"></div></div>'
+      + '</div>';
+  }).join('');
+}
+
+function renderSegmentGrid(segGrid) {
+  var el = document.getElementById('perf-segment-grid');
+  if (!el) return;
+  if (!segGrid || !segGrid.length) { el.innerHTML = '<div style="color:var(--muted2);font-size:11px;grid-column:1/-1;">No data.</div>'; return; }
+  var SEG_NL = typeof SEG_NAMES !== 'undefined' ? SEG_NAMES : {};
+  el.innerHTML = segGrid.map(function(cell) {
+    var segName  = SEG_NL[cell.segment_code] || cell.segment_code;
+    var hasVeh   = cell.has_vehicle;
+    var util     = hasVeh && cell.utility_score != null ? parseInt(cell.utility_score) : null;
+    var utilCol  = util != null ? (util >= 65 ? '#38d486' : util >= 45 ? '#c8a43c' : '#e03a52') : 'var(--muted2)';
+    var vs       = cell.vs_benchmark != null ? (cell.vs_benchmark >= 0 ? '+' : '') + cell.vs_benchmark : null;
+    var vsCol    = cell.vs_benchmark != null ? (cell.vs_benchmark >= 0 ? 'var(--green)' : 'var(--red)') : 'var(--muted2)';
+    var share    = hasVeh && cell.market_share_pct != null ? parseFloat(cell.market_share_pct).toFixed(1)+'%' : null;
+    var borderL  = hasVeh ? '3px solid '+utilCol : '1px solid var(--border2)';
+    return '<div class="sgc" style="border-left:'+borderL+';">'
+      + '<div class="sgc-name">'+segName+'</div>'
+      + (hasVeh ? [
+          '<div class="sgc-score" style="color:'+utilCol+';">'+util+'</div>',
+          '<div class="sgc-share">'+(share||'—')+'</div>',
+          vs ? '<div style="font-family:DM Mono,monospace;font-size:7px;color:'+vsCol+';">'+vs+' vs bench</div>' : '',
+        ].join('') : '<div style="font-family:DM Mono,monospace;font-size:8px;color:var(--muted2);padding:4px 0;">—</div>')
+      + '</div>';
+  }).join('');
+}
+
+function renderRankings(rankings, myTeamId) {
+  var el = document.getElementById('perf-rankings');
+  if (!el) return;
+  if (!rankings || !rankings.length) { el.innerHTML = '<div style="color:var(--muted2);font-size:11px;">No ranking data.</div>'; return; }
+  var SEG_NL = typeof SEG_NAMES !== 'undefined' ? SEG_NAMES : {};
+  var h = '<div class="rk-row rk-hdr">'
+    + '<span>#</span><span>Team</span><span style="text-align:right;">Revenue</span>'
+    + '<span style="text-align:right;">Margin</span><span style="text-align:right;">Units</span></div>';
+  rankings.forEach(function(ro, i) {
+    var isMe  = ro.team_id === myTeamId;
+    var rev   = parseFloat(ro.revenue_m||0);
+    var gm    = ro.gross_margin_pct != null ? parseFloat(ro.gross_margin_pct).toFixed(1)+'%'
+              : (ro.cogs_m && rev > 0 ? ((1-parseFloat(ro.cogs_m)/rev)*100).toFixed(1)+'%' : '—');
+    var gmCol = parseFloat(gm) > 20 ? 'var(--green)' : parseFloat(gm) > 10 ? 'var(--gold)' : 'var(--red)';
+    var rankCol = i === 0 ? '#e8c060' : i === 1 ? '#b0c0d0' : i === 2 ? '#c8a060' : 'var(--muted2)';
+    h += '<div class="rk-row" style="'+(isMe?'background:rgba(50,204,192,.06);border-radius:3px;':'')+'">'
+      + '<span style="font-family:Orbitron,monospace;font-size:11px;font-weight:700;color:'+rankCol+';">'+(i+1)+'</span>'
+      + '<span style="font-size:11px;color:'+(isMe?'var(--cyan)':'var(--text)')+';font-weight:'+(isMe?'700':'400')+';">'
+        +(ro.team_name||'?')+(isMe?' ★':'')+'</span>'
+      + '<span style="text-align:right;font-family:DM Mono,monospace;font-size:9px;color:var(--cyan);">€'+rev.toFixed(1)+'M</span>'
+      + '<span style="text-align:right;font-family:DM Mono,monospace;font-size:9px;color:'+gmCol+';">'+gm+'</span>'
+      + '<span style="text-align:right;font-family:DM Mono,monospace;font-size:9px;color:var(--muted2);">'+parseInt(ro.total_units_sold||0).toLocaleString()+'</span>'
+      + '</div>';
+  });
+  el.innerHTML = h;
+}
+
+function renderHistoryTable(myRos, allVos, myTeamId) {
+  var el = document.getElementById('perf-history-table');
+  if (!el) return;
+  if (!myRos || !myRos.length) {
+    el.innerHTML = '<div style="color:var(--muted2);font-size:11px;">No history — run market simulation for at least one round.</div>';
+    return;
+  }
+  var sorted = [...myRos].sort(function(a,b){ return (a.round_number||0) - (b.round_number||0); });
+  var h = '<table class="ht"><thead><tr>'
+    + '<th>Round</th><th>Revenue €M</th><th>Units</th><th>GM%</th><th>EBIT €M</th><th>Vehicles</th><th>Rank</th>'
+    + '</tr></thead><tbody>';
+
+  sorted.forEach(function(ro, i) {
+    var rev   = parseFloat(ro.revenue_m||0);
+    var cogs  = parseFloat(ro.cogs_m||0);
+    var gp    = parseFloat(ro.gross_profit_m || rev - cogs);
+    var ebit  = parseFloat(ro.ebit_m || gp * 0.70);
+    var gm    = rev > 0 ? (gp / rev * 100).toFixed(1) : '0.0';
+    var gmCol = parseFloat(gm) > 20 ? 'var(--green)' : parseFloat(gm) > 10 ? 'var(--gold)' : 'var(--red)';
+    var units = parseInt(ro.total_units_sold||0);
+    var rank  = ro.revenue_rank != null ? '#'+ro.revenue_rank : '—';
+    // Count vehicles from vehicle_outcomes
+    var roundVos = allVos.filter(function(v){ return v.team_id === myTeamId && v.round_id === ro.round_id; });
+    var vehList  = roundVos.map(function(v){ return v.vehicle_name||'V'; }).filter(function(x,i,a){ return a.indexOf(x)===i; }).join(', ') || '—';
+    var bg = i % 2 === 0 ? '' : 'background:rgba(255,255,255,.015);';
+    h += '<tr style="'+bg+'">'
+      + '<td style="color:var(--gold);font-weight:600;">'+(ro.round_label||'R'+ro.round_number)+'</td>'
+      + '<td style="color:var(--cyan);">€'+rev.toFixed(2)+'M</td>'
+      + '<td>'+units.toLocaleString()+'</td>'
+      + '<td style="color:'+gmCol+';">'+gm+'%</td>'
+      + '<td style="color:var(--orange);">€'+ebit.toFixed(2)+'M</td>'
+      + '<td style="color:var(--muted2);font-size:8px;">'+vehList+'</td>'
+      + '<td style="color:var(--muted2);">'+rank+'</td>'
+      + '</tr>';
+  });
+  h += '</tbody></table>';
+  el.innerHTML = h;
 }
 
 function showPerfNoData() {
