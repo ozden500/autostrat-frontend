@@ -12257,15 +12257,19 @@ function calcPropBizCase() {
 function _showSOPConflict(blockers, sopYear, sopQuarter) {
   var el = document.getElementById('prop-sop-conflict');
   if (!el) return;
+  if (!blockers || blockers.length === 0) { el.style.display = 'none'; return; }
 
   // Compute earliest viable SOP from max ready date across blockers
-  var maxQ = 0;
+  var maxQ = -1;
   blockers.forEach(function(m) {
     if (m.ready_year) {
       var q = (m.ready_year - 2025) * 4 + (m.ready_quarter - 1);
       if (q > maxQ) maxQ = q;
     }
   });
+  var sopQ = (sopYear - 2025) * 4 + (sopQuarter - 1);
+  // If no ready dates known, suggest one quarter after SOP as a safe default
+  if (maxQ < 0) maxQ = sopQ + 1;
   var minSopYear = 2025 + Math.floor(maxQ / 4);
   var minSopQtr  = (maxQ % 4) + 1;
   var sopLabel   = 'Q' + sopQuarter + ' ' + sopYear;
@@ -12418,9 +12422,14 @@ async function confirmProposal() {
         var chkData = await chk.json();
         if (!chkData.ok) {
           var blockers = (chkData.modules||[]).filter(function(m){return m.blocks_sop;});
-          _showSOPConflict(blockers, sopYear, sopQuarter||1);
-          if (btn) { btn.disabled = false; btn.textContent = '\u2713 SUBMIT PROPOSAL'; }
-          return;
+          if (blockers.length > 0) {
+            _showSOPConflict(blockers, sopYear, sopQuarter||1);
+            if (btn) { btn.disabled = false; btn.textContent = '\u2713 SUBMIT PROPOSAL'; }
+            return;
+          }
+          // ok:false but no SOP-blocking modules \u2014 backend issue (e.g. module lookup failed);
+          // let the PATCH endpoint handle final validation rather than showing a false conflict.
+          console.warn('Readiness check ok:false but no blocking modules:', chkData.modules);
         }
       } catch(e) { console.warn('Readiness check failed, continuing:', e); }
     }
