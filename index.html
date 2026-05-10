@@ -5709,7 +5709,7 @@ async function buildEngineeringDashboard() {
   }
 }
 
-function _qLabel(qabs){ return 'Y'+(Math.floor(qabs/4)+1)+'Q'+(qabs%4+1); }
+function _qLabel(qabs){ return (2025+Math.floor(qabs/4))+' Q'+(qabs%4+1); }
 
 function _renderEngineeringDashboard(mods, vehicles, todayQabs) {
   var el = document.getElementById('eng-dashboard-content');
