@@ -7570,8 +7570,11 @@ document.addEventListener('click', function(e) {
     showMIReport('segment');
   }
   if (action === 'prop-com-input')  { onPropComInput(btn); }
-  if (action === 'prop-ops-input')  { onPropOpsInput(btn); }
-  if (action === 'prop-ops-auto')   { onPropOpsAuto(btn); }
+  if (action === 'prop-ops-input')    { onPropOpsInput(btn); }
+  if (action === 'prop-ops-auto')     { onPropOpsAuto(btn); }
+  if (action === 'prop-ops-sourcing') { onPropOpsSourcingSelect(btn.getAttribute('data-key')); }
+  if (action === 'prop-ops-quality')  { onPropOpsQualitySelect(btn.getAttribute('data-key')); }
+  if (action === 'prop-ops-shift')    { onPropOpsShiftSelect(btn.getAttribute('data-key')); }
 });
 
 
@@ -13845,6 +13848,65 @@ var AUTOMATION_LEVELS = [
   {level:4, label:'Highly automated',inv_factor:2.4, labour_factor:0.35},
 ];
 
+var INDUSTRIAL_COUNTRIES = {
+  NA: [
+    {code:'US',  name:'United States',  region:'NA',   labor_eur_hr:38, elec_eur_kwh:0.080, logistics_idx:1.00},
+    {code:'MX',  name:'Mexico',         region:'NA',   labor_eur_hr:5,  elec_eur_kwh:0.065, logistics_idx:1.15},
+    {code:'CA',  name:'Canada',         region:'NA',   labor_eur_hr:34, elec_eur_kwh:0.070, logistics_idx:1.05},
+  ],
+  EU: [
+    {code:'DE',  name:'Germany',         region:'EU',  labor_eur_hr:52, elec_eur_kwh:0.180, logistics_idx:0.90},
+    {code:'FR',  name:'France',          region:'EU',  labor_eur_hr:47, elec_eur_kwh:0.130, logistics_idx:0.95},
+    {code:'IT',  name:'Italy',           region:'EU',  labor_eur_hr:40, elec_eur_kwh:0.200, logistics_idx:1.00},
+    {code:'ES',  name:'Spain',           region:'EU',  labor_eur_hr:28, elec_eur_kwh:0.160, logistics_idx:1.05},
+    {code:'PL',  name:'Poland',          region:'EU',  labor_eur_hr:14, elec_eur_kwh:0.110, logistics_idx:1.10},
+    {code:'CZ',  name:'Czech Republic',  region:'EU',  labor_eur_hr:15, elec_eur_kwh:0.120, logistics_idx:1.10},
+    {code:'SK',  name:'Slovakia',        region:'EU',  labor_eur_hr:13, elec_eur_kwh:0.115, logistics_idx:1.12},
+    {code:'RO',  name:'Romania',         region:'EU',  labor_eur_hr:10, elec_eur_kwh:0.100, logistics_idx:1.20},
+    {code:'TR',  name:'Turkey',          region:'EU',  labor_eur_hr:8,  elec_eur_kwh:0.090, logistics_idx:1.25},
+    {code:'GB',  name:'United Kingdom',  region:'EU',  labor_eur_hr:44, elec_eur_kwh:0.250, logistics_idx:1.08},
+  ],
+  MEA: [
+    {code:'ZA',  name:'South Africa',    region:'MEA', labor_eur_hr:7,  elec_eur_kwh:0.060, logistics_idx:1.30},
+    {code:'MA',  name:'Morocco',         region:'MEA', labor_eur_hr:3,  elec_eur_kwh:0.075, logistics_idx:1.35},
+    {code:'EG',  name:'Egypt',           region:'MEA', labor_eur_hr:2,  elec_eur_kwh:0.050, logistics_idx:1.45},
+    {code:'NG',  name:'Nigeria',         region:'MEA', labor_eur_hr:2,  elec_eur_kwh:0.055, logistics_idx:1.60},
+    {code:'SA_', name:'Saudi Arabia',    region:'MEA', labor_eur_hr:12, elec_eur_kwh:0.040, logistics_idx:1.20},
+  ],
+  SA: [
+    {code:'BR',  name:'Brazil',          region:'SA',  labor_eur_hr:9,  elec_eur_kwh:0.095, logistics_idx:1.25},
+    {code:'AR',  name:'Argentina',       region:'SA',  labor_eur_hr:6,  elec_eur_kwh:0.070, logistics_idx:1.35},
+    {code:'CO',  name:'Colombia',        region:'SA',  labor_eur_hr:5,  elec_eur_kwh:0.085, logistics_idx:1.40},
+  ],
+  APAC: [
+    {code:'CN',  name:'China',           region:'APAC',labor_eur_hr:9,  elec_eur_kwh:0.075, logistics_idx:1.05},
+    {code:'JP',  name:'Japan',           region:'APAC',labor_eur_hr:35, elec_eur_kwh:0.165, logistics_idx:0.95},
+    {code:'KR',  name:'South Korea',     region:'APAC',labor_eur_hr:24, elec_eur_kwh:0.105, logistics_idx:1.00},
+    {code:'IN',  name:'India',           region:'APAC',labor_eur_hr:4,  elec_eur_kwh:0.080, logistics_idx:1.20},
+    {code:'TH',  name:'Thailand',        region:'APAC',labor_eur_hr:6,  elec_eur_kwh:0.090, logistics_idx:1.15},
+    {code:'ID',  name:'Indonesia',       region:'APAC',labor_eur_hr:3,  elec_eur_kwh:0.070, logistics_idx:1.25},
+  ],
+};
+
+var SOURCING_STRATEGIES = [
+  {key:'LOCAL',    label:'Local Sourcing',  desc:'>60% local content · Supply chain resilience · Higher material cost',   resilience:'★★★', mat_adj:+0.12},
+  {key:'BALANCED', label:'Balanced',        desc:'30–60% local content · Standard OEM approach · Moderate risk',        resilience:'★★',  mat_adj:0.00},
+  {key:'GLOBAL',   label:'Global Sourcing', desc:'<30% local content · Cost-driven · Higher supply chain risk',              resilience:'★',   mat_adj:-0.08},
+];
+
+var QUALITY_TIERS = [
+  {key:'BASIC',      label:'Basic QMS',        warranty_pct:0.025, pp100:150, unit_add_eur:  0, desc:'2.5% warranty · 150 PP100 · Industry minimum'},
+  {key:'STANDARD',   label:'Standard',         warranty_pct:0.018, pp100:100, unit_add_eur:120, desc:'1.8% warranty · 100 PP100 · Standard OEM baseline'},
+  {key:'PREMIUM',    label:'Premium Quality',  warranty_pct:0.012, pp100: 70, unit_add_eur:280, desc:'1.2% warranty · 70 PP100 · Premium segment quality'},
+  {key:'WORLD_CLASS',label:'World-Class (TPS)',warranty_pct:0.007, pp100: 40, unit_add_eur:500, desc:'0.7% warranty · 40 PP100 · Toyota Production System'},
+];
+
+var SHIFT_STRUCTURES = [
+  {key:'SINGLE',      label:'Single Shift', desc:'8h / 5 days',  cap_factor:1.00},
+  {key:'DOUBLE',      label:'Double Shift', desc:'16h / 6 days', cap_factor:1.80},
+  {key:'CONTINENTAL', label:'Continental',  desc:'24h / 7 days', cap_factor:2.60},
+];
+
 function advanceToOperations() {
   var s7 = document.getElementById('prop-sec-7-status');
   if (s7) {
@@ -13881,6 +13943,13 @@ async function buildOperationsSection() {
       automation: 2
     }];
   }
+  // Init industrial parameter defaults
+  if (!_prop.operations.assembly_region)       _prop.operations.assembly_region       = 'EU';
+  if (!_prop.operations.assembly_country_code) _prop.operations.assembly_country_code = 'DE';
+  if (!_prop.operations.assembly_country_name) _prop.operations.assembly_country_name = 'Germany';
+  if (!_prop.operations.sourcing_strategy)     _prop.operations.sourcing_strategy     = 'BALANCED';
+  if (!_prop.operations.quality_tier)          _prop.operations.quality_tier          = 'STANDARD';
+  if (!_prop.operations.shift_structure)       _prop.operations.shift_structure       = 'DOUBLE';
 
   if (plants.length === 0) {
     el.innerHTML = '<div style="color:var(--muted2);font-size:11px;padding:16px;background:var(--s3);border-radius:3px;">' +
@@ -13889,9 +13958,100 @@ async function buildOperationsSection() {
     return;
   }
 
-  var html = '<div style="margin-bottom:12px;font-size:11px;color:var(--muted2);">Allocate production capacity from your active vehicle plants. Automation level affects tooling investment and labour requirements.</div>';
+  var _opsReg      = _prop.operations.assembly_region;
+  var _opsCode     = _prop.operations.assembly_country_code;
+  var _opsSrc      = _prop.operations.sourcing_strategy;
+  var _opsQual     = _prop.operations.quality_tier;
+  var _opsShift    = _prop.operations.shift_structure;
+  var _opsCtryList = INDUSTRIAL_COUNTRIES[_opsReg] || INDUSTRIAL_COUNTRIES['EU'];
+  var _defCtry     = _opsCtryList.find(function(c){return c.code===_opsCode;}) || _opsCtryList[0] || {labor_eur_hr:52,elec_eur_kwh:0.180,logistics_idx:0.90};
 
-  // Plant allocation table
+  var TH_STYLE  = 'font-family:DM Mono,monospace;font-size:8px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:8px;display:block;';
+  var CARD_BASE = 'border-radius:4px;padding:12px;cursor:pointer;border:1px solid var(--border2);background:var(--s2);';
+  var CARD_SEL  = 'border-radius:4px;padding:12px;cursor:pointer;border:1px solid var(--gold);background:var(--s3);';
+
+  var html = '';
+
+  // ── BLOCK 1: ASSEMBLY LOCATION ─────────────────────────────────
+  html += '<div style="margin-bottom:18px;">';
+  html += '<div style="' + TH_STYLE + '">Assembly Location</div>';
+  html += '<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">';
+  html += '<div><div style="font-size:9px;color:var(--muted2);margin-bottom:3px;">Region</div>';
+  html += '<select id="prop-ops-region" onchange="onPropOpsRegionChange(this)" style="background:var(--s2);border:1px solid var(--border2);color:var(--text);border-radius:2px;padding:5px 8px;font-size:11px;font-family:DM Mono,monospace;">';
+  ['NA','EU','MEA','SA','APAC'].forEach(function(r) {
+    html += '<option value="' + r + '"' + (r === _opsReg ? ' selected' : '') + '>' + r + '</option>';
+  });
+  html += '</select></div>';
+  html += '<div><div style="font-size:9px;color:var(--muted2);margin-bottom:3px;">Country</div>';
+  html += '<select id="prop-ops-country" onchange="onPropOpsCountryChange(this)" style="background:var(--s2);border:1px solid var(--border2);color:var(--text);border-radius:2px;padding:5px 8px;font-size:11px;font-family:DM Mono,monospace;">';
+  _opsCtryList.forEach(function(c) {
+    html += '<option value="' + c.code + '"' + (c.code === _opsCode ? ' selected' : '') + '>' + c.name + '</option>';
+  });
+  html += '</select></div>';
+  html += '<div style="display:flex;gap:16px;align-items:center;padding:7px 14px;background:var(--s3);border-radius:3px;border:1px solid var(--border);">';
+  html += '<div style="text-align:center;"><div style="font-size:8px;color:var(--muted2);">Labour</div><div style="font-family:DM Mono,monospace;font-size:11px;color:var(--white);" id="prop-ops-labour-val">€' + _defCtry.labor_eur_hr + '/hr</div></div>';
+  html += '<div style="text-align:center;"><div style="font-size:8px;color:var(--muted2);">Electricity</div><div style="font-family:DM Mono,monospace;font-size:11px;color:var(--white);" id="prop-ops-elec-val">€' + _defCtry.elec_eur_kwh.toFixed(3) + '/kWh</div></div>';
+  html += '<div style="text-align:center;"><div style="font-size:8px;color:var(--muted2);">Logistics idx</div><div style="font-family:DM Mono,monospace;font-size:11px;color:var(--white);" id="prop-ops-logistics-val">' + _defCtry.logistics_idx.toFixed(2) + '</div></div>';
+  html += '</div></div></div>';
+
+  // ── BLOCK 2: SUPPLY CHAIN STRATEGY ─────────────────────────────
+  html += '<div style="margin-bottom:18px;">';
+  html += '<div style="' + TH_STYLE + '">Supply Chain Strategy</div>';
+  html += '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;">';
+  SOURCING_STRATEGIES.forEach(function(s) {
+    var sel   = s.key === _opsSrc;
+    var badge = s.mat_adj > 0 ? '+' + Math.round(s.mat_adj*100) + '% mat cost' :
+                s.mat_adj < 0 ? Math.round(s.mat_adj*100) + '% mat cost' : 'baseline';
+    var bcol  = s.mat_adj > 0 ? 'var(--orange)' : s.mat_adj < 0 ? 'var(--green)' : 'var(--muted2)';
+    html += '<div style="' + (sel ? CARD_SEL : CARD_BASE) + '" data-action="prop-ops-sourcing" data-key="' + s.key + '">';
+    html += '<div style="font-family:DM Mono,monospace;font-size:10px;font-weight:600;color:var(--white);margin-bottom:4px;">' + s.label + '</div>';
+    html += '<div style="font-size:11px;color:var(--cyan);margin-bottom:5px;">' + s.resilience + ' resilience</div>';
+    html += '<div style="font-family:DM Mono,monospace;font-size:9px;color:' + bcol + ';margin-bottom:5px;">' + badge + '</div>';
+    html += '<div style="font-size:9px;color:var(--muted2);">' + s.desc + '</div></div>';
+  });
+  html += '</div></div>';
+
+  // ── BLOCK 3: QUALITY INVESTMENT PROGRAM ────────────────────────
+  html += '<div style="margin-bottom:18px;">';
+  html += '<div style="' + TH_STYLE + '">Quality Investment Program</div>';
+  html += '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;">';
+  QUALITY_TIERS.forEach(function(q) {
+    var sel = q.key === _opsQual;
+    html += '<div style="' + (sel ? CARD_SEL : CARD_BASE) + '" data-action="prop-ops-quality" data-key="' + q.key + '">';
+    html += '<div style="font-family:DM Mono,monospace;font-size:10px;font-weight:600;color:var(--white);margin-bottom:4px;">' + q.label + '</div>';
+    html += '<div style="font-family:DM Mono,monospace;font-size:9px;color:var(--orange);margin-bottom:2px;">' + (q.warranty_pct*100).toFixed(1) + '% warranty</div>';
+    html += '<div style="font-family:DM Mono,monospace;font-size:9px;color:var(--muted2);margin-bottom:2px;">' + q.pp100 + ' PP100</div>';
+    html += '<div style="font-family:DM Mono,monospace;font-size:9px;color:var(--gold);">+€' + q.unit_add_eur + '/unit</div></div>';
+  });
+  html += '</div></div>';
+
+  // ── BLOCK 4: PRODUCTION SCHEDULE ───────────────────────────────
+  html += '<div style="margin-bottom:18px;">';
+  html += '<div style="' + TH_STYLE + '">Production Schedule</div>';
+  html += '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;">';
+  SHIFT_STRUCTURES.forEach(function(sh) {
+    var sel = sh.key === _opsShift;
+    html += '<div style="' + (sel ? CARD_SEL : CARD_BASE) + '" data-action="prop-ops-shift" data-key="' + sh.key + '">';
+    html += '<div style="font-family:DM Mono,monospace;font-size:10px;font-weight:600;color:var(--white);margin-bottom:4px;">' + sh.label + '</div>';
+    html += '<div style="font-size:10px;color:var(--muted2);margin-bottom:4px;">' + sh.desc + '</div>';
+    html += '<div style="font-family:DM Mono,monospace;font-size:11px;color:var(--cyan);">' + sh.cap_factor.toFixed(2) + '× capacity</div></div>';
+  });
+  html += '</div></div>';
+
+  // ── BLOCK 5: INDUSTRIAL COST PREVIEW ───────────────────────────
+  html += '<div id="prop-ops-cost-summary" style="background:var(--s3);border:1px solid var(--border2);border-radius:4px;padding:14px 16px;margin-bottom:18px;">';
+  html += '<div style="' + TH_STYLE + '">Industrial Cost Preview</div>';
+  html += '<div style="display:grid;grid-template-columns:1fr auto;gap:4px 24px;font-size:11px;align-items:center;">';
+  html += '<span style="color:var(--muted2);">Base unit TPC</span><span id="prop-ops-sum-base" style="font-family:DM Mono,monospace;text-align:right;">—</span>';
+  html += '<span style="color:var(--muted2);">Country labour adj</span><span id="prop-ops-sum-labour" style="font-family:DM Mono,monospace;text-align:right;">—</span>';
+  html += '<span style="color:var(--muted2);">Sourcing material adj</span><span id="prop-ops-sum-src" style="font-family:DM Mono,monospace;text-align:right;">—</span>';
+  html += '<span style="color:var(--muted2);">Quality add</span><span id="prop-ops-sum-qual" style="font-family:DM Mono,monospace;text-align:right;">—</span>';
+  html += '<span style="color:var(--white);font-weight:600;">Effective unit COGS</span><span id="prop-ops-sum-total" style="font-family:DM Mono,monospace;text-align:right;font-weight:700;color:var(--cyan);">—</span>';
+  html += '<span style="color:var(--muted2);">Annual capacity (with shift)</span><span id="prop-ops-sum-cap" style="font-family:DM Mono,monospace;text-align:right;">—</span>';
+  html += '</div></div>';
+
+  // ── BLOCK 6: PLANT ALLOCATION TABLE ────────────────────────────
+  html += '<div style="' + TH_STYLE + '">Plant Allocation &amp; Automation</div>';
   html += '<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;">';
   html += '<thead><tr>' +
     '<th style="font-family:DM Mono,monospace;font-size:8px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);padding:8px 12px;background:var(--s2);border-bottom:1px solid var(--border);text-align:left;">Plant</th>' +
@@ -13954,6 +14114,7 @@ async function buildOperationsSection() {
     'background:var(--goldl);color:var(--gold);cursor:pointer;">Continue \u2192 Business Case</button></div>';
 
   el.innerHTML = html;
+  renderPropOpsCostSummary();
 }
 
 function onPropOpsInput(input) {
@@ -14002,18 +14163,142 @@ function updatePropOpsTooling(pid) {
   var toolingM = Math.round(plant.capacity_k * plant.alloc_pct/100 * 5 * autoLvl.inv_factor);
   var el = document.getElementById('prop-ops-tooling-' + pid);
   if (el) el.textContent = '\u20ac' + toolingM + 'M';
+  renderPropOpsCostSummary();
+}
+
+function onPropOpsRegionChange(sel) {
+  var region = sel.value;
+  _prop.operations.assembly_region = region;
+  var countries = INDUSTRIAL_COUNTRIES[region] || [];
+  var countrySel = document.getElementById('prop-ops-country');
+  if (countrySel) {
+    countrySel.innerHTML = countries.map(function(c) {
+      return '<option value="' + c.code + '">' + c.name + '</option>';
+    }).join('');
+    var first = countries[0];
+    if (first) {
+      _prop.operations.assembly_country_code = first.code;
+      _prop.operations.assembly_country_name = first.name;
+    }
+  }
+  updatePropOpsRateDisplay();
+  renderPropOpsCostSummary();
+}
+
+function onPropOpsCountryChange(sel) {
+  var region    = (_prop.operations && _prop.operations.assembly_region) || 'EU';
+  var countries = INDUSTRIAL_COUNTRIES[region] || [];
+  var country   = countries.find(function(c){ return c.code === sel.value; });
+  if (country) {
+    _prop.operations.assembly_country_code = country.code;
+    _prop.operations.assembly_country_name = country.name;
+  }
+  updatePropOpsRateDisplay();
+  renderPropOpsCostSummary();
+}
+
+function updatePropOpsRateDisplay() {
+  var region    = (_prop.operations && _prop.operations.assembly_region) || 'EU';
+  var code      = (_prop.operations && _prop.operations.assembly_country_code) || 'DE';
+  var countries = INDUSTRIAL_COUNTRIES[region] || [];
+  var c = countries.find(function(x){ return x.code === code; }) || countries[0];
+  if (!c) return;
+  var lEl = document.getElementById('prop-ops-labour-val');
+  var eEl = document.getElementById('prop-ops-elec-val');
+  var xEl = document.getElementById('prop-ops-logistics-val');
+  if (lEl) lEl.textContent = '\u20ac' + c.labor_eur_hr + '/hr';
+  if (eEl) eEl.textContent = '\u20ac' + c.elec_eur_kwh.toFixed(3) + '/kWh';
+  if (xEl) xEl.textContent = c.logistics_idx.toFixed(2);
+}
+
+function onPropOpsSourcingSelect(key) {
+  _prop.operations.sourcing_strategy = key;
+  document.querySelectorAll('[data-action="prop-ops-sourcing"]').forEach(function(el) {
+    el.classList.toggle('selected', el.getAttribute('data-key') === key);
+  });
+  renderPropOpsCostSummary();
+}
+
+function onPropOpsQualitySelect(key) {
+  _prop.operations.quality_tier = key;
+  document.querySelectorAll('[data-action="prop-ops-quality"]').forEach(function(el) {
+    el.classList.toggle('selected', el.getAttribute('data-key') === key);
+  });
+  renderPropOpsCostSummary();
+}
+
+function onPropOpsShiftSelect(key) {
+  _prop.operations.shift_structure = key;
+  document.querySelectorAll('[data-action="prop-ops-shift"]').forEach(function(el) {
+    el.classList.toggle('selected', el.getAttribute('data-key') === key);
+  });
+  renderPropOpsCostSummary();
+}
+
+function renderPropOpsCostSummary() {
+  var tpcNum = 0;
+  ['platform','pwt','epwt','tophat','eands'].forEach(function(k) {
+    var p = _prop[k];
+    if (p && p.module) tpcNum += parseFloat(p.module.per_unit_tpc_eur||0);
+  });
+  var region    = (_prop.operations && _prop.operations.assembly_region) || 'EU';
+  var code      = (_prop.operations && _prop.operations.assembly_country_code) || 'DE';
+  var countries = INDUSTRIAL_COUNTRIES[region] || [];
+  var country   = countries.find(function(c){ return c.code === code; }) || {labor_eur_hr:52};
+  var srcKey    = (_prop.operations && _prop.operations.sourcing_strategy) || 'BALANCED';
+  var srcTier   = SOURCING_STRATEGIES.find(function(s){ return s.key === srcKey; }) || SOURCING_STRATEGIES[1];
+  var qualKey   = (_prop.operations && _prop.operations.quality_tier) || 'STANDARD';
+  var qualTier  = QUALITY_TIERS.find(function(q){ return q.key === qualKey; }) || QUALITY_TIERS[1];
+  var shiftKey  = (_prop.operations && _prop.operations.shift_structure) || 'DOUBLE';
+  var shift     = SHIFT_STRUCTURES.find(function(s){ return s.key === shiftKey; }) || SHIFT_STRUCTURES[1];
+
+  var labAdj  = tpcNum * 0.20 * (country.labor_eur_hr / 52 - 1);
+  var srcAdj  = tpcNum * 0.50 * srcTier.mat_adj;
+  var qualAdd = qualTier.unit_add_eur;
+  var adjTpc  = tpcNum + labAdj + srcAdj + qualAdd;
+
+  var opPlants = (_prop.operations && _prop.operations.plants) || [];
+  var rawCapK  = opPlants.reduce(function(s,p){ return s + (p.capacity_k * p.alloc_pct/100); }, 0);
+  var annCapK  = Math.round(rawCapK * shift.cap_factor);
+
+  function _st(id, text, color) {
+    var el = document.getElementById(id);
+    if (!el) return;
+    el.textContent = text;
+    if (color) el.style.color = color;
+  }
+  _st('prop-ops-sum-base',   tpcNum > 0 ? '\u20ac' + Math.round(tpcNum) : '\u2014');
+  _st('prop-ops-sum-labour', (labAdj >= 0 ? '+' : '') + '\u20ac' + Math.round(labAdj),
+      labAdj <= 0 ? 'var(--green)' : 'var(--orange)');
+  _st('prop-ops-sum-src',    (srcAdj >= 0 ? '+' : '') + '\u20ac' + Math.round(srcAdj),
+      srcAdj <= 0 ? 'var(--green)' : 'var(--orange)');
+  _st('prop-ops-sum-qual',   '+\u20ac' + qualAdd);
+  _st('prop-ops-sum-total',  tpcNum > 0 ? '\u20ac' + Math.round(adjTpc) : '\u2014',
+      adjTpc <= tpcNum ? 'var(--green)' : 'var(--cyan)');
+  _st('prop-ops-sum-cap',    annCapK > 0 ? annCapK + 'k units/yr' : '\u2014');
 }
 
 // ══ STEP 9: BUSINESS CASE KPIs ════════════════════════════
 
-function advanceToBizCase() {
+async function advanceToBizCase() {
   var s8 = document.getElementById('prop-sec-8-status');
   if (s8) {
-    var plants = (_prop.operations && _prop.operations.plants) || [];
+    var plants    = (_prop.operations && _prop.operations.plants) || [];
     var allocated = plants.filter(function(p){return p.alloc_pct>0;});
-    s8.textContent = '\u2713 ' + allocated.length + ' plant' + (allocated.length!==1?'s':'') + ' allocated';
+    var cName     = (_prop.operations && _prop.operations.assembly_country_name) || '';
+    s8.textContent = '\u2713 ' + allocated.length + ' plant' + (allocated.length!==1?'s':'') + ' allocated' +
+      (cName ? ' \u00b7 ' + cName : '');
   }
   setPropStep(9);
+  if (_prop.study && _prop.study.id && _prop.operations) {
+    try {
+      await fetch(API_URL + '/vehicles/' + _prop.study.id, {
+        method:  'PATCH',
+        headers: {'Content-Type':'application/json'},
+        body:    JSON.stringify({operations_plan: _prop.operations})
+      });
+    } catch(e) { console.warn('ops save failed', e); }
+  }
   calcPropBizCase();
 }
 
@@ -14028,19 +14313,34 @@ function calcPropBizCase() {
     if (p && p.module) tpcNum += parseFloat(p.module.per_unit_tpc_eur||0);
   });
 
+  // ── Operations adjustments (reference: Germany €52/hr) ──────────
+  var _bcReg     = (_prop.operations && _prop.operations.assembly_region) || 'EU';
+  var _bcCode    = (_prop.operations && _prop.operations.assembly_country_code) || 'DE';
+  var _bcCtries  = INDUSTRIAL_COUNTRIES[_bcReg] || [];
+  var _bcCountry = _bcCtries.find(function(c){ return c.code===_bcCode; }) || {labor_eur_hr:52};
+  var _bcSrcKey  = (_prop.operations && _prop.operations.sourcing_strategy) || 'BALANCED';
+  var _bcSrc     = SOURCING_STRATEGIES.find(function(s){ return s.key===_bcSrcKey; }) || SOURCING_STRATEGIES[1];
+  var _bcQualKey = (_prop.operations && _prop.operations.quality_tier) || 'STANDARD';
+  var _bcQual    = QUALITY_TIERS.find(function(q){ return q.key===_bcQualKey; }) || QUALITY_TIERS[1];
+  var _bcLabAdj  = tpcNum * 0.20 * (_bcCountry.labor_eur_hr / 52 - 1);
+  var _bcSrcAdj  = tpcNum * 0.50 * _bcSrc.mat_adj;
+  var adjTpcNum  = tpcNum + _bcLabAdj + _bcSrcAdj + _bcQual.unit_add_eur;
+  // ── End operations adjustments ───────────────────────────────────
+
   // Build quarterly FCF
   var fcfArr = [];
   comYears.forEach(function(row) {
     for (var q = 0; q < 4; q++) {
-      var unitsQ   = Math.round(row.volume / 4);
-      var priceEur = row.price * 1000 * (1 - row.discount/100);
-      var revM     = unitsQ * priceEur / 1e6;
-      var cogsM    = tpcNum > 0 ? unitsQ * tpcNum / 1e6 : revM * 0.70;
-      var gpM      = revM - cogsM;
-      var sgaM     = revM * 0.06;
-      var rdM      = revM * 0.04;
-      var ebitM    = gpM - sgaM - rdM;
-      var fcfM     = ebitM * 0.75; // after 25% tax
+      var unitsQ    = Math.round(row.volume / 4);
+      var priceEur  = row.price * 1000 * (1 - row.discount/100);
+      var revM      = unitsQ * priceEur / 1e6;
+      var cogsM     = adjTpcNum > 0 ? unitsQ * adjTpcNum / 1e6 : revM * 0.70;
+      var gpM       = revM - cogsM;
+      var sgaM      = revM * 0.06;
+      var rdM       = revM * 0.04;
+      var warrantyM = revM * _bcQual.warranty_pct;
+      var ebitM     = gpM - sgaM - rdM - warrantyM;
+      var fcfM      = ebitM * 0.75; // after 25% tax
       fcfArr.push({rev:revM, cogs:cogsM, gp:gpM, ebit:ebitM, fcf:fcfM});
     }
   });
