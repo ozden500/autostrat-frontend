@@ -7570,6 +7570,8 @@ document.addEventListener('click', function(e) {
     showMIReport('segment');
   }
   if (action === 'prop-com-input')        { onPropComInput(btn); }
+  if (action === 'prop-com-mkt-toggle')   { onPropComMarketToggle(btn.getAttribute('data-region')); }
+  if (action === 'prop-com-mkt-autobalance') { onPropComMarketAutoBalance(); }
   if (action === 'prop-ops-sourcing')     { onPropOpsSourcingSelect(btn.getAttribute('data-key')); }
   if (action === 'prop-ops-quality')      { onPropOpsQualitySelect(btn.getAttribute('data-key')); }
   if (action === 'prop-ops-supplauto')    { onPropOpsSupplAuto(btn.getAttribute('data-key')); }
@@ -13718,7 +13720,25 @@ function drawProposalRadar(specs, tpcEur) {
 // ── Confirm ────────────────────────────────────────────────
 // ══ STEP 7: COMMERCIAL PLAN ═══════════════════════════════
 
-// _prop.commercial = { years: [{year, price, volume, discount}] }
+// _prop.commercial = { years: [{year, price, volume, discount}], markets: [{region, vol_pct, price_idx, selected}] }
+
+var SALES_MARKETS = [
+  {region:'EU',   label:'Europe',               seg_size_mult:1.00, default_price_idx:1.00, default_vol_pct:60},
+  {region:'NA',   label:'North America',         seg_size_mult:0.85, default_price_idx:1.05, default_vol_pct:25},
+  {region:'APAC', label:'Asia-Pacific',           seg_size_mult:1.20, default_price_idx:0.95, default_vol_pct:15},
+  {region:'SA',   label:'South America',          seg_size_mult:0.25, default_price_idx:0.85, default_vol_pct:0},
+  {region:'MEA',  label:'Middle East & Africa',   seg_size_mult:0.20, default_price_idx:0.90, default_vol_pct:0},
+];
+
+// l = logistics_eur_unit per vehicle (shipping+handling), t = import_tariff_pct on net selling price
+// EU<->APAC 10%: WTO automotive tariff (China/Korea). NA<->EU 2.5%: WTO MFN. Same-region: 0%.
+var MARKET_LOGISTICS_COST = {
+  EU:   {EU:{l:150,t:0},    NA:{l:450,t:0.025}, APAC:{l:650,t:0.10},  SA:{l:500,t:0.05},  MEA:{l:380,t:0.05}},
+  NA:   {NA:{l:175,t:0},    EU:{l:450,t:0.025}, APAC:{l:600,t:0.05},  SA:{l:400,t:0.025}, MEA:{l:550,t:0.05}},
+  APAC: {APAC:{l:150,t:0},  EU:{l:650,t:0.10},  NA:{l:600,t:0.025},   SA:{l:650,t:0.075}, MEA:{l:600,t:0.075}},
+  SA:   {SA:{l:175,t:0},    EU:{l:500,t:0.05},  NA:{l:400,t:0.025},   APAC:{l:650,t:0.075},MEA:{l:650,t:0.075}},
+  MEA:  {MEA:{l:175,t:0},   EU:{l:380,t:0.05},  NA:{l:550,t:0.05},    APAC:{l:600,t:0.10}, SA:{l:650,t:0.075}},
+};
 
 function advanceToCommercial() {
   var s6 = document.getElementById('prop-sec-6-status');
@@ -13750,8 +13770,58 @@ function buildCommercialSection() {
       return {year:y, price:defPriceK, volume:Math.round(8000*(ramp[i]||0.7)), discount:5};
     });
   }
+  if (!_prop.commercial.markets) {
+    _prop.commercial.markets = SALES_MARKETS.map(function(sm) {
+      return {region:sm.region, vol_pct:sm.default_vol_pct,
+              price_idx:sm.default_price_idx, selected:sm.default_vol_pct > 0};
+    });
+  }
 
-  var html = '<div style="margin-bottom:12px;font-size:11px;color:var(--muted2);">Set selling price (€k), annual sales volume and dealer discount % for each year of the vehicle lifecycle.</div>';
+  var assemblyReg = (_prop.operations && _prop.operations.assembly_region) || 'EU';
+  var _mkts = _prop.commercial.markets;
+
+  // ── GEOGRAPHIC MARKET PLANNING BLOCK ──────────────────────
+  var _selMkts0 = _mkts.filter(function(m){return m.selected;});
+  var _totPct0  = _selMkts0.reduce(function(s,m){return s+m.vol_pct;},0);
+  var _volOk0   = Math.abs(_totPct0-100)<1;
+  var _TH2='font-family:DM Mono,monospace;font-size:8px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:10px;display:block;';
+  var html = '<div style="margin-bottom:20px;background:var(--s3);border:1px solid var(--border2);border-radius:4px;padding:14px 16px;">';
+  html += '<div style="'+_TH2+'">Geographic Market Planning</div>';
+  html += '<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-bottom:10px;">';
+  SALES_MARKETS.forEach(function(sm) {
+    var mkt = _mkts.find(function(m){return m.region===sm.region;}) || {vol_pct:0,price_idx:1,selected:false};
+    var sel = mkt.selected;
+    var lo  = ((MARKET_LOGISTICS_COST[assemblyReg]||{})[sm.region]) || {l:200,t:0};
+    var idxPct = Math.round(((mkt.price_idx||1)-1)*100);
+    var crd = sel ? 'border-radius:4px;padding:10px;border:1px solid var(--gold);background:var(--s2);' : 'border-radius:4px;padding:10px;border:1px solid var(--border2);background:var(--s2);opacity:0.6;';
+    html += '<div style="'+crd+'">';
+    html += '<div style="display:flex;align-items:center;gap:5px;margin-bottom:6px;">';
+    html += '<input type="checkbox"'+(sel?' checked':'')+' data-action="prop-com-mkt-toggle" data-region="'+sm.region+'" style="cursor:pointer;width:12px;height:12px;">';
+    html += '<span style="font-family:DM Mono,monospace;font-size:9px;font-weight:600;color:var(--white);">'+sm.label+'</span>';
+    html += '</div>';
+    html += '<div style="font-size:8px;color:var(--muted2);margin-bottom:1px;">Log: <span style="font-family:DM Mono,monospace;color:var(--text);">€'+lo.l+'/unit</span></div>';
+    html += '<div style="font-size:8px;color:var(--muted2);margin-bottom:6px;">Tariff: <span style="font-family:DM Mono,monospace;color:'+(lo.t>0?'var(--orange)':'var(--muted2)')+';">'+(lo.t*100).toFixed(1)+'%</span></div>';
+    if (sel) {
+      html += '<div style="margin-bottom:5px;"><div style="font-size:8px;color:var(--muted2);margin-bottom:2px;">Volume %</div>';
+      html += '<input type="number" min="0" max="100" step="1" value="'+(mkt.vol_pct||0)+'" oninput="onPropComMarketVolPct(\''+sm.region+'\',this.value)" style="width:100%;background:var(--s3);border:1px solid var(--border2);border-radius:2px;color:var(--gold);font-family:DM Mono,monospace;font-size:11px;text-align:center;padding:3px;"></div>';
+      html += '<div><div style="font-size:8px;color:var(--muted2);margin-bottom:2px;">Price <span id="prop-com-mkt-pidx-lbl-'+sm.region+'" style="font-family:DM Mono,monospace;color:'+(idxPct>=0?'var(--cyan)':'var(--red)')+';">'+(idxPct>=0?'+':'')+idxPct+'%</span></div>';
+      html += '<input type="range" min="-20" max="20" step="1" value="'+idxPct+'" oninput="onPropComMarketPriceIdx(\''+sm.region+'\',this.value)" style="width:100%;height:3px;-webkit-appearance:none;background:var(--border2);border-radius:2px;cursor:pointer;"></div>';
+    }
+    html += '</div>';
+  });
+  html += '</div>';
+  // Warning bar
+  html += '<div id="prop-com-mkt-volwarn" style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">';
+  html += '<div style="font-family:DM Mono,monospace;font-size:9px;color:'+(_volOk0?'var(--green)':'var(--orange)')+';">Vol% total: '+_totPct0+'%'+(_volOk0?' ✓':' — must sum to 100%')+'</div>';
+  html += '<button data-action="prop-com-mkt-autobalance" style="font-family:DM Mono,monospace;font-size:8px;padding:2px 8px;border-radius:2px;border:1px solid var(--border2);background:var(--s2);color:var(--text);cursor:pointer;">Auto-Balance</button>';
+  html += '</div>';
+  // Summary strip
+  html += '<div id="prop-com-mkt-summary" style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;">';
+  html += _buildComMktSummaryHTML(assemblyReg, _mkts);
+  html += '</div>';
+  html += '</div>';
+  // ── YEAR TABLE ───────────────────────────────────────────────
+  html += '<div style="margin-bottom:12px;font-size:11px;color:var(--muted2);">Set selling price (€k), annual sales volume and dealer discount % for each year of the vehicle lifecycle.</div>';
   html += '<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;min-width:600px;">';
   html += '<thead><tr>' +
     '<th style="font-family:DM Mono,monospace;font-size:8px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);padding:8px 12px;background:var(--s2);border-bottom:1px solid var(--border);text-align:left;">Year</th>' +
@@ -13790,6 +13860,13 @@ function buildCommercialSection() {
         '\u20ac' + netRev + 'M' +
       '</td>' +
       '</tr>';
+    // Market mix sub-row
+    var _sm2 = (_prop.commercial.markets||[]).filter(function(m){return m.selected&&m.vol_pct>0;});
+    var _sp2 = _sm2.reduce(function(s,m){return s+m.vol_pct;},0)||100;
+    if (_sm2.length > 0) {
+      var _mix = _sm2.map(function(m){return m.region+': '+Math.round(row.volume*m.vol_pct/_sp2/1000*10)/10+'k';}).join(' / ');
+      html += '<tr><td></td><td colspan="4" style="padding:2px 12px;font-family:DM Mono,monospace;font-size:8px;color:var(--muted2);">'+_mix+'</td></tr>';
+    }
   });
 
   // Totals row
@@ -13835,6 +13912,76 @@ function onPropComInput(input) {
   if (vt) vt.textContent = totalVol.toLocaleString() + ' units';
   if (rt) rt.textContent = '\u20ac' + totalRev + 'M';
 }
+
+function onPropComMarketToggle(region) {
+  var mkts = (_prop.commercial && _prop.commercial.markets) || [];
+  var mkt  = mkts.find(function(m){return m.region===region;});
+  if (!mkt) return;
+  mkt.selected = !mkt.selected;
+  if (!mkt.selected) { mkt.vol_pct = 0; }
+  else { var sm=SALES_MARKETS.find(function(s){return s.region===region;}); mkt.vol_pct=sm?sm.default_vol_pct:5; }
+  buildCommercialSection();
+}
+
+function onPropComMarketVolPct(region, val) {
+  var mkt = ((_prop.commercial&&_prop.commercial.markets)||[]).find(function(m){return m.region===region;});
+  if (mkt) mkt.vol_pct = Math.max(0,Math.min(100,parseFloat(val)||0));
+  renderComMarketSummary();
+}
+
+function onPropComMarketPriceIdx(region, val) {
+  var mkt = ((_prop.commercial&&_prop.commercial.markets)||[]).find(function(m){return m.region===region;});
+  if (!mkt) return;
+  var pct = parseFloat(val)||0;
+  mkt.price_idx = 1 + pct/100;
+  var lbl = document.getElementById('prop-com-mkt-pidx-lbl-'+region);
+  if (lbl) { lbl.textContent=(pct>=0?'+':'')+pct+'%'; lbl.style.color=pct>=0?'var(--cyan)':'var(--red)'; }
+  renderComMarketSummary();
+}
+
+function onPropComMarketAutoBalance() {
+  var sel = ((_prop.commercial&&_prop.commercial.markets)||[]).filter(function(m){return m.selected;});
+  if (!sel.length) return;
+  var each=Math.floor(100/sel.length), rem=100-each*sel.length;
+  sel.forEach(function(m,i){m.vol_pct=each+(i===0?rem:0);});
+  buildCommercialSection();
+}
+
+function renderComMarketSummary() {
+  var mkts = (_prop.commercial&&_prop.commercial.markets)||[];
+  var sel  = mkts.filter(function(m){return m.selected;});
+  var tot  = sel.reduce(function(s,m){return s+m.vol_pct;},0);
+  var ok   = Math.abs(tot-100)<1;
+  var wEl  = document.getElementById('prop-com-mkt-volwarn');
+  if (wEl) { var d=wEl.querySelector('div');
+    if(d){d.style.color=ok?'var(--green)':'var(--orange)';
+          d.textContent='Vol% total: '+tot+'%'+(ok?' \u2713':' \u2014 must sum to 100%');} }
+  var sEl  = document.getElementById('prop-com-mkt-summary');
+  var aReg = (_prop.operations&&_prop.operations.assembly_region)||'EU';
+  if (sEl) sEl.innerHTML = _buildComMktSummaryHTML(aReg, mkts);
+}
+
+function _buildComMktSummaryHTML(aReg, mkts) {
+  var sel  = (mkts||[]).filter(function(m){return m.selected&&m.vol_pct>0;});
+  var totP = sel.reduce(function(s,m){return s+m.vol_pct;},0)||100;
+  var yr0  = _prop.commercial&&_prop.commercial.years&&_prop.commercial.years[0];
+  var netBase = (yr0?yr0.price*1000:26000)*(1-(yr0?yr0.discount/100:0.05));
+  var wRev=0,wLog=0,wTar=0;
+  sel.forEach(function(m){
+    var f=m.vol_pct/totP;
+    var lo=((MARKET_LOGISTICS_COST[aReg]||{})[m.region])||{l:200,t:0};
+    var mp=netBase*(m.price_idx||1), tc=mp*lo.t;
+    wRev+=(mp-lo.l-tc)*f; wLog+=lo.l*f; wTar+=tc*f;
+  });
+  function tile(lbl,val,col){return '<div style="background:var(--s2);border-radius:3px;padding:8px;">'+
+    '<div style="font-size:8px;color:var(--muted2);margin-bottom:2px;">'+lbl+'</div>'+
+    '<div style="font-family:DM Mono,monospace;font-size:11px;color:'+(col||'var(--cyan)')+';">'+val+'</div></div>';}
+  return tile('Markets entered',sel.length,'var(--white)')+
+         tile('Wtd net rev/unit','\u20ac'+Math.round(wRev).toLocaleString(),'var(--cyan)')+
+         tile('Wtd logistics/unit','\u20ac'+Math.round(wLog),'var(--orange)')+
+         tile('Wtd tariff/unit','\u20ac'+Math.round(wTar),'var(--red)');
+}
+
 
 // ══ STEP 8: INDUSTRIAL OPERATIONS ═════════════════════════
 
@@ -14499,14 +14646,30 @@ function calcPropBizCase() {
   }
   var finalTpcNum = tpcNum + (_m ? (_m.buy_cost_adj + _m.manuf_var_total) : 0);
 
-  // Build quarterly FCF
+  // Build quarterly FCF — per-market revenue and COGS
+  var assemblyRegion = (_prop.operations&&_prop.operations.assembly_region)||'EU';
+  var mktList = ((_prop.commercial&&_prop.commercial.markets)||[])
+                  .filter(function(m){return m.selected&&m.vol_pct>0;});
   var fcfArr = [];
   comYears.forEach(function(row) {
     for (var q = 0; q < 4; q++) {
       var unitsQ    = Math.round(row.volume / 4);
       var priceEur  = row.price * 1000 * (1 - row.discount/100);
-      var revM      = unitsQ * priceEur / 1e6;
-      var cogsM     = finalTpcNum > 0 ? unitsQ * finalTpcNum / 1e6 : revM * 0.70;
+      var revM=0, cogsM=0;
+      if (mktList.length > 0) {
+        var totP=mktList.reduce(function(s,m){return s+m.vol_pct;},0)||100;
+        mktList.forEach(function(mkt){
+          var frac=mkt.vol_pct/totP, mktU=unitsQ*frac;
+          var mktP=priceEur*(mkt.price_idx||1);
+          var lo=((MARKET_LOGISTICS_COST[assemblyRegion]||{})[mkt.region])||{l:200,t:0};
+          revM  += mktU*mktP/1e6;
+          cogsM += mktU*(finalTpcNum+lo.l+mktP*lo.t)/1e6;
+        });
+        if (finalTpcNum===0) cogsM=revM*0.70;
+      } else {
+        revM  = unitsQ*priceEur/1e6;
+        cogsM = finalTpcNum>0 ? unitsQ*finalTpcNum/1e6 : revM*0.70;
+      }
       var gpM       = revM - cogsM;
       var sgaM      = revM * 0.06;
       var rdM       = revM * 0.04;
