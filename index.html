@@ -1715,8 +1715,8 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
     <div class="prop-step" id="pstep-4">4 · Top Hat</div>
     <div class="prop-step" id="pstep-5">5 · E&amp;S</div>
     <div class="prop-step" id="pstep-6">6 · Review</div>
-    <div class="prop-step" id="pstep-7">7 · Commercial</div>
-    <div class="prop-step" id="pstep-8">8 · Operations</div>
+    <div class="prop-step" id="pstep-7">7 · Operations</div>
+    <div class="prop-step" id="pstep-8">8 · Commercial</div>
     <div class="prop-step" id="pstep-9">9 · Business Case</div>
   </div>
 
@@ -13722,7 +13722,7 @@ function drawProposalRadar(specs, tpcEur) {
 }
 
 // ── Confirm ────────────────────────────────────────────────
-// ══ STEP 7: COMMERCIAL PLAN ═══════════════════════════════
+// ══ STEP 7: INDUSTRIAL OPERATIONS / STEP 8: COMMERCIAL PLAN ═
 
 var REGION_PROXIMITY = {
   EU:   ['EU','MEA','NA','SA','APAC'],
@@ -14586,10 +14586,8 @@ async function advanceToBizCase() {
   var s8 = document.getElementById('prop-sec-8-status');
   if (s8) {
     var _selM=((_prop.commercial&&_prop.commercial.markets)||[]).filter(function(m){return m.selected;});
-    var _cName = (_prop.operations && _prop.operations.assembly_country_name) || '';
-    var _mObj  = (_prop.operations && _prop.operations._manuf);
-    var _capK  = _mObj ? Math.round(_mObj.eff_capacity_yr/1000) : '\u2014';
-    s8.textContent = '\u2713 ' + _jph + ' JPH \u00b7 ' + _capK + 'k/yr' + (_cName ? ' \u00b7 ' + _cName : '');
+    var _totV=_selM.reduce(function(s,m){return s+(m.years||[]).reduce(function(t,y){return t+y.volume;},0);},0);
+    s8.textContent = '\u2713 '+_selM.length+' market(s) \u00b7 '+Math.round(_totV/1000)+'k units lifecycle';
   }
   setPropStep(9);
   if (_prop.study && _prop.study.id && _prop.operations) {
@@ -14657,10 +14655,10 @@ function calcPropBizCase() {
           var uQ=Math.round(yd.volume/4);
           var nR=(mkt.msrp_eur_k||0)*1000*(1-yd.discount/100);
           var lo=((MARKET_LOGISTICS_COST[plant.region]||{})[mkt.region])||{l:200,t:0};
-          var landed=finalTpcNum+plant._manuf.buy_cost_adj+plant._manuf.manuf_var_total+lo.l+nR*lo.t;
+          var landed=tpcNum+plant._manuf.buy_cost_adj+plant._manuf.manuf_var_total+lo.l+nR*lo.t;
           revM+=uQ*nR/1e6; cogsM+=uQ*landed/1e6;
         });
-        if(finalTpcNum===0)cogsM=revM*0.70;
+        if(tpcNum===0)cogsM=revM*0.70;
       } else {
         var cr=comYears.find(function(r){return r.year===yr;})||comYears[0]||{price:26,volume:0,discount:5};
         var uQ=Math.round(cr.volume/4), pE=cr.price*1000*(1-cr.discount/100);
