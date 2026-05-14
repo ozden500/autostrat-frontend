@@ -1837,29 +1837,7 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
       <div class="prop-sec-chevron" id="prop-chev-9">▼</div>
     </div>
     <div class="prop-sec-body" id="prop-sec-9-body" style="display:none;">
-      <!-- 4 headline KPI cards -->
-      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px;">
-        <div class="bc-kpi npv">
-          <div class="bc-kpi-label">Net Present Value</div>
-          <div class="bc-kpi-value" id="prop-bc-npv" style="color:var(--cyan);">—</div>
-          <div class="bc-kpi-sub" id="prop-bc-npv-sub">lifecycle</div>
-        </div>
-        <div class="bc-kpi irr">
-          <div class="bc-kpi-label">IRR (est.)</div>
-          <div class="bc-kpi-value" id="prop-bc-irr" style="color:var(--green);">—</div>
-          <div class="bc-kpi-sub">internal rate of return</div>
-        </div>
-        <div class="bc-kpi payback">
-          <div class="bc-kpi-label">Payback Period</div>
-          <div class="bc-kpi-value" id="prop-bc-payback" style="color:var(--gold);">—</div>
-          <div class="bc-kpi-sub">quarters to recover invest.</div>
-        </div>
-        <div class="bc-kpi ebit">
-          <div class="bc-kpi-label">Avg EBIT Margin</div>
-          <div class="bc-kpi-value" id="prop-bc-ebit" style="color:var(--purple);">—</div>
-          <div class="bc-kpi-sub">over lifecycle</div>
-        </div>
-      </div>
+      <div id="prop-bc-content" style="margin-bottom:16px;"></div>
 
       <!-- SOP conflict panel — shown when modules aren't ready before SOP -->
       <div id="prop-sop-conflict" style="display:none;margin-bottom:12px;"></div>
@@ -6981,6 +6959,365 @@ function calcIRR(fcfByQuarter, investmentM) {
   }
   return ((lo+hi)/2)*100; // annual %
 }
+
+function _bcBarSVG(vals, cols, w, h) {
+  if (!vals||!vals.length) return '<svg width="'+w+'" height="'+h+'"></svg>';
+  var max=Math.max.apply(null,vals.map(Math.abs))||1;
+  var bw=Math.max(2,Math.floor((w-(vals.length+1)*2)/vals.length));
+  var s='<svg width="'+w+'" height="'+h+'" style="display:block;">';
+  vals.forEach(function(v,i){
+    var bh=Math.round(Math.abs(v)/max*(h-4));
+    var x=2+i*(bw+2), y=v>=0?(h-bh-2):(h/2);
+    s+='<rect x="'+x+'" y="'+y+'" width="'+bw+'" height="'+bh+'" fill="'+(cols[i]||cols[0]||'#36b')+'" rx="1"/>';
+  });
+  return s+'</svg>';
+}
+
+function _bcLineSVG(vals, w, h, col) {
+  if (!vals||vals.length<2) return '<svg width="'+w+'" height="'+h+'"></svg>';
+  var mn=Math.min.apply(null,vals), mx=Math.max.apply(null,vals), rng=mx-mn||1;
+  var pts=vals.map(function(v,i){
+    return (Math.round(i/(vals.length-1)*(w-4))+2)+','+(Math.round((1-(v-mn)/rng)*(h-4))+2);
+  }).join(' ');
+  var zy=Math.round((1-(0-mn)/rng)*(h-4))+2;
+  var zl=(mn<0&&mx>0)?'<line x1="0" y1="'+zy+'" x2="'+w+'" y2="'+zy+'" stroke="rgba(255,255,255,0.15)" stroke-width="1"/>':'';
+  return '<svg width="'+w+'" height="'+h+'" style="display:block;overflow:visible;">'+zl+'<polyline points="'+pts+'" fill="none" stroke="'+(col||'var(--cyan)')+'" stroke-width="1.5" stroke-linejoin="round"/></svg>';
+}
+
+function _bcMiniBar(val, max, col, w) {
+  var pct = Math.min(1, Math.max(0, val/(max||1)));
+  var filled = Math.round(pct * w);
+  return '<div style="display:inline-block;width:'+w+'px;height:8px;background:var(--border2);border-radius:2px;vertical-align:middle;">'+
+    '<div style="width:'+filled+'px;height:100%;background:'+col+';border-radius:2px;"></div></div>';
+}
+
+function _buildBizCasePanels(byYear,mktEcon,modTpc,modRd,mktsBC,plants,tpcNum,rdM,toolingM,totalInvM,npv,irr,paybackQ,avgEbitPct,rateP,cumFcf,fcfArr,bcYears) {
+  var DM='font-family:DM Mono,monospace;';
+  var TH=DM+'font-size:8px;text-transform:uppercase;letter-spacing:1px;';
+  var TS='font-size:10px;'+DM;
+  var TN='font-size:11px;'+DM;
+  function ph(title,col){return '<div style="margin-bottom:14px;border-radius:4px;overflow:hidden;border:1px solid var(--border2);">'+
+    '<div style="display:flex;align-items:center;padding:8px 14px;background:var(--s2);border-left:3px solid '+col+';">'+
+    '<span style="'+TH+'color:'+col+';">'+title+'</span></div><div style="padding:14px;background:var(--s1);">';}
+  function pc(){return '</div></div>';}
+  function fmtM(v){return (v>=0?'€':'-€')+Math.abs(v>=100?Math.round(v):Math.round(v*10)/10)+'M';}
+  function fmtK(v){return '€'+Math.round(v).toLocaleString();}
+  function th(t){return '<th style="'+TH+'color:var(--muted);padding:5px 8px;text-align:right;white-space:nowrap;border-bottom:1px solid var(--border);">'+t+'</th>';}
+  function td(v,col,bold){return '<td style="'+TS+'padding:5px 8px;text-align:right;color:'+(col||'var(--text)')+(bold?';font-weight:700;':'')+';white-space:nowrap;">'+v+'</td>';}
+  function tdl(v,col){return '<td style="'+TS+'padding:5px 8px;color:'+(col||'var(--muted2)')+';">'+v+'</td>';}
+  var html='';
+
+  // ── PANEL 1: VOLUME ──────────────────────────────────────────────────────
+  html += ph('01 — VOLUME · SALES PLAN BY MARKET', 'var(--cyan)');
+  if (mktsBC.length===0||bcYears.length===0) {
+    html += '<div style="'+TS+'color:var(--muted2);">No markets configured — complete Section 8.</div>';
+  } else {
+    html += '<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;">';
+    html += '<thead><tr>'+th('Market');
+    bcYears.forEach(function(yr){html+=th(yr);});
+    html += th('Lifecycle Total')+'</tr></thead><tbody>';
+    var grandTotals=bcYears.map(function(){return 0;}), grandTotal=0;
+    mktsBC.forEach(function(mkt,mi){
+      var mktTotal=0;
+      html += '<tr style="border-bottom:1px solid var(--border);">'+tdl(mkt.region);
+      bcYears.forEach(function(yr,yi){
+        var yd=(mkt.years||[]).find(function(y){return y.year===yr;});
+        var v=yd?yd.volume:0;
+        grandTotals[yi]+=v; mktTotal+=v; grandTotal+=v;
+        html += td(v>0?v.toLocaleString():'—','var(--text)');
+      });
+      html += td(mktTotal>0?mktTotal.toLocaleString():'—','var(--cyan)',true)+'</tr>';
+    });
+    html += '<tr style="border-top:1px solid var(--border2);background:var(--s2);">'+tdl('Total','var(--muted)');
+    grandTotals.forEach(function(v){html+=td(v>0?v.toLocaleString():'—','var(--cyan)',true);});
+    html += td(grandTotal>0?grandTotal.toLocaleString():'—','var(--cyan)',true)+'</tr>';
+    html += '</tbody></table></div>';
+    // Mini chart
+    var volVals=bcYears.map(function(yr){return mktsBC.reduce(function(s,m){var yd=(m.years||[]).find(function(y){return y.year===yr;});return s+(yd?yd.volume:0);},0);});
+    var maxVol=Math.max.apply(null,volVals)||1;
+    html += '<div style="display:flex;align-items:flex-end;gap:6px;margin-top:10px;height:36px;">';
+    volVals.forEach(function(v,i){
+      var bh=Math.max(2,Math.round(v/maxVol*32));
+      html += '<div style="display:flex;flex-direction:column;align-items:center;gap:2px;">'+
+        '<div style="width:28px;height:'+bh+'px;background:var(--cyan);border-radius:2px 2px 0 0;opacity:0.7;"></div></div>';
+    });
+    html += '</div>';
+    html += '<div style="display:flex;gap:6px;margin-top:3px;">';
+    bcYears.forEach(function(yr){html+='<div style="width:28px;text-align:center;'+TH+'color:var(--muted2);font-size:7px;">'+(String(yr).slice(-2))+'</div>';});
+    html += '</div>';
+  }
+  html += pc();
+
+  // ── PANEL 2: PRICING ─────────────────────────────────────────────────────
+  html += ph('02 — PRICING · MARKET ECONOMICS PER UNIT', 'var(--gold)');
+  if (mktEcon.length===0) {
+    html += '<div style="'+TS+'color:var(--muted2);">No markets selected.</div>';
+  } else {
+    html += '<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;">';
+    html += '<thead><tr>'+th('Market')+th('MSRP')+th('Discount')+th('Net Rev/unit')+th('Logistics')+th('Tariff')+th('Landed Cost')+th('Variable Margin')+th('Margin %')+'</tr></thead><tbody>';
+    var wtdRev=0,wtdLanded=0,wtdMargin=0,totVol=0;
+    mktEcon.forEach(function(m){
+      var mc=m.marginPct>=30?'var(--green)':m.marginPct>=15?'var(--cyan)':'var(--orange)';
+      html += '<tr style="border-bottom:1px solid var(--border);">';
+      html += tdl(m.region);
+      html += td('€'+m.msrp+'k','var(--gold)',true);
+      html += td(m.disc.toFixed(1)+'%','var(--muted2)');
+      html += td(fmtK(m.netRev),'var(--text)');
+      html += td('€'+m.logistics,'var(--orange)');
+      html += td(m.tariff>0?('€'+Math.round(m.tariff)):'—', m.tariff>0?'var(--orange)':'var(--muted2)');
+      html += td(fmtK(m.landed),'var(--muted2)');
+      html += td(fmtK(m.margin),mc,true);
+      html += td(m.marginPct.toFixed(1)+'%',mc,true);
+      html += '</tr>';
+      wtdRev+=m.netRev*m.totalVol; wtdLanded+=m.landed*m.totalVol; wtdMargin+=m.margin*m.totalVol; totVol+=m.totalVol;
+    });
+    var avgM=totVol>0?wtdMargin/totVol:0, avgL=totVol>0?wtdLanded/totVol:0, avgR=totVol>0?wtdRev/totVol:0;
+    var avgMPct=avgR>0?avgM/avgR*100:0;
+    var avgMCol=avgMPct>=30?'var(--green)':avgMPct>=15?'var(--cyan)':'var(--orange)';
+    html += '<tr style="border-top:1px solid var(--border2);background:var(--s2);">'+tdl('Wtd Average','var(--muted)')+'<td></td><td></td>';
+    html += td(fmtK(avgR),'var(--text)');
+    html += '<td></td><td></td>';
+    html += td(fmtK(avgL),'var(--muted2)');
+    html += td(fmtK(avgM),avgMCol,true);
+    html += td(avgMPct.toFixed(1)+'%',avgMCol,true);
+    html += '</tr>';
+    html += '</tbody></table></div>';
+    // Margin bars per market
+    var maxMrg=Math.max.apply(null,mktEcon.map(function(m){return m.margin;}))||1;
+    html += '<div style="margin-top:10px;display:flex;flex-direction:column;gap:4px;">';
+    mktEcon.forEach(function(m){
+      var mc=m.marginPct>=30?'var(--green)':m.marginPct>=15?'var(--cyan)':'var(--orange)';
+      var wp=Math.min(200,Math.round(m.margin/maxMrg*200));
+      html += '<div style="display:flex;align-items:center;gap:8px;">'+
+        '<div style="'+TH+'color:var(--muted2);width:36px;">'+m.region+'</div>'+
+        '<div style="width:'+wp+'px;height:8px;background:'+mc+';border-radius:2px;opacity:0.7;"></div>'+
+        '<div style="'+TS+'color:'+mc+';">'+fmtK(m.margin)+' ('+m.marginPct.toFixed(0)+'%)</div></div>';
+    });
+    html += '</div>';
+  }
+  html += pc();
+
+  // ── PANEL 3: INVESTMENT ───────────────────────────────────────────────────
+  html += ph('03 — INVESTMENT · R&D & PLANT CAPEX', 'var(--orange)');
+  var maxRd=Math.max.apply(null,modRd.map(function(m){return m.rd;}))||1;
+  var maxCpx=Math.max.apply(null,(plants||[]).filter(function(p){return p._manuf;}).map(function(p){return p._manuf.total_investment_m;}))||1;
+  html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">';
+  // R&D col
+  html += '<div>';
+  html += '<div style="'+TH+'color:var(--muted);margin-bottom:8px;">R&D Spend by Module</div>';
+  if (modRd.length===0) { html += '<div style="'+TS+'color:var(--muted2);">—</div>'; }
+  else {
+    modRd.forEach(function(m){
+      html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:5px;">'+
+        '<div style="'+TS+'color:var(--muted2);width:100px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+m.name+'</div>'+
+        '<div style="flex:1;height:8px;background:var(--border2);border-radius:2px;">'+
+        '<div style="width:'+Math.round(m.rd/maxRd*100)+'%;height:100%;background:var(--orange);border-radius:2px;opacity:0.7;"></div></div>'+
+        '<div style="'+TS+'color:var(--orange);width:55px;text-align:right;">€'+Math.round(m.rd)+'M</div></div>';
+    });
+    html += '<div style="border-top:1px solid var(--border);margin-top:6px;padding-top:6px;display:flex;justify-content:space-between;">'+
+      '<span style="'+TH+'color:var(--muted);">Total R&D</span>'+
+      '<span style="'+TN+'color:var(--orange);">€'+Math.round(rdM)+'M</span></div>';
+  }
+  html += '</div>';
+  // Plant capex col
+  html += '<div>';
+  html += '<div style="'+TH+'color:var(--muted);margin-bottom:8px;">Plant Capex</div>';
+  if (!(plants&&plants.length)) { html += '<div style="'+TS+'color:var(--muted2);">—</div>'; }
+  else {
+    plants.forEach(function(p,i){
+      if (!p._manuf) return;
+      var inv=p._manuf.total_investment_m;
+      html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:5px;">'+
+        '<div style="'+TS+'color:var(--muted2);width:100px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+(p.country_name||'Plant '+(i+1))+'</div>'+
+        '<div style="flex:1;height:8px;background:var(--border2);border-radius:2px;">'+
+        '<div style="width:'+Math.round(inv/maxCpx*100)+'%;height:100%;background:var(--purple);border-radius:2px;opacity:0.7;"></div></div>'+
+        '<div style="'+TS+'color:var(--purple);width:55px;text-align:right;">€'+Math.round(inv)+'M</div></div>';
+    });
+    html += '<div style="border-top:1px solid var(--border);margin-top:6px;padding-top:6px;display:flex;justify-content:space-between;">'+
+      '<span style="'+TH+'color:var(--muted);">Total Capex</span>'+
+      '<span style="'+TN+'color:var(--purple);">€'+Math.round(toolingM)+'M</span></div>';
+  }
+  html += '</div>';
+  html += '</div>';
+  // Total bar
+  if (totalInvM>0) {
+    var rdPct=Math.round(rdM/totalInvM*100), cpxPct=100-rdPct;
+    html += '<div style="margin-top:12px;border-top:1px solid var(--border);padding-top:10px;">';
+    html += '<div style="'+TH+'color:var(--muted);margin-bottom:6px;">Total Investment: <span style="'+TN+'color:var(--white);">€'+Math.round(totalInvM)+'M</span></div>';
+    html += '<div style="display:flex;height:12px;border-radius:3px;overflow:hidden;gap:1px;">'+
+      '<div style="flex:'+rdPct+';background:var(--orange);opacity:0.8;" title="R&D €'+Math.round(rdM)+'M"></div>'+
+      '<div style="flex:'+cpxPct+';background:var(--purple);opacity:0.8;" title="Capex €'+Math.round(toolingM)+'M"></div></div>';
+    html += '<div style="display:flex;gap:16px;margin-top:4px;">'+
+      '<div style="'+TH+'color:var(--orange);">■ R&D €'+Math.round(rdM)+'M ('+rdPct+'%)</div>'+
+      '<div style="'+TH+'color:var(--purple);">■ Capex €'+Math.round(toolingM)+'M ('+cpxPct+'%)</div></div>';
+    html += '</div>';
+  }
+  html += pc();
+
+  // ── PANEL 4: COST ─────────────────────────────────────────────────────────
+  html += ph('04 — COST · UNIT ECONOMICS BREAKDOWN', 'var(--purple)');
+  var avgPlantManuf=0, avgBuyAdj=0;
+  if (plants&&plants.length) {
+    var totCap=plants.reduce(function(s,p){return s+(p._manuf?p._manuf.eff_capacity_yr:0);},0)||1;
+    plants.forEach(function(p){if(!p._manuf)return;var w=p._manuf.eff_capacity_yr/totCap;avgPlantManuf+=p._manuf.manuf_var_total*w;avgBuyAdj+=p._manuf.buy_cost_adj*w;});
+  }
+  var avgLogistics=mktEcon.length>0?mktEcon.reduce(function(s,m){return s+m.logistics*m.totalVol;},0)/Math.max(1,mktEcon.reduce(function(s,m){return s+m.totalVol;},0)):0;
+  var avgTariff=mktEcon.length>0?mktEcon.reduce(function(s,m){return s+m.tariff*m.totalVol;},0)/Math.max(1,mktEcon.reduce(function(s,m){return s+m.totalVol;},0)):0;
+  var estLanded=tpcNum+avgBuyAdj+avgPlantManuf+avgLogistics+avgTariff;
+  var avgNetRev=mktEcon.length>0?mktEcon.reduce(function(s,m){return s+m.netRev*m.totalVol;},0)/Math.max(1,mktEcon.reduce(function(s,m){return s+m.totalVol;},0)):0;
+  var estMargin=avgNetRev-estLanded;
+
+  function costRow(lbl, val, col, indent, bold) {
+    var sign=val>=0?'+':'−';
+    var valFmt=fmtK(Math.abs(val));
+    return '<tr style="border-bottom:1px solid rgba(255,255,255,0.04);">'+
+      '<td style="'+TS+'color:'+(col||'var(--muted2)')+';padding:4px 8px'+(indent?';padding-left:22px':'')+'">'+(bold?'<strong>'+lbl+'</strong>':lbl)+'</td>'+
+      '<td style="'+TS+'color:'+(col||'var(--text)')+';text-align:right;padding:4px 8px'+(bold?';font-weight:700':'')+'">'+(val>=0?'':'(')+valFmt+(val>=0?'':')')+'</td>'+
+      '<td style="width:120px;padding:4px 8px 4px 4px;vertical-align:middle;">'+
+      (tpcNum>0&&Math.abs(val)>0?'<div style="height:6px;background:var(--border2);border-radius:2px;"><div style="width:'+Math.min(100,Math.round(Math.abs(val)/(tpcNum)*100))+'%;height:100%;background:'+(col||'var(--border2)')+';border-radius:2px;opacity:0.6;"></div></div>':'')+
+      '</td></tr>';
+  }
+  html += '<table style="width:100%;border-collapse:collapse;">';
+  html += costRow('Base Module TPC (materials)', tpcNum, 'var(--text)', false, true);
+  modTpc.forEach(function(m){ html += costRow(m.name, m.tpc, 'var(--muted2)', true, false); });
+  html += costRow('Manufacturing transformation', avgPlantManuf, 'var(--cyan)', false, true);
+  html += costRow('Labour + energy + maintenance', avgPlantManuf, 'var(--muted2)', true, false);
+  if (avgBuyAdj!==0) html += costRow('Buy-side adj (supplier/volume)', avgBuyAdj, avgBuyAdj<0?'var(--green)':'var(--red)', true, false);
+  if (avgLogistics>0) html += costRow('Outbound logistics (wtd avg)', avgLogistics, 'var(--orange)', false, false);
+  if (avgTariff>0) html += costRow('Import tariff (wtd avg)', avgTariff, 'var(--orange)', false, false);
+  html += '<tr style="border-top:1px solid var(--border2);"><td style="'+TS+'font-weight:700;color:var(--white);padding:6px 8px;">Weighted Landed Cost/unit</td>'+
+    '<td style="'+TN+'color:var(--white);text-align:right;font-weight:700;padding:6px 8px;">'+fmtK(estLanded)+'</td><td></td></tr>';
+  if (avgNetRev>0) {
+    html += '<tr><td style="'+TS+'color:var(--muted2);padding:4px 8px;">MSRP net of discount (wtd avg)</td>'+
+      '<td style="'+TS+'color:var(--muted2);text-align:right;padding:4px 8px;">'+fmtK(avgNetRev)+'</td><td></td></tr>';
+    var mc=estMargin>0?'var(--green)':'var(--red)';
+    html += '<tr style="border-top:1px solid var(--border2);"><td style="'+TS+'font-weight:700;color:'+mc+';padding:6px 8px;">Variable Margin/unit</td>'+
+      '<td style="'+TN+'color:'+mc+';text-align:right;font-weight:700;padding:6px 8px;">'+fmtK(estMargin)+'</td><td></td></tr>';
+  }
+  html += '</table>';
+  html += pc();
+
+  // ── PANEL 5: P&L TIMELINE ─────────────────────────────────────────────────
+  html += ph('05 — VARIABLE MARGIN · P&L BY YEAR', 'var(--green)');
+  if (byYear.length===0) {
+    html += '<div style="'+TS+'color:var(--muted2);">No financial data — configure modules and markets first.</div>';
+  } else {
+    html += '<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;">';
+    html += '<thead><tr>'+th('Year')+th('Revenue')+th('COGS')+th('Gross Profit')+th('GM%')+th('EBIT')+th('FCF')+th('EBIT%')+'</tr></thead><tbody>';
+    var totR=0,totC=0,totG=0,totE=0,totF=0;
+    byYear.forEach(function(y){
+      var gm=y.rev>0?y.gp/y.rev*100:0, em=y.rev>0?y.ebit/y.rev*100:0;
+      var ec=em>10?'var(--green)':em>0?'var(--cyan)':'var(--red)';
+      html += '<tr style="border-bottom:1px solid var(--border);">';
+      html += tdl(y.year,'var(--white)');
+      html += td(fmtM(y.rev),'var(--text)');
+      html += td(fmtM(y.cogs),'var(--muted2)');
+      html += td(fmtM(y.gp),'var(--cyan)');
+      html += td(gm.toFixed(1)+'%','var(--cyan)');
+      html += td(fmtM(y.ebit),ec);
+      html += td(fmtM(y.fcf),ec);
+      html += td(em.toFixed(1)+'%',ec,true);
+      html += '</tr>';
+      totR+=y.rev; totC+=y.cogs; totG+=y.gp; totE+=y.ebit; totF+=y.fcf;
+    });
+    var totGM=totR>0?totG/totR*100:0, totEM=totR>0?totE/totR*100:0;
+    var tec=totEM>10?'var(--green)':totEM>0?'var(--cyan)':'var(--red)';
+    html += '<tr style="border-top:1px solid var(--border2);background:var(--s2);">';
+    html += tdl('Lifecycle Total','var(--muted)');
+    html += td(fmtM(totR),'var(--white)',true);
+    html += td(fmtM(totC),'var(--muted2)',true);
+    html += td(fmtM(totG),'var(--cyan)',true);
+    html += td(totGM.toFixed(1)+'%','var(--cyan)',true);
+    html += td(fmtM(totE),tec,true);
+    html += td(fmtM(totF),tec,true);
+    html += td(totEM.toFixed(1)+'%',tec,true);
+    html += '</tr>';
+    html += '</tbody></table></div>';
+    // Revenue + EBIT bar chart
+    var maxRev=Math.max.apply(null,byYear.map(function(y){return y.rev;}))||1;
+    html += '<div style="display:flex;align-items:flex-end;gap:8px;margin-top:12px;height:44px;">';
+    byYear.forEach(function(y){
+      var rh=Math.max(2,Math.round(y.rev/maxRev*40));
+      var eh=Math.max(0,Math.round(Math.max(0,y.ebit)/maxRev*40));
+      var ec=y.ebit>0?'var(--green)':'var(--red)';
+      html += '<div style="display:flex;align-items:flex-end;gap:2px;flex:1;">'+
+        '<div style="flex:1;height:'+rh+'px;background:var(--border2);border-radius:2px 2px 0 0;"></div>'+
+        '<div style="flex:1;height:'+eh+'px;background:'+ec+';border-radius:2px 2px 0 0;opacity:0.8;"></div></div>';
+    });
+    html += '</div>';
+    html += '<div style="display:flex;gap:12px;margin-top:4px;">'+
+      '<div style="'+TH+'color:var(--muted2);">■ Revenue</div>'+
+      '<div style="'+TH+'color:var(--green);">■ EBIT</div></div>';
+  }
+  html += pc();
+
+  // ── PANEL 6: NPV & RETURN ─────────────────────────────────────────────────
+  html += ph('06 — NET PRESENT VALUE · INVESTMENT RETURN', 'var(--cyan)');
+  // 4 hero KPI boxes
+  var npvCol=npv>=0?'var(--cyan)':'var(--red)';
+  var irrCol=irr!==null&&irr>rateP?'var(--green)':'var(--red)';
+  var pbCol='var(--gold)';
+  var emCol=avgEbitPct>8?'var(--green)':avgEbitPct>0?'var(--gold)':'var(--red)';
+  html += '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:16px;">';
+  function kpi(lbl,valId,sub,initCol){
+    return '<div style="background:var(--s2);border-radius:4px;padding:12px;text-align:center;">'+
+      '<div style="'+TH+'color:var(--muted);margin-bottom:6px;">'+lbl+'</div>'+
+      '<div class="bc-kpi-value" id="'+valId+'" style="'+DM+'font-size:22px;color:'+initCol+';">—</div>'+
+      '<div class="bc-kpi-sub" id="'+valId+'-sub" style="font-size:9px;color:var(--muted2);margin-top:4px;">'+sub+'</div></div>';
+  }
+  html += kpi('Net Present Value','prop-bc-npv','at '+rateP.toFixed(1)+'% discount rate',npvCol);
+  html += kpi('IRR','prop-bc-irr','internal rate of return',irrCol);
+  html += kpi('Payback Period','prop-bc-payback','quarters to recover investment',pbCol);
+  html += kpi('Avg EBIT Margin','prop-bc-ebit','over lifecycle',emCol);
+  html += '</div>';
+  // Cumulative FCF chart
+  if (cumFcf.length>1) {
+    html += '<div style="margin-bottom:12px;">';
+    html += '<div style="'+TH+'color:var(--muted);margin-bottom:6px;">Cumulative Cash Flow ('+TH+'quarters)</div>';
+    var minC=Math.min.apply(null,cumFcf), maxC=Math.max.apply(null,cumFcf), rngC=maxC-minC||1;
+    var svgW=400, svgH=80;
+    var pts=cumFcf.map(function(v,i){
+      return (Math.round(i/(cumFcf.length-1)*(svgW-4))+2)+','+(Math.round((1-(v-minC)/rngC)*(svgH-4))+2);
+    }).join(' ');
+    var zy=Math.round((1-(0-minC)/rngC)*(svgH-4))+2;
+    var zeroLine=minC<0&&maxC>0?'<line x1="0" y1="'+zy+'" x2="'+svgW+'" y2="'+zy+'" stroke="rgba(255,255,255,0.2)" stroke-width="1" stroke-dasharray="4,3"/>':'';
+    // Payback marker
+    var pbLine='';
+    if (paybackQ&&paybackQ<=cumFcf.length){
+      var pbx=Math.round((paybackQ-1)/(cumFcf.length-1)*(svgW-4))+2;
+      pbLine='<line x1="'+pbx+'" y1="0" x2="'+pbx+'" y2="'+svgH+'" stroke="var(--gold)" stroke-width="1" stroke-dasharray="3,2"/>'+
+             '<text x="'+(pbx+3)+'" y="12" fill="var(--gold)" font-size="8" font-family="monospace">Q'+paybackQ+'</text>';
+    }
+    var fillPts=pts+' '+svgW+','+(svgH-2)+' 2,'+(svgH-2);
+    html += '<div style="overflow-x:auto;"><svg width="'+svgW+'" height="'+svgH+'" style="display:block;background:var(--s2);border-radius:3px;">'+
+      '<polygon points="'+fillPts+'" fill="rgba(0,200,180,0.08)"/>'+
+      zeroLine+pbLine+
+      '<polyline points="'+pts+'" fill="none" stroke="var(--cyan)" stroke-width="1.5" stroke-linejoin="round"/>'+
+      '</svg></div>';
+    html += '<div style="display:flex;gap:12px;margin-top:4px;">'+
+      '<div style="'+TH+'color:var(--cyan);">■ Cumulative FCF</div>'+
+      (paybackQ?'<div style="'+TH+'color:var(--gold);">▦ Payback Q'+paybackQ+'</div>':'')+
+      '</div>';
+    html += '</div>';
+  }
+  // Investment split
+  if (totalInvM>0) {
+    var rdP=Math.round(rdM/totalInvM*100), cpP=100-rdP;
+    html += '<div style="border-top:1px solid var(--border);padding-top:10px;">';
+    html += '<div style="'+TH+'color:var(--muted);margin-bottom:6px;">Investment Mix — Total €'+Math.round(totalInvM)+'M</div>';
+    html += '<div style="display:flex;height:10px;border-radius:3px;overflow:hidden;gap:1px;">'+
+      '<div style="flex:'+rdP+';background:var(--orange);opacity:0.8;"></div>'+
+      '<div style="flex:'+cpP+';background:var(--purple);opacity:0.8;"></div></div>';
+    html += '<div style="display:flex;gap:16px;margin-top:5px;">'+
+      '<div style="'+TH+'color:var(--orange);">■ R&D €'+Math.round(rdM)+'M ('+rdP+'%)</div>'+
+      '<div style="'+TH+'color:var(--purple);">■ Plant Capex €'+Math.round(toolingM)+'M ('+cpP+'%)</div></div>';
+    html += '</div>';
+  }
+  html += pc();
+
+  return html;
+}
+
 
 function buildVolumeCurve(peakUnits, lifeQ) {
   // Ramp: 20%→40%→65%→85%→100% (over first 4 quarters)
@@ -14700,6 +15037,48 @@ function calcPropBizCase() {
   var totalRev  = fcfArr.reduce(function(s,f){return s+f.rev;},0);
   var totalEbit = fcfArr.reduce(function(s,f){return s+f.ebit;},0);
   var avgEbitPct = totalRev > 0 ? totalEbit/totalRev*100 : 0;
+
+  // ── Compute 6-panel supporting data ──────────────────────────────────────
+  var _bcYears = typeof _fcfYr !== 'undefined' ? _fcfYr : [];
+  var _byYear = _bcYears.map(function(yr,i){
+    var sl=fcfArr.slice(i*4,i*4+4);
+    return {year:yr,
+      rev:sl.reduce(function(s,f){return s+f.rev;},0),
+      cogs:sl.reduce(function(s,f){return s+f.cogs;},0),
+      gp:sl.reduce(function(s,f){return s+f.gp;},0),
+      ebit:sl.reduce(function(s,f){return s+f.ebit;},0),
+      fcf:sl.reduce(function(s,f){return s+f.fcf;},0)};
+  });
+  var _bcPlants=(_prop.operations&&_prop.operations.plants)||[];
+  var _bcMkts=((_prop.commercial&&_prop.commercial.markets)||[]).filter(function(m){return m.selected;});
+  var _mktEcon=_bcMkts.map(function(mkt){
+    var plant=_bcPlants.find(function(p){return p.id===mkt.plant_id;})||_bcPlants[0]||null;
+    var lo=plant?(((MARKET_LOGISTICS_COST[plant.region]||{})[mkt.region])||{l:200,t:0}):{l:200,t:0};
+    var baseC=plant&&plant._manuf?(tpcNum+plant._manuf.buy_cost_adj+plant._manuf.manuf_var_total):tpcNum;
+    var avgDisc=(mkt.years||[]).reduce(function(s,y){return s+y.discount;},0)/Math.max(1,(mkt.years||[]).length);
+    var nR=(mkt.msrp_eur_k||0)*1000*(1-avgDisc/100);
+    var tE=nR*lo.t, lnd=baseC+lo.l+tE, mg=nR-lnd;
+    var totV=(mkt.years||[]).reduce(function(s,y){return s+y.volume;},0);
+    return {region:mkt.region,msrp:mkt.msrp_eur_k,disc:avgDisc,netRev:nR,
+            landed:lnd,margin:mg,marginPct:nR>0?mg/nR*100:0,logistics:lo.l,tariff:tE,totalVol:totV};
+  });
+  var _cumFcf=[],_cum=-totalInvM;
+  fcfArr.forEach(function(f){_cum+=f.fcf;_cumFcf.push(_cum);});
+  var _modTpc=[],_modRd=[];
+  ['platform','pwt','epwt','tophat','eands'].forEach(function(k){
+    var p=_prop[k];
+    if(p&&p.module){
+      if(parseFloat(p.module.per_unit_tpc_eur||0)>0) _modTpc.push({name:p.module.name||k,tpc:parseFloat(p.module.per_unit_tpc_eur)});
+      if(parseFloat(p.module.total_rd_spend_m||0)>0)  _modRd.push({name:p.module.name||k,rd:parseFloat(p.module.total_rd_spend_m)});
+    }
+  });
+  // Render panels into prop-bc-content
+  var _bcEl=document.getElementById('prop-bc-content');
+  if (_bcEl) {
+    _bcEl.innerHTML=_buildBizCasePanels(_byYear,_mktEcon,_modTpc,_modRd,_bcMkts,_bcPlants,
+      tpcNum,rdM,toolingM,totalInvM,npv,irr,paybackQ,avgEbitPct,rateP,_cumFcf,fcfArr,_bcYears);
+  }
+
 
   // Update KPI cards
   var npvEl = document.getElementById('prop-bc-npv');
