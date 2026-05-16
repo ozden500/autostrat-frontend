@@ -8618,6 +8618,9 @@ async function teamJoinSession() {
       teamId = tData.team.id;
       await fetch(`${API_URL}/teams/${teamId}/plants/initialize`, {method:'POST'});
     }
+    // Mark this team as human-controlled in this session
+    fetch(`${API_URL}/sessions/${sessionId}/teams/${teamId}/claim`, {method:'POST'})
+      .catch(e => console.warn('Team claim failed:', e));
     enterSimulator();
   } catch(e) {
     err.textContent = 'Error joining: ' + e.message;
@@ -9412,8 +9415,8 @@ async function refreshInstructorHub() {
     const tData = await tRes.json();
     const rData = await rRes.json();
     const teams  = (tData.teams || []).filter(t => t.name !== 'Instructor');
-    const humanTeams = teams.filter(t => t.team_type === 'human');
-    const aiTeams    = teams.filter(t => t.team_type === 'ai');
+    const humanTeams = teams.filter(t => t.is_human_claimed);
+    const aiTeams    = teams.filter(t => !t.is_human_claimed);
     const rounds = (rData.rounds || []).filter(r => !r.is_historical && r.round_number > 0);
     const latest = rounds.filter(r=>!r.is_historical&&r.round_number>0).slice(-1)[0];
 
@@ -9443,7 +9446,7 @@ async function refreshInstructorHub() {
       const sData = await sRes.json();
       const subs  = sData.submissions || [];
       const submitted = subs.filter(s => s.status === 'submitted');
-      document.getElementById('hub-sub-summary').textContent = `${submitted.length} / ${humanTeams.length} human submitted`;
+      document.getElementById('hub-sub-summary').textContent = `${submitted.length} / ${humanTeams.length} human claimed`;
       document.getElementById('instr-sub-count').textContent = `${submitted.length} / ${humanTeams.length}`;
 
       const subMap = {};
@@ -9456,6 +9459,7 @@ async function refreshInstructorHub() {
             <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
               <span style="font-size:16px">${done?'✅':'⏳'}</span>
               <span style="font-size:12px;font-weight:700;color:${t.color_hex||'#fff'}">${t.name}</span>
+              <span style="font-size:10px;background:#22c55e22;color:#22c55e;border:1px solid #22c55e44;border-radius:4px;padding:1px 5px">HUMAN</span>
             </div>
             <div style="font-size:10px;color:${done?'#4ade80':'#fbbf24'}">${done?'Submitted':'Pending'}</div>
           </div>`;
@@ -9465,8 +9469,9 @@ async function refreshInstructorHub() {
             <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
               <span style="font-size:16px">🤖</span>
               <span style="font-size:12px;font-weight:700;color:${t.color_hex||'#94a3b8'}">${t.name}</span>
+              <span style="font-size:10px;background:#6366f122;color:#818cf8;border:1px solid #6366f144;border-radius:4px;padding:1px 5px">AI AUTO</span>
             </div>
-            <div style="font-size:10px;color:#64748b">AI — Auto Ready</div>
+            <div style="font-size:10px;color:#64748b">Unclaimed — AI will simulate</div>
           </div>`
         ).join('');
 
@@ -9941,6 +9946,19 @@ async function hubRunMarketClearing() {
 
 async function mcAdvanceRound() {
   var btn = document.getElementById('mc-btn-advance');
+  // Pre-advance: warn about teams that will get AI simulation
+  try {
+    var rdRes = await fetch(API_URL + '/sessions/' + sessionId + '/team-readiness');
+    if (rdRes.ok) {
+      var rdData = await rdRes.json();
+      var unready = (rdData.teams || []).filter(function(t) { return !t.is_human_claimed || !t.has_active_vehicle; });
+      if (unready.length > 0) {
+        var names = unready.map(function(t){ return t.name; }).join(', ');
+        if (!confirm('AI simulation will run for ' + unready.length + ' team(s):\n' + names + '\n\nContinue advancing to next round?')) return;
+      }
+    }
+  } catch(e) { /* non-fatal — proceed anyway */ }
+
   if (btn) { btn.disabled=true; btn.textContent='⏳ Advancing...'; }
   try {
     var res  = await fetch(API_URL + '/sessions/' + sessionId + '/rounds/next', { method: 'POST' });
@@ -9950,7 +9968,9 @@ async function mcAdvanceRound() {
     roundId = rnd.id;
     sessionStorage.setItem('as_roundId', roundId);
     updateRoundDisplay(rnd);
-    toast('✓ Round ' + rnd.round_number + ' · Y'+(rnd.year-2024)+'Q'+rnd.quarter + (data.market_clearing?' · market cleared':''));
+    var aiNote = '';
+    if (data.ai_sim_teams && data.ai_sim_teams.length) aiNote = ' · AI ran for ' + data.ai_sim_teams.length + ' team(s)';
+    toast('✓ Round ' + rnd.round_number + ' · Y'+(rnd.year-2024)+'Q'+rnd.quarter + (data.market_clearing?' · market cleared':'') + aiNote);
     await loadInstrMarketControl();
     refreshInstructorHub();
   } catch(e) {
