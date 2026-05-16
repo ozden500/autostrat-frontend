@@ -2348,15 +2348,41 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
 
 <div class="instr-page" id="page-instr-history">
   <div class="pg-title" style="color:#a78bfa">HISTORICAL DATA</div>
-  <div class="pg-sub">Generate 8 quarters of synthetic baseline data (Q1 2023 – Q4 2024) for all teams</div>
+  <div class="pg-sub">Load a predefined 5-year scenario (20 quarters, Q1 2020–Q4 2024) or generate synthetic 8-quarter baseline</div>
 
+  <!-- ── Predefined Scenario Loader ─────────────────────── -->
+  <div class="card" style="margin-bottom:14px;border:1px solid rgba(167,139,250,.4);background:rgba(167,139,250,.05);">
+    <div style="font-family:'DM Mono',monospace;font-size:8px;text-transform:uppercase;letter-spacing:2px;color:#a78bfa;margin-bottom:12px;">
+      PREDEFINED SCENARIO — 5 YEARS / 20 QUARTERS
+    </div>
+    <div style="display:flex;align-items:flex-start;gap:16px;flex-wrap:wrap;">
+      <div style="flex:1;min-width:220px;">
+        <select id="scenarioSelect" onchange="onScenarioChange()"
+          style="width:100%;font-family:'DM Mono',monospace;font-size:10px;padding:8px 10px;
+          background:var(--s2);border:1px solid var(--border);color:var(--text);border-radius:3px;margin-bottom:8px;">
+          <option value="">Loading scenarios...</option>
+        </select>
+        <div id="scenarioDesc" style="font-size:11px;color:var(--muted2);line-height:1.5;min-height:32px;"></div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:8px;">
+        <button onclick="loadScenario()" id="btn-load-scenario"
+          style="font-family:'DM Mono',monospace;font-size:10px;font-weight:700;padding:10px 20px;
+          border-radius:3px;border:1px solid rgba(167,139,250,.6);background:rgba(167,139,250,.2);
+          color:#a78bfa;cursor:pointer;letter-spacing:.5px;white-space:nowrap;">
+          LOAD SCENARIO (20Q)
+        </button>
+        <div id="scenarioMeta" style="font-family:'DM Mono',monospace;font-size:9px;color:var(--muted2);text-align:center;"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Legacy synthetic generation ────────────────────── -->
   <div class="card" style="margin-bottom:14px;">
     <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;">
       <div>
-        <div style="font-size:12px;color:var(--text);margin-bottom:4px;">Generate synthetic historical performance data for all session OEMs.</div>
+        <div style="font-size:12px;color:var(--text);margin-bottom:4px;">Quick synthetic baseline (8 quarters, Q1 2023–Q4 2024)</div>
         <div style="font-family:'DM Mono',monospace;font-size:9px;color:var(--muted2);">
-          Each team gets a strategy archetype (Volume Leader, Premium Player, EV Pioneer, Cost Cutter, Balanced, Niche Specialist)
-          that shapes their 2023–2024 market position. Run once at session start.
+          Each team gets a strategy archetype that shapes their 2023–2024 market position. Run once at session start.
         </div>
       </div>
       <div style="flex:1;"></div>
@@ -9388,7 +9414,7 @@ function navInstr(page, el) {
   if (page === 'instr-footprint') loadFootprintManager();
   if (page === 'instr-results')   loadAnalystRounds();
   if (page === 'instr-demand')    loadDemandModel();
-  if (page === 'instr-history')   loadInstrHistory();
+  if (page === 'instr-history')   { loadInstrHistory(); loadScenarios(); }
 }
 
 function copySessionId() {
@@ -15839,6 +15865,68 @@ async function generateHistory() {
   } catch(e) { toast('\u26a0 ' + e.message); }
   finally {
     if (btn) { btn.disabled = false; btn.textContent = '\u26a1 GENERATE 8 QUARTERS HISTORY'; }
+  }
+}
+
+// ── Predefined Scenario loader ────────────────────────────────────
+var _scenarioList = [];
+
+async function loadScenarios() {
+  try {
+    const data = await fetch(API_URL + '/scenarios').then(function(r){ return r.json(); });
+    _scenarioList = Array.isArray(data) ? data : [];
+    var sel = document.getElementById('scenarioSelect');
+    if (!sel) return;
+    sel.innerHTML = _scenarioList.map(function(s){
+      return '<option value="' + s.id + '">' + s.name + '</option>';
+    }).join('');
+    onScenarioChange();
+  } catch(e) {
+    var sel = document.getElementById('scenarioSelect');
+    if (sel) sel.innerHTML = '<option value="">Failed to load scenarios</option>';
+  }
+}
+
+function onScenarioChange() {
+  var sel  = document.getElementById('scenarioSelect');
+  var desc = document.getElementById('scenarioDesc');
+  var meta = document.getElementById('scenarioMeta');
+  if (!sel || !_scenarioList.length) return;
+  var s = _scenarioList.find(function(x){ return x.id === sel.value; });
+  if (!s) return;
+  if (desc) desc.textContent = s.description;
+  if (meta) meta.textContent = s.quarters + 'Q · ' + s.vehicle_count + ' vehicles';
+}
+
+async function loadScenario() {
+  if (!sessionId) { toast('⚠ No session selected'); return; }
+  var sel = document.getElementById('scenarioSelect');
+  var sid = sel ? sel.value : 'baseline_2020_2024';
+  if (!sid) { toast('⚠ Select a scenario first'); return; }
+  var s = _scenarioList.find(function(x){ return x.id === sid; }) || {name: sid};
+  if (!confirm('Load scenario "' + s.name + '"?\n\nThis will create 20 quarters of historical data (Q1 2020–Q4 2024) with full vehicle specs and market results.\n\nThis cannot be undone for this session.')) return;
+  var btn = document.getElementById('btn-load-scenario');
+  if (btn) { btn.disabled = true; btn.textContent = 'LOADING...'; }
+  try {
+    const res  = await fetch(API_URL + '/sessions/' + sessionId + '/load-scenario', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({scenario_id: sid})
+    });
+    const data = await res.json();
+    if (data.success) {
+      toast('✓ Scenario loaded: ' + data.rounds + ' rounds, ' + data.vehicles + ' vehicles');
+      await new Promise(function(r){ setTimeout(r, 600); });
+      await loadHistoricalPreview();
+      await loadInstrHistory();
+    } else if (data.status === 'already_exists') {
+      toast('ℹ Historical data already exists (' + data.rounds + ' rounds)');
+    } else {
+      toast('⚠ ' + (data.detail || data.error || 'Error loading scenario'));
+    }
+  } catch(e) { toast('⚠ ' + e.message); }
+  finally {
+    if (btn) { btn.disabled = false; btn.textContent = 'LOAD SCENARIO (20Q)'; }
   }
 }
 
