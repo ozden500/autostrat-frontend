@@ -2412,7 +2412,7 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
   <div class="card" style="padding:0;overflow:hidden;">
     <div style="padding:10px 16px;border-bottom:1px solid var(--border);background:var(--s2);
       font-family:'DM Mono',monospace;font-size:8px;text-transform:uppercase;letter-spacing:2px;color:#a78bfa;">
-      Historical Data Preview — Last 8 Quarters
+      Historical Data Preview
     </div>
     <div id="hist-data-preview" style="overflow-x:auto;">
       <div style="padding:24px;color:var(--muted2);font-size:12px;text-align:center;">
@@ -15904,7 +15904,7 @@ async function loadScenario() {
   var sid = sel ? sel.value : 'baseline_2020_2024';
   if (!sid) { toast('⚠ Select a scenario first'); return; }
   var s = _scenarioList.find(function(x){ return x.id === sid; }) || {name: sid};
-  if (!confirm('Load scenario "' + s.name + '"?\n\nThis will create 20 quarters of historical data (Q1 2020–Q4 2024) with full vehicle specs and market results.\n\nThis cannot be undone for this session.')) return;
+  if (!confirm('Load "' + s.name + '"?\n20 quarters of history (Q1 2020–Q4 2024) will be generated. Continue?')) return;
   var btn = document.getElementById('btn-load-scenario');
   if (btn) { btn.disabled = true; btn.textContent = 'LOADING...'; }
   try {
