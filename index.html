@@ -10173,15 +10173,21 @@ async function loadAnalystRounds() {
   try {
     var res = await fetch(API_URL + '/sessions/' + sessionId + '/rounds');
     var data = await res.json();
-    var rounds = (data.rounds || []).filter(function(r) {
-      return !r.is_historical && r.round_number > 0 && r.phase === 'results';
-    }).sort(function(a,b){ return b.round_number - a.round_number; });
+    var all = (data.rounds || []).filter(function(r) { return r.phase === 'results'; });
+    // Historical rounds (negative round_number) first ascending, then game rounds descending
+    var hist = all.filter(function(r){ return r.is_historical; })
+                  .sort(function(a,b){ return (a.year*4+a.quarter) - (b.year*4+b.quarter); });
+    var game = all.filter(function(r){ return !r.is_historical && r.round_number > 0; })
+                  .sort(function(a,b){ return b.round_number - a.round_number; });
+    var rounds = game.concat(hist);
     sel.innerHTML = '<option value="">Select round...</option>';
-    rounds.forEach(function(r) {
-      var opt = document.createElement('option');
-      opt.value = r.id;
-      opt.textContent = 'Round ' + r.round_number + ' (' + r.phase + ')';
-      sel.appendChild(opt);
+    if (game.length)  sel.add(new Option('── Game Rounds ──', '', false, false));
+    game.forEach(function(r) {
+      sel.add(new Option('Round ' + r.round_number + ' · Q' + r.quarter + ' ' + r.year, r.id));
+    });
+    if (hist.length)  sel.add(new Option('── Historical ──', '', false, false));
+    hist.forEach(function(r) {
+      sel.add(new Option('Q' + r.quarter + ' ' + r.year + ' (Historical)', r.id));
     });
     if (rounds.length > 0) {
       sel.value = rounds[0].id;
