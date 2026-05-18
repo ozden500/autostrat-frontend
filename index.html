@@ -11519,9 +11519,7 @@ async function instructorCloseRound() {
   if (!sessionId || !roundId) return;
   // Disable both buttons immediately
   var btnA = document.getElementById('ip-btn-close');
-  var btnB = document.getElementById('hub-btn-close');
   if (btnA) { btnA.disabled = true; btnA.textContent = '⏳ Running...'; }
-  if (btnB) { btnB.disabled = true; btnB.textContent = '⏳ Running...'; }
   try {
     const res  = await fetch(`${API_URL}/sessions/${sessionId}/rounds/${roundId}/run`, {method:'POST'});
     const text = await res.text();
@@ -11535,7 +11533,6 @@ async function instructorCloseRound() {
       throw new Error((runData.detail || text || 'Unknown error'));
     }
     if (btnA) { btnA.disabled = true; btnA.textContent = '✓ Round closed'; }
-    if (btnB) { btnB.disabled = true; btnB.textContent = '✓ Round closed'; }
     const statusLabel = document.getElementById('ip-status-label');
     if (statusLabel) statusLabel.textContent = 'results';
     const nextBtn = document.getElementById('ip-btn-next');
@@ -11544,21 +11541,16 @@ async function instructorCloseRound() {
     if (resultsBtn) resultsBtn.disabled = false;
     const phasePill = document.getElementById('phase-pill');
     if (phasePill) phasePill.textContent = '📊 Results Phase';
-    // Update hub buttons
-    const hubClose = document.getElementById('hub-btn-close');
-    const hubNext  = document.getElementById('hub-btn-next');
-    if (hubClose) { hubClose.disabled = true;  hubClose.style.opacity = '.4'; }
-    if (hubNext)  { hubNext.disabled = false;  hubNext.style.opacity  = '1'; }
+    const hubNext = document.getElementById('hub-btn-next');
+    if (hubNext) { hubNext.disabled = false; hubNext.style.opacity = '1'; }
     await refreshInstructorHub();
   } catch(e) {
     toast('⚠ Simulation error: ' + e.message);
     if (btnA) { btnA.disabled = false; btnA.textContent = '⏹ Close Round & Run Simulation'; }
-    if (btnB) { btnB.disabled = false; btnB.textContent = '⏹ Close Round & Run Simulation'; }
+    if (btnA) { btnA.disabled = false; btnA.textContent = '⏹ Close Round & Run Simulation'; }
   } finally {
-    // Re-enable after 3 seconds regardless
     setTimeout(function() {
       if (btnA && btnA.disabled) { btnA.disabled = false; btnA.textContent = '⏹ Close Round & Run Simulation'; }
-      if (btnB && btnB.disabled) { btnB.disabled = false; btnB.textContent = '⏹ Close Round & Run Simulation'; }
     }, 3000);
   }
 }
@@ -11589,11 +11581,8 @@ async function instructorNextRound() {
     if (btn) { btn.textContent = '▶ Open Next Round'; }
     const closeBtn = document.getElementById('ip-btn-close');
     if (closeBtn) { closeBtn.disabled = false; closeBtn.textContent = '⏹ Close Round & Run Simulation'; }
-    // Update hub buttons
-    const hubClose = document.getElementById('hub-btn-close');
-    const hubNext  = document.getElementById('hub-btn-next');
-    if (hubClose) { hubClose.disabled = false; hubClose.style.opacity = '1'; }
-    if (hubNext)  { hubNext.disabled = true;  hubNext.style.opacity  = '.4'; }
+    const hubNext2 = document.getElementById('hub-btn-next');
+    if (hubNext2) { hubNext2.disabled = true; hubNext2.style.opacity = '.4'; }
     await refreshInstructorHub();
   } catch(e) {
     toast('⚠ Error opening round: ' + e.message);
