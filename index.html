@@ -11142,7 +11142,8 @@ async function loadPerformanceData() {
     var sub = document.getElementById('perf-sub');
     if (sub && dash.latest_round) {
       var lr = dash.latest_round;
-      sub.textContent = 'Latest: Y'+(lr.year-2024)+'Q'+lr.quarter+' · Round '+lr.round_number+' · '+allTeams.length+' teams';
+      var lrLabel = lr.round_label || (lr.is_historical ? ('Q'+lr.quarter+' '+lr.year+' (Historical)') : ('Y'+(lr.year-2024)+'Q'+lr.quarter+' · Round '+lr.round_number));
+      sub.textContent = 'Latest: ' + lrLabel + ' · ' + allTeams.length + ' teams';
     }
 
     // ── 2. Update KPI strip from market-clearing data ────────
@@ -11174,7 +11175,7 @@ async function loadPerformanceData() {
     var dashRounds = dash.rounds || rounds;
 
     if (allRos.length > 0 && dashRounds.length > 0) {
-      var rndLabels = dashRounds.map(function(r) { return 'Y'+(r.year-2024)+'Q'+r.quarter; });
+      var rndLabels = dashRounds.map(function(r) { return r.round_label || (r.is_historical ? ('Q'+r.quarter+' '+r.year) : ('Y'+(r.year-2024)+'Q'+r.quarter)); });
       var mktSeries = {}; // teamId -> { revenue, ebit, share, units }
       allTeams.forEach(function(t) { mktSeries[t.id] = { revenue:[], ebit:[], share:[], units:[], score:[] }; });
       // Collect any teams seen in round outcomes but not in allTeams
