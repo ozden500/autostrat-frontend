@@ -9689,10 +9689,14 @@ async function mcAdvanceRound() {
     var rdRes = await fetch(API_URL + '/sessions/' + sessionId + '/team-readiness');
     if (rdRes.ok) {
       var rdData = await rdRes.json();
-      var unready = (rdData.teams || []).filter(function(t) { return !t.is_human_claimed || !t.has_active_vehicle; });
-      if (unready.length > 0) {
-        var names = unready.map(function(t){ return t.name; }).join(', ');
-        if (!confirm('AI simulation will run for ' + unready.length + ' team(s):\n' + names + '\n\nContinue advancing to next round?')) return;
+      var aiFullSim  = (rdData.teams || []).filter(function(t) { return !t.is_human_claimed; });
+      var aiVehOnly  = (rdData.teams || []).filter(function(t) { return t.is_human_claimed && !t.has_active_vehicle; });
+      if (aiFullSim.length || aiVehOnly.length) {
+        var msg = 'Advancing to next round:\n';
+        if (aiFullSim.length) msg += '\n🤖 Full AI simulation (' + aiFullSim.length + ' unclaimed team(s)):\n' + aiFullSim.map(function(t){ return '  · ' + t.name; }).join('\n');
+        if (aiVehOnly.length) msg += '\n\n⚠ AI fallback vehicle (' + aiVehOnly.length + ' claimed team(s) with no vehicle):\n' + aiVehOnly.map(function(t){ return '  · ' + t.name; }).join('\n');
+        msg += '\n\nContinue?';
+        if (!confirm(msg)) return;
       }
     }
   } catch(e) { /* non-fatal — proceed anyway */ }
