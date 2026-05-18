@@ -9257,13 +9257,6 @@ async function refreshInstructorHub() {
       // Enable/disable buttons
       const btnNext  = document.getElementById('hub-btn-next');
       if (btnNext)  { btnNext.disabled  = latest.phase !== 'results';  btnNext.style.opacity  = latest.phase === 'results'  ? '1' : '.4'; }
-      // Also sync original buttons
-      const ob1 = document.getElementById('ip-btn-close');
-      const ob2 = document.getElementById('ip-btn-next');
-      const ob3 = document.getElementById('ip-btn-results');
-      if (ob1) { ob1.disabled = latest.phase !== 'decision'; }
-      if (ob2) { ob2.disabled = latest.phase !== 'results'; }
-      if (ob3) { ob3.disabled = latest.phase !== 'results'; }
     }
 
     // Load submissions
