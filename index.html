@@ -1110,7 +1110,6 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
       <div class="nav-item" onclick="navInstr('instr-monitor',this)"><span class="nav-icon">👁</span> Team Monitor</div>
       <div class="nav-item" onclick="navInstr('instr-footprint',this)"><span class="nav-icon">🏭</span> Footprint Manager</div>
       <div class="nav-item" onclick="navInstr('instr-events',this)"><span class="nav-icon">⚠</span> Event Injector</div>
-      <div class="nav-item" onclick="navInstr('instr-market',this)"><span class="nav-icon">🎯</span> Market Control</div>
       <div class="nav-item" onclick="navInstr('instr-demand',this)"><span class="nav-icon">📊</span> Demand Model</div>
       <div class="nav-item" onclick="navInstr('instr-history',this)"><span class="nav-icon">📅</span> Historical Data</div>
     </div>
@@ -2127,9 +2126,9 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
       <div id="hub-phase" style="font-size:11px;color:#94a3b8;margin-top:2px">Waiting to start</div>
     </div>
     <div style="display:flex;flex-direction:column;gap:8px;min-width:220px">
-      <button id="hub-btn-clear" onclick="hubRunMarketClearing()" style="background:#0f766e;color:#2dd4bf;border:none;border-radius:8px;padding:12px 20px;font-size:13px;font-weight:700;cursor:pointer">🎯 Run Market Clearing</button>
-      <button id="hub-btn-next" onclick="instructorNextRound()" disabled style="background:#059669;color:#fff;border:none;border-radius:8px;padding:12px 20px;font-size:13px;font-weight:700;cursor:pointer;opacity:.5">▶ Advance Round + Clear</button>
-      <button id="hub-btn-close" onclick="instructorCloseRound()" disabled style="background:#4c1d95;color:#c4b5fd;border:none;border-radius:8px;padding:10px 20px;font-size:12px;font-weight:600;cursor:pointer;opacity:.5">⏹ Legacy Simulation Run</button>
+      <button id="hub-btn-clear" onclick="mcRunClearing()" style="background:#0f766e;color:#2dd4bf;border:none;border-radius:8px;padding:12px 20px;font-size:13px;font-weight:700;cursor:pointer">🎯 Run Market Clearing</button>
+      <button id="hub-btn-next" onclick="mcAdvanceRound()" disabled style="background:#059669;color:#fff;border:none;border-radius:8px;padding:12px 20px;font-size:13px;font-weight:700;cursor:pointer;opacity:.5">▶ Advance Round</button>
+      <button onclick="refreshInstructorHub()" style="background:rgba(255,255,255,.06);color:#94a3b8;border:1px solid rgba(255,255,255,.1);border-radius:6px;padding:8px 16px;font-size:11px;cursor:pointer">↻ Refresh</button>
       <button onclick="openFootprintSetup()" style="background:#1e3a5f;color:#93c5fd;border:none;border-radius:8px;padding:8px 16px;font-size:11px;font-weight:600;cursor:pointer">🏭 Footprint Setup</button>
     </div>
     <div style="min-width:180px;text-align:right">
@@ -2150,13 +2149,10 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
     </div>
   </div>
 
-  <!-- Vehicle Status Row -->
+  <!-- Vehicle Status + Market Tabs -->
   <div style="background:var(--s1);border:1px solid var(--border);border-radius:10px;padding:14px;margin-bottom:14px">
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
-      <div style="font-family:'DM Mono',monospace;font-size:9px;text-transform:uppercase;letter-spacing:1.5px;color:#a78bfa">Vehicle Competition Status</div>
-      <button onclick="navInstr('instr-market',document.querySelector('#instructor-nav .nav-item:nth-child(3)'))" style="background:none;border:1px solid #0f766e;color:#2dd4bf;border-radius:6px;padding:4px 12px;font-size:11px;cursor:pointer">Full Market Control →</button>
-    </div>
-    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:10px;">
+    <div style="font-family:'DM Mono',monospace;font-size:9px;text-transform:uppercase;letter-spacing:1.5px;color:#a78bfa;margin-bottom:12px">Vehicle Competition Status</div>
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:14px;">
       <div style="background:var(--s2);border-radius:6px;padding:10px;text-align:center;">
         <div style="font-family:'Orbitron',sans-serif;font-size:18px;font-weight:700;color:#2dd4bf;" id="hub-veh-onsale">—</div>
         <div style="font-family:'DM Mono',monospace;font-size:8px;color:#475569;text-transform:uppercase;margin-top:2px;">On-Sale</div>
@@ -2174,7 +2170,15 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
         <div style="font-family:'DM Mono',monospace;font-size:8px;color:#475569;text-transform:uppercase;margin-top:2px;">Last Clearing</div>
       </div>
     </div>
-    <div id="hub-veh-list" style="color:var(--muted2);font-size:11px;font-family:'DM Mono',monospace;">Loading vehicle status...</div>
+    <!-- Embedded market tabs -->
+    <div style="display:flex;gap:4px;border-bottom:1px solid var(--border);margin-bottom:12px;padding-bottom:0;">
+      <button class="mc-tab active" onclick="mcTab('vehicles',this)" style="font-family:'DM Mono',monospace;font-size:9px;letter-spacing:1px;padding:7px 16px;border:none;border-bottom:2px solid #2dd4bf;background:none;color:#2dd4bf;cursor:pointer;text-transform:uppercase;">🚗 Active Vehicles</button>
+      <button class="mc-tab" onclick="mcTab('results',this)" style="font-family:'DM Mono',monospace;font-size:9px;letter-spacing:1px;padding:7px 16px;border:none;border-bottom:2px solid transparent;background:none;color:var(--muted);cursor:pointer;text-transform:uppercase;">📊 Clearing Results</button>
+      <button class="mc-tab" onclick="mcTab('timeline',this)" style="font-family:'DM Mono',monospace;font-size:9px;letter-spacing:1px;padding:7px 16px;border:none;border-bottom:2px solid transparent;background:none;color:var(--muted);cursor:pointer;text-transform:uppercase;">📅 Round Timeline</button>
+    </div>
+    <div id="mc-panel-vehicles"><div style="color:var(--muted2);font-size:12px;padding:16px 0;">Loading vehicle data...</div></div>
+    <div id="mc-panel-results" style="display:none;"><div style="color:var(--muted2);font-size:12px;padding:16px 0;">Run Market Clearing to see results.</div></div>
+    <div id="mc-panel-timeline" style="display:none;"><div style="color:var(--muted2);font-size:12px;padding:16px 0;">Loading timeline...</div></div>
   </div>
 
   <!-- Market Clearing Results Preview -->
@@ -2244,56 +2248,6 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
 </div>
 
 <!-- ████ INSTRUCTOR: MARKET ROUND CONTROL ████ -->
-<div class="instr-page" id="page-instr-market">
-  <div class="pg-title" style="color:#2dd4bf">MARKET ROUND CONTROL</div>
-  <div class="pg-sub" id="mc-sub">Vehicle competition · Market clearing · Round progression</div>
-
-  <!-- Round state + action controls -->
-  <div style="background:linear-gradient(135deg,#042f2e,#0f3d38);border:1px solid #0f766e;border-radius:12px;padding:18px;margin-bottom:14px;display:flex;align-items:stretch;gap:16px;flex-wrap:wrap;">
-    <!-- Round info -->
-    <div style="flex:1;min-width:180px;">
-      <div style="font-family:'DM Mono',monospace;font-size:8px;color:#2dd4bf;letter-spacing:1.5px;margin-bottom:4px;">ACTIVE ROUND</div>
-      <div id="mc-round-label" style="font-family:'Orbitron',sans-serif;font-size:24px;font-weight:700;color:#fff;">—</div>
-      <div id="mc-round-stats" style="font-family:'DM Mono',monospace;font-size:10px;color:#64748b;margin-top:4px;">—</div>
-      <div id="mc-phase-badge" style="font-family:'DM Mono',monospace;font-size:10px;margin-top:4px;">—</div>
-    </div>
-    <!-- Stat tiles -->
-    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;align-self:center;min-width:260px;">
-      <div style="background:rgba(0,0,0,.25);border-radius:6px;padding:10px;text-align:center;">
-        <div style="font-family:'Orbitron',sans-serif;font-size:18px;font-weight:700;color:#2dd4bf;" id="mc-tile-onsale">—</div>
-        <div style="font-family:'DM Mono',monospace;font-size:7px;color:#475569;text-transform:uppercase;margin-top:2px;">On-Sale</div>
-      </div>
-      <div style="background:rgba(0,0,0,.25);border-radius:6px;padding:10px;text-align:center;">
-        <div style="font-family:'Orbitron',sans-serif;font-size:18px;font-weight:700;color:#a78bfa;" id="mc-tile-segs">—</div>
-        <div style="font-family:'DM Mono',monospace;font-size:7px;color:#475569;text-transform:uppercase;margin-top:2px;">Segments</div>
-      </div>
-      <div style="background:rgba(0,0,0,.25);border-radius:6px;padding:10px;text-align:center;">
-        <div style="font-family:'DM Mono',monospace;font-size:11px;font-weight:700;" id="mc-tile-cleared">—</div>
-        <div style="font-family:'DM Mono',monospace;font-size:7px;color:#475569;text-transform:uppercase;margin-top:2px;">Clearing</div>
-      </div>
-    </div>
-    <!-- Action buttons -->
-    <div style="display:flex;flex-direction:column;gap:8px;justify-content:center;min-width:200px;">
-      <button id="mc-btn-clear" onclick="mcRunClearing()" style="background:#0f766e;color:#2dd4bf;border:none;border-radius:8px;padding:12px 18px;font-size:13px;font-weight:700;cursor:pointer;">🎯 Run Market Clearing</button>
-      <button id="mc-btn-advance" onclick="mcAdvanceRound()" style="background:#059669;color:#fff;border:none;border-radius:8px;padding:12px 18px;font-size:13px;font-weight:700;cursor:pointer;">▶ Advance Round</button>
-      <button onclick="loadInstrMarketControl()" style="background:rgba(255,255,255,.06);color:#94a3b8;border:1px solid rgba(255,255,255,.1);border-radius:6px;padding:8px 14px;font-size:11px;cursor:pointer;">↻ Refresh</button>
-    </div>
-  </div>
-
-  <!-- Tab bar -->
-  <div style="display:flex;gap:4px;border-bottom:1px solid var(--border);margin-bottom:14px;padding-bottom:0;">
-    <button class="mc-tab active" onclick="mcTab('vehicles',this)" style="font-family:'DM Mono',monospace;font-size:9px;letter-spacing:1px;padding:7px 16px;border:none;border-bottom:2px solid #2dd4bf;background:none;color:#2dd4bf;cursor:pointer;text-transform:uppercase;">🚗 Active Vehicles</button>
-    <button class="mc-tab" onclick="mcTab('results',this)" style="font-family:'DM Mono',monospace;font-size:9px;letter-spacing:1px;padding:7px 16px;border:none;border-bottom:2px solid transparent;background:none;color:var(--muted);cursor:pointer;text-transform:uppercase;">📊 Clearing Results</button>
-    <button class="mc-tab" onclick="mcTab('timeline',this)" style="font-family:'DM Mono',monospace;font-size:9px;letter-spacing:1px;padding:7px 16px;border:none;border-bottom:2px solid transparent;background:none;color:var(--muted);cursor:pointer;text-transform:uppercase;">📅 Round Timeline</button>
-  </div>
-
-  <!-- Tab panels -->
-  <div id="mc-content">
-    <div id="mc-panel-vehicles"><div style="color:var(--muted2);font-size:12px;padding:24px 0;">Loading vehicle data...</div></div>
-    <div id="mc-panel-results" style="display:none;"><div style="color:var(--muted2);font-size:12px;padding:24px 0;">Run Market Clearing to see results.</div></div>
-    <div id="mc-panel-timeline" style="display:none;"><div style="color:var(--muted2);font-size:12px;padding:24px 0;">Loading timeline...</div></div>
-  </div>
-</div>
 
 <!-- ████ INSTRUCTOR: TEAM MONITOR ████ -->
 <div class="instr-page" id="page-instr-monitor">
@@ -9434,7 +9388,7 @@ function navInstr(page, el) {
   document.querySelectorAll('.instr-page').forEach(p => p.classList.remove('active'));
   const target = document.getElementById('page-' + page);
   if (target) target.classList.add('active');
-  if (page === 'instr-market')    loadInstrMarketControl();
+  if (page === 'instr-hub')       refreshInstructorHub();
   if (page === 'instr-monitor')   loadTeamMonitor();
   if (page === 'instr-footprint') loadFootprintManager();
   if (page === 'instr-results')   loadAnalystRounds();
@@ -9468,8 +9422,12 @@ async function refreshInstructorHub() {
     const teams  = (tData.teams || []).filter(t => t.name !== 'Instructor');
     const humanTeams = teams.filter(t => t.is_human_claimed);
     const aiTeams    = teams.filter(t => !t.is_human_claimed);
-    const rounds = (rData.rounds || []).filter(r => !r.is_historical && r.round_number > 0);
-    const latest = rounds.filter(r=>!r.is_historical&&r.round_number>0).slice(-1)[0];
+    const gameRounds = (rData.rounds || []).filter(r => !r.is_historical && r.round_number > 0);
+    const allRounds  = (rData.rounds || []).slice().sort((a,b) => (a.year*4+a.quarter)-(b.year*4+b.quarter));
+    const rounds = gameRounds;
+    const latest = gameRounds.slice(-1)[0];
+    const teamMap = {};
+    teams.forEach((t,i) => { teamMap[t.id] = Object.assign({}, t, {color: (typeof TEAM_COLORS!=='undefined'?TEAM_COLORS[i%TEAM_COLORS.length]:'#888')}); });
 
     // Update round display
     if (latest) {
@@ -9478,9 +9436,7 @@ async function refreshInstructorHub() {
       document.getElementById('hub-phase').textContent = `Q${latest.quarter} ${latest.year} · ${latest.phase === 'decision' ? '⚡ Decision Phase' : '✓ Results Phase'}`;
       document.getElementById('instr-round-badge').textContent = `R${latest.round_number} · Q${latest.quarter} ${latest.year}`;
       // Enable/disable buttons
-      const btnClose = document.getElementById('hub-btn-close');
       const btnNext  = document.getElementById('hub-btn-next');
-      if (btnClose) { btnClose.disabled = latest.phase !== 'decision'; btnClose.style.opacity = latest.phase === 'decision' ? '1' : '.4'; }
       if (btnNext)  { btnNext.disabled  = latest.phase !== 'results';  btnNext.style.opacity  = latest.phase === 'results'  ? '1' : '.4'; }
       // Also sync original buttons
       const ob1 = document.getElementById('ip-btn-close');
@@ -9526,19 +9482,23 @@ async function refreshInstructorHub() {
           </div>`
         ).join('');
 
-      // Vehicle status (new market-clearing system)
+      // Vehicle status + market tab data
       try {
-        const vRes  = await fetch(`${API_URL}/sessions/${sessionId}/vehicles`);
-        const vData = await vRes.json();
-        const veh   = vData.vehicles || [];
+        const [vRes, histRes] = await Promise.all([
+          fetch(`${API_URL}/sessions/${sessionId}/vehicles`),
+          fetch(`${API_URL}/sessions/${sessionId}/market-history`).then(r=>r.json()).catch(()=>({history:[]})),
+        ]);
+        const vData   = await vRes.json();
+        const veh     = vData.vehicles || [];
+        const history = (histRes && histRes.history) || [];
         const year2   = latest ? latest.year  : 2025;
         const qtr2    = latest ? latest.quarter : 1;
         const curQabs = (year2 - 2025) * 4 + (qtr2 - 1);
 
-        const onSaleVeh    = veh.filter(v => v.status === 'on_sale');
-        const approvedVeh  = veh.filter(v => v.status === 'approved');
-        const planVeh      = veh.filter(v => v.status === 'plan' || v.status === 'study');
-        const activeVeh    = veh.filter(v => {
+        const onSaleVeh   = veh.filter(v => v.status === 'on_sale');
+        const approvedVeh = veh.filter(v => v.status === 'approved');
+        const planVeh     = veh.filter(v => v.status === 'plan' || v.status === 'study');
+        const activeVeh   = veh.filter(v => {
           if (v.status !== 'on_sale' && v.status !== 'approved') return false;
           const sy = v.start_year || 9999, sq = v.start_quarter || 1;
           return (sy - 2025) * 4 + (sq - 1) <= curQabs;
@@ -9549,27 +9509,37 @@ async function refreshInstructorHub() {
         _setText2('hub-veh-approved', approvedVeh.length);
         _setText2('hub-veh-plan',     planVeh.length);
 
-        // Vehicle list by team
-        const teamVeh = {};
+        // Compute client-side utility scores for active vehicles
         activeVeh.forEach(v => {
-          const tn = v.team_name || (teamMap[v.team_id]||{}).name || '?';
-          if (!teamVeh[tn]) teamVeh[tn] = [];
-          teamVeh[tn].push(v);
+          v._team = teamMap[v.team_id] || {name:'?', color:'#888', id:v.team_id};
+          try {
+            if (typeof _MARKET_E !== 'undefined') {
+              const sp = Object.assign({}, v.rolled_up_specs||{});
+              if (v.price_eur_k) sp.price_eur_k = v.price_eur_k;
+              const mr = _MARKET_E.calc({
+                segment_code:v.segment_code, price_eur_k:sp.price_eur_k,
+                pwt_type:sp.pwt_type||'ice_only',
+                ice_fuel_L100km:sp.ice_fuel_L100km, bev_kwh_100km:sp.bev_kwh_100km,
+                co2_g_km:sp.ice_co2_g_km||0, t_0_100_s:sp.t_0_100_s,
+                safety:sp.safety, comfort:sp.comfort, premiumness:sp.premiumness,
+                reliability:sp.reliability, adas_level:sp.adas_level, connectivity:sp.connectivity,
+              });
+              v._utility   = mr.utility_score;
+              v._est_share = mr.market.est_share_pct;
+              v._pos       = mr.positioning;
+            }
+          } catch(e) { v._utility = null; v._est_share = null; }
         });
-        const SEG_NL = (typeof SEG_NAMES !== 'undefined') ? SEG_NAMES : {};
-        document.getElementById('hub-veh-list').innerHTML = activeVeh.length === 0
-          ? '<span style="color:#475569">No vehicles on-sale this round. Approve vehicle proposals to enable market competition.</span>'
-          : Object.entries(teamVeh).map(([tn, vs]) =>
-              `<div style="margin-bottom:4px;"><span style="color:#a78bfa;font-weight:700;">${tn}:</span> `
-            + vs.map(v => `<span style="margin-right:8px;">${v.name||'—'} <span style="color:#64748b;">(${SEG_NL[v.segment_code]||v.segment_code||'?'})</span></span>`).join('')
-            + '</div>'
-          ).join('');
 
-        // Market clearing results
-        const crRes  = await fetch(`${API_URL}/sessions/${sessionId}/rounds/${latest.id}/market-results`);
-        const crData = await crRes.json();
-        const vos    = crData.vehicle_outcomes || [];
-        const ros    = crData.round_outcomes   || [];
+        // Market clearing results for latest round
+        var vos = [], ros = [], clearing = null;
+        if (latest && latest.id) {
+          const crRes  = await fetch(`${API_URL}/sessions/${sessionId}/rounds/${latest.id}/market-results`);
+          const crData = await crRes.json();
+          vos     = crData.vehicle_outcomes || [];
+          ros     = crData.round_outcomes   || [];
+          clearing = crData;
+        }
 
         const clearEl = document.getElementById('hub-veh-clearing');
         if (clearEl) {
@@ -9577,6 +9547,7 @@ async function refreshInstructorHub() {
           else { clearEl.textContent = 'Pending'; clearEl.style.color = '#fbbf24'; }
         }
 
+        // Quick results podium
         if (vos.length > 0) {
           const topRos = [...ros].sort((a,b) => parseFloat(b.revenue_m||0)-parseFloat(a.revenue_m||0));
           const humanIds = new Set(humanTeams.map(t => t.id));
@@ -9602,107 +9573,25 @@ async function refreshInstructorHub() {
           document.getElementById('hub-quick-results').innerHTML =
             '<div style="color:#475569;font-size:12px;">No market clearing data yet — click 🎯 Run Market Clearing above.</div>';
         }
-      } catch(e) { /* vehicle status non-critical */ }
+
+        // Populate _mcData so tab renderers work
+        _mcData = {
+          rounds: gameRounds, allRounds: allRounds, allTeams: teams, teamMap: teamMap,
+          vehicles: veh, activeVeh: activeVeh, latestRnd: latest,
+          clearing: clearing, history: history,
+        };
+        mcRenderCurrentTab();
+      } catch(e) { console.warn('Hub vehicle/tab data error:', e); }
     }
   } catch(e) { console.warn('Hub refresh error:', e); }
 }
 
 // ════════════════════════════════════════════════════════════════════
-// INSTRUCTOR: MARKET ROUND CONTROL
+// INSTRUCTOR: MARKET TABS (rendered inside Session Hub)
 // ════════════════════════════════════════════════════════════════════
 
-var _mcData = null;        // cached page data
+var _mcData = null;        // populated by refreshInstructorHub()
 var _mcActiveTab = 'vehicles';
-
-async function loadInstrMarketControl() {
-  if (!sessionId) return;
-  try {
-    var [rRes, tRes, vRes] = await Promise.all([
-      fetch(API_URL + '/sessions/' + sessionId + '/rounds'),
-      fetch(API_URL + '/sessions/' + sessionId + '/teams'),
-      fetch(API_URL + '/sessions/' + sessionId + '/vehicles'),
-    ]);
-    var rData = await rRes.json(), tData = await tRes.json(), vData = await vRes.json();
-    // game rounds only — used for market ops (advance, clearing, vehicle eligibility)
-    var rounds   = (rData.rounds||[]).filter(function(r){ return !r.is_historical && r.round_number > 0; });
-    // all rounds sorted chronologically — used for Timeline display
-    var allRounds = (rData.rounds||[]).slice().sort(function(a,b){
-      return (a.year*4+a.quarter) - (b.year*4+b.quarter);
-    });
-    var allTeams = (tData.teams||[]).filter(function(t){ return t.name !== 'Instructor'; });
-    var vehicles = vData.vehicles || [];
-
-    var teamMap = {};
-    allTeams.forEach(function(t, i) { teamMap[t.id] = Object.assign({}, t, { color: TEAM_COLORS[i % TEAM_COLORS.length] }); });
-
-    var latestRnd    = rounds.length ? rounds.reduce(function(a,b){ return a.round_number > b.round_number ? a : b; }) : null;
-    var year2        = latestRnd ? latestRnd.year  : 2025;
-    var qtr2         = latestRnd ? latestRnd.quarter : 1;
-    var currentQabs  = (year2 - 2025) * 4 + (qtr2 - 1);
-
-    // Active vehicles (on_sale or approved with SOP ≤ round)
-    var activeVeh = vehicles.filter(function(v) {
-      if (v.status !== 'on_sale' && v.status !== 'approved') return false;
-      var sy = v.start_year || 9999, sq = v.start_quarter || 1;
-      return (sy - 2025) * 4 + (sq - 1) <= currentQabs;
-    });
-
-    // Compute client-side utility scores
-    activeVeh.forEach(function(v) {
-      v._team = teamMap[v.team_id] || { name: '?', color: '#888', id: v.team_id };
-      try {
-        if (typeof _MARKET_E !== 'undefined') {
-          var sp = Object.assign({}, v.rolled_up_specs || {});
-          if (v.price_eur_k) sp.price_eur_k = v.price_eur_k;
-          var mr = _MARKET_E.calc({
-            segment_code: v.segment_code, price_eur_k: sp.price_eur_k,
-            pwt_type: sp.pwt_type || 'ice_only',
-            ice_fuel_L100km: sp.ice_fuel_L100km, bev_kwh_100km: sp.bev_kwh_100km,
-            co2_g_km: sp.ice_co2_g_km || 0, t_0_100_s: sp.t_0_100_s,
-            safety: sp.safety, comfort: sp.comfort, premiumness: sp.premiumness,
-            reliability: sp.reliability, adas_level: sp.adas_level, connectivity: sp.connectivity,
-          });
-          v._utility   = mr.utility_score;
-          v._est_share = mr.market.est_share_pct;
-          v._pos       = mr.positioning;
-        }
-      } catch(e) { v._utility = null; v._est_share = null; }
-    });
-
-    // Latest clearing results + full round history (in parallel)
-    var clearing = null, history = [];
-    var fetchPromises = [
-      fetch(API_URL + '/sessions/' + sessionId + '/market-history').then(function(r){ return r.json(); }).catch(function(){ return {history:[]}; }),
-    ];
-    if (latestRnd) {
-      fetchPromises.push(
-        fetch(API_URL + '/sessions/' + sessionId + '/rounds/' + latestRnd.id + '/market-results').then(function(r){ return r.json(); }).catch(function(){ return null; })
-      );
-    }
-    var [histRes, clRes] = await Promise.all(fetchPromises);
-    history  = (histRes && histRes.history) || [];
-    clearing = clRes || null;
-
-    _mcData = { rounds: rounds, allRounds: allRounds, allTeams: allTeams, teamMap: teamMap, vehicles: vehicles, activeVeh: activeVeh, latestRnd: latestRnd, clearing: clearing, history: history };
-
-    // Update top bar
-    var lbl = document.getElementById('mc-round-label');
-    if (lbl) lbl.textContent = latestRnd ? 'Y'+(latestRnd.year-2024)+'Q'+latestRnd.quarter+' · Round '+latestRnd.round_number : '—';
-    var stats = document.getElementById('mc-round-stats');
-    var segs  = (function(){ var s={}; activeVeh.forEach(function(v){ s[v.segment_code]=1; }); return Object.keys(s).length; })();
-    if (stats) stats.textContent = activeVeh.length + ' vehicle' + (activeVeh.length!==1?'s':'') + ' competing · ' + segs + ' segment' + (segs!==1?'s':'');
-    var phase = document.getElementById('mc-phase-badge');
-    if (phase && latestRnd) { var ph=latestRnd.phase||'decision'; phase.textContent = ph==='results'?'📊 Results Phase':'⚡ Decision Phase'; phase.style.color = ph==='results'?'#4ade80':'#fbbf24'; }
-    var tOS = document.getElementById('mc-tile-onsale');   if(tOS) tOS.textContent = activeVeh.length;
-    var tSG = document.getElementById('mc-tile-segs');     if(tSG) tSG.textContent = segs;
-    var tCL = document.getElementById('mc-tile-cleared');
-    if (tCL) { var hv=(clearing&&(clearing.vehicle_outcomes||[]).length>0); tCL.textContent=hv?'✓ Cleared':'Pending'; tCL.style.color=hv?'#2dd4bf':'#fbbf24'; }
-    var sub = document.getElementById('mc-sub');
-    if (sub && latestRnd) sub.textContent = 'Session '+sessionId.slice(0,8)+'… · Round '+latestRnd.round_number+' · '+allTeams.length+' teams';
-
-    mcRenderCurrentTab();
-  } catch(e) { console.warn('MC load error:', e); }
-}
 
 function mcTab(tab, btn) {
   _mcActiveTab = tab;
@@ -9958,12 +9847,11 @@ function mcRenderTimeline() {
 }
 
 async function mcRunClearing() {
-  var btn = document.getElementById('mc-btn-clear');
   var hubBtn = document.getElementById('hub-btn-clear');
-  [btn, hubBtn].forEach(function(b){ if(b){b.disabled=true;b.textContent='⏳ Running...';} });
+  if (hubBtn) { hubBtn.disabled=true; hubBtn.textContent='⏳ Running...'; }
   if (!sessionId || !_mcData || !_mcData.latestRnd) {
     toast('⚠ No active round — advance the session first');
-    [btn, hubBtn].forEach(function(b){ if(b){b.disabled=false;b.textContent=b===hubBtn?'🎯 Run Market Clearing':'🎯 Run Market Clearing';} });
+    if (hubBtn) { hubBtn.disabled=false; hubBtn.textContent='🎯 Run Market Clearing'; }
     return;
   }
   try {
@@ -9971,41 +9859,18 @@ async function mcRunClearing() {
     var data = await res.json();
     if (!data.success) throw new Error(data.detail || 'Clearing failed');
     toast('✓ Market cleared · ' + (data.vehicles_processed||0) + ' vehicles · ' + (data.segments_cleared||[]).length + ' segments');
-    await loadInstrMarketControl();
+    await refreshInstructorHub();
     mcTab('results', document.querySelectorAll('.mc-tab')[1]);
-    refreshInstructorHub();
   } catch(e) {
     toast('⚠ ' + e.message);
   } finally {
-    [btn, hubBtn].forEach(function(b){ if(b){b.disabled=false;b.textContent='🎯 Run Market Clearing';} });
-  }
-}
-
-async function hubRunMarketClearing() {
-  // Shortcut to market clearing from Session Hub
-  if (!sessionId) { toast('⚠ No active session'); return; }
-  var btn = document.getElementById('hub-btn-clear');
-  if (btn) { btn.disabled=true; btn.textContent='⏳ Clearing...'; }
-  try {
-    var rRes  = await fetch(API_URL + '/sessions/' + sessionId + '/rounds');
-    var rData = await rRes.json();
-    var rounds = (rData.rounds||[]).filter(function(r){ return !r.is_historical && r.round_number > 0; });
-    if (!rounds.length) { toast('⚠ No rounds found — open a round first'); return; }
-    var latest = rounds.reduce(function(a,b){ return a.round_number>b.round_number?a:b; });
-    var res    = await fetch(API_URL + '/sessions/' + sessionId + '/rounds/' + latest.id + '/market-clear', { method: 'POST' });
-    var data   = await res.json();
-    if (!data.success) throw new Error(data.detail || 'Failed');
-    toast('✓ Market cleared · ' + (data.vehicles_processed||0) + ' vehicles · ' + (data.segments_cleared||[]).length + ' segments');
-    refreshInstructorHub();
-  } catch(e) {
-    toast('⚠ ' + e.message);
-  } finally {
-    if (btn) { btn.disabled=false; btn.textContent='🎯 Run Market Clearing'; }
+    var hubBtn2 = document.getElementById('hub-btn-clear');
+    if (hubBtn2) { hubBtn2.disabled=false; hubBtn2.textContent='🎯 Run Market Clearing'; }
   }
 }
 
 async function mcAdvanceRound() {
-  var btn = document.getElementById('mc-btn-advance');
+  var btn = document.getElementById('hub-btn-next');
   // Pre-advance: warn about teams that will get AI simulation
   try {
     var rdRes = await fetch(API_URL + '/sessions/' + sessionId + '/team-readiness');
@@ -10031,8 +9896,7 @@ async function mcAdvanceRound() {
     var aiNote = '';
     if (data.ai_sim_teams && data.ai_sim_teams.length) aiNote = ' · AI ran for ' + data.ai_sim_teams.length + ' team(s)';
     toast('✓ Round ' + rnd.round_number + ' · Y'+(rnd.year-2024)+'Q'+rnd.quarter + (data.market_clearing?' · market cleared':'') + aiNote);
-    await loadInstrMarketControl();
-    refreshInstructorHub();
+    await refreshInstructorHub();
   } catch(e) {
     toast('⚠ ' + e.message);
   } finally {
