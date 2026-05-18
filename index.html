@@ -10198,21 +10198,24 @@ function _renderTcModCostTab() {
   vs.forEach(function(v) {
     var mc = _tcModCosts[v.id] || {};
     var mods = mc.modules || {};
+    var isAiEst = !!(mods.platform && mods.platform.name === 'AI estimate');
     // Dev type: 'new' if any slot is new, else 'modify' if any modify, else 'reuse'
     var devTypes = bomSlots.map(function(sl){ return (mods[sl]||{}).development_type||''; });
     var dt = devTypes.indexOf('new')>=0 ? 'new' : devTypes.indexOf('modify')>=0 ? 'modify' : 'reuse';
     var bomTotal = 0; bomSlots.forEach(function(sl){ bomTotal += (mods[sl]||{}).per_unit_tpc_eur||0; });
-    // Fallback to vehicle-level TPC when no module breakdown is available (AI vehicles)
     var bomFallback = bomTotal > 0 ? bomTotal : (mc.total_unit_tpc_eur || v.total_unit_tpc_eur || 0);
-    var hasModBreakdown = bomTotal > 0;
+    var devBadgeCell = isAiEst
+      ? '<td class="mi-td"><span style="font-size:8px;color:var(--muted2);font-family:\'DM Mono\',monospace;">AI EST</span></td>'
+      : '<td class="mi-td">' + devBadge(bomTotal > 0 ? dt : 'reuse') + '</td>';
     h += '<tr class="mi-tr">';
     h += _tcTeamCell(v);
     h += '<td class="mi-td" style="font-weight:600;">' + v.name + '</td>';
     h += '<td class="mi-td" style="font-size:9px;color:var(--muted2);">' + (v.segment_code||'').replace('_segment','').replace('_',' ').toUpperCase() + '</td>';
-    h += '<td class="mi-td">' + devBadge(hasModBreakdown ? dt : 'reuse') + '</td>';
+    h += devBadgeCell;
     bomSlots.forEach(function(slot) {
       var val = mods[slot] ? mods[slot].per_unit_tpc_eur : NaN;
-      h += moneyCell(val, bomRank[slot]);
+      var style = isAiEst ? 'opacity:0.65;' : '';
+      h += '<td class="mi-td" style="font-family:\'DM Mono\',monospace;text-align:right;' + style + '">' + (isNaN(val)||val===0?'—':'€'+Math.round(val).toLocaleString()) + '</td>';
     });
     h += moneyCell(bomFallback > 0 ? bomFallback : NaN, bomTotalRank);
     h += '</tr>';
