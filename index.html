@@ -9623,7 +9623,12 @@ async function loadInstrMarketControl() {
       fetch(API_URL + '/sessions/' + sessionId + '/vehicles'),
     ]);
     var rData = await rRes.json(), tData = await tRes.json(), vData = await vRes.json();
+    // game rounds only — used for market ops (advance, clearing, vehicle eligibility)
     var rounds   = (rData.rounds||[]).filter(function(r){ return !r.is_historical && r.round_number > 0; });
+    // all rounds sorted chronologically — used for Timeline display
+    var allRounds = (rData.rounds||[]).slice().sort(function(a,b){
+      return (a.year*4+a.quarter) - (b.year*4+b.quarter);
+    });
     var allTeams = (tData.teams||[]).filter(function(t){ return t.name !== 'Instructor'; });
     var vehicles = vData.vehicles || [];
 
@@ -9664,16 +9669,21 @@ async function loadInstrMarketControl() {
       } catch(e) { v._utility = null; v._est_share = null; }
     });
 
-    // Latest clearing results
-    var clearing = null;
+    // Latest clearing results + full round history (in parallel)
+    var clearing = null, history = [];
+    var fetchPromises = [
+      fetch(API_URL + '/sessions/' + sessionId + '/market-history').then(function(r){ return r.json(); }).catch(function(){ return {history:[]}; }),
+    ];
     if (latestRnd) {
-      try {
-        var crRes = await fetch(API_URL + '/sessions/' + sessionId + '/rounds/' + latestRnd.id + '/market-results');
-        clearing  = await crRes.json();
-      } catch(e) {}
+      fetchPromises.push(
+        fetch(API_URL + '/sessions/' + sessionId + '/rounds/' + latestRnd.id + '/market-results').then(function(r){ return r.json(); }).catch(function(){ return null; })
+      );
     }
+    var [histRes, clRes] = await Promise.all(fetchPromises);
+    history  = (histRes && histRes.history) || [];
+    clearing = clRes || null;
 
-    _mcData = { rounds: rounds, allTeams: allTeams, teamMap: teamMap, vehicles: vehicles, activeVeh: activeVeh, latestRnd: latestRnd, clearing: clearing };
+    _mcData = { rounds: rounds, allRounds: allRounds, allTeams: allTeams, teamMap: teamMap, vehicles: vehicles, activeVeh: activeVeh, latestRnd: latestRnd, clearing: clearing, history: history };
 
     // Update top bar
     var lbl = document.getElementById('mc-round-label');
@@ -9878,68 +9888,67 @@ function mcRenderResults() {
 function mcRenderTimeline() {
   var el = document.getElementById('mc-panel-timeline');
   if (!el || !_mcData) return;
-  var { rounds } = _mcData;
+  var allRounds = _mcData.allRounds || _mcData.rounds;
+  var latestGameRnd = _mcData.latestRnd;
 
-  if (!rounds.length) { el.innerHTML='<div style="color:var(--muted2);font-size:12px;padding:24px;">No rounds yet.</div>'; return; }
+  if (!allRounds.length) { el.innerHTML='<div style="color:var(--muted2);font-size:12px;padding:24px;">No rounds yet.</div>'; return; }
 
-  var latestNum = rounds[rounds.length-1].round_number;
+  // ── Timeline cards ───────────────────────────────────────────
   var h = '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:8px;margin-bottom:16px;">';
-  rounds.forEach(function(rnd) {
-    var isLast = rnd.round_number === latestNum;
-    var bdrCol = isLast ? '#2dd4bf' : 'var(--border2)';
-    var phC    = rnd.phase==='results'?'#4ade80':rnd.phase==='decision'?'#fbbf24':'#475569';
-    var phT    = rnd.phase==='results'?'✓ Results':'⚡ Decision';
-    h += '<div style="background:var(--s2);border:1px solid '+bdrCol+';border-radius:6px;padding:10px 12px;'+(isLast?'box-shadow:0 0 10px rgba(45,212,191,.15);':'')+'">';
-    h += '<div style="font-family:DM Mono,monospace;font-size:7px;color:var(--muted);margin-bottom:3px;">ROUND '+rnd.round_number+'</div>';
-    h += '<div style="font-family:Orbitron,sans-serif;font-size:14px;font-weight:700;color:'+(isLast?'#2dd4bf':'var(--white)')+';">Y'+(rnd.year-2024)+'Q'+rnd.quarter+'</div>';
+  allRounds.forEach(function(rnd) {
+    var isHist    = rnd.is_historical;
+    var isCurrent = latestGameRnd && rnd.id === latestGameRnd.id;
+    var bdrCol    = isCurrent ? '#2dd4bf' : (isHist ? 'rgba(167,139,250,.3)' : 'var(--border2)');
+    var phC       = rnd.phase==='results'?'#4ade80':rnd.phase==='decision'?'#fbbf24':'#475569';
+    var phT       = rnd.phase==='results'?'✓ Results':'⚡ Decision';
+    var label     = isHist ? ('Q'+rnd.quarter+' '+rnd.year) : ('Y'+(rnd.year-2024)+'Q'+rnd.quarter);
+    var topLabel  = isHist ? 'HIST' : ('ROUND '+rnd.round_number);
+    var topC      = isHist ? '#a78bfa' : 'var(--muted)';
+    h += '<div style="background:var(--s2);border:1px solid '+bdrCol+';border-radius:6px;padding:10px 12px;'+(isCurrent?'box-shadow:0 0 10px rgba(45,212,191,.15);':'')+'">';
+    h += '<div style="font-family:DM Mono,monospace;font-size:7px;color:'+topC+';margin-bottom:3px;">'+topLabel+'</div>';
+    h += '<div style="font-family:Orbitron,sans-serif;font-size:'+(isHist?'11px':'14px')+';font-weight:700;color:'+(isCurrent?'#2dd4bf':(isHist?'#c4b5fd':'var(--white)'))+';white-space:nowrap;">'+label+'</div>';
     h += '<div style="font-family:DM Mono,monospace;font-size:8px;color:'+phC+';margin-top:4px;">'+phT+'</div>';
-    if (isLast) h += '<div style="font-family:DM Mono,monospace;font-size:6px;color:#2dd4bf;margin-top:3px;letter-spacing:1px;">◄ CURRENT</div>';
+    if (isCurrent) h += '<div style="font-family:DM Mono,monospace;font-size:6px;color:#2dd4bf;margin-top:3px;letter-spacing:1px;">◄ CURRENT</div>';
     h += '</div>';
   });
   h += '</div>';
 
-  // Round outcomes table
-  h += '<div style="font-family:DM Mono,monospace;font-size:7px;letter-spacing:2px;color:#2dd4bf;text-transform:uppercase;margin-bottom:8px;border-bottom:1px solid rgba(45,212,191,.2);padding-bottom:5px;">Historical Revenue by Round</div>';
+  // ── Revenue by round table (from market-history) ─────────────
+  h += '<div style="font-family:DM Mono,monospace;font-size:7px;letter-spacing:2px;color:#2dd4bf;text-transform:uppercase;margin-bottom:8px;border-bottom:1px solid rgba(45,212,191,.2);padding-bottom:5px;">Revenue by Round — All Teams</div>';
   h += '<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-family:DM Mono,monospace;font-size:9px;">';
   h += '<thead><tr style="border-bottom:1px solid var(--border2);">';
-  ['Round','Year/Q','Team','Revenue €M','Units','GM%','EBIT €M','Rank'].forEach(function(c) {
+  ['Period','Team','Revenue €M','Units','GM%','EBIT €M','Rank'].forEach(function(c) {
     h += '<th style="padding:4px 10px;text-align:left;color:var(--muted);font-size:7px;text-transform:uppercase;letter-spacing:.5px;white-space:nowrap;">'+c+'</th>';
   });
   h += '</tr></thead><tbody>';
 
-  // Fetch round_outcomes for all rounds — use cached data
-  var roundOutcomesAll = [];
-  rounds.forEach(function(rnd) {
-    // We don't have multi-round outcomes cached; show summary from clearing results if latest
-    if (_mcData.clearing && _mcData.clearing.round_outcomes && rnd.round_number === latestNum) {
-      _mcData.clearing.round_outcomes.forEach(function(ro) {
-        roundOutcomesAll.push(Object.assign({}, ro, { round_number: rnd.round_number, year: rnd.year, quarter: rnd.quarter }));
-      });
-    }
+  var hist = (_mcData.history || []).slice().sort(function(a,b){
+    var qa = (a.year*4+(a.quarter||1)), qb = (b.year*4+(b.quarter||1));
+    return qa !== qb ? qa - qb : parseFloat(b.revenue_m||0) - parseFloat(a.revenue_m||0);
   });
 
-  if (!roundOutcomesAll.length) {
-    h += '<tr><td colspan="8" style="padding:16px;color:var(--muted2);text-align:center;">Run market clearing for round data to appear here.</td></tr>';
+  if (!hist.length) {
+    h += '<tr><td colspan="7" style="padding:16px;color:var(--muted2);text-align:center;">No round data yet.</td></tr>';
   } else {
-    roundOutcomesAll.sort(function(a,b){ return parseFloat(b.revenue_m||0)-parseFloat(a.revenue_m||0); });
-    roundOutcomesAll.forEach(function(ro, i) {
+    hist.forEach(function(ro) {
+      var isH  = ro.is_historical;
       var rev  = parseFloat(ro.revenue_m||0).toFixed(1);
       var cogs = parseFloat(ro.cogs_m||0);
       var gp   = parseFloat(ro.gross_profit_m||(parseFloat(ro.revenue_m||0)-cogs));
       var gm   = parseFloat(ro.revenue_m||0)>0 ? (gp/parseFloat(ro.revenue_m||0)*100).toFixed(1) : '0.0';
       var gmC  = parseFloat(gm)>20?'#4ade80':parseFloat(gm)>10?'#fbbf24':'#f87171';
-      var ebit = parseFloat(ro.ebit_m||gp*0.7).toFixed(1);
-      var rank = ro.revenue_rank || (i+1);
+      var ebit = parseFloat(ro.ebit_m||(gp*0.7)).toFixed(1);
+      var rank = ro.revenue_rank || ro.rank || '—';
       var rC   = rank===1?'#fbbf24':rank===2?'#b0c0d0':rank===3?'#c8a060':'var(--muted2)';
+      var perLabel = ro.round_label || (isH ? ('Q'+ro.quarter+' '+ro.year) : ('Y'+(ro.year-2024)+'Q'+ro.quarter));
       h += '<tr style="border-bottom:1px solid rgba(255,255,255,.04);">';
-      h += '<td style="padding:4px 10px;color:#a78bfa;font-weight:600;">R'+ro.round_number+'</td>';
-      h += '<td style="padding:4px 10px;color:var(--muted2);">Y'+(ro.year-2024)+'Q'+ro.quarter+'</td>';
+      h += '<td style="padding:4px 10px;color:'+(isH?'#a78bfa':'#2dd4bf')+';font-weight:600;white-space:nowrap;">'+perLabel+'</td>';
       h += '<td style="padding:4px 10px;color:var(--text);font-weight:600;">'+(ro.team_name||'?')+'</td>';
       h += '<td style="padding:4px 10px;color:#2dd4bf;">€'+rev+'M</td>';
       h += '<td style="padding:4px 10px;">'+parseInt(ro.total_units_sold||0).toLocaleString()+'</td>';
       h += '<td style="padding:4px 10px;color:'+gmC+';">'+gm+'%</td>';
       h += '<td style="padding:4px 10px;color:#f97316;">€'+ebit+'M</td>';
-      h += '<td style="padding:4px 10px;font-weight:700;color:'+rC+';">#'+rank+'</td>';
+      h += '<td style="padding:4px 10px;font-weight:700;color:'+rC+';">'+(rank!=='—'?'#'+rank:rank)+'</td>';
       h += '</tr>';
     });
   }
