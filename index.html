@@ -2371,6 +2371,12 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
           color:#a78bfa;cursor:pointer;letter-spacing:.5px;white-space:nowrap;">
           LOAD SCENARIO (20Q)
         </button>
+        <button onclick="resetHistorical()" id="btn-reset-historical"
+          style="font-family:'DM Mono',monospace;font-size:10px;font-weight:700;padding:6px 20px;
+          border-radius:3px;border:1px solid rgba(248,113,113,.4);background:rgba(248,113,113,.1);
+          color:#f87171;cursor:pointer;letter-spacing:.5px;white-space:nowrap;">
+          RESET HISTORICAL DATA
+        </button>
         <div id="scenarioMeta" style="font-family:'DM Mono',monospace;font-size:9px;color:var(--muted2);text-align:center;"></div>
       </div>
     </div>
@@ -15946,6 +15952,27 @@ async function loadScenario() {
   } catch(e) { toast('⚠ ' + e.message); }
   finally {
     if (btn) { btn.disabled = false; btn.textContent = 'LOAD SCENARIO (20Q)'; }
+  }
+}
+
+async function resetHistorical() {
+  var sessionId = window._instrSessionId || (document.getElementById('instr-session-select') && document.getElementById('instr-session-select').value);
+  if (!sessionId) { toast('⚠ No session selected'); return; }
+  if (!confirm('Delete all historical rounds and vehicle data for this session? This cannot be undone.')) return;
+  var btn = document.getElementById('btn-reset-historical');
+  if (btn) { btn.disabled = true; btn.textContent = 'RESETTING…'; }
+  try {
+    const res = await fetch(API_URL + '/sessions/' + sessionId + '/reset-historical', { method: 'DELETE' });
+    const data = await res.json();
+    if (data.success) {
+      toast('✓ Historical data cleared (' + data.deleted_rounds + ' rounds deleted). You can now re-run LOAD SCENARIO.');
+      await loadHistoricalPreview();
+    } else {
+      toast('⚠ ' + (data.detail || 'Reset failed'));
+    }
+  } catch(e) { toast('⚠ ' + e.message); }
+  finally {
+    if (btn) { btn.disabled = false; btn.textContent = 'RESET HISTORICAL DATA'; }
   }
 }
 
