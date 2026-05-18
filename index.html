@@ -1112,6 +1112,7 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
       <div class="nav-item" onclick="navInstr('instr-events',this)"><span class="nav-icon">⚠</span> Event Injector</div>
       <div class="nav-item" onclick="navInstr('instr-demand',this)"><span class="nav-icon">📊</span> Demand Model</div>
       <div class="nav-item" onclick="navInstr('instr-history',this)"><span class="nav-icon">📅</span> Historical Data</div>
+      <div class="nav-item" onclick="navInstr('instr-techcompare',this)"><span class="nav-icon">🔬</span> Tech Benchmarks</div>
     </div>
     <div class="sb-sec" style="flex:1">
       <div class="sb-lbl" style="color:#a78bfa">Session</div>
@@ -2254,8 +2255,38 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
   <div class="pg-title" style="color:#a78bfa">TEAM MONITOR</div>
   <div class="pg-sub">Live view of all team decisions this round</div>
   <button onclick="loadTeamMonitor()" style="background:#4c1d95;color:#c4b5fd;border:none;border-radius:6px;padding:8px 16px;font-size:12px;cursor:pointer;margin-bottom:16px">↻ Refresh</button>
-  <div id="monitor-content">
+  <div id="team-monitor-content">
     <div style="color:var(--muted2);font-size:13px;padding:40px 0;text-align:center">Loading team decisions...</div>
+  </div>
+</div>
+
+<!-- ████ INSTRUCTOR: TECH BENCHMARKS ████ -->
+<div class="instr-page" id="page-instr-techcompare">
+  <div class="pg-title" style="color:#a78bfa">TECH BENCHMARKS</div>
+  <div class="pg-sub">Side-by-side technical spec comparison across all active team vehicles</div>
+
+  <div style="display:flex;gap:10px;align-items:center;margin-bottom:14px;flex-wrap:wrap;">
+    <select id="tc-seg-filter" onchange="loadTechCompare()" style="background:var(--s2);border:1px solid var(--border2);color:var(--text);border-radius:6px;padding:7px 12px;font-size:12px;font-family:inherit">
+      <option value="">All Segments</option>
+    </select>
+    <select id="tc-pwt-filter" onchange="loadTechCompare()" style="background:var(--s2);border:1px solid var(--border2);color:var(--text);border-radius:6px;padding:7px 12px;font-size:12px;font-family:inherit">
+      <option value="">All Powertrains</option>
+      <option value="ice_only">ICE Only</option>
+      <option value="bev_only">BEV Only</option>
+      <option value="ice_and_bev">Hybrid / PHEV / REEV</option>
+    </select>
+    <button onclick="loadTechCompare()" style="background:#4c1d95;color:#c4b5fd;border:none;border-radius:6px;padding:8px 16px;font-size:12px;cursor:pointer">↻ Refresh</button>
+  </div>
+
+  <div style="display:flex;gap:4px;margin-bottom:14px;border-bottom:1px solid var(--border);padding-bottom:0;">
+    <button id="tc-tab-perf" onclick="tcTab('perf')" style="font-family:'DM Mono',monospace;font-size:9px;letter-spacing:1px;padding:7px 14px;border:none;border-bottom:2px solid #a78bfa;background:none;color:#a78bfa;cursor:pointer;text-transform:uppercase;">Performance</button>
+    <button id="tc-tab-eff"  onclick="tcTab('eff')"  style="font-family:'DM Mono',monospace;font-size:9px;letter-spacing:1px;padding:7px 14px;border:none;border-bottom:2px solid transparent;background:none;color:var(--muted);cursor:pointer;text-transform:uppercase;">Efficiency</button>
+    <button id="tc-tab-tech" onclick="tcTab('tech')" style="font-family:'DM Mono',monospace;font-size:9px;letter-spacing:1px;padding:7px 14px;border:none;border-bottom:2px solid transparent;background:none;color:var(--muted);cursor:pointer;text-transform:uppercase;">Tech &amp; Comfort</button>
+    <button id="tc-tab-cost" onclick="tcTab('cost')" style="font-family:'DM Mono',monospace;font-size:9px;letter-spacing:1px;padding:7px 14px;border:none;border-bottom:2px solid transparent;background:none;color:var(--muted);cursor:pointer;text-transform:uppercase;">Cost &amp; Price</button>
+  </div>
+
+  <div id="tc-content">
+    <div style="color:var(--muted2);font-size:13px;padding:40px 0;text-align:center">Loading vehicles...</div>
   </div>
 </div>
 
@@ -9393,7 +9424,8 @@ function navInstr(page, el) {
   if (page === 'instr-footprint') loadFootprintManager();
   if (page === 'instr-results')   loadAnalystRounds();
   if (page === 'instr-demand')    loadDemandModel();
-  if (page === 'instr-history')   { loadInstrHistory(); loadScenarios(); }
+  if (page === 'instr-history')     { loadInstrHistory(); loadScenarios(); }
+  if (page === 'instr-techcompare') loadTechCompare();
 }
 
 function copySessionId() {
@@ -10134,36 +10166,206 @@ async function loadTeamMonitor() {
   var el = document.getElementById('team-monitor-content');
   if (!el) return;
   try {
-    var [tRes, rRes] = await Promise.all([
-      fetch(API_URL + '/sessions/' + sessionId + '/teams'),
-      fetch(API_URL + '/sessions/' + sessionId + '/rounds'),
-    ]);
-    var tData = await tRes.json();
-    var rData = await rRes.json();
-    var teams = (tData.teams || []).filter(function(t){ return t.name.toLowerCase() !== 'instructor'; });
-    var rounds = (rData.rounds || []).filter(function(r){ return !r.is_historical && r.round_number > 0; });
-    var latestRound = rounds.sort(function(a,b){ return b.round_number - a.round_number; })[0];
-    if (!latestRound) { el.innerHTML = '<div style="padding:20px;color:var(--muted2);">No rounds yet.</div>'; return; }
-    var subRes = await fetch(API_URL + '/sessions/' + sessionId + '/rounds/' + latestRound.id + '/submissions');
-    var subData = subRes.ok ? await subRes.json() : {submissions:[]};
-    var subs = subData.submissions || [];
-    var subMap = {};
-    subs.forEach(function(s){ subMap[s.team_id] = s; });
-    var h = '<div style="font-family:DM Mono,monospace;font-size:8px;color:var(--muted);margin-bottom:8px;text-transform:uppercase;letter-spacing:1px;">Round ' + latestRound.round_number + ' — ' + latestRound.phase + '</div>';
-    h += '<table class="mi-tbl"><thead><tr><th class="mi-th">Team</th><th class="mi-th">Type</th><th class="mi-th" style="text-align:center">Status</th></tr></thead><tbody>';
+    var res = await fetch(API_URL + '/sessions/' + sessionId + '/team-readiness');
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    var data = await res.json();
+    var teams = data.teams || [];
+    var label = data.round_year ? 'Y' + (data.round_year - 2024) + 'Q' + data.round_quarter : '';
+    var h = '<div style="font-family:DM Mono,monospace;font-size:8px;color:var(--muted);margin-bottom:12px;text-transform:uppercase;letter-spacing:1px;">Current Round' + (label ? ' — ' + label : '') + '</div>';
+    h += '<table class="mi-tbl"><thead><tr>' +
+      '<th class="mi-th">Team</th>' +
+      '<th class="mi-th" style="text-align:center">Control</th>' +
+      '<th class="mi-th" style="text-align:center">Vehicle Ready</th>' +
+      '</tr></thead><tbody>';
     teams.forEach(function(t) {
-      var sub = subMap[t.id];
-      var status = sub ? '✓ Submitted' : '⏳ Pending';
-      var scol = sub ? 'var(--green)' : 'var(--gold)';
+      var humanBadge = t.is_human_claimed
+        ? '<span style="background:#166534;color:#4ade80;padding:2px 7px;border-radius:4px;font-size:9px;font-weight:700;">HUMAN</span>'
+        : '<span style="background:#3b0764;color:#a78bfa;padding:2px 7px;border-radius:4px;font-size:9px;font-weight:700;">AI AUTO</span>';
+      var vehIcon = t.has_active_vehicle ? '✓' : '⏳';
+      var vehCol  = t.has_active_vehicle ? 'var(--green)' : 'var(--gold)';
+      var vehLabel = t.has_active_vehicle ? 'Ready' : 'No vehicle';
       h += '<tr class="mi-tr">' +
         '<td class="mi-td" style="font-weight:600;">' + t.name + '</td>' +
-        '<td class="mi-td" style="font-size:9px;color:var(--muted2);">' + (t.team_type||'human') + '</td>' +
-        '<td class="mi-td" style="text-align:center;color:' + scol + ';">' + status + '</td>' +
+        '<td class="mi-td" style="text-align:center;">' + humanBadge + '</td>' +
+        '<td class="mi-td" style="text-align:center;color:' + vehCol + ';">' + vehIcon + ' ' + vehLabel + '</td>' +
         '</tr>';
     });
+    if (!teams.length) h += '<tr><td colspan="3" class="mi-td" style="text-align:center;color:var(--muted2);">No teams found.</td></tr>';
     h += '</tbody></table>';
     el.innerHTML = h;
   } catch(e) { el.innerHTML = '<div style="color:var(--red)">Error: ' + e.message + '</div>'; }
+}
+
+// ── TECH BENCHMARKS ──────────────────────────────────────────────
+var _tcVehicles  = [];
+var _tcActiveTab = 'perf';
+var _tcTeamColors = {};   // name → color_hex
+
+async function loadTechCompare() {
+  if (!sessionId) return;
+  var el = document.getElementById('tc-content');
+  if (!el) return;
+  el.innerHTML = '<div style="padding:40px 0;text-align:center;color:var(--muted2)">Loading…</div>';
+  try {
+    var [vRes, tRes] = await Promise.all([
+      fetch(API_URL + '/sessions/' + sessionId + '/vehicles'),
+      fetch(API_URL + '/sessions/' + sessionId + '/teams'),
+    ]);
+    if (!vRes.ok) throw new Error('HTTP ' + vRes.status);
+    var vData = await vRes.json();
+    var tData = tRes.ok ? await tRes.json() : {teams:[]};
+
+    _tcTeamColors = {};
+    (tData.teams || []).forEach(function(t){ if (t.name && t.color_hex) _tcTeamColors[t.name] = t.color_hex; });
+
+    var segF = document.getElementById('tc-seg-filter');
+    var pwtF = document.getElementById('tc-pwt-filter');
+
+    var allVehicles = (vData.vehicles || []).filter(function(v){
+      return v.status === 'approved' || v.status === 'on_sale';
+    });
+
+    // Populate segment filter (once — preserve existing selection)
+    if (segF) {
+      var curSeg = segF.value;
+      var segs = [];
+      allVehicles.forEach(function(v){ if (v.segment_code && segs.indexOf(v.segment_code) < 0) segs.push(v.segment_code); });
+      segs.sort();
+      var segOpts = '<option value="">All Segments</option>';
+      segs.forEach(function(s){ segOpts += '<option value="' + s + '"' + (s===curSeg?' selected':'') + '>' + s.replace('_segment','').replace('_',' ').toUpperCase() + '</option>'; });
+      segF.innerHTML = segOpts;
+    }
+
+    var vehicles = allVehicles
+      .filter(function(v){ return !segF || !segF.value || v.segment_code === segF.value; })
+      .filter(function(v){
+        if (!pwtF || !pwtF.value) return true;
+        var pwt = ((v.rolled_up_specs||{}).pwt_type || '').toLowerCase();
+        return pwt === pwtF.value;
+      })
+      .sort(function(a,b){
+        var sc = (a.segment_code||'').localeCompare(b.segment_code||'');
+        return sc !== 0 ? sc : (a.team_name||'').localeCompare(b.team_name||'');
+      });
+
+    _tcVehicles = vehicles;
+    _renderTcTab(_tcActiveTab);
+  } catch(e) { el.innerHTML = '<div style="color:var(--red)">Error: ' + e.message + '</div>'; }
+}
+
+function tcTab(tab) {
+  _tcActiveTab = tab;
+  ['perf','eff','tech','cost'].forEach(function(t) {
+    var b = document.getElementById('tc-tab-' + t);
+    if (!b) return;
+    b.style.borderBottomColor = t === tab ? '#a78bfa' : 'transparent';
+    b.style.color = t === tab ? '#a78bfa' : 'var(--muted)';
+  });
+  _renderTcTab(tab);
+}
+
+function _renderTcTab(tab) {
+  var el = document.getElementById('tc-content');
+  if (!el) return;
+  var vs = _tcVehicles;
+  if (!vs.length) { el.innerHTML = '<div style="padding:20px;color:var(--muted2);">No active vehicles match the filter.</div>'; return; }
+
+  var COLS = {
+    perf: [
+      { h:'Team',      fn: function(v){ return _tcTeamCell(v); } },
+      { h:'Vehicle',   fn: function(v){ return '<td class="mi-td" style="font-weight:600;">' + v.name + '</td>'; } },
+      { h:'Segment',   fn: function(v){ return '<td class="mi-td" style="font-size:9px;color:var(--muted2);">' + (v.segment_code||'').replace('_segment','').replace('_',' ').toUpperCase() + '</td>'; } },
+      { h:'Status',    fn: function(v){ var c=v.status==='on_sale'?'var(--green)':'var(--gold)'; return '<td class="mi-td"><span style="color:'+c+';font-size:9px;">'+v.status.replace('_',' ').toUpperCase()+'</span></td>'; } },
+      { h:'0–100 s',   key:'t_0_100_s',    fmt: function(x){ return x.toFixed(1)+'s'; }, best:'min' },
+      { h:'Top Speed', key:'top_speed_kmh', fmt: function(x){ return Math.round(x)+' km/h'; }, best:'max' },
+      { h:'Class',     fn: function(v){ return '<td class="mi-td" style="font-family:\'DM Mono\',monospace;font-size:10px;">' + ((v.rolled_up_specs||{}).perf_class||'—') + '</td>'; } },
+      { h:'Mass kg',   key:'kerb_mass_kg',  fmt: function(x){ return Math.round(x).toLocaleString(); }, best:'min' },
+    ],
+    eff: [
+      { h:'Team',         fn: function(v){ return _tcTeamCell(v); } },
+      { h:'Vehicle',      fn: function(v){ return '<td class="mi-td" style="font-weight:600;">' + v.name + '</td>'; } },
+      { h:'Segment',      fn: function(v){ return '<td class="mi-td" style="font-size:9px;color:var(--muted2);">' + (v.segment_code||'').replace('_segment','').replace('_',' ').toUpperCase() + '</td>'; } },
+      { h:'PWT',          fn: function(v){ return '<td class="mi-td" style="font-size:9px;color:var(--cyan);">' + _tcPwtLabel((v.rolled_up_specs||{}).pwt_type) + '</td>'; } },
+      { h:'Fuel L/100km', key:'ice_fuel_L100km', fmt: function(x){ return x.toFixed(1); }, best:'min' },
+      { h:'CO₂ g/km',     key:'ice_co2_g_km',    fmt: function(x){ return Math.round(x)+''; }, best:'min' },
+      { h:'kWh/100km',    key:'bev_kwh_100km',   fmt: function(x){ return x.toFixed(1); }, best:'min' },
+      { h:'Range km',     key:'bev_range_km',    fmt: function(x){ return Math.round(x)+''; }, best:'max' },
+    ],
+    tech: [
+      { h:'Team',        fn: function(v){ return _tcTeamCell(v); } },
+      { h:'Vehicle',     fn: function(v){ return '<td class="mi-td" style="font-weight:600;">' + v.name + '</td>'; } },
+      { h:'Segment',     fn: function(v){ return '<td class="mi-td" style="font-size:9px;color:var(--muted2);">' + (v.segment_code||'').replace('_segment','').replace('_',' ').toUpperCase() + '</td>'; } },
+      { h:'ADAS',        key:'adas_level',  fmt: function(x){ return 'L'+Math.round(x); }, best:'max' },
+      { h:'Safety',      key:'safety',      fmt: function(x){ return Math.round(x<=1?x*100:x)+''; }, best:'max' },
+      { h:'Comfort',     key:'comfort',     fmt: function(x){ return Math.round(x<=1?x*100:x)+''; }, best:'max' },
+      { h:'Reliability', key:'reliability', fmt: function(x){ return Math.round(x<=1?x*100:x)+''; }, best:'max' },
+      { h:'Premiumness', key:'premiumness', fmt: function(x){ return Math.round(x<=1?x*100:x)+''; }, best:'max' },
+    ],
+    cost: [
+      { h:'Team',      fn: function(v){ return _tcTeamCell(v); } },
+      { h:'Vehicle',   fn: function(v){ return '<td class="mi-td" style="font-weight:600;">' + v.name + '</td>'; } },
+      { h:'Segment',   fn: function(v){ return '<td class="mi-td" style="font-size:9px;color:var(--muted2);">' + (v.segment_code||'').replace('_segment','').replace('_',' ').toUpperCase() + '</td>'; } },
+      { h:'MSRP €k', fn: function(v){ var p=v.price_eur_k||((v.rolled_up_specs||{}).price_eur_k); return '<td class="mi-td" style="font-family:\'DM Mono\',monospace;text-align:right;">'+(p?p.toFixed(1):'—')+'</td>'; } },
+      { h:'TPC €k',  fn: function(v){ var t=v.total_unit_tpc_eur; return '<td class="mi-td" style="font-family:\'DM Mono\',monospace;text-align:right;">'+(t?(t/1000).toFixed(1):'—')+'</td>'; } },
+      { h:'Margin %',  fn: function(v){
+          var p=v.price_eur_k||((v.rolled_up_specs||{}).price_eur_k), t=v.total_unit_tpc_eur?v.total_unit_tpc_eur/1000:null;
+          if (!p||!t) return '<td class="mi-td" style="text-align:right;color:var(--muted2);">—</td>';
+          var m=(p-t)/p*100;
+          var col=m>=20?'var(--green)':m>=10?'var(--gold)':'var(--red)';
+          return '<td class="mi-td" style="text-align:right;color:'+col+';font-family:\'DM Mono\',monospace;">'+m.toFixed(1)+'%</td>';
+        } },
+    ],
+  };
+
+  var cols = COLS[tab] || COLS.perf;
+
+  // Build ranking map for key-based columns
+  var rankMap = {};
+  cols.forEach(function(col, ci) {
+    if (!col.key || !col.best) return;
+    var vals = vs.map(function(v){ return parseFloat((v.rolled_up_specs||{})[col.key]); }).filter(function(x){ return !isNaN(x); });
+    if (!vals.length) return;
+    rankMap[ci] = {
+      best:  col.best === 'min' ? Math.min.apply(null, vals) : Math.max.apply(null, vals),
+      worst: col.best === 'min' ? Math.max.apply(null, vals) : Math.min.apply(null, vals),
+    };
+  });
+
+  var h = '<div style="overflow-x:auto;"><table class="mi-tbl"><thead><tr>';
+  cols.forEach(function(col){ h += '<th class="mi-th">' + col.h + '</th>'; });
+  h += '</tr></thead><tbody>';
+
+  vs.forEach(function(v) {
+    h += '<tr class="mi-tr">';
+    cols.forEach(function(col, ci) {
+      if (col.fn) {
+        h += col.fn(v);
+      } else {
+        var raw = parseFloat((v.rolled_up_specs||{})[col.key]);
+        var display = isNaN(raw) ? '—' : col.fmt(raw);
+        var bg = '';
+        if (!isNaN(raw) && rankMap[ci]) {
+          if (raw === rankMap[ci].best)  bg = 'background:rgba(56,212,134,0.13);';
+          else if (raw === rankMap[ci].worst) bg = 'background:rgba(200,164,60,0.13);';
+        }
+        h += '<td class="mi-td" style="font-family:\'DM Mono\',monospace;text-align:right;' + bg + '">' + display + '</td>';
+      }
+    });
+    h += '</tr>';
+  });
+
+  if (!vs.length) h += '<tr><td colspan="' + cols.length + '" class="mi-td" style="text-align:center;color:var(--muted2);">No vehicles.</td></tr>';
+  h += '</tbody></table></div>';
+  el.innerHTML = h;
+}
+
+function _tcTeamCell(v) {
+  var col = _tcTeamColors[v.team_name] || 'var(--cyan)';
+  return '<td class="mi-td" style="font-weight:600;color:' + col + ';">' + (v.team_name||'—') + '</td>';
+}
+
+function _tcPwtLabel(pwt) {
+  return ({ice_only:'ICE',bev_only:'BEV',ice_and_bev:'Hybrid/PHEV',hev:'HEV',phev:'PHEV',reev:'REEV'}[pwt]) || (pwt||'—').toUpperCase();
 }
 
 function switchAnalystTab(tab) {
