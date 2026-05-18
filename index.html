@@ -2076,6 +2076,7 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
     <button id="tc-tab-eff"  onclick="tcTab('eff')"  style="font-family:'DM Mono',monospace;font-size:9px;letter-spacing:1px;padding:7px 14px;border:none;border-bottom:2px solid transparent;background:none;color:var(--muted);cursor:pointer;text-transform:uppercase;">Efficiency</button>
     <button id="tc-tab-tech" onclick="tcTab('tech')" style="font-family:'DM Mono',monospace;font-size:9px;letter-spacing:1px;padding:7px 14px;border:none;border-bottom:2px solid transparent;background:none;color:var(--muted);cursor:pointer;text-transform:uppercase;">Tech &amp; Comfort</button>
     <button id="tc-tab-cost" onclick="tcTab('cost')" style="font-family:'DM Mono',monospace;font-size:9px;letter-spacing:1px;padding:7px 14px;border:none;border-bottom:2px solid transparent;background:none;color:var(--muted);cursor:pointer;text-transform:uppercase;">Cost &amp; Price</button>
+    <button id="tc-tab-mods" onclick="tcTab('mods')" style="font-family:'DM Mono',monospace;font-size:9px;letter-spacing:1px;padding:7px 14px;border:none;border-bottom:2px solid transparent;background:none;color:var(--muted);cursor:pointer;text-transform:uppercase;">Module Cost</button>
   </div>
 
   <div id="tc-content">
@@ -9980,6 +9981,7 @@ async function loadTeamMonitor() {
 var _tcVehicles  = [];
 var _tcActiveTab = 'perf';
 var _tcTeamColors = {};   // name → color_hex
+var _tcModCosts  = {};    // vehicle_id → module cost data
 
 async function loadTechCompare() {
   if (!sessionId) return;
@@ -10029,13 +10031,20 @@ async function loadTechCompare() {
       });
 
     _tcVehicles = vehicles;
+
+    // Fetch module costs in parallel (used by Module Cost tab)
+    var mcRes = await fetch(API_URL + '/sessions/' + sessionId + '/vehicle-module-costs');
+    var mcData = mcRes.ok ? await mcRes.json() : {vehicles:[]};
+    _tcModCosts = {};
+    (mcData.vehicles || []).forEach(function(v){ _tcModCosts[v.vehicle_id] = v; });
+
     _renderTcTab(_tcActiveTab);
   } catch(e) { el.innerHTML = '<div style="color:var(--red)">Error: ' + e.message + '</div>'; }
 }
 
 function tcTab(tab) {
   _tcActiveTab = tab;
-  ['perf','eff','tech','cost'].forEach(function(t) {
+  ['perf','eff','tech','cost','mods'].forEach(function(t) {
     var b = document.getElementById('tc-tab-' + t);
     if (!b) return;
     b.style.borderBottomColor = t === tab ? '#a78bfa' : 'transparent';
@@ -10045,6 +10054,7 @@ function tcTab(tab) {
 }
 
 function _renderTcTab(tab) {
+  if (tab === 'mods') { _renderTcModCostTab(); return; }
   var el = document.getElementById('tc-content');
   if (!el) return;
   var vs = _tcVehicles;
@@ -10137,6 +10147,120 @@ function _renderTcTab(tab) {
   if (!vs.length) h += '<tr><td colspan="' + cols.length + '" class="mi-td" style="text-align:center;color:var(--muted2);">No vehicles.</td></tr>';
   h += '</tbody></table></div>';
   el.innerHTML = h;
+}
+
+function _renderTcModCostTab() {
+  var el = document.getElementById('tc-content');
+  if (!el) return;
+  var vs = _tcVehicles;
+  if (!vs.length) { el.innerHTML = '<div style="padding:20px;color:var(--muted2);">No active vehicles match the filter.</div>'; return; }
+
+  var secHdr = function(title) {
+    return '<div style="font-family:\'DM Mono\',monospace;font-size:8px;color:#a78bfa;text-transform:uppercase;letter-spacing:1.5px;padding:16px 0 8px;border-bottom:1px solid var(--border);margin-bottom:0;">' + title + '</div>';
+  };
+
+  // ── BOM TABLE ────────────────────────────────────────────────
+  // Build per-column ranking maps for module cost columns
+  var bomSlots = ['platform','pwt','tophat','eands'];
+  var bomRank = {};
+  bomSlots.forEach(function(slot) {
+    var vals = vs.map(function(v){ var mc = _tcModCosts[v.id]; return mc && mc.modules && mc.modules[slot] ? mc.modules[slot].per_unit_tpc_eur : NaN; }).filter(function(x){ return !isNaN(x); });
+    if (!vals.length) return;
+    bomRank[slot] = { best: Math.min.apply(null,vals), worst: Math.max.apply(null,vals) };
+  });
+  var bomTotalVals = vs.map(function(v){ var mc = _tcModCosts[v.id]; if (!mc || !mc.modules) return NaN; var s=0; bomSlots.forEach(function(sl){ s += (mc.modules[sl]||{}).per_unit_tpc_eur||0; }); return s; }).filter(function(x){ return !isNaN(x) && x>0; });
+  var bomTotalRank = bomTotalVals.length ? {best:Math.min.apply(null,bomTotalVals),worst:Math.max.apply(null,bomTotalVals)} : null;
+
+  var devBadge = function(dt) {
+    var map = {new:'var(--cyan)',modify:'var(--gold)',reuse:'var(--muted2)'};
+    var col = map[dt] || 'var(--muted2)';
+    return '<span style="font-size:8px;color:'+col+';font-family:\'DM Mono\',monospace;">'+(dt||'?').toUpperCase()+'</span>';
+  };
+
+  var moneyCell = function(val, rankObj) {
+    var bg = '';
+    if (!isNaN(val) && rankObj) {
+      if (val === rankObj.best)  bg = 'background:rgba(56,212,134,0.13);';
+      else if (val === rankObj.worst) bg = 'background:rgba(200,164,60,0.13);';
+    }
+    var display = isNaN(val) || val === 0 ? '—' : '€' + Math.round(val).toLocaleString();
+    return '<td class="mi-td" style="font-family:\'DM Mono\',monospace;text-align:right;' + bg + '">' + display + '</td>';
+  };
+
+  var h = secHdr('Standard Configuration Cost — BOM (€ per unit)');
+  h += '<div style="overflow-x:auto;"><table class="mi-tbl"><thead><tr>';
+  ['Team','Vehicle','Seg','Dev Type','Platform','PWT','TopHat','E&S','BOM Total'].forEach(function(c){ h += '<th class="mi-th">' + c + '</th>'; });
+  h += '</tr></thead><tbody>';
+  vs.forEach(function(v) {
+    var mc = _tcModCosts[v.id] || {};
+    var mods = mc.modules || {};
+    // Dev type: 'new' if any slot is new, else 'modify' if any modify, else 'reuse'
+    var devTypes = bomSlots.map(function(sl){ return (mods[sl]||{}).development_type||''; });
+    var dt = devTypes.indexOf('new')>=0 ? 'new' : devTypes.indexOf('modify')>=0 ? 'modify' : 'reuse';
+    var bomTotal = 0; bomSlots.forEach(function(sl){ bomTotal += (mods[sl]||{}).per_unit_tpc_eur||0; });
+    h += '<tr class="mi-tr">';
+    h += _tcTeamCell(v);
+    h += '<td class="mi-td" style="font-weight:600;">' + v.name + '</td>';
+    h += '<td class="mi-td" style="font-size:9px;color:var(--muted2);">' + (v.segment_code||'').replace('_segment','').replace('_',' ').toUpperCase() + '</td>';
+    h += '<td class="mi-td">' + devBadge(dt) + '</td>';
+    bomSlots.forEach(function(slot) {
+      var val = mods[slot] ? mods[slot].per_unit_tpc_eur : NaN;
+      h += moneyCell(val, bomRank[slot]);
+    });
+    h += moneyCell(bomTotal > 0 ? bomTotal : NaN, bomTotalRank);
+    h += '</tr>';
+  });
+  h += '</tbody></table></div>';
+
+  // ── INDUSTRIAL TABLE ─────────────────────────────────────────
+  var mfVals   = vs.map(function(v){ var p=_tcMfr(v); return p ? p.manuf_var_total : NaN; }).filter(function(x){return !isNaN(x);});
+  var tpcVals  = vs.map(function(v){ return v.total_unit_tpc_eur||NaN; }).filter(function(x){return !isNaN(x)&&x>0;});
+  var mfRank   = mfVals.length  ? {best:Math.min.apply(null,mfVals), worst:Math.max.apply(null,mfVals)}  : null;
+  var tpcRank  = tpcVals.length ? {best:Math.min.apply(null,tpcVals),worst:Math.max.apply(null,tpcVals)} : null;
+
+  h += secHdr('Industrial Cost & Automation Assumptions');
+  h += '<div style="overflow-x:auto;"><table class="mi-tbl"><thead><tr>';
+  ['Team','Vehicle','Country','JPH','Auto Lvl','Make%','Labour €/u','Energy €/u','Maint €/u','Supplier Adj','Manuf Var','TPC/Unit'].forEach(function(c){ h += '<th class="mi-th">' + c + '</th>'; });
+  h += '</tr></thead><tbody>';
+  vs.forEach(function(v) {
+    var ops   = v.operations_plan || {};
+    var plant = (ops.plants && ops.plants[0]) || {};
+    var mfr   = plant._manuf || {};
+    var jph   = plant.jph || mfr.jph;
+    var auto  = plant.automation_level;
+    var mkPct = plant.make_pct != null ? plant.make_pct : mfr.make_pct;
+    var ccode = plant.country_code || ops.assembly_country_code || '—';
+    var buyAdj = mfr.buy_cost_adj;
+    var mfTotal = mfr.manuf_var_total;
+    var tpc = v.total_unit_tpc_eur;
+
+    var adjColor = !isNaN(buyAdj) ? (buyAdj < 0 ? 'var(--green)' : buyAdj > 0 ? 'var(--red)' : 'var(--muted2)') : 'var(--muted2)';
+    var adjDisplay = isNaN(buyAdj) || buyAdj == null ? '—' : (buyAdj >= 0 ? '+€' : '−€') + Math.abs(Math.round(buyAdj)).toLocaleString();
+
+    h += '<tr class="mi-tr">';
+    h += _tcTeamCell(v);
+    h += '<td class="mi-td" style="font-weight:600;">' + v.name + '</td>';
+    h += '<td class="mi-td" style="font-family:\'DM Mono\',monospace;font-size:10px;">' + ccode + '</td>';
+    h += '<td class="mi-td" style="font-family:\'DM Mono\',monospace;text-align:center;">' + (jph != null ? jph : '—') + '</td>';
+    h += '<td class="mi-td" style="font-family:\'DM Mono\',monospace;text-align:center;">' + (auto != null ? 'L'+auto : '—') + '</td>';
+    h += '<td class="mi-td" style="font-family:\'DM Mono\',monospace;text-align:center;">' + (mkPct != null ? Math.round(mkPct*100)+'%' : '—') + '</td>';
+    h += moneyCell(mfr.labour_per_unit, null);
+    h += moneyCell(mfr.energy_per_unit, null);
+    h += moneyCell(mfr.maint_per_unit,  null);
+    h += '<td class="mi-td" style="font-family:\'DM Mono\',monospace;text-align:right;color:'+adjColor+';">' + adjDisplay + '</td>';
+    h += moneyCell(mfTotal, mfRank);
+    h += moneyCell(tpc > 0 ? tpc : NaN, tpcRank);
+    h += '</tr>';
+  });
+  h += '</tbody></table></div>';
+
+  el.innerHTML = h;
+}
+
+function _tcMfr(v) {
+  var ops = v.operations_plan || {};
+  var plant = (ops.plants && ops.plants[0]) || {};
+  return plant._manuf || null;
 }
 
 function _tcTeamCell(v) {
