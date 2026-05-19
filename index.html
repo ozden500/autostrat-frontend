@@ -10163,27 +10163,15 @@ function _renderTcModCostTab() {
     return '<div style="font-family:\'DM Mono\',monospace;font-size:8px;color:#a78bfa;text-transform:uppercase;letter-spacing:1.5px;padding:16px 0 8px;border-bottom:1px solid var(--border);margin-bottom:0;">' + title + '</div>';
   };
 
-  // ── BOM TABLE ────────────────────────────────────────────────
-  // Build per-column ranking maps for module cost columns
-  var bomSlots = ['platform','pwt','tophat','eands'];
-  var bomRank = {};
-  bomSlots.forEach(function(slot) {
-    var vals = vs.map(function(v){ var mc = _tcModCosts[v.id]; return mc && mc.modules && mc.modules[slot] ? mc.modules[slot].per_unit_tpc_eur : NaN; }).filter(function(x){ return !isNaN(x); });
-    if (!vals.length) return;
-    bomRank[slot] = { best: Math.min.apply(null,vals), worst: Math.max.apply(null,vals) };
-  });
-  var bomTotalVals = vs.map(function(v){ var mc = _tcModCosts[v.id]; if (!mc || !mc.modules) return NaN; var s=0; bomSlots.forEach(function(sl){ s += (mc.modules[sl]||{}).per_unit_tpc_eur||0; }); return s; }).filter(function(x){ return !isNaN(x) && x>0; });
-  var bomTotalRank = bomTotalVals.length ? {best:Math.min.apply(null,bomTotalVals),worst:Math.max.apply(null,bomTotalVals)} : null;
-
-  var devBadge = function(dt) {
-    var map = {new:'var(--cyan)',modify:'var(--gold)',reuse:'var(--muted2)'};
-    var col = map[dt] || 'var(--muted2)';
-    return '<span style="font-size:8px;color:'+col+';font-family:\'DM Mono\',monospace;">'+(dt||'?').toUpperCase()+'</span>';
+  var devTint = function(dt) {
+    if (dt === 'new')    return 'background:rgba(103,232,249,0.15);';
+    if (dt === 'modify') return 'background:rgba(251,191,36,0.15);';
+    return '';
   };
 
   var moneyCell = function(val, rankObj) {
     var bg = '';
-    if (!isNaN(val) && rankObj) {
+    if (!isNaN(val) && val !== 0 && rankObj) {
       if (val === rankObj.best)  bg = 'background:rgba(56,212,134,0.13);';
       else if (val === rankObj.worst) bg = 'background:rgba(200,164,60,0.13);';
     }
@@ -10191,33 +10179,123 @@ function _renderTcModCostTab() {
     return '<td class="mi-td" style="font-family:\'DM Mono\',monospace;text-align:right;' + bg + '">' + display + '</td>';
   };
 
-  var h = secHdr('Standard Configuration Cost — BOM (€ per unit)');
+  var moneyMCell = function(val, rankObj) {
+    var bg = '';
+    if (!isNaN(val) && val !== 0 && rankObj) {
+      if (val === rankObj.best)  bg = 'background:rgba(56,212,134,0.13);';
+      else if (val === rankObj.worst) bg = 'background:rgba(200,164,60,0.13);';
+    }
+    var display = (!val || val === 0) ? '—' : '€' + val.toFixed(1) + 'M';
+    return '<td class="mi-td" style="font-family:\'DM Mono\',monospace;text-align:right;' + bg + '">' + display + '</td>';
+  };
+
+  // ── BOM TABLE ────────────────────────────────────────────────
+  var bomSlots = ['platform','pwt','tophat','eands'];
+  var slotWs   = {platform:'body_shop', pwt:'powertrain', tophat:'paint_shop', eands:'assembly'};
+
+  // Ranking maps for totals
+  var bomTotalVals = vs.map(function(v){ var mc=_tcModCosts[v.id]; if(!mc||!mc.modules) return NaN; var s=0; bomSlots.forEach(function(sl){ s+=(mc.modules[sl]||{}).per_unit_tpc_eur||0; }); return s; }).filter(function(x){ return !isNaN(x)&&x>0; });
+  var bomTotalRank = bomTotalVals.length ? {best:Math.min.apply(null,bomTotalVals),worst:Math.max.apply(null,bomTotalVals)} : null;
+
+  var rdTotalVals  = vs.map(function(v){ var mc=_tcModCosts[v.id]; if(!mc||!mc.modules) return NaN; var s=0; bomSlots.forEach(function(sl){ s+=(mc.modules[sl]||{}).total_rd_spend_m||0; }); return s; }).filter(function(x){ return !isNaN(x)&&x>0; });
+  var rdTotalRank  = rdTotalVals.length  ? {best:Math.min.apply(null,rdTotalVals), worst:Math.max.apply(null,rdTotalVals)}  : null;
+
+  var capTotalVals = vs.map(function(v){ var pl=((v.operations_plan||{}).plants)||[]; return pl.reduce(function(s,p){ return s+((p._manuf||{}).total_investment_m||0); },0); }).filter(function(x){ return x>0; });
+  var capTotalRank = capTotalVals.length ? {best:Math.min.apply(null,capTotalVals),worst:Math.max.apply(null,capTotalVals)} : null;
+
+  var h = secHdr('Standard Configuration Cost — BOM &amp; Investment');
   h += '<div style="overflow-x:auto;"><table class="mi-tbl"><thead><tr>';
-  ['Team','Vehicle','Seg','Dev Type','Platform','PWT','TopHat','E&S','BOM Total'].forEach(function(c){ h += '<th class="mi-th">' + c + '</th>'; });
+  ['Team','Vehicle','Seg','SOP','EOP','Type','Platform','PWT','TopHat','E&amp;S','Total'].forEach(function(c){ h += '<th class="mi-th">' + c + '</th>'; });
   h += '</tr></thead><tbody>';
+
+  var monoSm = 'font-family:\'DM Mono\',monospace;font-size:9px;';
+
   vs.forEach(function(v) {
-    var mc = _tcModCosts[v.id] || {};
+    var mc   = _tcModCosts[v.id] || {};
     var mods = mc.modules || {};
     var isAiEst = !!(mods.platform && mods.platform.name === 'AI estimate');
-    // Dev type: 'new' if any slot is new, else 'modify' if any modify, else 'reuse'
-    var devTypes = bomSlots.map(function(sl){ return (mods[sl]||{}).development_type||''; });
-    var dt = devTypes.indexOf('new')>=0 ? 'new' : devTypes.indexOf('modify')>=0 ? 'modify' : 'reuse';
+
+    // TPC totals
     var bomTotal = 0; bomSlots.forEach(function(sl){ bomTotal += (mods[sl]||{}).per_unit_tpc_eur||0; });
     var bomFallback = bomTotal > 0 ? bomTotal : (mc.total_unit_tpc_eur || v.total_unit_tpc_eur || 0);
-    var devBadgeCell = isAiEst
-      ? '<td class="mi-td"><span style="font-size:8px;color:var(--muted2);font-family:\'DM Mono\',monospace;">AI EST</span></td>'
-      : '<td class="mi-td">' + devBadge(bomTotal > 0 ? dt : 'reuse') + '</td>';
-    h += '<tr class="mi-tr">';
-    h += _tcTeamCell(v);
-    h += '<td class="mi-td" style="font-weight:600;">' + v.name + '</td>';
-    h += '<td class="mi-td" style="font-size:9px;color:var(--muted2);">' + (v.segment_code||'').replace('_segment','').replace('_',' ').toUpperCase() + '</td>';
-    h += devBadgeCell;
+
+    // R&D totals
+    var rdTotal = 0; bomSlots.forEach(function(sl){ rdTotal += (mods[sl]||{}).total_rd_spend_m||0; });
+
+    // CAPEX: ensure first-plant _manuf is populated via fallback compute if needed
+    var plants = ((v.operations_plan||{}).plants) || [];
+    if (plants.length > 0 && !plants[0]._manuf && v.total_unit_tpc_eur) {
+      try {
+        var _p0 = plants[0];
+        var _a0 = _p0.automation_level != null ? _p0.automation_level : 2;
+        if (typeof _a0 === 'string') _a0 = parseInt(_a0.replace(/^L/i,''))||2;
+        var _m0 = _p0.make_pct != null ? (_p0.make_pct>1?_p0.make_pct/100:_p0.make_pct) : 0.15;
+        var _s0 = _p0.supplier_automation||'MEDIUM';
+        if (typeof _s0 === 'number') _s0 = _s0>=70?'HIGH':_s0>=50?'MEDIUM':'LOW';
+        var _r0 = _p0.region||'EU';
+        var _cO = ((INDUSTRIAL_COUNTRIES[_r0]||INDUSTRIAL_COUNTRIES['EU'])||[]).find(function(c){ return c.code===_p0.country_code; })||{labor_eur_hr:52,elec_eur_kwh:0.18};
+        _p0._manuf = _MANUF_E.calc({
+          platform_size:(v.rolled_up_specs||{}).platform_size||'medium',
+          body_type:(v.rolled_up_specs||{}).body_type||'HB',
+          segment_code:v.segment_code||'c_segment',
+          pwt_type:_pwtToManufKey((v.rolled_up_specs||{}).pwt_type||''),
+          jph:_p0.jph||40, automation_level:_a0, platform_shared:_p0.platform_shared||false,
+          make_pct:_m0, supplier_automation:_s0, country:_cO,
+          tpc_buy_eur:(v.total_unit_tpc_eur||0)*(1-_m0)
+        });
+      } catch(e) {}
+    }
+    var capexTotal = plants.reduce(function(s,p){ return s+((p._manuf||{}).total_investment_m||0); },0);
+    var wkshp = {assembly:0, body_shop:0, paint_shop:0, powertrain:0};
+    plants.forEach(function(p){
+      var ws=(p._manuf||{}).workshops||{};
+      ['assembly','body_shop','paint_shop','powertrain'].forEach(function(k){ wkshp[k]+=(ws[k]||{}).investment_m||0; });
+    });
+
+    var segLabel = (v.segment_code||'').replace('_segment','').replace('_',' ').toUpperCase();
+    var col      = _tcTeamColors[v.team_name] || 'var(--cyan)';
+    var typeCell = function(lbl) { return '<td class="mi-td" style="' + monoSm + 'color:var(--muted2);white-space:nowrap;">' + lbl + '</td>'; };
+
+    // ── ROW 1: TPC €/unit ──────────────────────────────────────
+    h += '<tr class="mi-tr" style="border-top:2px solid var(--border);">';
+    h += '<td class="mi-td" rowspan="3" style="font-weight:600;color:' + col + ';">' + (v.team_name||'—') + '</td>';
+    h += '<td class="mi-td" rowspan="3" style="font-weight:600;">' + v.name + '</td>';
+    h += '<td class="mi-td" rowspan="3" style="' + monoSm + 'color:var(--muted2);">' + segLabel + '</td>';
+    h += '<td class="mi-td" rowspan="3" style="' + monoSm + 'color:var(--cyan);text-align:center;">' + _tcTimingLabel(v.start_year,v.start_quarter) + '</td>';
+    h += '<td class="mi-td" rowspan="3" style="' + monoSm + 'color:var(--muted2);text-align:center;">' + _tcTimingLabel(v.end_year,v.end_quarter) + '</td>';
+    h += typeCell('TPC €/UNIT');
     bomSlots.forEach(function(slot) {
-      var val = mods[slot] ? mods[slot].per_unit_tpc_eur : NaN;
-      var style = isAiEst ? 'opacity:0.65;' : '';
-      h += '<td class="mi-td" style="font-family:\'DM Mono\',monospace;text-align:right;' + style + '">' + (isNaN(val)||val===0?'—':'€'+Math.round(val).toLocaleString()) + '</td>';
+      var val  = mods[slot] ? mods[slot].per_unit_tpc_eur : NaN;
+      var dt   = (mods[slot]||{}).development_type || '';
+      var tint = isAiEst ? 'opacity:0.65;' : devTint(dt);
+      h += '<td class="mi-td" style="font-family:\'DM Mono\',monospace;text-align:right;' + tint + '">' + (isNaN(val)||val===0?'—':'€'+Math.round(val).toLocaleString()) + '</td>';
     });
     h += moneyCell(bomFallback > 0 ? bomFallback : NaN, bomTotalRank);
+    h += '</tr>';
+
+    // ── ROW 2: R&D €M ─────────────────────────────────────────
+    h += '<tr class="mi-tr">';
+    h += typeCell('R&amp;D €M');
+    bomSlots.forEach(function(slot) {
+      var val  = (mods[slot]||{}).total_rd_spend_m || 0;
+      var dt   = (mods[slot]||{}).development_type || '';
+      var tint = isAiEst ? 'opacity:0.65;' : devTint(dt);
+      h += '<td class="mi-td" style="font-family:\'DM Mono\',monospace;text-align:right;' + tint + '">' + (val===0?'—':'€'+val.toFixed(1)+'M') + '</td>';
+    });
+    h += moneyMCell(rdTotal > 0 ? rdTotal : NaN, rdTotalRank);
+    h += '</tr>';
+
+    // ── ROW 3: CAPEX €M ───────────────────────────────────────
+    h += '<tr class="mi-tr">';
+    h += typeCell('CAPEX €M');
+    bomSlots.forEach(function(slot) {
+      var wsKey = slotWs[slot];
+      var val   = wkshp[wsKey] || 0;
+      var dt    = (mods[slot]||{}).development_type || '';
+      var tint  = isAiEst ? 'opacity:0.65;' : devTint(dt);
+      h += '<td class="mi-td" style="font-family:\'DM Mono\',monospace;text-align:right;' + tint + '">' + (val===0?'—':'€'+val.toFixed(1)+'M') + '</td>';
+    });
+    h += moneyMCell(capexTotal > 0 ? capexTotal : NaN, capTotalRank);
     h += '</tr>';
   });
   h += '</tbody></table></div>';
@@ -10311,6 +10389,11 @@ function _tcTeamCell(v) {
 
 function _tcPwtLabel(pwt) {
   return ({ice_only:'ICE',bev_only:'BEV',ice_and_bev:'Hybrid/PHEV',hev:'HEV',phev:'PHEV',reev:'REEV'}[pwt]) || (pwt||'—').toUpperCase();
+}
+
+function _tcTimingLabel(year, quarter) {
+  if (!year || !quarter) return '—';
+  return 'Y' + (year - 2024) + 'Q' + quarter;
 }
 
 function switchAnalystTab(tab) {
