@@ -1254,18 +1254,66 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
       </tbody>
     </table>
   </div>
-  <div class="kpi-grid g2">
-    <div class="card">
-      <div class="card-title"><span class="tag tf">INVEST</span> Capital Decisions</div>
-      <div class="ctrl"><div class="ctrl-lbl"><span>R&D Budget</span><span class="ctrl-v" id="fn-rd">€820M</span></div><input type="range" min="100" max="2000" step="50" value="820" oninput="svm('fn-rd',this.value)"></div>
-      <div class="ctrl"><div class="ctrl-lbl"><span>Capex</span><span class="ctrl-v" id="fn-cx">€640M</span></div><input type="range" min="50" max="1500" step="50" value="640" oninput="svm('fn-cx',this.value)"></div>
-      <div class="ctrl"><div class="ctrl-lbl"><span>Working Capital (days)</span><span class="ctrl-v" id="fn-wc">28 days</span></div><input type="range" min="10" max="60" value="28" oninput="sv('fn-wc',this.value,' days')"></div>
+  <!-- Finance & Capital Management Panel -->
+  <div class="card" id="fin-capital-panel" style="margin-top:12px;">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+      <div class="card-title" style="margin:0"><span class="tag tf">STRUCTURE</span> Finance &amp; Capital Management</div>
+      <button onclick="loadFinancePanel()" style="background:none;border:1px solid var(--border);color:var(--muted2);font-family:DM Mono,monospace;font-size:9px;padding:3px 10px;border-radius:4px;cursor:pointer;">↻ Refresh</button>
     </div>
-    <div class="card">
-      <div class="card-title"><span class="tag tf">STRUCTURE</span> Financing & Returns</div>
-      <div class="ctrl"><label class="ctrl-lbl-top">Target Net Debt / EBITDA</label><select><option>Net cash</option><option>0–1× conservative</option><option>1–2× balanced</option><option>2–3× aggressive</option></select></div>
-      <div class="ctrl"><label class="ctrl-lbl-top">Equity Action</label><select><option>No change</option><option>Buyback €500M</option><option>Rights issue €1B</option></select></div>
-      <div class="ctrl"><label class="ctrl-lbl-top">Dividend Policy</label><select><option>Retain earnings</option><option>€0.80/share</option><option>€1.20/share</option></select></div>
+
+    <!-- Current BS snapshot -->
+    <div id="fin-bs-snapshot" style="display:grid;grid-template-columns:repeat(6,1fr);gap:8px;margin-bottom:16px;padding:10px;background:var(--s2);border-radius:6px;">
+      <div style="text-align:center"><div style="font-size:8px;color:var(--muted);font-family:DM Mono,monospace;text-transform:uppercase;">Cash</div><div id="fcp-cash" style="font-size:13px;font-weight:700;color:var(--cyan);font-family:DM Mono,monospace;">—</div></div>
+      <div style="text-align:center"><div style="font-size:8px;color:var(--muted);font-family:DM Mono,monospace;text-transform:uppercase;">LT Debt</div><div id="fcp-ltdebt" style="font-size:13px;font-weight:700;color:var(--red);font-family:DM Mono,monospace;">—</div></div>
+      <div style="text-align:center"><div style="font-size:8px;color:var(--muted);font-family:DM Mono,monospace;text-transform:uppercase;">ST Revolver</div><div id="fcp-stdebt" style="font-size:13px;font-weight:700;color:var(--orange);font-family:DM Mono,monospace;">—</div></div>
+      <div style="text-align:center"><div style="font-size:8px;color:var(--muted);font-family:DM Mono,monospace;text-transform:uppercase;">Share Capital</div><div id="fcp-sc" style="font-size:13px;font-weight:700;color:var(--green);font-family:DM Mono,monospace;">—</div></div>
+      <div style="text-align:center"><div style="font-size:8px;color:var(--muted);font-family:DM Mono,monospace;text-transform:uppercase;">Ret. Earnings</div><div id="fcp-re" style="font-size:13px;font-weight:700;color:var(--purple);font-family:DM Mono,monospace;">—</div></div>
+      <div style="text-align:center"><div style="font-size:8px;color:var(--muted);font-family:DM Mono,monospace;text-transform:uppercase;">Debt / Equity</div><div id="fcp-de" style="font-size:13px;font-weight:700;font-family:DM Mono,monospace;">—</div></div>
+    </div>
+
+    <!-- Covenant status bar -->
+    <div id="fcp-covenant" style="display:none;padding:8px 12px;border-radius:4px;font-family:DM Mono,monospace;font-size:10px;margin-bottom:12px;"></div>
+
+    <!-- Decision inputs -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+      <div>
+        <div style="font-family:DM Mono,monospace;font-size:8px;text-transform:uppercase;letter-spacing:1.5px;color:#a78bfa;margin-bottom:8px;">DEBT MANAGEMENT</div>
+        <div class="ctrl"><div class="ctrl-lbl"><span>Borrow — LT Term Loan (€M)</span><span class="ctrl-v" id="fcp-blt-v">0</span></div>
+          <input type="range" min="0" max="2000" step="100" value="0" id="fcp-blt" oninput="fcpUpd('blt',this.value)" style="width:100%"></div>
+        <div class="ctrl"><div class="ctrl-lbl"><span>Repay — LT Term Loan (€M)</span><span class="ctrl-v" id="fcp-rlt-v">0</span></div>
+          <input type="range" min="0" max="2000" step="100" value="0" id="fcp-rlt" oninput="fcpUpd('rlt',this.value)" style="width:100%"></div>
+        <div class="ctrl"><div class="ctrl-lbl"><span>Draw — ST Revolver (€M)</span><span class="ctrl-v" id="fcp-bst-v">0</span></div>
+          <input type="range" min="0" max="1000" step="50" value="0" id="fcp-bst" oninput="fcpUpd('bst',this.value)" style="width:100%"></div>
+        <div class="ctrl"><div class="ctrl-lbl"><span>Repay — ST Revolver (€M)</span><span class="ctrl-v" id="fcp-rst-v">0</span></div>
+          <input type="range" min="0" max="1000" step="50" value="0" id="fcp-rst" oninput="fcpUpd('rst',this.value)" style="width:100%"></div>
+      </div>
+      <div>
+        <div style="font-family:DM Mono,monospace;font-size:8px;text-transform:uppercase;letter-spacing:1.5px;color:#a78bfa;margin-bottom:8px;">EQUITY &amp; RETURNS</div>
+        <div class="ctrl"><div class="ctrl-lbl"><span>Issue Shares / IPO (€M)</span><span class="ctrl-v" id="fcp-iss-v">0</span></div>
+          <input type="range" min="0" max="5000" step="100" value="0" id="fcp-iss" oninput="fcpUpd('iss',this.value)" style="width:100%"></div>
+        <div class="ctrl"><div class="ctrl-lbl"><span>Share Repurchase (€M)</span><span class="ctrl-v" id="fcp-rep-v">0</span></div>
+          <input type="range" min="0" max="2000" step="50" value="0" id="fcp-rep" oninput="fcpUpd('rep',this.value)" style="width:100%"></div>
+        <div class="ctrl"><div class="ctrl-lbl"><span>Dividend Payment (€M)</span><span class="ctrl-v" id="fcp-div-v">0</span></div>
+          <input type="range" min="0" max="2000" step="50" value="0" id="fcp-div" oninput="fcpUpd('div',this.value)" style="width:100%"></div>
+      </div>
+    </div>
+
+    <!-- Pro-forma preview -->
+    <div id="fcp-proforma" style="margin-top:12px;padding:10px;background:rgba(167,139,250,0.06);border-radius:6px;display:none;">
+      <div style="font-family:DM Mono,monospace;font-size:8px;text-transform:uppercase;letter-spacing:1.5px;color:#a78bfa;margin-bottom:6px;">PRO-FORMA IMPACT (next round BS)</div>
+      <div id="fcp-pf-content" style="font-family:DM Mono,monospace;font-size:10px;color:var(--text);"></div>
+    </div>
+
+    <!-- Pending decisions badge + submit -->
+    <div style="display:flex;align-items:center;gap:12px;margin-top:14px;">
+      <button onclick="submitFinancingDecision()" id="fcp-submit"
+        style="background:var(--gold);color:#000;font-family:DM Mono,monospace;font-size:10px;font-weight:700;padding:8px 20px;border:none;border-radius:5px;cursor:pointer;letter-spacing:0.5px;">
+        SUBMIT FOR NEXT ROUND ▶
+      </button>
+      <div id="fcp-pending-badge" style="display:none;background:rgba(251,191,36,0.15);border:1px solid var(--gold);color:var(--gold);font-family:DM Mono,monospace;font-size:9px;padding:4px 10px;border-radius:4px;">
+        ⏳ Decision pending for next round
+      </div>
+      <div id="fcp-status" style="font-family:DM Mono,monospace;font-size:9px;color:var(--muted2);"></div>
     </div>
   </div>
 </div>
@@ -2679,6 +2727,7 @@ function nav(page, el) {
   if(page==='dashboard') loadTeamHistoricalSummary();
   if(page==='market-intel') loadMarketIntel();
   if(page==='brands') renderBrand(currentBrand);
+  if(page==='financial') loadFinancePanel();
   if(page==='engineering') {
     loadBaseConfigs(currentModType);
     if(teamId) { loadProductStudies(); buildEngineeringDashboard(); }
@@ -9731,9 +9780,23 @@ async function renderBalanceSheet(data) {
   el.innerHTML = '<div style="padding:20px;color:var(--muted2);">Loading balance sheet data...</div>';
 
   try {
-    var res = await fetch(API_URL + '/sessions/' + sessionId + '/balance-sheet?round_id=' + rid);
-    var bsData = res.ok ? await res.json() : {snapshots:[]};
-    var snapshots = bsData.snapshots || [];
+    // Use pre-fetched statements from loadAnalystResults; re-fetch if stmtMap missing
+    var snapshots = [];
+    if (data.stmtMap && Object.keys(data.stmtMap).length) {
+      snapshots = Object.values(data.stmtMap);
+    } else {
+      var res = await fetch(API_URL + '/sessions/' + sessionId + '/financial-statements?round_id=' + rid);
+      var bsData = res.ok ? await res.json() : {statements:[]};
+      snapshots = bsData.statements || [];
+    }
+    // Compute balance check for each
+    snapshots.forEach(function(s) {
+      s.balance_check_m = Math.round(
+        ((s.total_assets_m||0) - (s.total_liabilities_m||0) - (s.total_equity_m||0)) * 10
+      ) / 10;
+      // Attach team name if missing
+      if (!s.team_name) s.team_name = teams[s.team_id] || s.team_id;
+    });
 
     if (!snapshots.length) {
       el.innerHTML = '<div style="padding:24px;color:var(--muted2);text-align:center;">' +
@@ -9753,51 +9816,40 @@ async function renderBalanceSheet(data) {
       {t:'hdr', label:'ASSETS', col:'var(--cyan)'},
       {t:'sub', label:'Current Assets'},
       {t:'line',label:'  Cash & Equivalents',           key:'cash_m'},
-      {t:'line',label:'  Short-Term Investments',        key:'short_term_investments_m', est:true},
-      {t:'line',label:'  Accounts Receivable',           key:'accounts_receivable_m'},
-      {t:'line',label:'  Inventory',                     key:'inventory_m'},
-      {t:'line',label:'  Prepaid Expenses',              key:'prepaid_expenses_m', est:true},
-      {t:'line',label:'  Other Current Assets',          key:'other_current_assets_m', est:true},
-      {t:'tot', label:'Total Current Assets',            key:'total_current_assets_m', col:'var(--cyan)'},
+      {t:'line',label:'  Accounts Receivable',          key:'accounts_receivable_m'},
+      {t:'line',label:'  Inventory',                    key:'inventory_m'},
+      {t:'line',label:'  Prepaid & Other',              key:'prepaid_m'},
+      {t:'tot', label:'Total Current Assets',           key:'total_current_assets_m', col:'var(--cyan)'},
       {t:'sep'},
       {t:'sub', label:'Non-Current Assets'},
-      {t:'line',label:'  PP&E (Gross)',                  key:'ppe_gross_m'},
-      {t:'line',label:'  Accumulated Depreciation',      key:'accumulated_depreciation_m'},
-      {t:'line',label:'  PP&E (Net)',                    key:'ppe_net_m', bold:true},
-      {t:'line',label:'  Intangible Assets',             key:'intangibles_m', est:true},
-      {t:'line',label:'  Capitalized R&D',               key:'capitalized_rd_m'},
-      {t:'line',label:'  Goodwill',                      key:'goodwill_m', est:true},
-      {t:'line',label:'  Long-Term Investments',         key:'long_term_investments_m', est:true},
-      {t:'tot', label:'Total Non-Current Assets',        key:'total_noncurrent_assets_m', col:'var(--cyan)'},
+      {t:'line',label:'  PP&E (Gross)',                 key:'ppe_gross_m'},
+      {t:'line',label:'  Accumulated Depreciation',     key:'accumulated_depreciation_m'},
+      {t:'line',label:'  PP&E (Net)',                   key:'ppe_net_m', bold:true},
+      {t:'tot', label:'Total Non-Current Assets',       key:'total_noncurrent_assets_m', col:'var(--cyan)'},
       {t:'sep'},
-      {t:'tot', label:'TOTAL ASSETS',                    key:'total_assets_m', col:'var(--cyan)', big:true},
+      {t:'tot', label:'TOTAL ASSETS',                   key:'total_assets_m', col:'var(--cyan)', big:true},
       {t:'sep'},
       {t:'hdr', label:'LIABILITIES', col:'var(--red)'},
       {t:'sub', label:'Current Liabilities'},
-      {t:'line',label:'  Accounts Payable',              key:'accounts_payable_m'},
-      {t:'line',label:'  Short-Term Debt',               key:'short_term_debt_m', est:true},
-      {t:'line',label:'  Accrued Expenses',              key:'accrued_expenses_m', est:true},
-      {t:'line',label:'  Deferred Revenue',              key:'deferred_revenue_m', est:true},
-      {t:'line',label:'  Warranty Provision',            key:'warranty_provision_m'},
-      {t:'tot', label:'Total Current Liabilities',       key:'total_current_liab_m', col:'var(--red)'},
+      {t:'line',label:'  Accounts Payable',             key:'accounts_payable_m'},
+      {t:'line',label:'  ST Revolver',                  key:'short_term_debt_m'},
+      {t:'line',label:'  Accrued Expenses',             key:'accrued_expenses_m'},
+      {t:'line',label:'  Warranty Provision (cumul.)',  key:'warranty_provision_m'},
+      {t:'tot', label:'Total Current Liabilities',      key:'total_current_liab_m', col:'var(--red)'},
       {t:'sep'},
       {t:'sub', label:'Non-Current Liabilities'},
-      {t:'line',label:'  Long-Term Debt',                key:'long_term_debt_m'},
-      {t:'line',label:'  Deferred Tax Liability',        key:'deferred_tax_liab_m', est:true},
-      {t:'line',label:'  Pension Obligation',            key:'pension_obligation_m', est:true},
-      {t:'tot', label:'Total Non-Current Liabilities',   key:'total_noncurrent_liab_m', col:'var(--red)'},
+      {t:'line',label:'  LT Term Loan',                 key:'long_term_debt_m'},
+      {t:'line',label:'  Deferred Tax Liability',       key:'deferred_tax_liab_m'},
+      {t:'tot', label:'Total Non-Current Liabilities',  key:'total_noncurrent_liab_m', col:'var(--red)'},
       {t:'sep'},
-      {t:'tot', label:'TOTAL LIABILITIES',               key:'total_liabilities_m', col:'var(--red)', big:true},
+      {t:'tot', label:'TOTAL LIABILITIES',              key:'total_liabilities_m', col:'var(--red)', big:true},
       {t:'sep'},
       {t:'hdr', label:'EQUITY', col:'var(--green)'},
-      {t:'line',label:'  Share Capital',                 key:'share_capital_m', est:true},
-      {t:'line',label:'  Share Premium',                 key:'share_premium_m', est:true},
-      {t:'line',label:'  Retained Earnings',             key:'retained_earnings_m'},
-      {t:'line',label:'  Treasury Stock',                key:'treasury_stock_m', est:true},
-      {t:'line',label:'  Other Comprehensive Income',    key:'other_comprehensive_m', est:true},
-      {t:'tot', label:'TOTAL EQUITY',                    key:'total_equity_m', col:'var(--green)', big:true},
+      {t:'line',label:'  Share Capital',                key:'share_capital_m'},
+      {t:'line',label:'  Retained Earnings',            key:'retained_earnings_m'},
+      {t:'tot', label:'TOTAL EQUITY',                   key:'total_equity_m', col:'var(--green)', big:true},
       {t:'sep'},
-      {t:'chk', label:'Balance Check (A - L - E)',       key:'balance_check_m'},
+      {t:'chk', label:'Balance Check (A − L − E)',      key:'balance_check_m'},
     ];
 
     var nc = snapshots.length;
@@ -9846,12 +9898,237 @@ async function renderBalanceSheet(data) {
     });
 
     h += '</tbody></table></div>';
+
+    // ── WC Drivers mini-panel ──────────────────────────────────────────────
+    h += '<div style="margin-top:20px;padding:0 0 4px">';
+    h += '<div style="font-family:DM Mono,monospace;font-size:8px;text-transform:uppercase;letter-spacing:2px;color:#a78bfa;font-weight:700;padding:6px 0 8px">WORKING CAPITAL DRIVERS</div>';
+    h += '<div style="overflow-x:auto"><table style="border-collapse:collapse;font-family:DM Mono,monospace;font-size:10px;min-width:600px">';
+    h += '<thead><tr style="border-bottom:2px solid var(--border)">';
+    h += '<th style="padding:5px 12px;text-align:left;color:var(--muted);font-size:8px;min-width:160px">Metric / Driver</th>';
+    snapshots.forEach(function(s,i){
+      h += '<th style="padding:5px 8px;text-align:center;color:'+cols[i%cols.length]+';font-size:9px;">'+s.team_name+'</th>';
+    });
+    h += '</tr></thead><tbody>';
+    var wcRows = [
+      {label:'DSO (days)',         key:'weighted_dso_days', note:'Market mix driven'},
+      {label:'DIO (days)',         key:'dio_days',          note:'Sourcing strategy'},
+      {label:'DPO (days)',         key:'dpo_days',          note:'Make% driven'},
+      {label:'Cash Conv. Cycle',   key:null,                note:'DSO + DIO − DPO'},
+    ];
+    wcRows.forEach(function(row) {
+      h += '<tr style="border-bottom:1px solid rgba(255,255,255,0.04)">';
+      h += '<td style="padding:5px 12px;color:var(--text)">' + row.label +
+           '<span style="color:var(--muted);font-size:8px;margin-left:6px">' + row.note + '</span></td>';
+      snapshots.forEach(function(s) {
+        var v;
+        if (row.key) {
+          v = (parseFloat(s[row.key])||0).toFixed(1) + 'd';
+        } else {
+          v = ((parseFloat(s.weighted_dso_days)||45) + (parseFloat(s.dio_days)||45) - (parseFloat(s.dpo_days)||52)).toFixed(0) + 'd';
+        }
+        h += '<td style="padding:5px 8px;text-align:center;color:var(--text)">' + v + '</td>';
+      });
+      h += '</tr>';
+    });
+    h += '</tbody></table></div></div>';
+
+    // ── Capital Asset Register ─────────────────────────────────────────────
+    try {
+      var caRes = await fetch(API_URL + '/sessions/' + sessionId + '/capital-assets');
+      if (caRes.ok) {
+        var caData = await caRes.json();
+        var caAssets = (caData.assets || []).filter(function(a){ return a.status !== 'disposed'; });
+        if (caAssets.length) {
+          h += '<div style="margin-top:20px">';
+          h += '<div style="font-family:DM Mono,monospace;font-size:8px;text-transform:uppercase;letter-spacing:2px;color:#a78bfa;font-weight:700;padding:6px 0 8px">CAPITAL ASSET REGISTER</div>';
+          h += '<div style="overflow-x:auto"><table style="border-collapse:collapse;font-family:DM Mono,monospace;font-size:9px;width:100%;min-width:800px">';
+          h += '<thead><tr style="border-bottom:2px solid var(--border);background:var(--s2)">';
+          ['Team','Vehicle / Project','Label','Type','Gross €M','Accum Dep','NBV','Qtr Dep','Life Rem.','EOP','Flag'].forEach(function(col){
+            h += '<th style="padding:5px 8px;text-align:left;color:var(--muted);font-size:8px;">'+col+'</th>';
+          });
+          h += '</tr></thead><tbody>';
+          caAssets.forEach(function(a) {
+            var life = parseInt(a.useful_life_quarters||20);
+            var accum_q = parseFloat(a.gross_value_m||0) > 0
+              ? Math.round(parseFloat(a.accumulated_depreciation_m||0) / (parseFloat(a.gross_value_m)||1) * life)
+              : 0;
+            var life_rem = Math.max(0, life - accum_q);
+            var typeCol = a.asset_type === 'vehicle_program' ? 'var(--cyan)' : 'var(--gold)';
+            var impCol  = a.impairment_flag ? '#ef4444' : 'var(--green)';
+            var impLbl  = a.impairment_flag ? '⚠ IMPAIR' : '✓';
+            h += '<tr style="border-bottom:1px solid rgba(255,255,255,0.04)">';
+            h += '<td style="padding:4px 8px">' + (a.team_name||'—') + '</td>';
+            h += '<td style="padding:4px 8px;color:var(--muted2)">' + (a.vehicle_name||'—') + '</td>';
+            h += '<td style="padding:4px 8px">' + (a.plant_label||'—') + '</td>';
+            h += '<td style="padding:4px 8px;color:'+typeCol+'">' + (a.asset_type==='vehicle_program'?'Vehicle Prog.':'Infrastructure') + '</td>';
+            h += '<td style="padding:4px 8px;text-align:right">€' + (parseFloat(a.gross_value_m)||0).toFixed(0) + 'M</td>';
+            h += '<td style="padding:4px 8px;text-align:right;color:var(--muted2)">€' + (parseFloat(a.accumulated_depreciation_m)||0).toFixed(0) + 'M</td>';
+            h += '<td style="padding:4px 8px;text-align:right;color:'+(parseFloat(a.net_book_value_m)||0 > 0 ? 'var(--text)':'var(--muted)')+'">€' + (parseFloat(a.net_book_value_m)||0).toFixed(0) + 'M</td>';
+            var qtrDep = a.depreciation_method === 'straight_line'
+              ? (parseFloat(a.quarterly_dep_sl_m)||0).toFixed(0)
+              : '~' + (parseFloat(a.dep_per_unit_m||0)*1000).toFixed(1)+'k/ku';
+            h += '<td style="padding:4px 8px;text-align:right;color:var(--red)">'+qtrDep+'</td>';
+            h += '<td style="padding:4px 8px;text-align:right">' + life_rem + 'q</td>';
+            var eopLbl = a.eop_year ? 'Y'+(a.eop_year-2024)+'Q'+(a.eop_quarter||4) : '—';
+            h += '<td style="padding:4px 8px;color:var(--muted2)">' + eopLbl + '</td>';
+            h += '<td style="padding:4px 8px;color:'+impCol+';font-weight:700">' + impLbl + '</td>';
+            h += '</tr>';
+          });
+          h += '</tbody></table></div></div>';
+        }
+      }
+    } catch(caE) { console.warn('capital-assets fetch:', caE); }
+
     el.innerHTML = h;
   } catch(e) {
     console.error('renderBalanceSheet error:', e);
     el.innerHTML = '<div style="color:var(--red);padding:20px;">Error: ' + e.message + '</div>';
   }
 }
+
+// ── FINANCE & CAPITAL PANEL ──────────────────────────────────────────────────
+var _fcpDecision = {blt:0, rlt:0, bst:0, rst:0, iss:0, rep:0, div:0};
+var _fcpCurrent  = {};   // latest financial statement for this team
+
+function fcpUpd(key, val) {
+  val = parseFloat(val) || 0;
+  _fcpDecision[key] = val;
+  var labels = {blt:'Borrow LT',rlt:'Repay LT',bst:'Draw ST',rst:'Repay ST',iss:'Issue Shares',rep:'Buyback',div:'Dividend'};
+  var el = document.getElementById('fcp-'+key+'-v');
+  if (el) el.textContent = val > 0 ? '€'+val.toFixed(0)+'M' : '0';
+  _fcpRenderProforma();
+}
+
+function _fcpRenderProforma() {
+  var pf = document.getElementById('fcp-proforma');
+  var cont = document.getElementById('fcp-pf-content');
+  if (!pf || !cont) return;
+  var d = _fcpDecision;
+  var hasAny = Object.values(d).some(function(v){ return v > 0; });
+  if (!hasAny) { pf.style.display='none'; return; }
+  pf.style.display = 'block';
+
+  var cash   = parseFloat(_fcpCurrent.cash_m || 4000);
+  var ltDebt = parseFloat(_fcpCurrent.long_term_debt_m || 500);
+  var stDebt = parseFloat(_fcpCurrent.short_term_debt_m || 0);
+  var sc     = parseFloat(_fcpCurrent.share_capital_m || 5000);
+  var re     = parseFloat(_fcpCurrent.retained_earnings_m || 0);
+
+  var newCash   = cash + d.blt - d.rlt + d.bst - d.rst + d.iss - d.rep - d.div;
+  var newLt     = ltDebt + d.blt - d.rlt;
+  var newSt     = stDebt + d.bst - d.rst;
+  var newSc     = sc + d.iss - d.rep;
+  var newEq     = newSc + re;
+  var deRatio   = newEq > 0 ? (newLt / newEq).toFixed(2) : '∞';
+  var covenant  = newEq > 0 && (newLt / newEq) > 2.5;
+
+  var lines = [
+    {lbl:'Cash',          before: cash,   after: newCash, good: newCash > 500},
+    {lbl:'LT Term Loan',  before: ltDebt, after: newLt,   good: newLt < ltDebt || d.blt > 0},
+    {lbl:'ST Revolver',   before: stDebt, after: newSt,   good: true},
+    {lbl:'Share Capital', before: sc,     after: newSc,   good: true},
+    {lbl:'D/E Ratio',     before: (ltDebt/(sc+re)||0).toFixed(2)+'x', after: deRatio+'x', good: !covenant},
+  ];
+  var html = '<table style="font-size:9px;border-collapse:collapse;">';
+  lines.forEach(function(l) {
+    var chg = typeof l.before === 'number' ? (l.after - l.before) : null;
+    var chgStr = chg !== null ? (chg >= 0 ? ' <span style="color:var(--green)">+€'+Math.abs(chg).toFixed(0)+'M</span>' : ' <span style="color:var(--red)">-€'+Math.abs(chg).toFixed(0)+'M</span>') : '';
+    var beforeStr = typeof l.before === 'number' ? '€'+l.before.toFixed(0)+'M' : l.before;
+    var afterStr  = typeof l.after  === 'number' ? '€'+l.after.toFixed(0)+'M'  : l.after;
+    html += '<tr><td style="padding:2px 10px 2px 0;color:var(--muted);min-width:110px">'+l.lbl+'</td>';
+    html += '<td style="padding:2px 8px;color:var(--muted2)">'+beforeStr+'</td>';
+    html += '<td style="padding:2px 4px;color:var(--muted2)">→</td>';
+    html += '<td style="padding:2px 8px;color:'+(l.good?'var(--cyan)':'var(--red)')+'">'+afterStr+'</td>';
+    html += '<td style="padding:2px 0">'+chgStr+'</td></tr>';
+  });
+  html += '</table>';
+  if (covenant) html += '<div style="color:#ef4444;margin-top:6px;font-size:9px;">⚠ Warning: LT Debt / Equity would breach 2.5× covenant</div>';
+  if (newCash < 200) html += '<div style="color:#ef4444;margin-top:4px;font-size:9px;">⚠ Warning: Cash would fall below €200M safety floor</div>';
+  cont.innerHTML = html;
+}
+
+async function loadFinancePanel() {
+  if (!sessionId || !teamId) return;
+  try {
+    var res = await fetch(API_URL + '/sessions/' + sessionId + '/financial-statements');
+    if (!res.ok) return;
+    var data = await res.json();
+    var stmts = data.statements || [];
+    var myStmt = stmts.find(function(s){ return s.team_id === teamId; });
+    if (myStmt) {
+      _fcpCurrent = myStmt;
+      var fmt = function(v) { return '€'+(Math.abs(parseFloat(v)||0)).toFixed(0)+'M'; };
+      var de  = (parseFloat(myStmt.long_term_debt_m)||0) /
+                Math.max(parseFloat(myStmt.total_equity_m)||1, 1);
+      document.getElementById('fcp-cash').textContent   = fmt(myStmt.cash_m);
+      document.getElementById('fcp-ltdebt').textContent = fmt(myStmt.long_term_debt_m);
+      document.getElementById('fcp-stdebt').textContent = fmt(myStmt.short_term_debt_m);
+      document.getElementById('fcp-sc').textContent     = fmt(myStmt.share_capital_m);
+      document.getElementById('fcp-re').textContent     = fmt(myStmt.retained_earnings_m);
+      var deEl = document.getElementById('fcp-de');
+      deEl.textContent   = de.toFixed(2)+'×';
+      deEl.style.color   = de > 2.5 ? 'var(--red)' : de > 1.5 ? 'var(--gold)' : 'var(--green)';
+
+      var cov = document.getElementById('fcp-covenant');
+      if (myStmt.covenant_breached) {
+        cov.style.display = 'block';
+        cov.style.background = 'rgba(239,68,68,0.1)';
+        cov.style.color = '#ef4444';
+        cov.innerHTML = '⚠ DEBT COVENANT BREACH — LT Debt exceeds 2.5× Equity. Seek to repay or issue equity.';
+      } else {
+        cov.style.display = 'none';
+      }
+    }
+
+    // Check for pending decisions
+    var dr = await fetch(API_URL + '/teams/' + teamId + '/financing-decisions?session_id=' + sessionId);
+    if (dr.ok) {
+      var ddata = await dr.json();
+      var pending = (ddata.decisions||[]).filter(function(d){ return d.status==='pending'; });
+      var badge = document.getElementById('fcp-pending-badge');
+      if (badge) badge.style.display = pending.length ? 'block' : 'none';
+    }
+  } catch(e) { console.warn('loadFinancePanel:', e); }
+}
+
+async function submitFinancingDecision() {
+  if (!sessionId || !teamId) { alert('No session or team active.'); return; }
+  var d = _fcpDecision;
+  var hasAny = Object.values(d).some(function(v){ return v > 0; });
+  if (!hasAny) { alert('Set at least one financing action before submitting.'); return; }
+
+  var btn = document.getElementById('fcp-submit');
+  if (btn) { btn.disabled = true; btn.textContent = 'Submitting…'; }
+
+  try {
+    var payload = {
+      session_id:           sessionId,
+      borrow_lt_m:          d.blt,
+      repay_lt_m:           d.rlt,
+      borrow_st_m:          d.bst,
+      repay_st_m:           d.rst,
+      shares_issued_m:      d.iss,
+      shares_repurchased_m: d.rep,
+      dividend_m:           d.div,
+    };
+    var res = await fetch(API_URL + '/teams/' + teamId + '/financing-decisions', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    var badge = document.getElementById('fcp-pending-badge');
+    if (badge) badge.style.display = 'block';
+    var status = document.getElementById('fcp-status');
+    if (status) { status.textContent = '✓ Decision submitted — will be applied in next market clearing'; status.style.color = 'var(--green)'; }
+  } catch(e) {
+    var status = document.getElementById('fcp-status');
+    if (status) { status.textContent = '✗ Error: ' + e.message; status.style.color = 'var(--red)'; }
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = 'SUBMIT FOR NEXT ROUND ▶'; }
+  }
+}
+
 
 // ── RESULTS ANALYST ──────────────────────
 var _analystTab = 'summary';
@@ -9934,8 +10211,20 @@ async function loadAnalystResults() {
       content.innerHTML = h;
     }
 
+    // Fetch financial statements for P&L / FCF / BS tabs
+    var stmtMap = {};
+    try {
+      var fsRes = await fetch(API_URL + '/sessions/' + sessionId + '/financial-statements?round_id=' + rid);
+      if (fsRes.ok) {
+        var fsData = await fsRes.json();
+        (fsData.statements || []).forEach(function(s) { stmtMap[s.team_id] = s; });
+      }
+    } catch(e) { console.warn('financial-statements fetch:', e); }
+    // Attach _fs to each outcome for renderer access
+    outcomes.forEach(function(o) { o._fs = stmtMap[o.team_id] || null; });
+
     // Store for P&L, FCF and Balance Sheet tabs
-    _analystData = {outcomes: outcomes, teams: teamNames, round_id: rid};
+    _analystData = {outcomes: outcomes, teams: teamNames, round_id: rid, stmtMap: stmtMap};
     if (_analystTab === 'pl')  renderPLComparison(_analystData);
     if (_analystTab === 'fcf') renderFCFComparison(_analystData);
     if (_analystTab === 'bs')  renderBalanceSheet(_analystData);
@@ -10419,87 +10708,87 @@ function renderPLComparison(data) {
   if (!outcomes.length) { el.innerHTML='<div style="padding:24px;color:var(--muted2);text-align:center;">No data for this round.</div>'; return; }
   var cols=['var(--cyan)','var(--gold)','var(--green)','var(--purple)','var(--orange)','var(--blue)','#a78bfa','#f472b6','#34d399','#fb923c','#60a5fa'];
 
-  // Derive all P&L lines from available DB fields + synthetic automotive ratios
+  // Build P&L lines — real data from financial_statements where available, estimates otherwise
   outcomes.forEach(function(o) {
-    var rev = o.revenue_m || 0;
-    var cogs = o.cogs_m || 0;
-    // 1. Revenue block
+    var fs   = o._fs || {};
+    var rev  = parseFloat(fs.net_revenue_m  || o.revenue_m  || 0);
+    var cogs = parseFloat(fs.cogs_m         || o.cogs_m     || 0);
+    // Revenue block (no separate discount line in current model)
     o._gross_rev    = rev;
-    o._discount     = rev * 0.03;                          // 3% sales discount (est.)
-    o._net_rev      = rev - o._discount;
-    // 2. COGS breakdown (automotive industry ratios of total COGS)
-    o._mat          = cogs * 0.45;                         // Material 45%
-    o._labor        = cogs * 0.20;                         // Labor 20%
-    o._overhead     = cogs * 0.15;                         // Overhead 15%
-    o._freight      = cogs * 0.08;                         // Freight inbound 8%
-    o._customs      = cogs * 0.04;                         // Customs duty 4%
-    o._depr         = (o.capex_m||0) * 0.20;               // Depreciation = 20% of CapEx
-    o._warranty     = cogs * 0.03;                         // Warranty 3%
-    o._cogs_adj     = o._mat+o._labor+o._overhead+o._freight+o._customs+o._depr+o._warranty;
-    // 3. Gross Profit
-    o._gross_profit = o._net_rev - o._cogs_adj;
-    // 4. Opex
-    o._rd           = o.rd_spend_m || 0;
-    o._mkt          = o.marketing_spend_m || 0;
-    o._ga           = rev * 0.02;                          // G&A 2% of revenue (est.)
-    // 5. EBIT (use actual from DB)
-    o._ebit         = o.ebit_m || 0;
-    // 6. Non-operating (estimated)
-    o._interest     = rev * 0.01;                          // Interest ~1% revenue (est.)
-    o._impairment   = 0;                                   // No data available
-    o._pretax       = o._ebit - o._interest - o._impairment;
-    // 7. Tax (25% effective rate est.)
-    o._tax          = Math.max(0, o._pretax * 0.25);
-    // 8. Net Income
-    o._net_income   = o._pretax - o._tax;
+    o._discount     = 0;
+    o._net_rev      = rev;
+    // COGS sub-lines: estimated breakdown (not stored individually in DB)
+    o._mat          = cogs * 0.45;   // est.
+    o._labor        = cogs * 0.20;   // est.
+    o._overhead     = cogs * 0.15;   // est.
+    o._freight      = cogs * 0.08;   // est.
+    o._customs      = cogs * 0.04;   // est.
+    o._warranty_cogs= cogs * 0.03;   // est. (warranty provision change is on BS/CF)
+    o._cogs_adj     = cogs;          // REAL total COGS from MCE
+    // Gross profit
+    o._gross_profit = parseFloat(fs.gross_profit_m || (rev - cogs));
+    // Operating expenses — REAL from financial engine
+    o._rd           = parseFloat(fs.rd_expense_m          || 0);   // REAL: 100% expensed
+    o._depr_veh     = parseFloat(fs.depreciation_vehicle_m|| 0);   // REAL: units-of-prod
+    o._depr_infra   = parseFloat(fs.depreciation_infra_m  || 0);   // REAL: straight-line
+    o._depr_total   = parseFloat(fs.depreciation_total_m  || 0);   // REAL total
+    o._ga           = parseFloat(fs.sga_m                 || rev * 0.06); // REAL SG&A
+    // EBIT — REAL
+    o._ebit         = parseFloat(fs.ebit_m                || o.ebit_m || 0);
+    // Non-operating — REAL
+    o._interest_lt  = parseFloat(fs.interest_lt_m         || 0);
+    o._interest_st  = parseFloat(fs.interest_st_m         || 0);
+    o._interest     = parseFloat(fs.interest_total_m      || 0);
+    o._pretax       = parseFloat(fs.pbt_m                 || (o._ebit - o._interest));
+    o._tax          = parseFloat(fs.tax_m                 || Math.max(0, o._pretax * 0.25));
+    o._net_income   = parseFloat(fs.net_income_m          || (o._pretax - o._tax));
+    // Covenant warning flag
+    o._covenant     = fs.covenant_breached || false;
     // Units
-    o._units        = o.total_units_sold || 0;
+    o._units        = parseInt(fs.units_sold || o.total_units_sold || 0);
   });
 
-  // P&L structure
-  // type: 'header'=section label, 'total'=subtotal bold, 'line'=normal, 'sep'=divider, 'units'=unit row
+  // P&L structure — lines marked (no est.) are computed from real game decisions
   var structure = [
-    {type:'units',  label:'Units Sold',                key:'_units'},
+    {type:'units',  label:'Units Sold',                        key:'_units'},
     {type:'sep'},
     {type:'header', label:'REVENUE'},
-    {type:'line',   label:'  Gross Revenue',           key:'_gross_rev',    sign:-1},
-    {type:'line',   label:'  Sales Discounts',         key:'_discount',     sign:1,  est:true},
-    {type:'total',  label:'Net Sales Revenue',         key:'_net_rev',      sign:-1, color:'var(--cyan)'},
+    {type:'total',  label:'Net Sales Revenue',                 key:'_net_rev',      sign:-1, color:'var(--cyan)'},
     {type:'sep'},
     {type:'header', label:'COST OF GOODS SOLD'},
-    {type:'line',   label:'  Material',                key:'_mat',          sign:1,  est:true},
-    {type:'line',   label:'  Labor',                   key:'_labor',        sign:1,  est:true},
-    {type:'line',   label:'  Manufacturing Overhead',  key:'_overhead',     sign:1,  est:true},
-    {type:'line',   label:'  Freight Inbound',         key:'_freight',      sign:1,  est:true},
-    {type:'line',   label:'  Inbound Custom Duty',     key:'_customs',      sign:1,  est:true},
-    {type:'line',   label:'  Plant Depreciation',      key:'_depr',         sign:1,  est:true},
-    {type:'line',   label:'  Warranty',                key:'_warranty',     sign:1,  est:true},
-    {type:'total',  label:'Total COGS',                key:'_cogs_adj',     sign:1,  color:'var(--red)'},
+    {type:'line',   label:'  Material (BOM)',                  key:'_mat',          sign:1,  est:true},
+    {type:'line',   label:'  Direct Labor',                    key:'_labor',        sign:1,  est:true},
+    {type:'line',   label:'  Manufacturing Overhead',          key:'_overhead',     sign:1,  est:true},
+    {type:'line',   label:'  Freight & Logistics',             key:'_freight',      sign:1,  est:true},
+    {type:'line',   label:'  Customs & Tariffs',               key:'_customs',      sign:1,  est:true},
+    {type:'line',   label:'  Warranty',                        key:'_warranty_cogs',sign:1,  est:true},
+    {type:'total',  label:'Total COGS',                        key:'_cogs_adj',     sign:1,  color:'var(--red)'},
     {type:'sep'},
-    {type:'total',  label:'GROSS PROFIT',              key:'_gross_profit', sign:-1, color:'var(--green)'},
+    {type:'total',  label:'GROSS PROFIT',                      key:'_gross_profit', sign:-1, color:'var(--green)'},
     {type:'sep'},
     {type:'header', label:'OPERATING EXPENSES'},
-    {type:'line',   label:'  Research & Development',  key:'_rd',           sign:1},
-    {type:'line',   label:'  Sales & Marketing',       key:'_mkt',          sign:1},
-    {type:'line',   label:'  General & Administrative',key:'_ga',           sign:1,  est:true},
+    {type:'line',   label:'  R&D Expense (100% expensed)',     key:'_rd',           sign:1},
+    {type:'line',   label:'  Depreciation — Vehicle Assets',   key:'_depr_veh',     sign:1},
+    {type:'line',   label:'  Depreciation — Infrastructure',   key:'_depr_infra',   sign:1},
+    {type:'line',   label:'  SG&A (6% of Revenue)',            key:'_ga',           sign:1},
     {type:'sep'},
-    {type:'total',  label:'EBIT',                      key:'_ebit',         sign:-1, color:'var(--gold)'},
+    {type:'total',  label:'EBIT',                              key:'_ebit',         sign:-1, color:'var(--gold)'},
     {type:'sep'},
     {type:'header', label:'NON-OPERATING'},
-    {type:'line',   label:'  Interest Expense',        key:'_interest',     sign:1,  est:true},
-    {type:'line',   label:'  Impairments',             key:'_impairment',   sign:1,  est:true},
-    {type:'total',  label:'Pre-Tax Income',            key:'_pretax',       sign:-1, color:'var(--gold)'},
+    {type:'line',   label:'  Interest — LT Term Loan (4% pa)', key:'_interest_lt',  sign:1},
+    {type:'line',   label:'  Interest — ST Revolver (5% pa)',  key:'_interest_st',  sign:1},
+    {type:'total',  label:'Pre-Tax Income (PBT)',               key:'_pretax',       sign:-1, color:'var(--gold)'},
     {type:'sep'},
-    {type:'line',   label:'  Income Tax (est. 25%)',   key:'_tax',          sign:1,  est:true},
+    {type:'line',   label:'  Income Tax (25%)',                key:'_tax',          sign:1},
     {type:'sep'},
-    {type:'total',  label:'NET INCOME',                key:'_net_income',   sign:-1, color:'var(--purple)'},
+    {type:'total',  label:'NET INCOME',                        key:'_net_income',   sign:-1, color:'var(--purple)'},
   ];
 
   var ncols = outcomes.length;
   var h = '<div style="overflow-x:auto">';
   h += '<div style="font-family:DM Mono,monospace;font-size:8px;color:var(--muted2);padding:6px 12px;margin-bottom:4px;">'+
-    '* Lines marked <span style="color:var(--orange)">est.</span> are synthetic estimates using automotive industry ratios. '+
-    'All values in €M unless stated.</div>';
+    'Revenue, COGS, R&D, Depreciation, SG&A, Interest, Tax and Net Income are computed from actual game decisions. '+
+    '<span style="color:var(--orange)">est.</span> = COGS sub-line estimated breakdown. All values €M.</div>';
   h += '<table style="width:100%;border-collapse:collapse;min-width:900px">';
 
   // Header row
@@ -10567,6 +10856,15 @@ function renderPLComparison(data) {
     h += '</tr>';
   });
 
+  // Covenant warning row
+  var anyBreach = outcomes.some(function(o){ return o._covenant; });
+  if (anyBreach) {
+    h += '<tr style="background:rgba(239,68,68,0.08)"><td colspan="'+(ncols+1)+
+      '" style="padding:6px 12px;font-family:DM Mono,monospace;font-size:8px;color:#ef4444;font-weight:700;">'+
+      '⚠ DEBT COVENANT BREACH — LT Debt exceeds 2.5× Equity. Teams: ' +
+      outcomes.filter(function(o){return o._covenant;}).map(function(o){return teams[o.team_id]||o.team_name||'?';}).join(', ') +
+      '</td></tr>';
+  }
   h += '</tbody></table></div>';
   el.innerHTML = h;
 }
@@ -10580,60 +10878,72 @@ function renderFCFComparison(data) {
   var cols=['var(--cyan)','var(--gold)','var(--green)','var(--purple)','var(--orange)','var(--blue)','#a78bfa','#f472b6','#34d399','#fb923c','#60a5fa'];
 
   outcomes.forEach(function(o) {
-    var rev=o.revenue_m||0, cogs=o.cogs_m||0, capex=o.capex_m||0;
-    o._interest=rev*0.01; o._pretax=(o.ebit_m||0)-o._interest;
-    o._tax=Math.max(0,o._pretax*0.25); o._net_income=o._pretax-o._tax;
-    // CFO
-    o._da=capex*0.20; o._impair=0;
-    o._ar=-(rev*0.015); o._inv=-(cogs*0.02); o._ap=cogs*0.018; o._accr=rev*0.005;
-    o._wc=o._ar+o._inv+o._ap+o._accr;
-    o._cfo=o._net_income+o._da+o._impair+o._wc;
-    // CFI
-    o._capex_out=-capex; o._ppe=capex*0.05;
-    o._cfi=o._capex_out+o._ppe;
-    // CFF
-    o._debt_in=rev*0.005; o._debt_out=-(rev*0.008);
-    o._eq=0; o._buy=-(rev*0.002); o._div=-(rev*0.01);
-    o._cff=o._debt_in+o._debt_out+o._eq+o._buy+o._div;
-    o._net_chg=o._cfo+o._cfi+o._cff;
+    var fs = o._fs || {};
+    // CFO — REAL from financial engine
+    o._ni         = parseFloat(fs.net_income_m             || 0);
+    o._da         = parseFloat(fs.cfo_depreciation_m       || 0);
+    o._ar         = parseFloat(fs.cfo_delta_ar_m           || 0);
+    o._inv        = parseFloat(fs.cfo_delta_inventory_m    || 0);
+    o._ap         = parseFloat(fs.cfo_delta_ap_m           || 0);
+    o._accr       = parseFloat(fs.cfo_delta_accrued_m      || 0);
+    o._warranty   = parseFloat(fs.cfo_delta_warranty_m     || 0);
+    o._def_tax    = parseFloat(fs.cfo_delta_deferred_tax_m || 0);
+    o._cfo        = parseFloat(fs.cfo_total_m              || 0);
+    // CFI — REAL
+    o._capex_veh  = parseFloat(fs.cfi_vehicle_capex_m      || 0);  // negative
+    o._capex_infra= parseFloat(fs.cfi_infra_capex_m        || 0);  // negative
+    o._disposal   = parseFloat(fs.cfi_disposal_proceeds_m  || 0);
+    o._cfi        = parseFloat(fs.cfi_total_m              || 0);
+    // CFF — REAL (team financing decisions)
+    o._lt_change  = parseFloat(fs.cff_lt_debt_change_m     || 0);
+    o._st_change  = parseFloat(fs.cff_st_debt_change_m     || 0);
+    o._issued     = parseFloat(fs.cff_shares_issued_m      || 0);
+    o._repurchased= parseFloat(fs.cff_shares_repurchased_m || 0);  // negative
+    o._div        = parseFloat(fs.cff_dividends_m          || 0);  // negative
+    o._cff        = parseFloat(fs.cff_total_m              || 0);
+    // Net change and cash reconciliation
+    o._net_chg    = parseFloat(fs.net_cash_change_m        || 0);
+    o._open_cash  = parseFloat(fs.opening_cash_m           || 0);
+    o._close_cash = parseFloat(fs.closing_cash_m           || 0);
   });
 
   var struct=[
     {t:'hdr',  label:'1. CASH FLOW FROM OPERATING ACTIVITIES (CFO)', col:'var(--cyan)'},
-    {t:'line', label:'  Net Income',                          key:'_net_income'},
+    {t:'line', label:'  Net Income',                                   key:'_ni'},
     {t:'sub',  label:'  Adjustments for Non-Cash Items:'},
-    {t:'line', label:'    Depreciation & Amortization',       key:'_da',       est:true},
-    {t:'line', label:'    Impairments',                       key:'_impair',   est:true},
+    {t:'line', label:'    Depreciation — Vehicle & Infrastructure',    key:'_da'},
     {t:'sub',  label:'  Changes in Working Capital:'},
-    {t:'line', label:'    Accounts Receivable',               key:'_ar',       est:true},
-    {t:'line', label:'    Inventory',                         key:'_inv',      est:true},
-    {t:'line', label:'    Accounts Payable',                  key:'_ap',       est:true},
-    {t:'line', label:'    Accrued Expenses',                  key:'_accr',     est:true},
-    {t:'tot',  label:'= Net Cash from Operating Activities',  key:'_cfo',      col:'var(--cyan)'},
+    {t:'line', label:'    Δ Accounts Receivable (DSO × market mix)',   key:'_ar'},
+    {t:'line', label:'    Δ Inventory (DIO × sourcing strategy)',      key:'_inv'},
+    {t:'line', label:'    Δ Accounts Payable (DPO × make%)',           key:'_ap'},
+    {t:'line', label:'    Δ Accrued Expenses',                         key:'_accr'},
+    {t:'line', label:'    Δ Warranty Provision',                       key:'_warranty'},
+    {t:'line', label:'    Δ Deferred Tax Liability',                   key:'_def_tax'},
+    {t:'tot',  label:'= Net Cash from Operating Activities',           key:'_cfo',      col:'var(--cyan)'},
     {t:'sep'},
     {t:'hdr',  label:'2. CASH FLOW FROM INVESTING ACTIVITIES (CFI)', col:'var(--gold)'},
-    {t:'line', label:'  Capital Expenditures (CapEx)',        key:'_capex_out'},
-    {t:'line', label:'  Proceeds from Sale of PP&E',          key:'_ppe',      est:true},
-    {t:'tot',  label:'= Net Cash from Investing Activities',  key:'_cfi',      col:'var(--gold)'},
+    {t:'line', label:'  Vehicle Program CapEx (at SOP)',               key:'_capex_veh'},
+    {t:'line', label:'  Infrastructure CapEx (plant investments)',     key:'_capex_infra'},
+    {t:'line', label:'  Asset Disposal Proceeds (at EOP)',             key:'_disposal'},
+    {t:'tot',  label:'= Net Cash from Investing Activities',           key:'_cfi',      col:'var(--gold)'},
     {t:'sep'},
     {t:'hdr',  label:'3. CASH FLOW FROM FINANCING ACTIVITIES (CFF)', col:'var(--purple)'},
-    {t:'line', label:'  Debt Issued',                         key:'_debt_in',  est:true},
-    {t:'line', label:'  Debt Repaid',                         key:'_debt_out', est:true},
-    {t:'line', label:'  Equity Issued',                       key:'_eq',       est:true},
-    {t:'line', label:'  Share Repurchases',                   key:'_buy',      est:true},
-    {t:'line', label:'  Dividends Paid',                      key:'_div',      est:true},
-    {t:'tot',  label:'= Net Cash from Financing Activities',  key:'_cff',      col:'var(--purple)'},
+    {t:'line', label:'  LT Term Loan Net Change (team decision)',      key:'_lt_change'},
+    {t:'line', label:'  ST Revolver Net Change (team decision)',       key:'_st_change'},
+    {t:'line', label:'  Shares Issued / IPO / Rights Issue',          key:'_issued'},
+    {t:'line', label:'  Share Repurchases (buyback)',                  key:'_repurchased'},
+    {t:'line', label:'  Dividends Paid',                              key:'_div'},
+    {t:'tot',  label:'= Net Cash from Financing Activities',           key:'_cff',      col:'var(--purple)'},
     {t:'sep'},
-    {t:'hdr',  label:'NET CHANGE IN CASH', col:'var(--green)'},
-    {t:'line', label:'  + Net Cash from Operating Activities',key:'_cfo'},
-    {t:'line', label:'  + Net Cash from Investing Activities',key:'_cfi'},
-    {t:'line', label:'  + Net Cash from Financing Activities',key:'_cff'},
-    {t:'tot',  label:'= Net Increase (Decrease) in Cash',     key:'_net_chg',  col:'var(--green)'},
+    {t:'hdr',  label:'CASH RECONCILIATION', col:'var(--green)'},
+    {t:'line', label:'  Opening Cash (prior period)',                  key:'_open_cash'},
+    {t:'line', label:'  + Net Change in Cash',                        key:'_net_chg'},
+    {t:'tot',  label:'= Closing Cash',                                 key:'_close_cash', col:'var(--green)'},
   ];
 
   var nc=outcomes.length;
   var h='<div style="overflow-x:auto">';
-  h+='<div style="font-family:DM Mono,monospace;font-size:8px;color:var(--muted2);padding:6px 12px;margin-bottom:4px;">Indirect method. <span style="color:var(--orange)">est.</span> = automotive industry estimates. All values €M.</div>';
+  h+='<div style="font-family:DM Mono,monospace;font-size:8px;color:var(--muted2);padding:6px 12px;margin-bottom:4px;">Indirect method. All lines computed from actual game decisions. WC driven by market mix (DSO), sourcing strategy (DIO), make% (DPO). CFI = CapEx at SOP. CFF = team financing decisions. All values €M.</div>';
   h+='<table style="width:100%;border-collapse:collapse;min-width:900px"><thead><tr>';
   h+='<th style="font-family:DM Mono,monospace;font-size:8px;color:var(--muted);padding:8px 12px;text-align:left;background:var(--s2);border-bottom:2px solid var(--border);min-width:280px;position:sticky;left:0;">Cash Flow Statement</th>';
   outcomes.forEach(function(o,i){
