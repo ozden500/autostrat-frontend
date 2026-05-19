@@ -10736,14 +10736,15 @@ function renderPLComparison(data) {
     o._gross_rev    = rev;
     o._discount     = 0;
     o._net_rev      = rev;
-    // COGS sub-lines: estimated breakdown (not stored individually in DB)
-    o._mat          = cogs * 0.45;   // est.
-    o._labor        = cogs * 0.20;   // est.
-    o._overhead     = cogs * 0.15;   // est.
-    o._freight      = cogs * 0.08;   // est.
-    o._customs      = cogs * 0.04;   // est.
-    o._warranty_cogs= cogs * 0.03;   // est. (warranty provision change is on BS/CF)
-    o._cogs_adj     = cogs;          // REAL total COGS from MCE
+    // COGS sub-lines: real from financial engine where available
+    var hasCogsBd = !!(fs.cogs_material_m || fs.cogs_manufacturing_m);
+    o._mat      = hasCogsBd ? parseFloat(fs.cogs_material_m       || 0) : cogs * 0.55;   // module BOM
+    o._manuf_var= hasCogsBd ? parseFloat(fs.cogs_manufacturing_m  || 0) : cogs * 0.22;   // manuf variable
+    o._buycost  = hasCogsBd ? parseFloat(fs.cogs_buycost_m        || 0) : cogs * 0.10;   // purchased components
+    o._log_tar  = hasCogsBd ? parseFloat(fs.cogs_logistics_tariff_m||0) : cogs * 0.10;   // logistics + tariff
+    o._warranty_cogs = cogs - o._mat - o._manuf_var - o._buycost - o._log_tar;           // warranty residual
+    o._warranty_cogs = Math.max(o._warranty_cogs, 0);
+    o._cogs_adj = cogs;          // REAL total COGS from MCE
     // Gross profit
     o._gross_profit = parseFloat(fs.gross_profit_m || (rev - cogs));
     // Operating expenses — REAL from financial engine
@@ -10775,12 +10776,11 @@ function renderPLComparison(data) {
     {type:'total',  label:'Net Sales Revenue',                 key:'_net_rev',      sign:-1, color:'var(--cyan)'},
     {type:'sep'},
     {type:'header', label:'COST OF GOODS SOLD'},
-    {type:'line',   label:'  Material (BOM)',                  key:'_mat',          sign:1,  est:true},
-    {type:'line',   label:'  Direct Labor',                    key:'_labor',        sign:1,  est:true},
-    {type:'line',   label:'  Manufacturing Overhead',          key:'_overhead',     sign:1,  est:true},
-    {type:'line',   label:'  Freight & Logistics',             key:'_freight',      sign:1,  est:true},
-    {type:'line',   label:'  Customs & Tariffs',               key:'_customs',      sign:1,  est:true},
-    {type:'line',   label:'  Warranty',                        key:'_warranty_cogs',sign:1,  est:true},
+    {type:'line',   label:'  Module BOM (Material)',           key:'_mat',          sign:1},
+    {type:'line',   label:'  Manufacturing Variable',          key:'_manuf_var',    sign:1},
+    {type:'line',   label:'  Purchased Components (Buy)',      key:'_buycost',      sign:1},
+    {type:'line',   label:'  Logistics & Customs/Tariff',      key:'_log_tar',      sign:1},
+    {type:'line',   label:'  Warranty & Other',                key:'_warranty_cogs',sign:1,  est:true},
     {type:'total',  label:'Total COGS',                        key:'_cogs_adj',     sign:1,  color:'var(--red)'},
     {type:'sep'},
     {type:'total',  label:'GROSS PROFIT',                      key:'_gross_profit', sign:-1, color:'var(--green)'},
@@ -10806,8 +10806,9 @@ function renderPLComparison(data) {
   var ncols = outcomes.length;
   var h = '<div style="overflow-x:auto">';
   h += '<div style="font-family:DM Mono,monospace;font-size:8px;color:var(--muted2);padding:6px 12px;margin-bottom:4px;">'+
-    'Revenue, COGS, R&D, Depreciation, SG&A, Interest, Tax and Net Income are computed from actual game decisions. '+
-    '<span style="color:var(--orange)">est.</span> = COGS sub-line estimated breakdown. All values €M.</div>';
+    'All lines computed from actual game decisions. COGS sub-lines reflect real module BOM costs, manufacturing variable, '+
+    'buy/make split, and market logistics from each team\'s vehicle configs. '+
+    '<span style="color:var(--orange)">est.</span> = Warranty &amp; Other residual only. All values €M.</div>';
   h += '<table style="width:100%;border-collapse:collapse;min-width:900px">';
 
   // Header row
