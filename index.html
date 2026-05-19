@@ -10170,58 +10170,77 @@ async function loadAnalystResults() {
   var content = document.getElementById('analyst-content');
   if (content) content.innerHTML = '<div style="padding:20px;color:var(--muted2);">Loading...</div>';
   try {
-    var res = await fetch(API_URL + '/sessions/' + sessionId + '/rounds/' + rid + '/outcomes');
+    // Fetch outcomes AND financial statements in parallel
+    var [res, fsRes] = await Promise.all([
+      fetch(API_URL + '/sessions/' + sessionId + '/rounds/' + rid + '/outcomes'),
+      fetch(API_URL + '/sessions/' + sessionId + '/financial-statements?round_id=' + rid),
+    ]);
     if (!res.ok) throw new Error('HTTP ' + res.status);
-    var data = await res.json();
+    var data   = await res.json();
+    var fsData = fsRes.ok ? await fsRes.json() : {statements:[]};
+
     var outcomes = data.outcomes || [];
     var scores   = data.scores   || [];
-    var segments = data.segments || [];
 
     // Build team name map
     var teamNames = {};
     scores.forEach(function(s){ if(s.team_name) teamNames[s.team_id] = s.team_name; });
     outcomes.forEach(function(o){ if(!o.team_name) o.team_name = teamNames[o.team_id] || 'Unknown'; });
 
-    // Summary tab
+    // Build financial statements map (real accrual data)
+    var stmtMap = {};
+    (fsData.statements || []).forEach(function(s) { stmtMap[s.team_id] = s; });
+    outcomes.forEach(function(o) { o._fs = stmtMap[o.team_id] || null; });
+
+    // Summary tab — uses real financial engine data where available
     if (content) {
       var sorted = scores.slice().sort(function(a,b){ return a.rank - b.rank; });
       var h = '<table class="mi-tbl"><thead><tr>' +
         '<th class="mi-th">#</th><th class="mi-th">Team</th>' +
-        '<th class="mi-th" style="text-align:right">Financial</th>' +
-        '<th class="mi-th" style="text-align:right">Commercial</th>' +
-        '<th class="mi-th" style="text-align:right">Operational</th>' +
         '<th class="mi-th" style="text-align:right">Composite</th>' +
         '<th class="mi-th" style="text-align:right">Revenue €M</th>' +
+        '<th class="mi-th" style="text-align:right">Gross Profit €M</th>' +
         '<th class="mi-th" style="text-align:right">EBIT €M</th>' +
+        '<th class="mi-th" style="text-align:right">Net Income €M</th>' +
+        '<th class="mi-th" style="text-align:right">Cash €M</th>' +
+        '<th class="mi-th" style="text-align:right">Net Debt €M</th>' +
         '</tr></thead><tbody>';
       sorted.forEach(function(s) {
-        var o = outcomes.find(function(x){ return x.team_id === s.team_id; }) || {};
+        var o  = outcomes.find(function(x){ return x.team_id === s.team_id; }) || {};
+        var fs = stmtMap[s.team_id] || {};
+        // Use real financial engine values; fall back to round_outcomes proxy
+        var rev  = parseFloat(fs.net_revenue_m  || o.revenue_m  || 0);
+        var gp   = parseFloat(fs.gross_profit_m || (rev - (o.cogs_m||0)));
+        var ebit = parseFloat(fs.ebit_m         || o.ebit_m     || 0);
+        var ni   = parseFloat(fs.net_income_m   || 0);
+        var cash = parseFloat(fs.cash_m         || 0);
+        var ltdt = parseFloat(fs.long_term_debt_m || 0);
+        var stdt = parseFloat(fs.short_term_debt_m || 0);
+        var netDebt = ltdt + stdt - cash;
+        var hasFs   = !!fs.net_income_m;
+        var ebitPct = rev > 0 ? (ebit/rev*100).toFixed(1) : '0.0';
+        var niCol   = ni >= 0 ? 'var(--green)' : 'var(--red)';
+        var ndCol   = netDebt <= 0 ? 'var(--green)' : netDebt > 2000 ? 'var(--red)' : 'var(--gold)';
+        var cov     = fs.covenant_breached ? ' <span style="color:#ef4444;font-size:8px;">⚠</span>' : '';
         h += '<tr class="mi-tr">' +
           '<td class="mi-td" style="color:var(--gold);font-weight:700;">' + s.rank + '</td>' +
-          '<td class="mi-td" style="font-weight:600;">' + (s.team_name||'Unknown') + '</td>' +
-          '<td class="mi-td mono" style="text-align:right;">' + (s.financial_score||0).toFixed(1) + '</td>' +
-          '<td class="mi-td mono" style="text-align:right;">' + (s.commercial_score||0).toFixed(1) + '</td>' +
-          '<td class="mi-td mono" style="text-align:right;">' + (s.operational_score||0).toFixed(1) + '</td>' +
+          '<td class="mi-td" style="font-weight:600;">' + (s.team_name||'Unknown') + cov + '</td>' +
           '<td class="mi-td mono" style="text-align:right;color:var(--cyan);font-weight:700;">' + (s.composite_score||0).toFixed(1) + '</td>' +
-          '<td class="mi-td mono" style="text-align:right;">€' + (o.revenue_m||0).toFixed(0) + 'M</td>' +
-          '<td class="mi-td mono" style="text-align:right;color:var(--green);">€' + (o.ebit_m||0).toFixed(0) + 'M</td>' +
+          '<td class="mi-td mono" style="text-align:right;">€' + rev.toFixed(0) + 'M</td>' +
+          '<td class="mi-td mono" style="text-align:right;color:var(--green);">€' + gp.toFixed(0) + 'M</td>' +
+          '<td class="mi-td mono" style="text-align:right;color:var(--gold);">€' + ebit.toFixed(0) + 'M <span style="font-size:8px;color:var(--muted2);">('+ebitPct+'%)</span></td>' +
+          '<td class="mi-td mono" style="text-align:right;color:'+niCol+';">' + (hasFs ? '€'+ni.toFixed(0)+'M' : '—') + '</td>' +
+          '<td class="mi-td mono" style="text-align:right;">' + (hasFs ? '€'+cash.toFixed(0)+'M' : '—') + '</td>' +
+          '<td class="mi-td mono" style="text-align:right;color:'+ndCol+';">' + (hasFs ? (netDebt>=0?'€':'−€')+Math.abs(netDebt).toFixed(0)+'M' : '—') + '</td>' +
           '</tr>';
       });
       h += '</tbody></table>';
+      if (!Object.keys(stmtMap).length) {
+        h += '<div style="font-family:DM Mono,monospace;font-size:8px;color:var(--muted2);padding:6px 12px;">'+
+          '⚠ No financial statements for this round yet — run market clearing to generate them.</div>';
+      }
       content.innerHTML = h;
     }
-
-    // Fetch financial statements for P&L / FCF / BS tabs
-    var stmtMap = {};
-    try {
-      var fsRes = await fetch(API_URL + '/sessions/' + sessionId + '/financial-statements?round_id=' + rid);
-      if (fsRes.ok) {
-        var fsData = await fsRes.json();
-        (fsData.statements || []).forEach(function(s) { stmtMap[s.team_id] = s; });
-      }
-    } catch(e) { console.warn('financial-statements fetch:', e); }
-    // Attach _fs to each outcome for renderer access
-    outcomes.forEach(function(o) { o._fs = stmtMap[o.team_id] || null; });
 
     // Store for P&L, FCF and Balance Sheet tabs
     _analystData = {outcomes: outcomes, teams: teamNames, round_id: rid, stmtMap: stmtMap};
@@ -11527,17 +11546,27 @@ async function loadPerformanceData() {
   document.getElementById('perf-content').style.display    = 'block';
 
   try {
-    // ── 1. Fetch aggregated dashboard data ───────────────────
+    // ── 1. Fetch dashboard data + financial history in parallel ─
     var dashUrl = API_URL + '/sessions/' + sessionId + '/performance-dashboard'
                 + (teamId ? '?team_id=' + teamId : '');
-    var [dashRes, oldRoundsRes, teamsRes] = await Promise.all([
+    var finHistUrl = API_URL + '/sessions/' + sessionId + '/financial-history'
+                + (teamId ? '?team_id=' + teamId : '');
+    var [dashRes, oldRoundsRes, teamsRes, finHistRes] = await Promise.all([
       fetch(dashUrl),
       fetch(API_URL + '/sessions/' + sessionId + '/rounds'),
       fetch(API_URL + '/sessions/' + sessionId + '/teams'),
+      fetch(finHistUrl),
     ]);
     var dash      = await dashRes.json();
     var rData     = await oldRoundsRes.json();
     var tData     = await teamsRes.json();
+    // Build financial history lookup: finHist[team_id][round_id] = statement row
+    var finHistRaw = finHistRes.ok ? (await finHistRes.json()).history || [] : [];
+    var finHist = {};
+    finHistRaw.forEach(function(fh) {
+      if (!finHist[fh.team_id]) finHist[fh.team_id] = {};
+      finHist[fh.team_id][fh.round_id] = fh;
+    });
 
     var rounds     = rData.rounds || [];
     var allTeams   = (tData.teams||[]).filter(function(t){ return t.name !== 'Instructor'; });
@@ -11601,10 +11630,12 @@ async function loadPerformanceData() {
         var vos_for_round = allVos.filter(function(vo){ return vo.round_id === rnd.id; });
         Object.keys(mktSeries).forEach(function(tid) {
           var ro = ros_for_round.find(function(r){ return r.team_id === tid; });
+          var fh = (finHist[tid] || {})[rnd.id] || null;  // real financial statement
           var rev  = parseFloat(ro && ro.revenue_m || 0);
           var cogs = parseFloat(ro && ro.cogs_m || 0);
           var gp   = parseFloat(ro && ro.gross_profit_m || rev - cogs);
-          var ebit = parseFloat(ro && ro.ebit_m || gp * 0.7);
+          // Use real accrual EBIT from financial engine; fall back to clearing proxy
+          var ebit = fh ? parseFloat(fh.ebit_m || 0) : parseFloat(ro && ro.ebit_m || gp * 0.7);
           var units = parseInt(ro && ro.total_units_sold || 0);
           var ebitPct = rev > 0 ? ebit / rev * 100 : 0;
           var myVos = vos_for_round.filter(function(v){ return v.team_id === tid; });
@@ -11648,9 +11679,9 @@ async function loadPerformanceData() {
     // ── 6. All-team rankings ─────────────────────────────────
     renderRankings(dash.rankings || [], teamId);
 
-    // ── 7. Multi-round history table ─────────────────────────
+    // ── 7. Multi-round history table (with real financials) ──
     var myRos = allRos.filter(function(ro){ return ro.team_id === teamId; });
-    renderHistoryTable(myRos, allVos, teamId);
+    renderHistoryTable(myRos, allVos, teamId, finHist[teamId] || {});
 
   } catch(e) {
     console.error('Performance data error:', e);
@@ -11783,42 +11814,118 @@ function renderRankings(rankings, myTeamId) {
   el.innerHTML = h;
 }
 
-function renderHistoryTable(myRos, allVos, myTeamId) {
+function renderHistoryTable(myRos, allVos, myTeamId, finHistByRound) {
   var el = document.getElementById('perf-history-table');
   if (!el) return;
   if (!myRos || !myRos.length) {
     el.innerHTML = '<div style="color:var(--muted2);font-size:11px;">No history — run market simulation for at least one round.</div>';
     return;
   }
-  var sorted = [...myRos].sort(function(a,b){ return (a.round_number||0) - (b.round_number||0); });
-  var h = '<table class="ht"><thead><tr>'
-    + '<th>Round</th><th>Revenue €M</th><th>Units</th><th>GM%</th><th>EBIT €M</th><th>Vehicles</th><th>Rank</th>'
-    + '</tr></thead><tbody>';
+  finHistByRound = finHistByRound || {};
+  var hasFinancials = Object.keys(finHistByRound).length > 0;
+
+  var sorted = [...myRos].sort(function(a,b){
+    // Sort by year then quarter for true chronological order
+    if ((a.year||0) !== (b.year||0)) return (a.year||0) - (b.year||0);
+    return (a.quarter||0) - (b.quarter||0);
+  });
+
+  // Column headers — always show market columns; financial columns only if data exists
+  var h = '<div style="overflow-x:auto"><table style="border-collapse:collapse;font-family:DM Mono,monospace;font-size:9px;min-width:'+(hasFinancials?'1000':'600')+'px;width:100%">';
+  h += '<thead><tr style="border-bottom:2px solid var(--border);background:var(--s2)">';
+  h += '<th style="padding:5px 10px;text-align:left;color:var(--muted);font-size:8px;min-width:55px">Round</th>';
+  h += '<th style="padding:5px 8px;text-align:right;color:var(--cyan);font-size:8px;">Revenue</th>';
+  h += '<th style="padding:5px 8px;text-align:right;color:var(--muted);font-size:8px;">Units</th>';
+  h += '<th style="padding:5px 8px;text-align:right;color:var(--muted);font-size:8px;">GM%</th>';
+  if (hasFinancials) {
+    h += '<th style="padding:5px 8px;text-align:right;color:var(--gold);font-size:8px;">R&amp;D Exp</th>';
+    h += '<th style="padding:5px 8px;text-align:right;color:var(--gold);font-size:8px;">Depr.</th>';
+    h += '<th style="padding:5px 8px;text-align:right;color:var(--gold);font-size:8px;">EBIT</th>';
+    h += '<th style="padding:5px 8px;text-align:right;color:var(--purple);font-size:8px;">Net Income</th>';
+    h += '<th style="padding:5px 8px;text-align:right;color:var(--cyan);font-size:8px;">Cash</th>';
+    h += '<th style="padding:5px 8px;text-align:right;color:var(--red);font-size:8px;">Net Debt</th>';
+    h += '<th style="padding:5px 8px;text-align:right;color:var(--muted);font-size:8px;">CFO</th>';
+    h += '<th style="padding:5px 8px;text-align:right;color:var(--muted);font-size:8px;">CFI</th>';
+  } else {
+    h += '<th style="padding:5px 8px;text-align:right;color:var(--gold);font-size:8px;">EBIT</th>';
+  }
+  h += '<th style="padding:5px 8px;text-align:left;color:var(--muted);font-size:8px;">Vehicles</th>';
+  h += '<th style="padding:5px 8px;text-align:center;color:var(--muted);font-size:8px;">Rank</th>';
+  h += '</tr></thead><tbody>';
 
   sorted.forEach(function(ro, i) {
-    var rev   = parseFloat(ro.revenue_m||0);
-    var cogs  = parseFloat(ro.cogs_m||0);
-    var gp    = parseFloat(ro.gross_profit_m || rev - cogs);
-    var ebit  = parseFloat(ro.ebit_m || gp * 0.70);
-    var gm    = rev > 0 ? (gp / rev * 100).toFixed(1) : '0.0';
-    var gmCol = parseFloat(gm) > 20 ? 'var(--green)' : parseFloat(gm) > 10 ? 'var(--gold)' : 'var(--red)';
-    var units = parseInt(ro.total_units_sold||0);
-    var rank  = ro.revenue_rank != null ? '#'+ro.revenue_rank : '—';
-    // Count vehicles from vehicle_outcomes
+    var fh   = finHistByRound[ro.round_id] || null;
+    var rev  = parseFloat(ro.revenue_m || 0);
+    var cogs = parseFloat(ro.cogs_m || 0);
+    var gp   = parseFloat(ro.gross_profit_m || (rev - cogs));
+    var gm   = rev > 0 ? (gp / rev * 100).toFixed(1) : '0.0';
+    var gmCol= parseFloat(gm) > 20 ? 'var(--green)' : parseFloat(gm) > 10 ? 'var(--gold)' : 'var(--red)';
+    var units= parseInt(ro.total_units_sold || 0);
+    var rank = ro.revenue_rank != null ? '#' + ro.revenue_rank : '—';
+    var rndLabel = ro.round_label || (ro.year ? 'Y'+(ro.year-2024)+'Q'+ro.quarter : 'R'+ro.round_number);
+
+    // Vehicle list for this round
     var roundVos = allVos.filter(function(v){ return v.team_id === myTeamId && v.round_id === ro.round_id; });
-    var vehList  = roundVos.map(function(v){ return v.vehicle_name||'V'; }).filter(function(x,i,a){ return a.indexOf(x)===i; }).join(', ') || '—';
-    var bg = i % 2 === 0 ? '' : 'background:rgba(255,255,255,.015);';
-    h += '<tr style="'+bg+'">'
-      + '<td style="color:var(--gold);font-weight:600;">'+(ro.round_label||'R'+ro.round_number)+'</td>'
-      + '<td style="color:var(--cyan);">€'+rev.toFixed(2)+'M</td>'
-      + '<td>'+units.toLocaleString()+'</td>'
-      + '<td style="color:'+gmCol+';">'+gm+'%</td>'
-      + '<td style="color:var(--orange);">€'+ebit.toFixed(2)+'M</td>'
-      + '<td style="color:var(--muted2);font-size:8px;">'+vehList+'</td>'
-      + '<td style="color:var(--muted2);">'+rank+'</td>'
-      + '</tr>';
+    var vehList  = roundVos.map(function(v){ return v.vehicle_name||'V'; }).filter(function(x,idx,a){ return a.indexOf(x)===idx; }).join(', ') || '—';
+
+    var bg = i % 2 === 0 ? '' : 'background:rgba(255,255,255,.012);';
+
+    h += '<tr style="border-bottom:1px solid rgba(255,255,255,0.04);'+bg+'">';
+    h += '<td style="padding:4px 10px;color:var(--gold);font-weight:600;">'+rndLabel+'</td>';
+    h += '<td style="padding:4px 8px;text-align:right;color:var(--cyan);">€'+rev.toFixed(0)+'M</td>';
+    h += '<td style="padding:4px 8px;text-align:right;">'+units.toLocaleString()+'</td>';
+    h += '<td style="padding:4px 8px;text-align:right;color:'+gmCol+';">'+gm+'%</td>';
+
+    if (hasFinancials) {
+      if (fh) {
+        var ebit  = parseFloat(fh.ebit_m || 0);
+        var ni    = parseFloat(fh.net_income_m || 0);
+        var cash  = parseFloat(fh.cash_m || 0);
+        var lt    = parseFloat(fh.long_term_debt_m || 0);
+        var st    = parseFloat(fh.short_term_debt_m || 0);
+        var netDt = lt + st - cash;
+        var cfo   = parseFloat(fh.cfo_total_m || 0);
+        var cfi   = parseFloat(fh.cfi_total_m || 0);
+        var rdExp = parseFloat(fh.rd_expense_m || 0);
+        var depr  = parseFloat(fh.depreciation_total_m || 0);
+        var ebitPct = rev > 0 ? (ebit/rev*100).toFixed(1) : '0.0';
+        var niCol   = ni >= 0 ? 'var(--green)' : 'var(--red)';
+        var ndCol   = netDt <= 0 ? 'var(--green)' : netDt > 3000 ? 'var(--red)' : 'var(--gold)';
+        var cfoCol  = cfo >= 0 ? 'var(--green)' : 'var(--red)';
+        var cfiStr  = (cfi <= 0 ? '−€' : '+€') + Math.abs(cfi).toFixed(0) + 'M';
+        var cov     = fh.covenant_breached ? ' ⚠' : '';
+        h += '<td style="padding:4px 8px;text-align:right;color:var(--orange);">€'+rdExp.toFixed(0)+'M</td>';
+        h += '<td style="padding:4px 8px;text-align:right;color:var(--muted2);">€'+depr.toFixed(0)+'M</td>';
+        h += '<td style="padding:4px 8px;text-align:right;color:var(--gold);">€'+ebit.toFixed(0)+'M <span style="font-size:7px;color:var(--muted2);">('+ebitPct+'%)</span></td>';
+        h += '<td style="padding:4px 8px;text-align:right;color:'+niCol+';">€'+ni.toFixed(0)+'M</td>';
+        h += '<td style="padding:4px 8px;text-align:right;">€'+cash.toFixed(0)+'M</td>';
+        h += '<td style="padding:4px 8px;text-align:right;color:'+ndCol+';">'+(netDt>=0?'€':'−€')+Math.abs(netDt).toFixed(0)+'M'+cov+'</td>';
+        h += '<td style="padding:4px 8px;text-align:right;color:'+cfoCol+';">'+(cfo>=0?'+':'')+cfo.toFixed(0)+'M</td>';
+        h += '<td style="padding:4px 8px;text-align:right;color:var(--muted2);">'+cfiStr+'</td>';
+      } else {
+        // No financial statement for this round yet
+        var ebit = parseFloat(ro.ebit_m || gp * 0.70);
+        h += '<td style="padding:4px 8px;text-align:right;color:var(--muted2);">—</td>';
+        h += '<td style="padding:4px 8px;text-align:right;color:var(--muted2);">—</td>';
+        h += '<td style="padding:4px 8px;text-align:right;color:var(--gold);">€'+ebit.toFixed(0)+'M <span style="font-size:7px;color:var(--orange)">est.</span></td>';
+        h += '<td colspan="5" style="padding:4px 8px;text-align:center;color:var(--muted2);font-size:8px;">financial statements not generated</td>';
+      }
+    } else {
+      // No financial history at all — show synthetic EBIT only
+      var ebit = parseFloat(ro.ebit_m || gp * 0.70);
+      h += '<td style="padding:4px 8px;text-align:right;color:var(--gold);">€'+ebit.toFixed(0)+'M <span style="font-size:7px;color:var(--orange)">est.</span></td>';
+    }
+
+    h += '<td style="padding:4px 8px;color:var(--muted2);font-size:8px;">'+vehList+'</td>';
+    h += '<td style="padding:4px 8px;text-align:center;color:var(--muted2);">'+rank+'</td>';
+    h += '</tr>';
   });
-  h += '</tbody></table>';
+
+  h += '</tbody></table></div>';
+  if (hasFinancials) {
+    h += '<div style="font-family:DM Mono,monospace;font-size:7px;color:var(--muted2);padding:4px 0;">'+
+      'EBIT, Net Income, Cash, Net Debt, CFO, CFI from real accrual model. Revenue, GM%, Units from market clearing. ⚠ = debt covenant breach.</div>';
+  }
   el.innerHTML = h;
 }
 
