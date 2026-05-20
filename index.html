@@ -10725,13 +10725,15 @@ function renderPLComparison(data) {
 
   // Build P&L lines — real data from financial_statements where available, estimates otherwise
   outcomes.forEach(function(o) {
-    var fs   = o._fs || {};
-    var rev  = parseFloat(fs.net_revenue_m  || o.revenue_m  || 0);
-    var cogs = parseFloat(fs.cogs_m         || o.cogs_m     || 0);
-    // Revenue block (no separate discount line in current model)
-    o._gross_rev    = rev;
-    o._discount     = 0;
-    o._net_rev      = rev;
+    var fs        = o._fs || {};
+    var rev       = parseFloat(fs.net_revenue_m    || o.revenue_m  || 0);
+    var cogs      = parseFloat(fs.cogs_m           || o.cogs_m     || 0);
+    var grossRev  = parseFloat(fs.gross_revenue_m  || rev);   // falls back to net if no discount data
+    var discountM = parseFloat(fs.sales_discount_m || 0);
+    // Revenue waterfall: gross → discount → net
+    o._gross_rev    = grossRev;
+    o._discount     = discountM;
+    o._net_rev      = parseFloat(fs.net_revenue_m  || (grossRev - discountM));
     // COGS sub-lines: real from financial engine where available
     var hasCogsBd = !!(fs.cogs_material_m || fs.cogs_manufacturing_m);
     o._mat      = hasCogsBd ? parseFloat(fs.cogs_material_m       || 0) : cogs * 0.55;   // module BOM
@@ -10769,7 +10771,9 @@ function renderPLComparison(data) {
     {type:'units',  label:'Units Sold',                        key:'_units'},
     {type:'sep'},
     {type:'header', label:'REVENUE'},
-    {type:'total',  label:'Net Sales Revenue',                 key:'_net_rev',      sign:-1, color:'var(--cyan)'},
+    {type:'line',   label:'  Gross Revenue',                   key:'_gross_rev',     sign:-1},
+    {type:'line',   label:'  (Less) Sales Discounts',          key:'_discount',      sign:1},
+    {type:'total',  label:'Net Revenue',                       key:'_net_rev',       sign:-1, color:'var(--cyan)'},
     {type:'sep'},
     {type:'header', label:'COST OF GOODS SOLD'},
     {type:'line',   label:'  Module BOM (Material)',           key:'_mat',          sign:1},
@@ -15650,8 +15654,16 @@ async function confirmProposal() {
     if (_cons) _rolledSpecs.kerb_mass_kg=_cons.kerb_mass_kg;
     if (_perf) { _rolledSpecs.t_0_100_s=_perf.t_0_100_s; _rolledSpecs.top_speed_kmh=_perf.top_speed_kmh; _rolledSpecs.perf_class=_perf.perf_class; }
 
-    var _comPlan = (_prop.commercial&&_prop.commercial.years) ? _prop.commercial : null;
-    var _priceK  = _comPlan&&_comPlan.years[0] ? parseFloat(_comPlan.years[0].price) : null;
+    var _comPlan = _prop.commercial || null;
+    // Extract primary MSRP: EU market from new multi-market format, or first-year price from old format
+    var _priceK = null;
+    if (_comPlan && _comPlan.markets) {
+      var _euMkt = _comPlan.markets.find(function(m){return m.region==='EU'&&m.selected;})
+                || _comPlan.markets.find(function(m){return m.selected;});
+      if (_euMkt) _priceK = parseFloat(_euMkt.msrp_eur_k||0)||null;
+    } else if (_comPlan && _comPlan.years && _comPlan.years[0]) {
+      _priceK = parseFloat(_comPlan.years[0].price)||null;
+    }
 
     var patch = {
       status:             'plan',
