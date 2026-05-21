@@ -992,6 +992,19 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
     <div class="ops-tab active" onclick="opsTab('footprint',this);loadMfgFootprint(true)">🗺 Footprint</div>
     <div class="ops-tab" onclick="opsTab('decisions',this)">⚙ Decisions</div>
     <div class="ops-tab" onclick="opsTab('pipeline',this)">📋 Pipeline</div>
+    <div class="ops-tab" onclick="opsTab('manufacturing',this)">🏭 Manufacturing</div>
+  </div>
+
+  <!-- MANUFACTURING TAB -->
+  <div class="ops-panel" id="ops-manufacturing">
+    <div style="font-size:11px;color:var(--muted2);margin-bottom:12px;font-family:'DM Mono',monospace;">
+      Allocate production capacity per plant · Vehicles compete for capacity at each plant.
+    </div>
+    <div id="mfg-plan-content">
+      <div style="color:var(--muted2);font-family:'DM Mono',monospace;font-size:11px;padding:16px 0;">
+        Freeze your Sales Plan first to generate manufacturing requirements.
+      </div>
+    </div>
   </div>
 
   <!-- FOOTPRINT TAB -->
@@ -1112,6 +1125,18 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
       style="font-family:'DM Mono',monospace;font-size:10px;padding:8px 20px;border:none;border-bottom:2px solid var(--cyan);background:transparent;color:var(--cyan);cursor:pointer;letter-spacing:.5px;">OVERVIEW</button>
     <button id="com-tab-btn-pricing" onclick="switchComTab('pricing')"
       style="font-family:'DM Mono',monospace;font-size:10px;padding:8px 20px;border:none;border-bottom:2px solid transparent;background:transparent;color:var(--muted);cursor:pointer;letter-spacing:.5px;">PRICING</button>
+    <button id="com-tab-btn-sales-planning" onclick="switchComTab('sales-planning')"
+      style="font-family:'DM Mono',monospace;font-size:10px;padding:8px 20px;border:none;border-bottom:2px solid transparent;background:transparent;color:var(--muted);cursor:pointer;letter-spacing:.5px;">📊 SALES PLAN</button>
+  </div>
+
+  <!-- ── SALES PLANNING tab ─────────────────────── -->
+  <div id="com-tab-sales-planning" style="display:none;">
+    <div style="font-size:11px;color:var(--muted2);margin-bottom:12px;font-family:'DM Mono',monospace;">
+      Forecast next-quarter sales by country · Set closing inventory targets · View required production.
+    </div>
+    <div id="sales-plan-content">
+      <div style="color:var(--muted2);font-family:'DM Mono',monospace;font-size:11px;padding:16px 0;">Loading sales plans…</div>
+    </div>
   </div>
 
   <!-- ── OVERVIEW tab ─────────────────────────────── -->
@@ -1793,22 +1818,6 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
           <tr><td colspan="13" style="color:var(--muted2);text-align:center;padding:24px;">No vehicles defined yet.</td></tr>
         </tbody>
       </table>
-    </div>
-  </div>
-
-  <!-- Supply Planning Section (visible when supply_planning_enabled AND round phase = decision) -->
-  <div class="card" style="padding:0;overflow:hidden;margin-top:14px;display:none;" id="supply-plan-card">
-    <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid var(--border);cursor:pointer;"
-         onclick="toggleSupplyPlanCard()">
-      <div style="display:flex;align-items:center;gap:10px;">
-        <div class="card-title" style="margin:0;">Quarterly Supply Plan</div>
-        <span id="sp-round-badge" style="font-family:'DM Mono',monospace;font-size:8px;color:var(--muted2);"></span>
-        <span id="sp-status-badge" style="font-family:'DM Mono',monospace;font-size:7px;padding:2px 6px;border-radius:2px;display:none;"></span>
-      </div>
-      <span id="sp-card-toggle" style="font-family:'DM Mono',monospace;font-size:10px;color:var(--muted);">▲</span>
-    </div>
-    <div id="supply-plan-body" style="padding:14px;">
-      <div style="color:var(--muted2);font-family:'DM Mono',monospace;font-size:11px;">Loading supply plans…</div>
     </div>
   </div>
 
@@ -7871,7 +7880,7 @@ var _REGION_FLAGS = {EU:'🌍', NA:'🌎', APAC:'🌏', SA:'🌎', MEA:'🌍'};
 
 function switchComTab(tab) {
   _comActiveTab = tab;
-  ['overview','pricing'].forEach(function(t) {
+  ['overview','pricing','sales-planning'].forEach(function(t) {
     var btn = document.getElementById('com-tab-btn-'+t);
     var pane = document.getElementById('com-tab-'+t);
     var active = t === tab;
@@ -7882,6 +7891,7 @@ function switchComTab(tab) {
     if (pane) pane.style.display = active ? '' : 'none';
   });
   if (tab === 'pricing') renderCommercialPricing();
+  if (tab === 'sales-planning') loadSalesPlanTab();
 }
 
 async function loadCommercialPage() {
@@ -9046,9 +9056,9 @@ async function checkRoundStateOnEntry() {
           startResultsPoll();
         }
       }
-      // Load supply plan panel if feature is enabled
+      // S&OP: teams can access Sales Plan via Commercial tab
       if (_sessionFlags.supply_planning_enabled) {
-        loadSupplyPlanSection();
+        toast('📊 Round open — check Commercial → Sales Plan for your supply decisions');
       }
     }
   } catch(e) {
@@ -9510,9 +9520,9 @@ function startRoundStatePolling() {
         if (resultsPollInterval) { clearInterval(resultsPollInterval); resultsPollInterval = null; }
         toast('⚡ New round opened — submit your decisions!');
         advanceMfgPipeline();
-        // Show supply plan section when SP is enabled
+        // S&OP: notify teams to check Sales Plan tab if SP enabled
         if (_sessionFlags.supply_planning_enabled) {
-          loadSupplyPlanSection();
+          toast('📊 New round — update your Sales Plan in Commercial → Sales Plan tab');
         }
       }
 
@@ -11754,9 +11764,11 @@ function opsTab(tab, el) {
   document.querySelectorAll('.ops-tab').forEach(t => t.classList.remove('active'));
   document.querySelectorAll('.ops-panel').forEach(p => p.classList.remove('active'));
   el.classList.add('active');
-  document.getElementById('ops-' + tab).classList.add('active');
-  if (tab === 'decisions') updateDecisionForm();
-  if (tab === 'pipeline')  renderPipeline();
+  var panelEl = document.getElementById('ops-' + tab);
+  if (panelEl) panelEl.classList.add('active');
+  if (tab === 'decisions')     updateDecisionForm();
+  if (tab === 'pipeline')      renderPipeline();
+  if (tab === 'manufacturing') loadMfgPlanTab();
 }
 
 async function loadMfgFootprint(forceRefresh = false) {
@@ -16671,6 +16683,354 @@ async function lockSupplyPlan(vehicleId, roundId) {
     var sb = document.getElementById('sp-status-badge');
     if (sb) { sb.textContent = 'LOCKED'; sb.style.display = ''; sb.style.background = 'rgba(74,222,128,.12)'; sb.style.color = 'var(--green)'; }
   } catch(e) { toast('✗ Network error: ' + e.message); }
+}
+
+
+// ══════════════════════════════════════════
+// S&OP: SALES PLANNING (Commercial page tab)
+// ══════════════════════════════════════════
+
+var _salesPlanState = {
+  vehicles:  [],     // [{vehicle_id, vehicle_name, team_id, is_frozen, total_forecast, total_required, countries:[]}]
+  active_vid: null,
+};
+
+async function loadSalesPlanTab() {
+  if (!sessionId || !roundId || !teamId) return;
+  var el = document.getElementById('sales-plan-content');
+  if (!el) return;
+  el.innerHTML = '<div style="color:var(--muted2);font-family:DM Mono,monospace;font-size:11px;padding:16px 0;">Loading…</div>';
+  try {
+    var res  = await fetch(API_URL + '/sessions/' + sessionId + '/rounds/' + roundId + '/sales-plans?team_id=' + teamId);
+    var data = await res.json();
+    _salesPlanState.vehicles = data.vehicles || [];
+    if (!_salesPlanState.vehicles.length) {
+      el.innerHTML = '<div style="color:var(--muted2);font-family:DM Mono,monospace;font-size:11px;padding:16px 0;">No active vehicles. Sales plans are created when a round opens.</div>';
+      return;
+    }
+    _salesPlanState.active_vid = _salesPlanState.vehicles[0].vehicle_id;
+    _renderSalesPlanPage();
+  } catch(e) {
+    el.innerHTML = '<div style="color:var(--red);font-family:DM Mono,monospace;font-size:11px;padding:16px 0;">Failed to load sales plans: ' + e.message + '</div>';
+  }
+}
+
+function _renderSalesPlanPage() {
+  var el = document.getElementById('sales-plan-content');
+  if (!el) return;
+  var vehicles = _salesPlanState.vehicles;
+  var vid = _salesPlanState.active_vid;
+
+  // Vehicle selector
+  var h = '<div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;">';
+  h += '<span style="font-family:DM Mono,monospace;font-size:9px;color:var(--muted2);">VEHICLE</span>';
+  h += '<select onchange="_salesPlanState.active_vid=this.value;_renderSalesPlanPage()" style="background:var(--s2);border:1px solid var(--border2);color:var(--text);padding:4px 8px;font-family:DM Mono,monospace;font-size:10px;border-radius:2px;">';
+  vehicles.forEach(function(v) {
+    h += '<option value="' + v.vehicle_id + '"' + (v.vehicle_id === vid ? ' selected' : '') + '>' + (v.vehicle_name || v.vehicle_id) + '</option>';
+  });
+  h += '</select></div>';
+  el.innerHTML = h + '<div id="sp-vehicle-table"></div>';
+  _renderSalesPlanTable(vid);
+}
+
+function _renderSalesPlanTable(vid) {
+  var el = document.getElementById('sp-vehicle-table');
+  if (!el) return;
+  var vdata = _salesPlanState.vehicles.find(function(v){ return v.vehicle_id === vid; });
+  if (!vdata) { el.innerHTML = ''; return; }
+
+  var frozen = vdata.is_frozen;
+  var h = '';
+
+  // Region groups
+  var regions = ['EU','NA','APAC','SA','MEA'];
+  var regTotals = {forecast:0, required:0, opening:0, target:0};
+
+  regions.forEach(function(reg) {
+    var reg_countries = (vdata.countries || []).filter(function(c){ return c.region === reg; });
+    if (!reg_countries.length) return;
+
+    var reg_fc  = reg_countries.reduce(function(s,c){ return s + (c.forecast_sales||0); }, 0);
+    var reg_req = reg_countries.reduce(function(s,c){ return s + (c.production_required||0); }, 0);
+    var reg_op  = reg_countries.reduce(function(s,c){ return s + (c.opening_fgi||0); }, 0);
+    var reg_tg  = reg_countries.reduce(function(s,c){ return s + (c.target_closing_fgi||0); }, 0);
+
+    var plant_label = '';
+    (vdata.countries || []).some(function(c){ if(c.region===reg&&c.plant_label){plant_label=c.plant_label;return true;} });
+
+    h += '<div style="margin-bottom:14px;">';
+    h += '<div style="display:flex;align-items:center;justify-content:space-between;padding:6px 10px;background:var(--s2);border-radius:3px 3px 0 0;border:1px solid var(--border2);border-bottom:none;">';
+    h += '<span style="font-family:DM Mono,monospace;font-size:9px;font-weight:700;color:var(--white);">' + (_REGION_FLAGS[reg]||'') + ' ' + reg + '</span>';
+    if (plant_label) h += '<span style="font-family:DM Mono,monospace;font-size:8px;color:var(--muted2);">Plant: ' + plant_label + '</span>';
+    h += '</div>';
+    h += '<table style="width:100%;border-collapse:collapse;font-family:DM Mono,monospace;font-size:9px;border:1px solid var(--border2);">';
+    h += '<thead><tr style="background:rgba(255,255,255,.03);">';
+    ['Country','Opening FGI','Forecast Sales ▲','Target FGI ▲','Required Production'].forEach(function(col){
+      h += '<th style="padding:5px 8px;text-align:right;font-size:7px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;">' + col + '</th>';
+    });
+    h += '</tr></thead><tbody>';
+
+    reg_countries.forEach(function(c, i) {
+      var bgc = i%2===0?'':'background:rgba(255,255,255,.02);';
+      var req_col = (c.production_required||0) > 0 ? 'var(--cyan)' : 'var(--muted2)';
+      h += '<tr style="border-bottom:1px solid rgba(255,255,255,.04);' + bgc + '">';
+      h += '<td style="padding:5px 8px;color:var(--text);font-weight:600;">' + c.country_code + ' <span style="color:var(--muted2);font-weight:400;font-size:8px;">' + (c.country_label||'') + '</span></td>';
+      h += '<td style="padding:5px 8px;text-align:right;color:' + ((c.opening_fgi||0)>0?'var(--gold)':'var(--muted2)') + ';">' + (c.opening_fgi||0).toLocaleString() + '</td>';
+      if (frozen) {
+        h += '<td style="padding:5px 8px;text-align:right;color:var(--text);">' + (c.forecast_sales||0).toLocaleString() + '</td>';
+        h += '<td style="padding:5px 8px;text-align:right;color:var(--muted2);">' + (c.target_closing_fgi||0).toLocaleString() + '</td>';
+      } else {
+        h += '<td style="padding:5px 8px;text-align:right;"><input type="number" min="0" value="' + (c.forecast_sales||0) + '" style="width:70px;background:var(--s2);border:1px solid var(--border2);color:var(--text);padding:2px 4px;font-family:DM Mono,monospace;font-size:9px;text-align:right;border-radius:2px;" oninput="_onSalesForecastChange(\'' + vid + '\',\'' + c.country_code + '\',this.value)"></td>';
+        h += '<td style="padding:5px 8px;text-align:right;"><input type="number" min="0" value="' + (c.target_closing_fgi||0) + '" style="width:70px;background:var(--s2);border:1px solid var(--border2);color:var(--text);padding:2px 4px;font-family:DM Mono,monospace;font-size:9px;text-align:right;border-radius:2px;" oninput="_onSalesTargetChange(\'' + vid + '\',\'' + c.country_code + '\',this.value)"></td>';
+      }
+      h += '<td style="padding:5px 8px;text-align:right;color:' + req_col + ';font-weight:700;">' + (c.production_required||0).toLocaleString() + '</td>';
+      h += '</tr>';
+    });
+
+    // Region total row
+    var req_tot_col = reg_req > 0 ? 'var(--cyan)' : 'var(--muted2)';
+    h += '<tr style="background:rgba(255,255,255,.05);border-top:1px solid var(--border2);">';
+    h += '<td style="padding:5px 8px;color:var(--muted);font-size:8px;font-style:italic;">' + reg + ' TOTAL</td>';
+    h += '<td style="padding:5px 8px;text-align:right;color:var(--muted2);">' + reg_op.toLocaleString() + '</td>';
+    h += '<td style="padding:5px 8px;text-align:right;color:var(--text);">' + reg_fc.toLocaleString() + '</td>';
+    h += '<td style="padding:5px 8px;text-align:right;color:var(--muted2);">' + reg_tg.toLocaleString() + '</td>';
+    h += '<td style="padding:5px 8px;text-align:right;color:' + req_tot_col + ';font-weight:700;">' + reg_req.toLocaleString() + '</td>';
+    h += '</tr>';
+    h += '</tbody></table></div>';
+
+    regTotals.forecast += reg_fc;
+    regTotals.required += reg_req;
+    regTotals.opening  += reg_op;
+    regTotals.target   += reg_tg;
+  });
+
+  // Grand total + Freeze button
+  h += '<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 12px;background:var(--s2);border:1px solid var(--border2);border-radius:3px;margin-bottom:10px;">';
+  h += '<div style="font-family:DM Mono,monospace;">';
+  h += '<span style="font-size:9px;color:var(--muted2);">TOTAL REQUIRED PRODUCTION: </span>';
+  h += '<span style="font-size:14px;font-family:Orbitron,sans-serif;color:var(--cyan);">' + regTotals.required.toLocaleString() + '</span>';
+  h += '<span style="font-size:9px;color:var(--muted2);margin-left:4px;">units</span>';
+  h += '</div>';
+  if (frozen) {
+    h += '<span style="font-family:DM Mono,monospace;font-size:9px;padding:6px 14px;border-radius:2px;background:rgba(74,222,128,.12);color:var(--green);">✓ FROZEN — Manufacturing plan generated</span>';
+  } else {
+    h += '<button onclick="freezeSalesPlan(\'' + vid + '\')" style="font-family:DM Mono,monospace;font-size:9px;padding:6px 16px;border-radius:2px;border:1px solid rgba(74,222,128,.4);background:rgba(74,222,128,.08);color:var(--green);cursor:pointer;">🔒 Freeze Sales Plan</button>';
+  }
+  h += '</div>';
+
+  el.innerHTML = h;
+}
+
+function _onSalesForecastChange(vid, countryCode, val) {
+  val = Math.max(0, parseInt(val) || 0);
+  var vdata = _salesPlanState.vehicles.find(function(v){ return v.vehicle_id === vid; });
+  if (!vdata) return;
+  var c = (vdata.countries || []).find(function(c){ return c.country_code === countryCode; });
+  if (!c) return;
+  c.forecast_sales = val;
+  c.production_required = Math.max(0, val + (c.target_closing_fgi||0) - (c.opening_fgi||0));
+  // Debounce saves to backend
+  if (_salesPlanSaveTimer) clearTimeout(_salesPlanSaveTimer);
+  _salesPlanSaveTimer = setTimeout(function(){ _saveSalesPlanUpdates(vid); }, 800);
+  // Re-render totals only (don't destroy inputs)
+  _updateSalesPlanTotals(vid);
+}
+
+function _onSalesTargetChange(vid, countryCode, val) {
+  val = Math.max(0, parseInt(val) || 0);
+  var vdata = _salesPlanState.vehicles.find(function(v){ return v.vehicle_id === vid; });
+  if (!vdata) return;
+  var c = (vdata.countries || []).find(function(c){ return c.country_code === countryCode; });
+  if (!c) return;
+  c.target_closing_fgi = val;
+  c.production_required = Math.max(0, (c.forecast_sales||0) + val - (c.opening_fgi||0));
+  if (_salesPlanSaveTimer) clearTimeout(_salesPlanSaveTimer);
+  _salesPlanSaveTimer = setTimeout(function(){ _saveSalesPlanUpdates(vid); }, 800);
+  _updateSalesPlanTotals(vid);
+}
+
+var _salesPlanSaveTimer = null;
+async function _saveSalesPlanUpdates(vid) {
+  var vdata = _salesPlanState.vehicles.find(function(v){ return v.vehicle_id === vid; });
+  if (!vdata) return;
+  var updates = (vdata.countries || []).map(function(c) {
+    return {country_code: c.country_code, forecast_sales: c.forecast_sales||0, target_closing_fgi: c.target_closing_fgi||0};
+  });
+  try {
+    await fetch(API_URL + '/sessions/' + sessionId + '/rounds/' + roundId + '/sales-plans', {
+      method: 'PATCH',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({vehicle_id: vid, updates: updates})
+    });
+  } catch(e) { /* non-fatal: auto-save fails silently */ }
+}
+
+function _updateSalesPlanTotals(vid) {
+  // Lightweight update: just re-render the table (inputs will keep their focus via event)
+  // Actually we re-render the whole table — it's fast enough
+  _renderSalesPlanTable(vid);
+}
+
+async function freezeSalesPlan(vid) {
+  try {
+    // Save latest edits first
+    await _saveSalesPlanUpdates(vid);
+    var res = await fetch(API_URL + '/sessions/' + sessionId + '/rounds/' + roundId + '/sales-plans/freeze?team_id=' + teamId, {method:'POST'});
+    if (!res.ok) { var e = await res.json(); toast('✗ ' + (e.detail||'Freeze failed')); return; }
+    var data = await res.json();
+    // Update local state
+    var vdata = _salesPlanState.vehicles.find(function(v){ return v.vehicle_id === vid; });
+    if (vdata) vdata.is_frozen = true;
+    toast('✓ Sales plan frozen · ' + data.mfg_plans_created + ' plant plans generated');
+    _renderSalesPlanTable(vid);
+  } catch(e) { toast('✗ ' + e.message); }
+}
+
+
+// ══════════════════════════════════════════
+// S&OP: MANUFACTURING PLAN (Industrial Ops tab)
+// ══════════════════════════════════════════
+
+var _mfgPlanState = {
+  plants:    [],     // [{plant_id, plant_region, plant_country_code, plant_capacity_q, total_required, total_allocated, is_locked, vehicles:[]}]
+  is_locked: false,
+};
+
+async function loadMfgPlanTab() {
+  if (!sessionId || !roundId || !teamId) return;
+  var el = document.getElementById('mfg-plan-content');
+  if (!el) return;
+  el.innerHTML = '<div style="color:var(--muted2);font-family:DM Mono,monospace;font-size:11px;padding:16px 0;">Loading…</div>';
+  try {
+    var res  = await fetch(API_URL + '/sessions/' + sessionId + '/rounds/' + roundId + '/manufacturing-plans?team_id=' + teamId);
+    var data = await res.json();
+    _mfgPlanState.plants = data.plants || [];
+    if (!_mfgPlanState.plants.length) {
+      el.innerHTML = '<div style="color:var(--muted2);font-family:DM Mono,monospace;font-size:11px;padding:16px 0;">No manufacturing plans yet. Go to Commercial → Sales Plan and freeze your sales plan first.</div>';
+      return;
+    }
+    _mfgPlanState.is_locked = _mfgPlanState.plants.every(function(p){ return p.is_locked; });
+    _renderMfgPlanView();
+  } catch(e) {
+    el.innerHTML = '<div style="color:var(--red);font-family:DM Mono,monospace;font-size:11px;padding:16px 0;">Failed to load: ' + e.message + '</div>';
+  }
+}
+
+function _renderMfgPlanView() {
+  var el = document.getElementById('mfg-plan-content');
+  if (!el) return;
+  var locked = _mfgPlanState.is_locked;
+  var h = '';
+
+  _mfgPlanState.plants.forEach(function(plant) {
+    var cap      = plant.plant_capacity_q || 0;
+    var alloc    = plant.total_allocated || 0;
+    var utilPct  = cap > 0 ? Math.round(alloc / cap * 100) : 0;
+    var overCap  = alloc > cap;
+    var utilCol  = overCap ? 'var(--red)' : utilPct >= 90 ? 'var(--gold)' : 'var(--green)';
+    var barFill  = Math.min(100, utilPct);
+    var barCol   = overCap ? '#ef4444' : utilPct >= 90 ? '#f59e0b' : '#22c55e';
+
+    h += '<div style="border:1px solid var(--border2);border-radius:3px;margin-bottom:14px;overflow:hidden;">';
+    // Plant header
+    h += '<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:var(--s2);">';
+    h += '<div><span style="font-family:DM Mono,monospace;font-size:11px;font-weight:700;color:var(--white);">' + (plant.plant_country_code||plant.plant_region||'PLANT') + ' ';
+    h += '<span style="font-size:8px;color:var(--muted2);">— ' + (plant.plant_region||'') + '</span></span></div>';
+    h += '<div style="font-family:DM Mono,monospace;font-size:8px;color:var(--muted2);">Capacity: <span style="color:var(--text);">' + cap.toLocaleString() + '</span> units/qtr</div>';
+    h += '</div>';
+
+    // Vehicle allocation table
+    h += '<table style="width:100%;border-collapse:collapse;font-family:DM Mono,monospace;font-size:9px;">';
+    h += '<thead><tr style="border-bottom:1px solid var(--border2);background:rgba(255,255,255,.02);">';
+    ['Vehicle','Required','Allocated ▲','% Capacity'].forEach(function(col){
+      h += '<th style="padding:5px 10px;text-align:left;font-size:7px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;">' + col + '</th>';
+    });
+    h += '</tr></thead><tbody>';
+
+    (plant.vehicles || []).forEach(function(v, i) {
+      var vAlloc  = v.allocated_units || 0;
+      var vReq    = v.production_required || 0;
+      var vPct    = cap > 0 ? Math.round(vAlloc / cap * 100) : 0;
+      var bgc     = i%2===0?'':'background:rgba(255,255,255,.02);';
+      h += '<tr style="border-bottom:1px solid rgba(255,255,255,.04);' + bgc + '">';
+      h += '<td style="padding:5px 10px;color:var(--white);font-weight:600;">' + (v.vehicle_name||'Vehicle') + '</td>';
+      h += '<td style="padding:5px 10px;color:var(--muted2);">' + vReq.toLocaleString() + '</td>';
+      if (locked) {
+        h += '<td style="padding:5px 10px;color:var(--text);">' + vAlloc.toLocaleString() + '</td>';
+      } else {
+        h += '<td style="padding:5px 10px;"><input type="number" min="0" max="' + cap + '" value="' + vAlloc + '" style="width:80px;background:var(--s2);border:1px solid var(--border2);color:var(--text);padding:2px 4px;font-family:DM Mono,monospace;font-size:9px;border-radius:2px;" oninput="_onMfgAllocChange(\'' + plant.plant_id + '\',\'' + v.vehicle_id + '\',this.value)"></td>';
+      }
+      h += '<td style="padding:5px 10px;color:var(--muted2);font-size:8px;">' + vPct + '%</td>';
+      h += '</tr>';
+    });
+
+    // Total row + capacity bar
+    h += '<tr style="background:rgba(255,255,255,.04);border-top:1px solid var(--border2);">';
+    h += '<td style="padding:5px 10px;color:var(--muted);font-style:italic;font-size:8px;">TOTAL</td>';
+    h += '<td style="padding:5px 10px;color:var(--muted2);">' + (plant.total_required||0).toLocaleString() + '</td>';
+    h += '<td style="padding:5px 10px;color:' + utilCol + ';font-weight:700;">' + alloc.toLocaleString() + '</td>';
+    h += '<td style="padding:5px 10px;">';
+    h += '<div style="display:flex;align-items:center;gap:6px;">';
+    h += '<div style="flex:1;height:6px;background:var(--s2);border-radius:3px;overflow:hidden;"><div style="height:100%;width:' + barFill + '%;background:' + barCol + ';transition:.2s;"></div></div>';
+    h += '<span style="font-family:DM Mono,monospace;font-size:8px;color:' + utilCol + ';">' + utilPct + '%</span>';
+    h += '</div></td>';
+    h += '</tr>';
+    h += '</tbody></table>';
+
+    if (overCap) {
+      h += '<div style="padding:6px 10px;background:rgba(239,68,68,.1);font-family:DM Mono,monospace;font-size:8px;color:var(--red);">⚠ Over-capacity by ' + (alloc - cap).toLocaleString() + ' units — reduce allocations.</div>';
+    }
+    h += '</div>';
+  });
+
+  // Lock button
+  if (locked) {
+    h += '<div style="font-family:DM Mono,monospace;font-size:9px;color:var(--green);padding:8px 0;">✓ Manufacturing plan locked — ready for market clearing.</div>';
+  } else {
+    var anyOverCap = _mfgPlanState.plants.some(function(p){ return (p.total_allocated||0) > (p.plant_capacity_q||0); });
+    h += '<button onclick="lockMfgPlan()" ' + (anyOverCap?'disabled':' ') + ' style="font-family:DM Mono,monospace;font-size:9px;padding:6px 16px;border-radius:2px;border:1px solid ' + (anyOverCap?'var(--border2)':'rgba(74,222,128,.4)') + ';background:' + (anyOverCap?'var(--s2)':'rgba(74,222,128,.08)') + ';color:' + (anyOverCap?'var(--muted2)':'var(--green)') + ';cursor:' + (anyOverCap?'not-allowed':'pointer') + ';">🔒 Lock Manufacturing Plan</button>';
+    if (anyOverCap) h += '<span style="font-family:DM Mono,monospace;font-size:8px;color:var(--red);margin-left:10px;">Resolve over-capacity first.</span>';
+  }
+
+  el.innerHTML = h;
+}
+
+async function _onMfgAllocChange(plantId, vehicleId, val) {
+  val = Math.max(0, parseInt(val) || 0);
+  // Update local state
+  var plant = _mfgPlanState.plants.find(function(p){ return p.plant_id === plantId; });
+  if (!plant) return;
+  var v = (plant.vehicles||[]).find(function(v){ return v.vehicle_id === vehicleId; });
+  if (!v) return;
+  v.allocated_units = val;
+  plant.total_allocated = (plant.vehicles||[]).reduce(function(s,vv){ return s+(vv.allocated_units||0); }, 0);
+  // Debounce API save
+  if (_mfgAllocSaveTimer) clearTimeout(_mfgAllocSaveTimer);
+  _mfgAllocSaveTimer = setTimeout(function(){ _saveMfgAlloc(plantId, vehicleId, val); }, 600);
+  _renderMfgPlanView();
+}
+
+var _mfgAllocSaveTimer = null;
+async function _saveMfgAlloc(plantId, vehicleId, allocatedUnits) {
+  try {
+    var res = await fetch(API_URL + '/plants/' + plantId + '/vehicles/' + vehicleId + '/rounds/' + roundId + '/manufacturing-plan', {
+      method: 'PATCH',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({allocated_units: allocatedUnits})
+    });
+    if (!res.ok) { var e = await res.json(); toast('⚠ Save failed: ' + (e.detail||'')); }
+  } catch(e) { /* silent */ }
+}
+
+async function lockMfgPlan() {
+  try {
+    var res = await fetch(API_URL + '/sessions/' + sessionId + '/rounds/' + roundId + '/manufacturing-plans/lock?team_id=' + teamId, {method:'POST'});
+    if (!res.ok) { var e = await res.json(); toast('✗ ' + (e.detail||'Lock failed')); return; }
+    _mfgPlanState.is_locked = true;
+    _mfgPlanState.plants.forEach(function(p){ p.is_locked = true; });
+    toast('✓ Manufacturing plan locked — awaiting market clearing');
+    _renderMfgPlanView();
+  } catch(e) { toast('✗ ' + e.message); }
 }
 
 
