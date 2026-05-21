@@ -7858,13 +7858,13 @@ async function renderCommercialPricing() {
     // Net price row + waterfall
     h += '<div style="display:flex;align-items:center;gap:20px;flex-wrap:wrap;">';
     h += '<div style="font-family:DM Mono,monospace;font-size:9px;color:var(--muted2);">Net selling price</div>';
-    h += '<div id="com-disc-net-'+vid+'" style="font-family:DM Mono,monospace;font-size:14px;font-weight:700;color:var(--cyan);">'
+    // data-msrp lets onComDiscountSlide read MSRP without depending on activeVehicles
+    h += '<div id="com-disc-net-'+vid+'" data-msrp="'+msrp+'" style="font-family:DM Mono,monospace;font-size:14px;font-weight:700;color:var(--cyan);">'
        + (msrp > 0 ? '€'+Math.round(netPrice*1000).toLocaleString()+'/unit' : '—') + '</div>';
-    if (msrp > 0 && disc > 0) {
-      var discAmt = Math.round(msrp * 1000 * disc / 100);
-      h += '<div style="font-family:DM Mono,monospace;font-size:9px;color:var(--muted2);">'
-         + '€'+msrp.toFixed(1)+'k − <span style="color:var(--red);">€'+discAmt.toLocaleString()+'</span> = €'+Math.round(netPrice*1000).toLocaleString()+'</div>';
-    }
+    var wfAmt = (msrp > 0 && disc > 0) ? Math.round(msrp * 1000 * disc / 100) : 0;
+    h += '<div id="com-disc-wf-'+vid+'" style="font-family:DM Mono,monospace;font-size:9px;color:var(--muted2);">'
+       + (msrp > 0 && disc > 0 ? '€'+msrp.toFixed(1)+'k &minus; <span style="color:var(--red);">€'+wfAmt.toLocaleString()+'</span> = €'+Math.round(netPrice*1000).toLocaleString() : '')
+       + '</div>';
     h += '</div>';
 
     h += '</div>';
@@ -7876,17 +7876,25 @@ async function renderCommercialPricing() {
 function onComDiscountSlide(vid, val) {
   var pct = Math.min(40, Math.max(0, parseFloat(val) || 0));
 
-  // Update display immediately
+  // Update % label immediately
   var valEl = document.getElementById('com-disc-val-'+vid);
   var netEl = document.getElementById('com-disc-net-'+vid);
+  var wfEl  = document.getElementById('com-disc-wf-'+vid);
   if (valEl) valEl.textContent = pct.toFixed(1) + '%';
 
-  // Find MSRP from cached vehicles
-  var v = activeVehicles.find(function(x){return x.id===vid;});
-  var msrp = v ? parseFloat(v.price_eur_k||0) : 0;
+  // Read MSRP from data attribute (avoids dependency on activeVehicles)
+  var msrp = netEl ? parseFloat(netEl.getAttribute('data-msrp') || 0) : 0;
   if (netEl && msrp > 0) {
     var net = msrp * (1 - pct/100);
     netEl.textContent = '€'+Math.round(net*1000).toLocaleString()+'/unit';
+    if (wfEl) {
+      if (pct > 0) {
+        var discAmt = Math.round(msrp * 1000 * pct / 100);
+        wfEl.innerHTML = '€'+msrp.toFixed(1)+'k &minus; <span style="color:var(--red);">€'+discAmt.toLocaleString()+'</span> = €'+Math.round(net*1000).toLocaleString();
+      } else {
+        wfEl.innerHTML = '';
+      }
+    }
   }
 
   // Debounce PATCH — wait 600ms after slider stops
@@ -7900,8 +7908,9 @@ function onComDiscountSlide(vid, val) {
       });
       var d = await r.json();
       if (d.success) {
-        if (v) v.discount_pct = pct;
-        toast('✓ '+( v ? v.name : 'Vehicle')+' discount set to '+pct.toFixed(1)+'%');
+        var cached = activeVehicles.find(function(x){return x.id===vid;});
+        if (cached) cached.discount_pct = pct;
+        toast('✓ Discount set to '+pct.toFixed(1)+'%');
       } else { toast('⚠ '+(d.detail||'Update failed')); }
     } catch(e) { toast('⚠ '+e.message); }
   }, 600);
