@@ -7782,23 +7782,64 @@ async function updateVehicleDiscount(vid, val) {
 var _comActiveTab        = 'overview';
 var _comPricingDebounce  = {};
 var _comVehicleDiscounts = {};   // {vid: {EU:{default:4,countries:{DE:4,IT:3}}, NA:{default:5},...}}
+var _comVehicleCP        = {};   // {vid: commercial_plan} — used for dynamic volume weights
 var _regionExpanded      = {};   // {vid+'-'+region: bool}
 
-// Region/country definitions
+// Global auto market country lists — shares represent intra-region volume split
+// Top ~90% of each region by new-vehicle registrations; remainder = Rest-of-region
 var _REGION_COUNTRIES = {
-  EU:   [{code:'DE',label:'Germany',share:0.27},{code:'FR',label:'France',share:0.18},
-         {code:'IT',label:'Italy',share:0.15},{code:'ES',label:'Spain',share:0.10},
-         {code:'GB',label:'United Kingdom',share:0.15},{code:'ROE',label:'Rest of Europe',share:0.15}],
-  NA:   [{code:'US',label:'United States',share:0.80},{code:'CA',label:'Canada',share:0.12},
-         {code:'MX',label:'Mexico',share:0.08}],
-  APAC: [{code:'CN',label:'China',share:0.60},{code:'JP',label:'Japan',share:0.15},
-         {code:'KR',label:'South Korea',share:0.08},{code:'IN',label:'India',share:0.10},
-         {code:'ROA',label:'Rest of APAC',share:0.07}],
-  SA:   [],
-  MEA:  []
+  EU: [
+    {code:'DE',  label:'Germany',         share:0.19},
+    {code:'FR',  label:'France',          share:0.12},
+    {code:'GB',  label:'United Kingdom',  share:0.12},
+    {code:'IT',  label:'Italy',           share:0.10},
+    {code:'ES',  label:'Spain',           share:0.07},
+    {code:'TR',  label:'Turkey',          share:0.07},
+    {code:'PL',  label:'Poland',          share:0.04},
+    {code:'NL',  label:'Netherlands',     share:0.03},
+    {code:'BE',  label:'Belgium',         share:0.03},
+    {code:'SE',  label:'Sweden',          share:0.02},
+    {code:'AT',  label:'Austria',         share:0.02},
+    {code:'ROE', label:'Rest of Europe',  share:0.19},
+  ],
+  NA: [
+    {code:'US',   label:'United States',        share:0.80},
+    {code:'CA',   label:'Canada',               share:0.08},
+    {code:'MX',   label:'Mexico',               share:0.07},
+    {code:'RONA', label:'Rest of N. America',   share:0.05},
+  ],
+  APAC: [
+    {code:'CN',  label:'China',            share:0.53},
+    {code:'JP',  label:'Japan',            share:0.10},
+    {code:'IN',  label:'India',            share:0.09},
+    {code:'KR',  label:'South Korea',      share:0.04},
+    {code:'AU',  label:'Australia',        share:0.02},
+    {code:'ID',  label:'Indonesia',        share:0.02},
+    {code:'TH',  label:'Thailand',         share:0.02},
+    {code:'MY',  label:'Malaysia',         share:0.02},
+    {code:'ROA', label:'Rest of APAC',     share:0.16},
+  ],
+  SA: [
+    {code:'BR',   label:'Brazil',              share:0.47},
+    {code:'AR',   label:'Argentina',           share:0.10},
+    {code:'CL',   label:'Chile',               share:0.06},
+    {code:'CO',   label:'Colombia',            share:0.05},
+    {code:'PE',   label:'Peru',                share:0.04},
+    {code:'ROSA', label:'Rest of S. America',  share:0.28},
+  ],
+  MEA: [
+    {code:'SAU',   label:'Saudi Arabia',         share:0.20},
+    {code:'ZA',    label:'South Africa',         share:0.13},
+    {code:'EG',    label:'Egypt',                share:0.11},
+    {code:'AE',    label:'UAE',                  share:0.10},
+    {code:'MA',    label:'Morocco',              share:0.07},
+    {code:'DZ',    label:'Algeria',              share:0.07},
+    {code:'ROMEA', label:'Rest of M.E. & Africa',share:0.32},
+  ],
 };
-var _REGION_VOL_WEIGHTS = {EU:0.60, NA:0.25, APAC:0.15, SA:0.0, MEA:0.0};
-var _REGION_FLAGS       = {EU:'🌍', NA:'🌎', APAC:'🌏', SA:'🌎', MEA:'🌍'};
+// Fallback weights when no commercial plan volumes are available
+var _REGION_DEFAULT_WEIGHTS = {EU:0.60, NA:0.25, APAC:0.15, SA:0.0, MEA:0.0};
+var _REGION_FLAGS = {EU:'🌍', NA:'🌎', APAC:'🌏', SA:'🌎', MEA:'🌍'};
 
 function switchComTab(tab) {
   _comActiveTab = tab;
@@ -7861,8 +7902,9 @@ async function renderCommercialPricing() {
       if (!rd[sm.region].countries) rd[sm.region].countries = {};
     });
     _comVehicleDiscounts[vid] = rd;
+    _comVehicleCP[vid] = v.commercial_plan || null;
 
-    var effPct = _computeEffectiveDiscount(rd);
+    var effPct = _computeEffectiveDiscount(rd, v.commercial_plan);
 
     h += '<div style="background:var(--s2);border:1px solid var(--border2);border-radius:6px;padding:18px 22px;">';
 
@@ -7881,7 +7923,6 @@ async function renderCommercialPricing() {
       var defDisc   = parseFloat(regRd.default) || 0;
       var countries = _REGION_COUNTRIES[region] || [];
       var hasCtry   = countries.length > 0;
-      var zeroWt    = _REGION_VOL_WEIGHTS[region] === 0;
       var flag      = _REGION_FLAGS[region] || '🌍';
       var expKey    = vid + '-' + region;
       var expanded  = !!_regionExpanded[expKey];
@@ -7903,8 +7944,6 @@ async function renderCommercialPricing() {
         h += '<button id="com-region-toggle-'+vid+'-'+region+'" onclick="toggleRegionExpand(\''+vid+'\',\''+region+'\')"'
            + ' style="'+MONO+'font-size:8px;background:var(--s2);border:1px solid var(--border2);color:var(--muted2);border-radius:2px;padding:3px 8px;cursor:pointer;white-space:nowrap;">'
            + (expanded ? '▼ Collapse' : '▶ Countries') + '</button>';
-      } else if (zeroWt) {
-        h += '<div style="'+MONO+'font-size:8px;color:var(--muted2);opacity:0.6;text-align:right;">0% vol weight</div>';
       }
       h += '</div>';
 
@@ -7940,7 +7979,7 @@ async function renderCommercialPricing() {
     h += '<div style="margin-top:12px;padding:10px 14px;background:var(--s3);border-radius:4px;display:flex;align-items:center;gap:16px;flex-wrap:wrap;">';
     h += '<div style="'+MONO+'font-size:9px;color:var(--muted2);">Effective discount (vol-weighted)</div>';
     h += '<div id="com-rd-eff-'+vid+'" style="'+MONO+'font-size:16px;font-weight:700;color:var(--gold);">'+effPct.toFixed(1)+'%</div>';
-    h += '<div style="'+MONO+'font-size:9px;color:var(--muted2);">EU 60% · NA 25% · APAC 15% weighting</div>';
+    h += '<div style="'+MONO+'font-size:9px;color:var(--muted2);">'+_effectiveWeightLabel(v.commercial_plan)+'</div>';
     h += '<div style="'+MONO+'font-size:8px;color:var(--muted2);margin-left:auto;">Applied at next market clearing</div>';
     h += '</div>';
 
@@ -7951,10 +7990,31 @@ async function renderCommercialPricing() {
   el.innerHTML = h;
 }
 
-function _computeEffectiveDiscount(rd) {
+function _cpRegionWeights(cp) {
+  // Derive per-region volume weights from commercial_plan (latest year per region).
+  // Returns null if no usable data → caller falls back to _REGION_DEFAULT_WEIGHTS.
+  if (!cp || !cp.markets) return null;
+  var vols = {}, total = 0;
+  (cp.markets || []).forEach(function(mkt) {
+    if (!mkt.selected) return;
+    var years = mkt.years || [];
+    var latest = years[years.length - 1];
+    var vol = latest ? (parseFloat(latest.volume) || 0) : 0;
+    vols[mkt.region] = (vols[mkt.region] || 0) + vol;
+    total += vol;
+  });
+  if (total === 0) return null;
+  var weights = {};
+  Object.keys(vols).forEach(function(r) { weights[r] = vols[r] / total; });
+  return weights;
+}
+
+function _computeEffectiveDiscount(rd, cp) {
+  // Use commercial-plan regional volumes as weights; fall back to default if unavailable.
+  var weights = _cpRegionWeights(cp) || _REGION_DEFAULT_WEIGHTS;
   var totalW = 0, totalWD = 0;
   SALES_MARKETS.forEach(function(sm) {
-    var rw = _REGION_VOL_WEIGHTS[sm.region] || 0;
+    var rw = parseFloat(weights[sm.region]) || 0;
     if (rw === 0) return;
     var regionRd = rd[sm.region] || {default: 0};
     var countries = _REGION_COUNTRIES[sm.region] || [];
@@ -7976,10 +8036,21 @@ function _computeEffectiveDiscount(rd) {
   return totalW > 0 ? Math.round(totalWD / totalW * 10) / 10 : 0;
 }
 
+function _effectiveWeightLabel(cp) {
+  var w = _cpRegionWeights(cp);
+  if (!w) return 'Default weights (EU 60% · NA 25% · APAC 15%)';
+  var parts = [];
+  SALES_MARKETS.forEach(function(sm) {
+    var pct = Math.round((w[sm.region] || 0) * 100);
+    if (pct > 0) parts.push(sm.region + ' ' + pct + '%');
+  });
+  return 'Weighted by commercial plan: ' + parts.join(' · ');
+}
+
 function _patchVehicleDiscounts(vid) {
   var rd  = _comVehicleDiscounts[vid];
   if (!rd) return;
-  var eff = _computeEffectiveDiscount(rd);
+  var eff = _computeEffectiveDiscount(rd, _comVehicleCP[vid]);
   clearTimeout(_comPricingDebounce[vid]);
   _comPricingDebounce[vid] = setTimeout(async function() {
     try {
@@ -8025,7 +8096,7 @@ function onComRegionDefaultSlide(vid, region, val, msrp) {
 
   // Update effective
   var effEl = document.getElementById('com-rd-eff-'+vid);
-  if (effEl) effEl.textContent = _computeEffectiveDiscount(rd).toFixed(1)+'%';
+  if (effEl) effEl.textContent = _computeEffectiveDiscount(rd, _comVehicleCP[vid]).toFixed(1)+'%';
   _patchVehicleDiscounts(vid);
 }
 
@@ -8045,7 +8116,7 @@ function onComCountrySlide(vid, region, code, val, msrp) {
   if (cTagEl) cTagEl.textContent = (pct !== (rd[region].default||0)) ? '✎ custom' : '';
 
   var effEl = document.getElementById('com-rd-eff-'+vid);
-  if (effEl) effEl.textContent = _computeEffectiveDiscount(rd).toFixed(1)+'%';
+  if (effEl) effEl.textContent = _computeEffectiveDiscount(rd, _comVehicleCP[vid]).toFixed(1)+'%';
   _patchVehicleDiscounts(vid);
 }
 
