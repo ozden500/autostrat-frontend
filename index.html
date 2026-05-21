@@ -16812,7 +16812,10 @@ function _renderSalesPlanTable(vid) {
   h += '<span style="font-size:9px;color:var(--muted2);margin-left:4px;">units</span>';
   h += '</div>';
   if (frozen) {
+    h += '<div style="display:flex;align-items:center;gap:8px;">';
     h += '<span style="font-family:DM Mono,monospace;font-size:9px;padding:6px 14px;border-radius:2px;background:rgba(74,222,128,.12);color:var(--green);">✓ FROZEN — Manufacturing plan generated</span>';
+    h += '<button onclick="unfreezeSalesPlan(\'' + vid + '\')" style="font-family:DM Mono,monospace;font-size:9px;padding:5px 12px;border-radius:2px;border:1px solid rgba(251,191,36,.3);background:rgba(251,191,36,.08);color:var(--gold);cursor:pointer;">✏ Unfreeze</button>';
+    h += '</div>';
   } else {
     h += '<button onclick="freezeSalesPlan(\'' + vid + '\')" style="font-family:DM Mono,monospace;font-size:9px;padding:6px 16px;border-radius:2px;border:1px solid rgba(74,222,128,.4);background:rgba(74,222,128,.08);color:var(--green);cursor:pointer;">🔒 Freeze Sales Plan</button>';
   }
@@ -16873,16 +16876,30 @@ function _updateSalesPlanTotals(vid) {
 
 async function freezeSalesPlan(vid) {
   try {
-    // Save latest edits first
     await _saveSalesPlanUpdates(vid);
     var res = await fetch(API_URL + '/sessions/' + sessionId + '/rounds/' + roundId + '/sales-plans/freeze?team_id=' + teamId, {method:'POST'});
     if (!res.ok) { var e = await res.json(); toast('✗ ' + (e.detail||'Freeze failed')); return; }
     var data = await res.json();
-    // Update local state
     var vdata = _salesPlanState.vehicles.find(function(v){ return v.vehicle_id === vid; });
     if (vdata) vdata.is_frozen = true;
     toast('✓ Sales plan frozen · ' + data.mfg_plans_created + ' plant plans generated');
     _renderSalesPlanTable(vid);
+  } catch(e) { toast('✗ ' + e.message); }
+}
+
+async function unfreezeSalesPlan(vid) {
+  try {
+    var res = await fetch(API_URL + '/sessions/' + sessionId + '/rounds/' + roundId + '/sales-plans/unfreeze?team_id=' + teamId, {method:'POST'});
+    if (res.status === 409) { toast('⚠ Cannot unfreeze — manufacturing plan is already locked (clearing ran).'); return; }
+    if (!res.ok) { var e = await res.json(); toast('✗ ' + (e.detail||'Unfreeze failed')); return; }
+    var vdata = _salesPlanState.vehicles.find(function(v){ return v.vehicle_id === vid; });
+    if (vdata) vdata.is_frozen = false;
+    toast('✓ Sales plan unfrozen — you can now edit forecasts. Re-freeze when done.');
+    _renderSalesPlanTable(vid);
+    // Also refresh Manufacturing tab if open
+    if (document.getElementById('ops-manufacturing') && document.getElementById('ops-manufacturing').classList.contains('active')) {
+      loadMfgPlanTab();
+    }
   } catch(e) { toast('✗ ' + e.message); }
 }
 
