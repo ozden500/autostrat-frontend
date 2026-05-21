@@ -7784,6 +7784,7 @@ var _comPricingDebounce  = {};
 var _comVehicleDiscounts = {};   // {vid: {EU:{default:4,countries:{DE:4,IT:3}}, NA:{default:5},...}}
 var _comVehicleCP        = {};   // {vid: commercial_plan} — used for dynamic volume weights
 var _regionExpanded      = {};   // {vid+'-'+region: bool}
+var _cardCollapsed       = {};   // {vid: bool}
 
 // Global auto market country lists — shares represent intra-region volume split
 // Top ~90% of each region by new-vehicle registrations; remainder = Rest-of-region
@@ -7906,15 +7907,22 @@ async function renderCommercialPricing() {
 
     var effPct = _computeEffectiveDiscount(rd, v.commercial_plan);
 
+    var isCollapsed = !!_cardCollapsed[vid];
     h += '<div style="background:var(--s2);border:1px solid var(--border2);border-radius:6px;padding:18px 22px;">';
 
-    // ── Vehicle header ──
-    h += '<div style="display:flex;align-items:center;gap:10px;margin-bottom:18px;flex-wrap:wrap;">';
+    // ── Vehicle header (always visible, click to toggle) ──
+    h += '<div style="display:flex;align-items:center;gap:10px;margin-bottom:'+(isCollapsed?'0':'18px')+';flex-wrap:wrap;cursor:pointer;" onclick="toggleCardCollapse(\''+vid+'\')">';
     h += '<div style="'+MONO+'font-size:14px;font-weight:700;color:var(--white);">'+v.name+'</div>';
     h += '<div style="'+MONO+'font-size:9px;color:var(--muted2);background:var(--s3);padding:2px 8px;border-radius:2px;">'+seg+'</div>';
     h += '<div style="'+MONO+'font-size:8px;padding:2px 8px;border-radius:2px;border:1px solid '+statusCol+'44;color:'+statusCol+';">'+statusTxt+'</div>';
     if (msrp > 0) h += '<div style="'+MONO+'font-size:10px;color:var(--muted2);">MSRP <span style="color:var(--text);">€'+msrp.toFixed(1)+'k</span></div>';
+    // Effective discount always visible in header
+    h += '<div id="com-hdr-eff-'+vid+'" style="'+MONO+'font-size:11px;font-weight:700;color:var(--gold);background:rgba(200,164,60,.12);padding:2px 10px;border-radius:10px;">'+effPct.toFixed(1)+'% eff.</div>';
+    h += '<div style="margin-left:auto;'+MONO+'font-size:10px;color:var(--muted2);">'+(isCollapsed?'▼ expand':'▲ collapse')+'</div>';
     h += '</div>';
+
+    // ── Collapsible body ──
+    h += '<div id="com-card-body-'+vid+'" style="display:'+(isCollapsed?'none':'')+'">';
 
     // ── Region rows ──
     SALES_MARKETS.forEach(function(sm) {
@@ -7983,7 +7991,8 @@ async function renderCommercialPricing() {
     h += '<div style="'+MONO+'font-size:8px;color:var(--muted2);margin-left:auto;">Applied at next market clearing</div>';
     h += '</div>';
 
-    h += '</div>';
+    h += '</div>'; // close collapsible body
+    h += '</div>'; // close card
   });
 
   h += '</div>';
@@ -8094,9 +8103,12 @@ function onComRegionDefaultSlide(vid, region, val, msrp) {
     }
   });
 
-  // Update effective
+  // Update effective (footer + header pill)
+  var eff2 = _computeEffectiveDiscount(rd, _comVehicleCP[vid]);
   var effEl = document.getElementById('com-rd-eff-'+vid);
-  if (effEl) effEl.textContent = _computeEffectiveDiscount(rd, _comVehicleCP[vid]).toFixed(1)+'%';
+  var hdrPill = document.getElementById('com-hdr-eff-'+vid);
+  if (effEl) effEl.textContent = eff2.toFixed(1)+'%';
+  if (hdrPill) hdrPill.textContent = eff2.toFixed(1)+'% eff.';
   _patchVehicleDiscounts(vid);
 }
 
@@ -8115,8 +8127,11 @@ function onComCountrySlide(vid, region, code, val, msrp) {
   if (cNetEl && msrp > 0) cNetEl.textContent = '€'+Math.round(msrp*1000*(1-pct/100)).toLocaleString();
   if (cTagEl) cTagEl.textContent = (pct !== (rd[region].default||0)) ? '✎ custom' : '';
 
-  var effEl = document.getElementById('com-rd-eff-'+vid);
-  if (effEl) effEl.textContent = _computeEffectiveDiscount(rd, _comVehicleCP[vid]).toFixed(1)+'%';
+  var eff3 = _computeEffectiveDiscount(rd, _comVehicleCP[vid]);
+  var effEl2 = document.getElementById('com-rd-eff-'+vid);
+  var hdrPill2 = document.getElementById('com-hdr-eff-'+vid);
+  if (effEl2) effEl2.textContent = eff3.toFixed(1)+'%';
+  if (hdrPill2) hdrPill2.textContent = eff3.toFixed(1)+'% eff.';
   _patchVehicleDiscounts(vid);
 }
 
@@ -8127,6 +8142,19 @@ function toggleRegionExpand(vid, region) {
   var btnEl = document.getElementById('com-region-toggle-'+vid+'-'+region);
   if (rowEl) rowEl.style.display = _regionExpanded[key] ? 'block' : 'none';
   if (btnEl) btnEl.textContent   = _regionExpanded[key] ? '▼ Collapse' : '▶ Countries';
+}
+
+function toggleCardCollapse(vid) {
+  _cardCollapsed[vid] = !_cardCollapsed[vid];
+  var bodyEl = document.getElementById('com-card-body-'+vid);
+  var hdrEl  = bodyEl ? bodyEl.previousElementSibling : null;
+  if (bodyEl) bodyEl.style.display = _cardCollapsed[vid] ? 'none' : '';
+  // Toggle label in header (last child of header div)
+  if (hdrEl) {
+    hdrEl.style.marginBottom = _cardCollapsed[vid] ? '0' : '18px';
+    var lbl = hdrEl.lastElementChild;
+    if (lbl) lbl.textContent = _cardCollapsed[vid] ? '▼ expand' : '▲ collapse';
+  }
 }
 
 // ── TABLE CLICK DELEGATION ──────────────────────────────────
