@@ -1103,28 +1103,51 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
 
 <!-- ████ COMMERCIAL ████ -->
 <div class="page" id="page-commercial">
-  <div class="pg-title">COMMERCIAL</div><div class="pg-sub">Pricing · Marketing · Distribution · Customer Experience</div>
-  <div class="kpi-grid g4">
-    <div class="kpi kk-g"><div class="kl">Market Share</div><div class="kv" id="com-share" style="color:var(--gold)">14.2%</div><div class="kd up" id="com-share-delta">▲ +0.4pp</div></div>
-    <div class="kpi kk-c"><div class="kl">Blended ASP</div><div class="kv" id="com-asp">€28.5k</div><div class="kd up">▲ mix shift</div></div>
-    <div class="kpi kk-b"><div class="kl">Brand Index</div><div class="kv" id="com-brand">72/100</div><div class="kd up">▲ +3pts</div></div>
-    <div class="kpi kk-r"><div class="kl">NPS</div><div class="kv" id="com-nps">+41</div><div class="kd dn">▼ -4pts</div></div>
+  <div class="pg-title">COMMERCIAL</div>
+  <div class="pg-sub">Pricing · Marketing · Distribution · Customer Experience</div>
+
+  <!-- Tab bar -->
+  <div style="display:flex;gap:0;margin-bottom:18px;border-bottom:1px solid var(--border);">
+    <button id="com-tab-btn-overview" onclick="switchComTab('overview')"
+      style="font-family:'DM Mono',monospace;font-size:10px;padding:8px 20px;border:none;border-bottom:2px solid var(--cyan);background:transparent;color:var(--cyan);cursor:pointer;letter-spacing:.5px;">OVERVIEW</button>
+    <button id="com-tab-btn-pricing" onclick="switchComTab('pricing')"
+      style="font-family:'DM Mono',monospace;font-size:10px;padding:8px 20px;border:none;border-bottom:2px solid transparent;background:transparent;color:var(--muted);cursor:pointer;letter-spacing:.5px;">PRICING</button>
   </div>
-  <div class="kpi-grid g2">
-    <div class="card">
-      <div class="card-title"><span class="tag tc">PRICING</span> Per-Segment Prices</div>
-      <div class="ctrl"><div class="ctrl-lbl"><span>Mass Market</span><span class="ctrl-v" id="cm-p1">€19,900</span></div><input id="cm-p1-range" type="range" min="14000" max="28000" step="100" value="19900" oninput="svp('cm-p1',this.value)"></div>
-      <div class="ctrl"><div class="ctrl-lbl"><span>SUV & Crossover</span><span class="ctrl-v" id="cm-p2">€32,500</span></div><input id="cm-p2-range" type="range" min="24000" max="52000" step="500" value="32500" oninput="svp('cm-p2',this.value)"></div>
-      <div class="ctrl"><div class="ctrl-lbl"><span>Electric Vehicles</span><span class="ctrl-v" id="cm-p3">€36,800</span></div><input id="cm-p3-range" type="range" min="26000" max="60000" step="500" value="36800" oninput="svp('cm-p3',this.value)"></div>
-      <div class="ctrl"><div class="ctrl-lbl"><span>Premium / Luxury</span><span class="ctrl-v" id="cm-p4">€58,000</span></div><input id="cm-p4-range" type="range" min="40000" max="120000" step="1000" value="58000" oninput="svp('cm-p4',this.value)"></div>
-      <div class="ctrl"><div class="ctrl-lbl"><span>Commercial Vehicles</span><span class="ctrl-v" id="cm-p5">€24,400</span></div><input id="cm-p5-range" type="range" min="18000" max="45000" step="200" value="24400" oninput="svp('cm-p5',this.value)"></div>
+
+  <!-- ── OVERVIEW tab ─────────────────────────────── -->
+  <div id="com-tab-overview">
+    <div class="kpi-grid g4">
+      <div class="kpi kk-g"><div class="kl">Market Share</div><div class="kv" id="com-share" style="color:var(--gold)">14.2%</div><div class="kd up" id="com-share-delta">▲ +0.4pp</div></div>
+      <div class="kpi kk-c"><div class="kl">Blended ASP</div><div class="kv" id="com-asp">€28.5k</div><div class="kd up">▲ mix shift</div></div>
+      <div class="kpi kk-b"><div class="kl">Brand Index</div><div class="kv" id="com-brand">72/100</div><div class="kd up">▲ +3pts</div></div>
+      <div class="kpi kk-r"><div class="kl">NPS</div><div class="kv" id="com-nps">+41</div><div class="kd dn">▼ -4pts</div></div>
     </div>
-    <div class="card">
-      <div class="card-title"><span class="tag tc">MARKETING</span> Spend & Positioning</div>
-      <div class="ctrl"><div class="ctrl-lbl"><span>Marketing Budget (€M/qtr)</span><span class="ctrl-v" id="cm-mkt">€380M</span></div><input type="range" min="50" max="800" step="10" value="380" oninput="svm('cm-mkt',this.value)"></div>
-      <div class="ctrl"><label class="ctrl-lbl-top">Media Mix</label><select><option>Digital-first</option><option>TV + Digital</option><option>Brand events</option><option>Performance mktg</option></select></div>
-      <div class="ctrl"><label class="ctrl-lbl-top">Campaign Theme</label><select><option>Sustainability & EV</option><option>Performance & Design</option><option>Value for money</option><option>Safety & family</option><option>Mobility services</option></select></div>
-      <div class="ctrl"><div class="ctrl-lbl"><span>Dealer Support Fund</span><span class="ctrl-v" id="cm-ds">€95M</span></div><input type="range" min="10" max="300" step="5" value="95" oninput="svm('cm-ds',this.value)"></div>
+    <div class="kpi-grid g2">
+      <div class="card">
+        <div class="card-title"><span class="tag tc">PRICING</span> Per-Segment Prices</div>
+        <div class="ctrl"><div class="ctrl-lbl"><span>Mass Market</span><span class="ctrl-v" id="cm-p1">€19,900</span></div><input id="cm-p1-range" type="range" min="14000" max="28000" step="100" value="19900" oninput="svp('cm-p1',this.value)"></div>
+        <div class="ctrl"><div class="ctrl-lbl"><span>SUV & Crossover</span><span class="ctrl-v" id="cm-p2">€32,500</span></div><input id="cm-p2-range" type="range" min="24000" max="52000" step="500" value="32500" oninput="svp('cm-p2',this.value)"></div>
+        <div class="ctrl"><div class="ctrl-lbl"><span>Electric Vehicles</span><span class="ctrl-v" id="cm-p3">€36,800</span></div><input id="cm-p3-range" type="range" min="26000" max="60000" step="500" value="36800" oninput="svp('cm-p3',this.value)"></div>
+        <div class="ctrl"><div class="ctrl-lbl"><span>Premium / Luxury</span><span class="ctrl-v" id="cm-p4">€58,000</span></div><input id="cm-p4-range" type="range" min="40000" max="120000" step="1000" value="58000" oninput="svp('cm-p4',this.value)"></div>
+        <div class="ctrl"><div class="ctrl-lbl"><span>Commercial Vehicles</span><span class="ctrl-v" id="cm-p5">€24,400</span></div><input id="cm-p5-range" type="range" min="18000" max="45000" step="200" value="24400" oninput="svp('cm-p5',this.value)"></div>
+      </div>
+      <div class="card">
+        <div class="card-title"><span class="tag tc">MARKETING</span> Spend & Positioning</div>
+        <div class="ctrl"><div class="ctrl-lbl"><span>Marketing Budget (€M/qtr)</span><span class="ctrl-v" id="cm-mkt">€380M</span></div><input type="range" min="50" max="800" step="10" value="380" oninput="svm('cm-mkt',this.value)"></div>
+        <div class="ctrl"><label class="ctrl-lbl-top">Media Mix</label><select><option>Digital-first</option><option>TV + Digital</option><option>Brand events</option><option>Performance mktg</option></select></div>
+        <div class="ctrl"><label class="ctrl-lbl-top">Campaign Theme</label><select><option>Sustainability & EV</option><option>Performance & Design</option><option>Value for money</option><option>Safety & family</option><option>Mobility services</option></select></div>
+        <div class="ctrl"><div class="ctrl-lbl"><span>Dealer Support Fund</span><span class="ctrl-v" id="cm-ds">€95M</span></div><input type="range" min="10" max="300" step="5" value="95" oninput="svm('cm-ds',this.value)"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── PRICING tab ──────────────────────────────── -->
+  <div id="com-tab-pricing" style="display:none;">
+    <div style="font-size:11px;color:var(--muted2);margin-bottom:16px;">
+      Set the sales discount applied to each vehicle at market clearing. Changes take effect on the next round.
+    </div>
+    <div id="com-pricing-body">
+      <div style="color:var(--muted2);font-family:'DM Mono',monospace;font-size:11px;padding:16px 0;">Loading vehicles…</div>
     </div>
   </div>
 </div>
@@ -2722,6 +2745,7 @@ function nav(page, el) {
   if(page==='plan') loadVehiclePlan();
   if(page==='proposal') loadVehicleProposal();
   if(page==='dashboard') loadTeamHistoricalSummary();
+  if(page==='commercial') loadCommercialPage();
   if(page==='market-intel') loadMarketIntel();
   if(page==='brands') renderBrand(currentBrand);
   if(page==='financial') loadFinancePanel();
@@ -7746,12 +7770,141 @@ async function updateVehicleDiscount(vid, val) {
     });
     var d = await r.json();
     if (d.success) {
-      // Update local cache so sort/filter doesn't lose the value
       var v = activeVehicles.find(function(x){return x.id===vid;});
       if (v) v.discount_pct = pct;
       toast('✓ Discount updated to '+pct.toFixed(1)+'%');
     } else { toast('⚠ '+(d.detail||'Failed to update discount')); }
   } catch(e) { toast('⚠ '+e.message); }
+}
+
+// ── COMMERCIAL PAGE ─────────────────────────────────────────
+
+var _comActiveTab = 'overview';
+var _comPricingDebounce = {};
+
+function switchComTab(tab) {
+  _comActiveTab = tab;
+  ['overview','pricing'].forEach(function(t) {
+    var btn = document.getElementById('com-tab-btn-'+t);
+    var pane = document.getElementById('com-tab-'+t);
+    var active = t === tab;
+    if (btn) {
+      btn.style.borderBottomColor = active ? 'var(--cyan)' : 'transparent';
+      btn.style.color = active ? 'var(--cyan)' : 'var(--muted)';
+    }
+    if (pane) pane.style.display = active ? '' : 'none';
+  });
+  if (tab === 'pricing') renderCommercialPricing();
+}
+
+async function loadCommercialPage() {
+  if (_comActiveTab === 'pricing') renderCommercialPricing();
+}
+
+async function renderCommercialPricing() {
+  var el = document.getElementById('com-pricing-body');
+  if (!el) return;
+
+  var vehicles = [];
+  try {
+    var res = await fetch(API_URL + '/teams/' + teamId + '/vehicles');
+    var data = await res.json();
+    vehicles = (data.vehicles || []).filter(function(v) {
+      return v.status === 'approved' || v.status === 'on_sale';
+    });
+  } catch(e) {
+    el.innerHTML = '<div style="color:var(--red);font-family:DM Mono,monospace;font-size:11px;">Failed to load vehicles.</div>';
+    return;
+  }
+
+  if (!vehicles.length) {
+    el.innerHTML = '<div style="color:var(--muted2);font-family:DM Mono,monospace;font-size:11px;padding:16px 0;">No approved vehicles yet. Approve a vehicle to configure pricing.</div>';
+    return;
+  }
+
+  var SEG_LABEL = {a_segment:'A-Seg',b_segment:'B-Seg',c_segment:'C-Seg',d_segment:'D-Seg',
+    e_segment:'E-Seg',f_segment:'F-Seg',mpv:'MPV',pickup:'Pick-up',sports:'Sports',
+    c_van:'C-Van',d_van:'D-Van',e_van:'E-Van'};
+
+  var h = '<div style="display:flex;flex-direction:column;gap:12px;">';
+  vehicles.forEach(function(v) {
+    var vid      = v.id;
+    var msrp     = parseFloat(v.price_eur_k || 0);
+    var disc     = parseFloat(v.discount_pct || 0);
+    var netPrice = msrp > 0 ? msrp * (1 - disc/100) : 0;
+    var seg      = SEG_LABEL[v.segment_code] || (v.segment_code||'').replace('_',' ').toUpperCase();
+    var statusTxt = v.status === 'on_sale' ? 'ON SALE' : 'APPROVED';
+    var statusCol = v.status === 'on_sale' ? 'var(--green)' : 'var(--gold)';
+
+    h += '<div style="background:var(--s2);border:1px solid var(--border2);border-radius:6px;padding:18px 22px;">';
+
+    // Header row
+    h += '<div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;flex-wrap:wrap;">';
+    h += '<div style="font-family:\'Orbitron\',sans-serif;font-size:13px;font-weight:700;color:var(--white);">'+v.name+'</div>';
+    h += '<div style="font-family:DM Mono,monospace;font-size:9px;color:var(--muted2);background:var(--s3);padding:2px 8px;border-radius:2px;">'+seg+'</div>';
+    h += '<div style="font-family:DM Mono,monospace;font-size:8px;padding:2px 8px;border-radius:2px;border:1px solid '+statusCol+'44;color:'+statusCol+';">'+statusTxt+'</div>';
+    if (msrp > 0) h += '<div style="font-family:DM Mono,monospace;font-size:10px;color:var(--muted2);">MSRP <span style="color:var(--text);">€'+msrp.toFixed(1)+'k</span></div>';
+    h += '</div>';
+
+    // Slider row
+    h += '<div style="display:grid;grid-template-columns:140px 1fr 60px;align-items:center;gap:14px;margin-bottom:10px;">';
+    h += '<div style="font-family:DM Mono,monospace;font-size:9px;color:var(--muted);">Sales Discount</div>';
+    h += '<input type="range" id="com-disc-range-'+vid+'" min="0" max="40" step="0.5" value="'+disc.toFixed(1)+'"'
+       + ' oninput="onComDiscountSlide(\''+vid+'\',this.value)"'
+       + ' style="width:100%;accent-color:var(--gold);cursor:pointer;">';
+    h += '<div id="com-disc-val-'+vid+'" style="font-family:DM Mono,monospace;font-size:13px;font-weight:700;color:var(--gold);text-align:right;">'+disc.toFixed(1)+'%</div>';
+    h += '</div>';
+
+    // Net price row + waterfall
+    h += '<div style="display:flex;align-items:center;gap:20px;flex-wrap:wrap;">';
+    h += '<div style="font-family:DM Mono,monospace;font-size:9px;color:var(--muted2);">Net selling price</div>';
+    h += '<div id="com-disc-net-'+vid+'" style="font-family:DM Mono,monospace;font-size:14px;font-weight:700;color:var(--cyan);">'
+       + (msrp > 0 ? '€'+Math.round(netPrice*1000).toLocaleString()+'/unit' : '—') + '</div>';
+    if (msrp > 0 && disc > 0) {
+      var discAmt = Math.round(msrp * 1000 * disc / 100);
+      h += '<div style="font-family:DM Mono,monospace;font-size:9px;color:var(--muted2);">'
+         + '€'+msrp.toFixed(1)+'k − <span style="color:var(--red);">€'+discAmt.toLocaleString()+'</span> = €'+Math.round(netPrice*1000).toLocaleString()+'</div>';
+    }
+    h += '</div>';
+
+    h += '</div>';
+  });
+  h += '</div>';
+  el.innerHTML = h;
+}
+
+function onComDiscountSlide(vid, val) {
+  var pct = Math.min(40, Math.max(0, parseFloat(val) || 0));
+
+  // Update display immediately
+  var valEl = document.getElementById('com-disc-val-'+vid);
+  var netEl = document.getElementById('com-disc-net-'+vid);
+  if (valEl) valEl.textContent = pct.toFixed(1) + '%';
+
+  // Find MSRP from cached vehicles
+  var v = activeVehicles.find(function(x){return x.id===vid;});
+  var msrp = v ? parseFloat(v.price_eur_k||0) : 0;
+  if (netEl && msrp > 0) {
+    var net = msrp * (1 - pct/100);
+    netEl.textContent = '€'+Math.round(net*1000).toLocaleString()+'/unit';
+  }
+
+  // Debounce PATCH — wait 600ms after slider stops
+  clearTimeout(_comPricingDebounce[vid]);
+  _comPricingDebounce[vid] = setTimeout(async function() {
+    try {
+      var r = await fetch(API_URL + '/vehicles/' + vid, {
+        method: 'PATCH',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({discount_pct: pct})
+      });
+      var d = await r.json();
+      if (d.success) {
+        if (v) v.discount_pct = pct;
+        toast('✓ '+( v ? v.name : 'Vehicle')+' discount set to '+pct.toFixed(1)+'%');
+      } else { toast('⚠ '+(d.detail||'Update failed')); }
+    } catch(e) { toast('⚠ '+e.message); }
+  }, 600);
 }
 
 // ── TABLE CLICK DELEGATION ──────────────────────────────────
