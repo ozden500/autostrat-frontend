@@ -10965,7 +10965,7 @@ function renderPLComparison(data) {
     {type:'sep'},
     {type:'header', label:'REVENUE'},
     {type:'line',   label:'  Gross Revenue',                   key:'_gross_rev',     sign:-1},
-    {type:'line',   label:'  (Less) Sales Discounts',          key:'_discount',      sign:1},
+    {type:'line',   label:'  (Less) Sales Discounts',          key:'_discount',      sign:1, pct_base:'_gross_rev'},
     {type:'total',  label:'Net Revenue',                       key:'_net_rev',       sign:-1, color:'var(--cyan)'},
     {type:'sep'},
     {type:'header', label:'COST OF GOODS SOLD'},
@@ -11046,7 +11046,9 @@ function renderPLComparison(data) {
       }
       var v = parseFloat(o[row.key])||0;
       var netRev = o._net_rev || 1;
-      var pct = (v/netRev*100);
+      // Sales Discount % should be vs. gross revenue (= actual discount rate), not net revenue
+      var denom = row.pct_base ? (parseFloat(o[row.pct_base])||netRev) : netRev;
+      var pct = (v/denom*100);
       // Format value
       var dispV = '€'+Math.abs(v).toFixed(0)+'M';
       var dispP = (row.sign===1 ? '-' : '')+Math.abs(pct).toFixed(1)+'%';
