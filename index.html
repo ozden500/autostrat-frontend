@@ -16691,9 +16691,10 @@ async function lockSupplyPlan(vehicleId, roundId) {
 // ══════════════════════════════════════════
 
 var _salesPlanState = {
-  vehicles:  [],     // [{vehicle_id, vehicle_name, team_id, is_frozen, total_forecast, total_required, countries:[]}]
-  active_vid: null,
+  vehicles: [],  // [{vehicle_id, vehicle_name, team_id, is_frozen, total_forecast, total_required, countries:[]}]
 };
+// true = expanded (default: all collapsed)
+var _spExpanded = { veh: {}, reg: {} };
 
 async function loadSalesPlanTab() {
   if (!sessionId || !roundId || !teamId) return;
@@ -16708,148 +16709,186 @@ async function loadSalesPlanTab() {
       el.innerHTML = '<div style="color:var(--muted2);font-family:DM Mono,monospace;font-size:11px;padding:16px 0;">No active vehicles. Sales plans are created when a round opens.</div>';
       return;
     }
-    _salesPlanState.active_vid = _salesPlanState.vehicles[0].vehicle_id;
     _renderSalesPlanPage();
   } catch(e) {
-    el.innerHTML = '<div style="color:var(--red);font-family:DM Mono,monospace;font-size:11px;padding:16px 0;">Failed to load sales plans: ' + e.message + '</div>';
+    el.innerHTML = '<div style="color:var(--red);font-family:DM Mono,monospace;font-size:11px;padding:16px 0;">Failed to load: ' + e.message + '</div>';
   }
 }
 
 function _renderSalesPlanPage() {
   var el = document.getElementById('sales-plan-content');
   if (!el) return;
-  var vehicles = _salesPlanState.vehicles;
-  var vid = _salesPlanState.active_vid;
-
-  // Vehicle selector
-  var h = '<div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;">';
-  h += '<span style="font-family:DM Mono,monospace;font-size:9px;color:var(--muted2);">VEHICLE</span>';
-  h += '<select onchange="_salesPlanState.active_vid=this.value;_renderSalesPlanPage()" style="background:var(--s2);border:1px solid var(--border2);color:var(--text);padding:4px 8px;font-family:DM Mono,monospace;font-size:10px;border-radius:2px;">';
-  vehicles.forEach(function(v) {
-    h += '<option value="' + v.vehicle_id + '"' + (v.vehicle_id === vid ? ' selected' : '') + '>' + (v.vehicle_name || v.vehicle_id) + '</option>';
+  var h = '';
+  _salesPlanState.vehicles.forEach(function(vdata) {
+    h += _spVehicleCard(vdata);
   });
-  h += '</select></div>';
-  el.innerHTML = h + '<div id="sp-vehicle-table"></div>';
-  _renderSalesPlanTable(vid);
+  el.innerHTML = h || '<div style="color:var(--muted2);font-family:DM Mono,monospace;font-size:11px;">No vehicles found.</div>';
 }
 
-function _renderSalesPlanTable(vid) {
-  var el = document.getElementById('sp-vehicle-table');
-  if (!el) return;
-  var vdata = _salesPlanState.vehicles.find(function(v){ return v.vehicle_id === vid; });
-  if (!vdata) { el.innerHTML = ''; return; }
+function _spVehicleCard(vdata) {
+  var vid     = vdata.vehicle_id;
+  var frozen  = vdata.is_frozen;
+  var open    = !!_spExpanded.veh[vid];
 
+  // Compute live totals from country data
+  var cs = vdata.countries || [];
+  var totFc  = cs.reduce(function(s,c){ return s+(c.forecast_sales||0); }, 0);
+  var totReq = cs.reduce(function(s,c){ return s+(c.production_required||0); }, 0);
+
+  var h = '<div style="border:1px solid var(--border2);border-radius:3px;margin-bottom:6px;">';
+
+  // ── Vehicle header row (always visible) ──────────────────────
+  h += '<div style="display:flex;align-items:center;gap:10px;padding:9px 12px;background:var(--s2);cursor:pointer;user-select:none;" onclick="_spToggleVeh(\'' + vid + '\')">';
+  h += '<span style="font-family:DM Mono,monospace;font-size:9px;color:var(--muted2);min-width:10px;">' + (open?'▼':'▶') + '</span>';
+  h += '<div style="flex:1;font-family:DM Mono,monospace;font-size:11px;font-weight:700;color:var(--white);">' + (vdata.vehicle_name||vid) + '</div>';
+  // Summary stats (live IDs for patching)
+  h += '<div style="display:flex;gap:16px;font-family:DM Mono,monospace;font-size:9px;margin-right:12px;">';
+  h += '<span style="color:var(--muted2);">Fcst: <span id="sp-v-fc-' + vid + '" style="color:var(--text);">' + totFc.toLocaleString() + '</span></span>';
+  h += '<span style="color:var(--muted2);">Required: <span id="sp-v-req-' + vid + '" style="color:var(--cyan);font-weight:700;">' + totReq.toLocaleString() + '</span></span>';
+  h += '</div>';
+  // Freeze / Unfreeze button (stop click propagating to toggle)
+  h += '<div onclick="event.stopPropagation()" style="display:flex;align-items:center;gap:6px;">';
+  if (frozen) {
+    h += '<span style="font-family:DM Mono,monospace;font-size:8px;padding:3px 8px;border-radius:2px;background:rgba(74,222,128,.12);color:var(--green);">✓ FROZEN</span>';
+    h += '<button onclick="unfreezeSalesPlan(\'' + vid + '\')" style="font-family:DM Mono,monospace;font-size:8px;padding:3px 10px;border-radius:2px;border:1px solid rgba(251,191,36,.3);background:rgba(251,191,36,.08);color:var(--gold);cursor:pointer;">✏ Unfreeze</button>';
+  } else {
+    h += '<button onclick="freezeSalesPlan(\'' + vid + '\')" style="font-family:DM Mono,monospace;font-size:8px;padding:3px 10px;border-radius:2px;border:1px solid rgba(74,222,128,.4);background:rgba(74,222,128,.08);color:var(--green);cursor:pointer;">🔒 Freeze</button>';
+  }
+  h += '</div>';
+  h += '</div>';
+
+  // ── Expanded: region rows ──────────────────────────────────────
+  if (open) {
+    ['EU','NA','APAC','SA','MEA'].forEach(function(reg) {
+      h += _spRegionRow(vdata, reg);
+    });
+  }
+
+  h += '</div>';
+  return h;
+}
+
+function _spRegionRow(vdata, reg) {
+  var vid    = vdata.vehicle_id;
   var frozen = vdata.is_frozen;
+  var rkey   = vid + '_' + reg;
+  var open   = !!_spExpanded.reg[rkey];
+  var cs     = (vdata.countries || []).filter(function(c){ return c.region === reg; });
+  if (!cs.length) return '';
+
+  var rFc  = cs.reduce(function(s,c){ return s+(c.forecast_sales||0); }, 0);
+  var rReq = cs.reduce(function(s,c){ return s+(c.production_required||0); }, 0);
+  var rOp  = cs.reduce(function(s,c){ return s+(c.opening_fgi||0); }, 0);
+  var flag = (_REGION_FLAGS && _REGION_FLAGS[reg]) || '';
+
   var h = '';
 
-  // Region groups
-  var regions = ['EU','NA','APAC','SA','MEA'];
-  var regTotals = {forecast:0, required:0, opening:0, target:0};
+  // Region summary row (collapsible header)
+  h += '<div style="display:flex;align-items:center;gap:8px;padding:6px 12px 6px 26px;border-top:1px solid rgba(255,255,255,.05);cursor:pointer;user-select:none;' + (open?'background:rgba(255,255,255,.02)':'') + '" onclick="_spToggleReg(\'' + vid + '\',\'' + reg + '\')">';
+  h += '<span style="font-family:DM Mono,monospace;font-size:8px;color:var(--muted2);min-width:10px;">' + (open?'▼':'▶') + '</span>';
+  h += '<span style="font-family:DM Mono,monospace;font-size:9px;font-weight:700;color:var(--text);min-width:52px;">' + flag + ' ' + reg + '</span>';
+  h += '<div style="display:flex;gap:14px;flex:1;font-family:DM Mono,monospace;font-size:8px;">';
+  h += '<span style="color:var(--muted2);">Open FGI: <span style="color:'+(rOp>0?'var(--gold)':'var(--muted2)')+';">' + rOp.toLocaleString() + '</span></span>';
+  h += '<span style="color:var(--muted2);">Forecast: <span id="sp-r-fc-'+vid+'-'+reg+'" style="color:var(--text);">' + rFc.toLocaleString() + '</span></span>';
+  h += '<span style="color:var(--muted2);">Required: <span id="sp-r-req-'+vid+'-'+reg+'" style="color:'+(rReq>0?'var(--cyan)':'var(--muted2)')+';font-weight:700;">' + rReq.toLocaleString() + '</span></span>';
+  h += '</div>';
+  h += '</div>';
 
-  regions.forEach(function(reg) {
-    var reg_countries = (vdata.countries || []).filter(function(c){ return c.region === reg; });
-    if (!reg_countries.length) return;
-
-    var reg_fc  = reg_countries.reduce(function(s,c){ return s + (c.forecast_sales||0); }, 0);
-    var reg_req = reg_countries.reduce(function(s,c){ return s + (c.production_required||0); }, 0);
-    var reg_op  = reg_countries.reduce(function(s,c){ return s + (c.opening_fgi||0); }, 0);
-    var reg_tg  = reg_countries.reduce(function(s,c){ return s + (c.target_closing_fgi||0); }, 0);
-
-    var plant_label = '';
-    (vdata.countries || []).some(function(c){ if(c.region===reg&&c.plant_label){plant_label=c.plant_label;return true;} });
-
-    h += '<div style="margin-bottom:14px;">';
-    h += '<div style="display:flex;align-items:center;justify-content:space-between;padding:6px 10px;background:var(--s2);border-radius:3px 3px 0 0;border:1px solid var(--border2);border-bottom:none;">';
-    h += '<span style="font-family:DM Mono,monospace;font-size:9px;font-weight:700;color:var(--white);">' + (_REGION_FLAGS[reg]||'') + ' ' + reg + '</span>';
-    if (plant_label) h += '<span style="font-family:DM Mono,monospace;font-size:8px;color:var(--muted2);">Plant: ' + plant_label + '</span>';
-    h += '</div>';
-    h += '<table style="width:100%;border-collapse:collapse;font-family:DM Mono,monospace;font-size:9px;border:1px solid var(--border2);">';
+  // Country detail rows (only when expanded)
+  if (open) {
+    h += '<table style="width:100%;border-collapse:collapse;font-family:DM Mono,monospace;font-size:9px;">';
     h += '<thead><tr style="background:rgba(255,255,255,.03);">';
-    ['Country','Opening FGI','Forecast Sales ▲','Target FGI ▲','Required Production'].forEach(function(col){
-      h += '<th style="padding:5px 8px;text-align:right;font-size:7px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;">' + col + '</th>';
+    h += '<th style="padding:4px 8px 4px 40px;text-align:left;font-size:7px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;">Country</th>';
+    ['Open FGI','Forecast ▲','Target FGI ▲','Required'].forEach(function(col){
+      h += '<th style="padding:4px 8px;text-align:right;font-size:7px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;">'+col+'</th>';
     });
     h += '</tr></thead><tbody>';
 
-    reg_countries.forEach(function(c, i) {
-      var bgc = i%2===0?'':'background:rgba(255,255,255,.02);';
-      var req_col = (c.production_required||0) > 0 ? 'var(--cyan)' : 'var(--muted2)';
-      h += '<tr style="border-bottom:1px solid rgba(255,255,255,.04);' + bgc + '">';
-      h += '<td style="padding:5px 8px;color:var(--text);font-weight:600;">' + c.country_code + ' <span style="color:var(--muted2);font-weight:400;font-size:8px;">' + (c.country_label||'') + '</span></td>';
-      h += '<td style="padding:5px 8px;text-align:right;color:' + ((c.opening_fgi||0)>0?'var(--gold)':'var(--muted2)') + ';">' + (c.opening_fgi||0).toLocaleString() + '</td>';
+    cs.forEach(function(c, i) {
+      var bg  = i%2===0?'':'background:rgba(255,255,255,.02);';
+      var rc  = (c.production_required||0)>0 ? 'var(--cyan)' : 'var(--muted2)';
+      h += '<tr style="border-bottom:1px solid rgba(255,255,255,.03);'+bg+'">';
+      h += '<td style="padding:4px 8px 4px 40px;color:var(--text);font-weight:600;">' + c.country_code;
+      if (c.country_label) h += ' <span style="color:var(--muted2);font-weight:400;font-size:8px;">'+c.country_label+'</span>';
+      h += '</td>';
+      h += '<td style="padding:4px 8px;text-align:right;color:'+(( c.opening_fgi||0)>0?'var(--gold)':'var(--muted2)')+';">'+(c.opening_fgi||0).toLocaleString()+'</td>';
       if (frozen) {
-        h += '<td style="padding:5px 8px;text-align:right;color:var(--text);">' + (c.forecast_sales||0).toLocaleString() + '</td>';
-        h += '<td style="padding:5px 8px;text-align:right;color:var(--muted2);">' + (c.target_closing_fgi||0).toLocaleString() + '</td>';
+        h += '<td style="padding:4px 8px;text-align:right;color:var(--text);">'+(c.forecast_sales||0).toLocaleString()+'</td>';
+        h += '<td style="padding:4px 8px;text-align:right;color:var(--muted2);">'+(c.target_closing_fgi||0).toLocaleString()+'</td>';
       } else {
-        h += '<td style="padding:5px 8px;text-align:right;"><input type="number" min="0" value="' + (c.forecast_sales||0) + '" style="width:70px;background:var(--s2);border:1px solid var(--border2);color:var(--text);padding:2px 4px;font-family:DM Mono,monospace;font-size:9px;text-align:right;border-radius:2px;" oninput="_onSalesForecastChange(\'' + vid + '\',\'' + c.country_code + '\',this.value)"></td>';
-        h += '<td style="padding:5px 8px;text-align:right;"><input type="number" min="0" value="' + (c.target_closing_fgi||0) + '" style="width:70px;background:var(--s2);border:1px solid var(--border2);color:var(--text);padding:2px 4px;font-family:DM Mono,monospace;font-size:9px;text-align:right;border-radius:2px;" oninput="_onSalesTargetChange(\'' + vid + '\',\'' + c.country_code + '\',this.value)"></td>';
+        h += '<td style="padding:4px 8px;text-align:right;"><input type="number" min="0" value="'+(c.forecast_sales||0)+'" style="width:72px;background:var(--s2);border:1px solid var(--border2);color:var(--text);padding:2px 4px;font-family:DM Mono,monospace;font-size:9px;text-align:right;border-radius:2px;" oninput="_spOnForecast(\''+vid+'\',\''+c.country_code+'\',this.value)"></td>';
+        h += '<td style="padding:4px 8px;text-align:right;"><input type="number" min="0" value="'+(c.target_closing_fgi||0)+'" style="width:72px;background:var(--s2);border:1px solid var(--border2);color:var(--text);padding:2px 4px;font-family:DM Mono,monospace;font-size:9px;text-align:right;border-radius:2px;" oninput="_spOnTarget(\''+vid+'\',\''+c.country_code+'\',this.value)"></td>';
       }
-      h += '<td style="padding:5px 8px;text-align:right;color:' + req_col + ';font-weight:700;">' + (c.production_required||0).toLocaleString() + '</td>';
+      h += '<td style="padding:4px 8px;text-align:right;color:'+rc+';font-weight:700;" id="sp-c-req-'+vid+'-'+c.country_code+'">'+(c.production_required||0).toLocaleString()+'</td>';
       h += '</tr>';
     });
-
-    // Region total row
-    var req_tot_col = reg_req > 0 ? 'var(--cyan)' : 'var(--muted2)';
-    h += '<tr style="background:rgba(255,255,255,.05);border-top:1px solid var(--border2);">';
-    h += '<td style="padding:5px 8px;color:var(--muted);font-size:8px;font-style:italic;">' + reg + ' TOTAL</td>';
-    h += '<td style="padding:5px 8px;text-align:right;color:var(--muted2);">' + reg_op.toLocaleString() + '</td>';
-    h += '<td style="padding:5px 8px;text-align:right;color:var(--text);">' + reg_fc.toLocaleString() + '</td>';
-    h += '<td style="padding:5px 8px;text-align:right;color:var(--muted2);">' + reg_tg.toLocaleString() + '</td>';
-    h += '<td style="padding:5px 8px;text-align:right;color:' + req_tot_col + ';font-weight:700;">' + reg_req.toLocaleString() + '</td>';
-    h += '</tr>';
-    h += '</tbody></table></div>';
-
-    regTotals.forecast += reg_fc;
-    regTotals.required += reg_req;
-    regTotals.opening  += reg_op;
-    regTotals.target   += reg_tg;
-  });
-
-  // Grand total + Freeze button
-  h += '<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 12px;background:var(--s2);border:1px solid var(--border2);border-radius:3px;margin-bottom:10px;">';
-  h += '<div style="font-family:DM Mono,monospace;">';
-  h += '<span style="font-size:9px;color:var(--muted2);">TOTAL REQUIRED PRODUCTION: </span>';
-  h += '<span style="font-size:14px;font-family:Orbitron,sans-serif;color:var(--cyan);">' + regTotals.required.toLocaleString() + '</span>';
-  h += '<span style="font-size:9px;color:var(--muted2);margin-left:4px;">units</span>';
-  h += '</div>';
-  if (frozen) {
-    h += '<div style="display:flex;align-items:center;gap:8px;">';
-    h += '<span style="font-family:DM Mono,monospace;font-size:9px;padding:6px 14px;border-radius:2px;background:rgba(74,222,128,.12);color:var(--green);">✓ FROZEN — Manufacturing plan generated</span>';
-    h += '<button onclick="unfreezeSalesPlan(\'' + vid + '\')" style="font-family:DM Mono,monospace;font-size:9px;padding:5px 12px;border-radius:2px;border:1px solid rgba(251,191,36,.3);background:rgba(251,191,36,.08);color:var(--gold);cursor:pointer;">✏ Unfreeze</button>';
-    h += '</div>';
-  } else {
-    h += '<button onclick="freezeSalesPlan(\'' + vid + '\')" style="font-family:DM Mono,monospace;font-size:9px;padding:6px 16px;border-radius:2px;border:1px solid rgba(74,222,128,.4);background:rgba(74,222,128,.08);color:var(--green);cursor:pointer;">🔒 Freeze Sales Plan</button>';
+    h += '</tbody></table>';
   }
-  h += '</div>';
 
-  el.innerHTML = h;
+  return h;
 }
 
-function _onSalesForecastChange(vid, countryCode, val) {
+function _spToggleVeh(vid) {
+  _spExpanded.veh[vid] = !_spExpanded.veh[vid];
+  _renderSalesPlanPage();
+}
+
+function _spToggleReg(vid, reg) {
+  var k = vid + '_' + reg;
+  _spExpanded.reg[k] = !_spExpanded.reg[k];
+  _renderSalesPlanPage();
+}
+
+function _spOnForecast(vid, countryCode, val) {
   val = Math.max(0, parseInt(val) || 0);
   var vdata = _salesPlanState.vehicles.find(function(v){ return v.vehicle_id === vid; });
   if (!vdata) return;
-  var c = (vdata.countries || []).find(function(c){ return c.country_code === countryCode; });
+  var c = (vdata.countries || []).find(function(cc){ return cc.country_code === countryCode; });
   if (!c) return;
   c.forecast_sales = val;
   c.production_required = Math.max(0, val + (c.target_closing_fgi||0) - (c.opening_fgi||0));
-  // Debounce saves to backend
+  _spPatchTotals(vid, c.region);
   if (_salesPlanSaveTimer) clearTimeout(_salesPlanSaveTimer);
   _salesPlanSaveTimer = setTimeout(function(){ _saveSalesPlanUpdates(vid); }, 800);
-  // Re-render totals only (don't destroy inputs)
-  _updateSalesPlanTotals(vid);
 }
 
-function _onSalesTargetChange(vid, countryCode, val) {
+function _spOnTarget(vid, countryCode, val) {
   val = Math.max(0, parseInt(val) || 0);
   var vdata = _salesPlanState.vehicles.find(function(v){ return v.vehicle_id === vid; });
   if (!vdata) return;
-  var c = (vdata.countries || []).find(function(c){ return c.country_code === countryCode; });
+  var c = (vdata.countries || []).find(function(cc){ return cc.country_code === countryCode; });
   if (!c) return;
   c.target_closing_fgi = val;
   c.production_required = Math.max(0, (c.forecast_sales||0) + val - (c.opening_fgi||0));
+  _spPatchTotals(vid, c.region);
   if (_salesPlanSaveTimer) clearTimeout(_salesPlanSaveTimer);
   _salesPlanSaveTimer = setTimeout(function(){ _saveSalesPlanUpdates(vid); }, 800);
-  _updateSalesPlanTotals(vid);
+}
+
+function _spPatchTotals(vid, reg) {
+  // Patch required cell for each country in this region
+  var vdata = _salesPlanState.vehicles.find(function(v){ return v.vehicle_id === vid; });
+  if (!vdata) return;
+  var cs = (vdata.countries || []).filter(function(c){ return c.region === reg; });
+  cs.forEach(function(c) {
+    var el = document.getElementById('sp-c-req-'+vid+'-'+c.country_code);
+    if (el) { el.textContent = (c.production_required||0).toLocaleString(); el.style.color = (c.production_required||0)>0?'var(--cyan)':'var(--muted2)'; }
+  });
+  // Patch region totals
+  var rFc  = cs.reduce(function(s,c){ return s+(c.forecast_sales||0); }, 0);
+  var rReq = cs.reduce(function(s,c){ return s+(c.production_required||0); }, 0);
+  var rfEl = document.getElementById('sp-r-fc-'+vid+'-'+reg);
+  var rrEl = document.getElementById('sp-r-req-'+vid+'-'+reg);
+  if (rfEl) rfEl.textContent = rFc.toLocaleString();
+  if (rrEl) { rrEl.textContent = rReq.toLocaleString(); rrEl.style.color = rReq>0?'var(--cyan)':'var(--muted2)'; }
+  // Patch vehicle totals
+  var all = vdata.countries || [];
+  var vFc  = all.reduce(function(s,c){ return s+(c.forecast_sales||0); }, 0);
+  var vReq = all.reduce(function(s,c){ return s+(c.production_required||0); }, 0);
+  var vfEl = document.getElementById('sp-v-fc-'+vid);
+  var vrEl = document.getElementById('sp-v-req-'+vid);
+  if (vfEl) vfEl.textContent = vFc.toLocaleString();
+  if (vrEl) vrEl.textContent = vReq.toLocaleString();
 }
 
 var _salesPlanSaveTimer = null;
@@ -16861,45 +16900,35 @@ async function _saveSalesPlanUpdates(vid) {
   });
   try {
     await fetch(API_URL + '/sessions/' + sessionId + '/rounds/' + roundId + '/sales-plans', {
-      method: 'PATCH',
-      headers: {'Content-Type':'application/json'},
+      method: 'PATCH', headers: {'Content-Type':'application/json'},
       body: JSON.stringify({vehicle_id: vid, updates: updates})
     });
-  } catch(e) { /* non-fatal: auto-save fails silently */ }
-}
-
-function _updateSalesPlanTotals(vid) {
-  // Lightweight update: just re-render the table (inputs will keep their focus via event)
-  // Actually we re-render the whole table — it's fast enough
-  _renderSalesPlanTable(vid);
+  } catch(e) { /* non-fatal */ }
 }
 
 async function freezeSalesPlan(vid) {
   try {
     await _saveSalesPlanUpdates(vid);
-    var res = await fetch(API_URL + '/sessions/' + sessionId + '/rounds/' + roundId + '/sales-plans/freeze?team_id=' + teamId, {method:'POST'});
+    var res  = await fetch(API_URL + '/sessions/' + sessionId + '/rounds/' + roundId + '/sales-plans/freeze?team_id=' + teamId, {method:'POST'});
     if (!res.ok) { var e = await res.json(); toast('✗ ' + (e.detail||'Freeze failed')); return; }
     var data = await res.json();
     var vdata = _salesPlanState.vehicles.find(function(v){ return v.vehicle_id === vid; });
     if (vdata) vdata.is_frozen = true;
     toast('✓ Sales plan frozen · ' + data.mfg_plans_created + ' plant plans generated');
-    _renderSalesPlanTable(vid);
+    _renderSalesPlanPage();
   } catch(e) { toast('✗ ' + e.message); }
 }
 
 async function unfreezeSalesPlan(vid) {
   try {
     var res = await fetch(API_URL + '/sessions/' + sessionId + '/rounds/' + roundId + '/sales-plans/unfreeze?team_id=' + teamId, {method:'POST'});
-    if (res.status === 409) { toast('⚠ Cannot unfreeze — manufacturing plan is already locked (clearing ran).'); return; }
+    if (res.status === 409) { toast('⚠ Cannot unfreeze — clearing has already run.'); return; }
     if (!res.ok) { var e = await res.json(); toast('✗ ' + (e.detail||'Unfreeze failed')); return; }
     var vdata = _salesPlanState.vehicles.find(function(v){ return v.vehicle_id === vid; });
     if (vdata) vdata.is_frozen = false;
-    toast('✓ Sales plan unfrozen — you can now edit forecasts. Re-freeze when done.');
-    _renderSalesPlanTable(vid);
-    // Also refresh Manufacturing tab if open
-    if (document.getElementById('ops-manufacturing') && document.getElementById('ops-manufacturing').classList.contains('active')) {
-      loadMfgPlanTab();
-    }
+    toast('✓ Unfrozen — edit forecasts then re-freeze.');
+    _renderSalesPlanPage();
+    if (document.getElementById('ops-manufacturing') && document.getElementById('ops-manufacturing').classList.contains('active')) loadMfgPlanTab();
   } catch(e) { toast('✗ ' + e.message); }
 }
 
