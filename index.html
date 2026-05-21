@@ -1762,6 +1762,7 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
             <th class="plan-th sortable" onclick="sortPlanTable('gm')">Gross Margin <span class="sort-icon" id="sort-gm">↕</span></th>
             <th class="plan-th sortable" onclick="sortPlanTable('npv')">NPV (est.) <span class="sort-icon" id="sort-npv">↕</span></th>
             <th class="plan-th sortable" onclick="sortPlanTable('status')">Status <span class="sort-icon" id="sort-status">↕</span></th>
+            <th class="plan-th" title="Sales discount applied at market clearing">Discount %</th>
             <th class="plan-th">Actions</th>
           </tr>
         </thead>
@@ -7644,7 +7645,7 @@ function buildVehicleTable() {
   if (countEl) countEl.textContent = vehicles.length;
 
   if (vehicles.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="13" style="color:var(--muted2);text-align:center;padding:24px;">No vehicles' +
+    tbody.innerHTML = '<tr><td colspan="14" style="color:var(--muted2);text-align:center;padding:24px;">No vehicles' +
       (_planFilter !== 'all' ? ' with status ' + _planFilter.toUpperCase() : '') + '.</td></tr>';
     return;
   }
@@ -7702,6 +7703,17 @@ function buildVehicleTable() {
       : '';  // Approval only via Business Case modal
     var delBtn = '<button class="plan-act-del" data-vid="'+vid+'" data-action="delete">✕</button>';
 
+    // Discount input — editable for approved/on_sale vehicles
+    var discVal = parseFloat(v.discount_pct||0).toFixed(1);
+    var discCell = (v._normStatus === 'approved')
+      ? '<td class="plan-td" style="text-align:center;">'
+          + '<input type="number" min="0" max="40" step="0.5" value="'+discVal+'"'
+          + ' onchange="updateVehicleDiscount(\''+vid+'\',this.value)"'
+          + ' style="width:56px;background:var(--s2);border:1px solid var(--border2);border-radius:2px;'
+          + 'color:var(--gold);font-family:DM Mono,monospace;font-size:10px;text-align:center;padding:3px 4px;">'
+          + '</td>'
+      : '<td class="plan-td mono center" style="color:var(--muted2);">'+discVal+'%</td>';
+
     return '<tr class="plan-tr">'
       + '<td class="plan-td plan-name-cell">'+v.name+'</td>'
       + '<td class="plan-td"><span style="color:'+sc+';font-size:10px;">'+sn+'</span></td>'
@@ -7715,6 +7727,7 @@ function buildVehicleTable() {
       + '<td class="plan-td mono right" style="color:'+gmCol+';">'+gm+'</td>'
       + '<td class="plan-td right"><span class="'+npvCls+'">'+npvSign+npvStr+'</span></td>'
       + '<td class="plan-td center">'+statusBadge(v.status)+'</td>'
+      + discCell
       + '<td class="plan-td" style="white-space:nowrap;display:flex;gap:4px;align-items:center;">'
         + bcBtn + statusBtn + delBtn
       + '</td>'
@@ -7722,6 +7735,24 @@ function buildVehicleTable() {
   }).join('');
 }
 
+
+async function updateVehicleDiscount(vid, val) {
+  var pct = Math.min(40, Math.max(0, parseFloat(val) || 0));
+  try {
+    var r = await fetch(API_URL + '/vehicles/' + vid, {
+      method: 'PATCH',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({discount_pct: pct})
+    });
+    var d = await r.json();
+    if (d.success) {
+      // Update local cache so sort/filter doesn't lose the value
+      var v = activeVehicles.find(function(x){return x.id===vid;});
+      if (v) v.discount_pct = pct;
+      toast('✓ Discount updated to '+pct.toFixed(1)+'%');
+    } else { toast('⚠ '+(d.detail||'Failed to update discount')); }
+  } catch(e) { toast('⚠ '+e.message); }
+}
 
 // ── TABLE CLICK DELEGATION ──────────────────────────────────
 document.addEventListener('click', function(e) {
