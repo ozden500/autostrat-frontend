@@ -1849,24 +1849,7 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
 <div class="page" id="page-brands">
   <div class="pg-title">BRAND MANAGEMENT</div>
   <div class="pg-sub">OEM corporate group · Sub-brands · Positioning &amp; segment focus</div>
-  <div class="brand-tabs" id="brand-tabs">
-    <div class="brand-tab active" onclick="selectBrand('alpha',this)">
-      <div class="bdot" style="background:#4a8ce0"></div>
-      <span style="font-family:'Orbitron',sans-serif;font-size:11px;font-weight:700;letter-spacing:1px;">ALPHA</span>
-      <span class="brand-tier" style="background:rgba(68,128,224,.12);color:var(--h1);">CORE</span>
-    </div>
-    <div class="brand-tab" onclick="selectBrand('apex',this)">
-      <div class="bdot" style="background:#c8a43c"></div>
-      <span style="font-family:'Orbitron',sans-serif;font-size:11px;font-weight:700;letter-spacing:1px;">APEX</span>
-      <span class="brand-tier" style="background:rgba(200,164,60,.12);color:var(--gold);">PREMIUM</span>
-    </div>
-    <div class="brand-tab" onclick="selectBrand('arrow',this)">
-      <div class="bdot" style="background:#38d486"></div>
-      <span style="font-family:'Orbitron',sans-serif;font-size:11px;font-weight:700;letter-spacing:1px;">ARROW</span>
-      <span class="brand-tier" style="background:rgba(56,212,134,.1);color:var(--green);">EV</span>
-    </div>
-  </div>
-  <div id="brand-detail-area"></div>
+  <div id="brand-cards-area"></div>
 </div>
 
 <!-- ████ MARKET INTEL ████ -->
@@ -8727,7 +8710,7 @@ var _brandDecision = null;    // fetched from /brand-decisions/{team_id}
 var _brandDataRoundId = null; // track which round we loaded for
 
 async function loadBrandsPage() {
-  if (!sessionId || !teamId) { renderBrand(currentBrand); return; }
+  if (!sessionId || !teamId) { renderAllBrands(); return; }
   try {
     // Get latest round
     var rndRes = await fetch(API_URL+'/sessions/'+sessionId+'/rounds');
@@ -8735,7 +8718,7 @@ async function loadBrandsPage() {
     var rounds2 = (rndData && (rndData.rounds||rndData)) || [];
     var latestRnd = rounds2.length ? rounds2[rounds2.length-1] : null;
     var rid = latestRnd && latestRnd.id;
-    if (!rid) { renderBrand(currentBrand); return; }
+    if (!rid) { renderAllBrands(); return; }
     _brandDataRoundId = rid;
 
     // Fetch brand scores
@@ -8765,7 +8748,7 @@ async function loadBrandsPage() {
       } catch(e2) { /* non-fatal */ }
     }
   } catch(e) { console.warn('loadBrandsPage:', e); }
-  renderBrand(currentBrand);
+  renderAllBrands();
 }
 const BRANDS_FULL = {
   alpha:{name:'ALPHA',tier:'Core Volume',color:'#4a8ce0',colorVar:'var(--h1)',tagline:'Accessible, reliable, modern.',
@@ -8801,20 +8784,9 @@ const _REGION_COUNTRIES_JS = {
 
 var _comBiasData = null;  // fetched per brand from /com-bias/{homeCountry}
 
-function selectBrand(key, el) {
-  currentBrand=key;
-  document.querySelectorAll('.brand-tab').forEach(t=>t.classList.remove('active'));
-  el.classList.add('active');
-  // Reload CoM bias for newly selected brand's home country
-  var homeCC = (BRANDS_FULL[key] || {}).homeCountry;
-  if (homeCC) {
-    fetch(API_URL+'/com-bias/'+homeCC).then(function(r){ return r.ok?r.json():null; }).then(function(d){
-      _comBiasData = d ? (d.entries||null) : null;
-      renderBrand(key);
-    }).catch(function(){ renderBrand(key); });
-  } else {
-    renderBrand(key);
-  }
+function selectBrand(key) {
+  currentBrand = key;
+  toggleBrandCard(key);
 }
 
 function _drawRadarChart(canvasId, dims, scores, baseline, color) {
@@ -9033,8 +9005,8 @@ function renderBrand(key) {
   html += 'Demand Potential = (A÷100)<sup>0.6</sup> × (S÷100)<sup>1.4</sup> — index 100 = benchmark competitor (A=S=50). ';
   html += 'Current: '+Math.round(dpRaw*1000)/1000+' ÷ 0.25 = '+dpIdx+'%</div>';
 
-  // CoM bias section
-  if (b.homeCountry) {
+  // CoM bias section — hidden from team interface (instructor-only, drives backend clearing)
+  if (false && b.homeCountry) {
     var cbLookup = {};
     (_comBiasData||[]).forEach(function(e){ cbLookup[e.sales_country_code] = {m:parseFloat(e.bias_multiplier)||1.0, label:e.sentiment_label||''}; });
     var COUNTRY_FLAGS = {DE:'🇩🇪',FR:'🇫🇷',GB:'🇬🇧',IT:'🇮🇹',ES:'🇪🇸',TR:'🇹🇷',PL:'🇵🇱',NL:'🇳🇱',BE:'🇧🇪',SE:'🇸🇪',AT:'🇦🇹',ROE:'🇪🇺',
@@ -9163,12 +9135,85 @@ function renderBrand(key) {
   html += '</div>';
 
   html += '</div>';
-  da.innerHTML = html;
+  return {html: html, key: key, dims: DIMS, scores: liveScores, baseline: baseline, color: b.color};
+}
 
-  // Draw radar after DOM is populated
-  setTimeout(function() {
-    _drawRadarChart('brand-radar-'+key, DIMS, liveScores, baseline, b.color);
-  }, 50);
+// ── Collapsible brand cards ───────────────────────────────────────
+var _brandExpanded = {alpha:false, apex:false, arrow:false};
+
+function toggleBrandCard(key) {
+  _brandExpanded[key] = !_brandExpanded[key];
+  var bodyEl  = document.getElementById('brand-body-'+key);
+  var arrowEl = document.getElementById('brand-arrow-'+key);
+  if (arrowEl) arrowEl.textContent = _brandExpanded[key] ? '▲' : '▼';
+  if (!bodyEl) return;
+  if (_brandExpanded[key]) {
+    bodyEl.style.display = 'block';
+    if (!bodyEl.dataset.rendered) {
+      bodyEl.dataset.rendered = '1';
+      var result = renderBrand(key);
+      bodyEl.innerHTML = result.html;
+      setTimeout(function() {
+        _drawRadarChart('brand-radar-'+key, result.dims, result.scores, result.baseline, result.color);
+      }, 60);
+    }
+  } else {
+    bodyEl.style.display = 'none';
+  }
+}
+
+function renderAllBrands() {
+  var area = document.getElementById('brand-cards-area');
+  if (!area) return;
+  var BENCH_DP_CARDS = Math.pow(0.5,0.6)*Math.pow(0.5,1.4);
+  var REG_AWARE_BASE = {alpha:[62,48,40,52,45], apex:[60,65,52,32,35], arrow:[48,30,28,18,16]};
+  var STR_BASE       = {alpha:[48,55,58,48,65,45,72,45,50], apex:[62,75,65,72,72,50,38,75,65], arrow:[75,60,60,58,55,85,55,50,68]};
+  var html = '';
+  ['alpha','apex','arrow'].forEach(function(key) {
+    var b = BRANDS_FULL[key];
+    var baseS   = STR_BASE[key];
+    var bei     = (_brandScores && _brandScores.bei_score != null && (_brandScores.brand_id||'').toLowerCase()===key)
+                  ? Math.round(_brandScores.bei_score)
+                  : Math.round(baseS.reduce(function(s,v){return s+v;},0)/baseS.length);
+    var aware   = (_brandScores && _brandScores.awareness_score != null && (_brandScores.brand_id||'').toLowerCase()===key)
+                  ? Math.round(_brandScores.awareness_score)
+                  : Math.round((REG_AWARE_BASE[key]||[50,50,50,50,50]).reduce(function(s,v,i){
+                      return s+v*[0.40,0.25,0.20,0.08,0.07][i];}, 0));
+    var dp      = Math.round(Math.pow(aware/100,0.6)*Math.pow(bei/100,1.4)/BENCH_DP_CARDS*100);
+    var dpCol   = dp>=120?'var(--green)':dp>=80?'var(--cyan)':'var(--orange)';
+    var awareCol= aware>=65?'var(--green)':aware>=40?'var(--gold)':'var(--orange)';
+    var sCol    = bei>=65?'var(--green)':bei>=40?'var(--cyan)':'var(--orange)';
+    var mktTotal= _brandDecision&&(_brandDecision.brand_id||'').toUpperCase()===b.name
+                  ? parseFloat(_brandDecision.total_spend_m||0) : b.mktBudget;
+    var expanded = _brandExpanded[key];
+
+    html += '<div style="margin-bottom:6px;border:1px solid var(--border);border-radius:4px;overflow:hidden;">';
+    // Summary header row (always visible)
+    html += '<div onclick="toggleBrandCard(\''+key+'\')" ';
+    html += 'style="display:flex;align-items:center;gap:10px;padding:10px 14px;cursor:pointer;background:var(--s2);transition:background .12s;user-select:none;" ';
+    html += 'onmouseenter="this.style.background=\'var(--s3)\'" onmouseleave="this.style.background=\'var(--s2)\'">';
+    html += '<div style="width:10px;height:10px;border-radius:50%;background:'+b.color+';flex-shrink:0;"></div>';
+    html += '<span style="font-family:Orbitron,sans-serif;font-size:12px;font-weight:700;color:'+b.color+';min-width:62px;">'+b.name+'</span>';
+    html += '<span style="font-family:DM Mono,monospace;font-size:9px;color:var(--muted2);">'+b.tier+'</span>';
+    if (b.homeFlag) html += '<span style="font-size:13px;margin-left:2px;" title="'+b.homeLabel+'">'+b.homeFlag+'</span>';
+    html += '<div style="flex:1;"></div>';
+    // KPI chips
+    html += '<div style="display:flex;gap:14px;align-items:center;">';
+    html += '<div style="text-align:center;"><div style="font-family:DM Mono,monospace;font-size:12px;font-weight:700;color:'+awareCol+'">'+aware+'</div><div style="font-size:7px;color:var(--muted2);">AWARE</div></div>';
+    html += '<div style="width:1px;height:20px;background:var(--border);"></div>';
+    html += '<div style="text-align:center;"><div style="font-family:DM Mono,monospace;font-size:12px;font-weight:700;color:'+sCol+'">'+bei+'</div><div style="font-size:7px;color:var(--muted2);">STRENGTH</div></div>';
+    html += '<div style="width:1px;height:20px;background:var(--border);"></div>';
+    html += '<div style="text-align:center;"><div style="font-family:DM Mono,monospace;font-size:12px;font-weight:700;color:'+dpCol+'">'+dp+'</div><div style="font-size:7px;color:var(--muted2);">DP IDX</div></div>';
+    html += '<div style="width:1px;height:20px;background:var(--border);"></div>';
+    html += '<div style="text-align:center;"><div style="font-family:DM Mono,monospace;font-size:11px;color:var(--muted2);">€'+mktTotal+'M</div><div style="font-size:7px;color:var(--muted2);">MKT BUDGET</div></div>';
+    html += '</div>';
+    html += '<span id="brand-arrow-'+key+'" style="font-size:11px;color:var(--muted2);margin-left:14px;">'+(expanded?'▲':'▼')+'</span>';
+    html += '</div>';
+    // Expandable body (lazy-rendered on first expand)
+    html += '<div id="brand-body-'+key+'" style="display:'+(expanded?'block':'none')+';border-top:1px solid var(--border);"></div>';
+    html += '</div>';
+  });
+  area.innerHTML = html;
 }
 
 
