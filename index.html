@@ -8916,8 +8916,7 @@ async function saveBrandMktDecision(key) {
 
 function renderBrand(key) {
   const b = BRANDS_FULL[key];
-  const da = document.getElementById('brand-detail-area');
-  if (!da) return;
+  if (!b) return {html:'', key:key, dims:[], scores:[], baseline:[], color:'#888'};
 
   var DIMS = ['tech_leadership','design_aesthetics','safety_protection','performance_dynamics',
               'quality_reliability','sustainability','value_for_money','luxury_comfort','lifestyle_appeal'];
