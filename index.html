@@ -6189,6 +6189,27 @@ var _MARKET_E = {
       volK  = Math.round(share / 100 * segK * 10) / 10;
     }
 
+    // ── 4c. CoM bias (Country of Manufacture) ───────────────────
+    // Apply volume-weighted effective CoM bias from fetched _comBiasData
+    var effectiveCB = 1.0;
+    if (_comBiasData && _comBiasData.length > 0 && o.brand_code) {
+      var cbLookupME = {};
+      _comBiasData.forEach(function(e){ cbLookupME[e.sales_country_code] = parseFloat(e.bias_multiplier)||1.0; });
+      var cbSum = 0;
+      var _regsArr = ['EU','NA','APAC','SA','MEA'];
+      _regsArr.forEach(function(reg) {
+        var rw = o.region_weights ? (o.region_weights[reg.toLowerCase()]||0) : _GLOBAL_RW_JS[reg]||0;
+        if (rw > 0) {
+          var countries = _REGION_COUNTRIES_JS[reg] || [];
+          var regCb = countries.reduce(function(s,c){ return s + (cbLookupME[c.code]||1.0)*c.share; }, 0);
+          cbSum += rw * regCb;
+        }
+      });
+      if (cbSum > 0) effectiveCB = Math.max(0.5, Math.min(2.0, cbSum));
+      share = Math.round(share * effectiveCB * 10) / 10;
+      volK  = Math.round(share / 100 * segK * 10) / 10;
+    }
+
     // ── 5. CO2 compliance tier ───────────────────────────────────
     var co2 = parseFloat(o.co2_g_km || 0);
     if (pwt === 'bev_only') co2 = 0;
@@ -8731,28 +8752,69 @@ async function loadBrandsPage() {
       var bdData = await bdRes.json();
       _brandDecision = bdData.decision || null;
     }
+
+    // Fetch CoM bias for this brand's home country
+    var homeCC = (BRANDS_FULL[currentBrand] || {}).homeCountry;
+    if (homeCC) {
+      try {
+        var cbRes = await fetch(API_URL+'/com-bias/'+homeCC);
+        if (cbRes.ok) {
+          var cbData = await cbRes.json();
+          _comBiasData = cbData.entries || null;
+        }
+      } catch(e2) { /* non-fatal */ }
+    }
   } catch(e) { console.warn('loadBrandsPage:', e); }
   renderBrand(currentBrand);
 }
 const BRANDS_FULL = {
   alpha:{name:'ALPHA',tier:'Core Volume',color:'#4a8ce0',colorVar:'var(--h1)',tagline:'Accessible, reliable, modern.',
+    homeCountry:'DE',homeFlag:'🇩🇪',homeLabel:'Germany',
     revenue:'—',share:'—',ebit:'—',nps:'—',
     segments:{c_segment:true,b_segment:true,c_van:true,d_segment:false,f_segment:false},
     mktBudget:180,priceIndex:-2,reliabilityTarget:85,evTarget:12},
   apex:{name:'APEX',tier:'Premium',color:'#c8a43c',colorVar:'var(--gold)',tagline:'Craftsmanship meets performance.',
+    homeCountry:'GB',homeFlag:'🇬🇧',homeLabel:'United Kingdom',
     revenue:'—',share:'—',ebit:'—',nps:'—',
     segments:{b_segment:true,f_segment:true,d_segment:true,c_segment:false,c_van:false},
     mktBudget:140,priceIndex:28,reliabilityTarget:92,evTarget:40},
   arrow:{name:'ARROW',tier:'EV Brand',color:'#38d486',colorVar:'var(--green)',tagline:'Electric-only. Zero compromise.',
+    homeCountry:'NO',homeFlag:'🇳🇴',homeLabel:'Norway',
     revenue:'—',share:'—',ebit:'—',nps:'—',
     segments:{d_segment:true,b_segment:true,c_van:true,f_segment:false,c_segment:false},
     mktBudget:80,priceIndex:8,reliabilityTarget:90,evTarget:100},
 };
 
+// Region→countries map for JS CoM bias computation (mirrors backend _REGION_COUNTRIES)
+const _REGION_COUNTRIES_JS = {
+  EU:   [{code:'DE',share:.19},{code:'FR',share:.12},{code:'GB',share:.12},{code:'IT',share:.10},
+         {code:'ES',share:.07},{code:'TR',share:.07},{code:'PL',share:.04},{code:'NL',share:.03},
+         {code:'BE',share:.03},{code:'SE',share:.02},{code:'AT',share:.02},{code:'ROE',share:.19}],
+  NA:   [{code:'US',share:.80},{code:'CA',share:.08},{code:'MX',share:.07},{code:'RONA',share:.05}],
+  APAC: [{code:'CN',share:.53},{code:'JP',share:.10},{code:'IN',share:.09},{code:'KR',share:.04},
+         {code:'AU',share:.02},{code:'ID',share:.02},{code:'TH',share:.02},{code:'MY',share:.02},{code:'ROA',share:.16}],
+  SA:   [{code:'BR',share:.47},{code:'AR',share:.10},{code:'CL',share:.06},{code:'CO',share:.05},
+         {code:'PE',share:.04},{code:'ROSA',share:.28}],
+  MEA:  [{code:'SAU',share:.20},{code:'ZA',share:.13},{code:'EG',share:.11},{code:'AE',share:.10},
+         {code:'MA',share:.07},{code:'DZ',share:.07},{code:'ROMEA',share:.32}],
+};
+
+var _comBiasData = null;  // fetched per brand from /com-bias/{homeCountry}
+
 function selectBrand(key, el) {
   currentBrand=key;
   document.querySelectorAll('.brand-tab').forEach(t=>t.classList.remove('active'));
-  el.classList.add('active'); renderBrand(key);
+  el.classList.add('active');
+  // Reload CoM bias for newly selected brand's home country
+  var homeCC = (BRANDS_FULL[key] || {}).homeCountry;
+  if (homeCC) {
+    fetch(API_URL+'/com-bias/'+homeCC).then(function(r){ return r.ok?r.json():null; }).then(function(d){
+      _comBiasData = d ? (d.entries||null) : null;
+      renderBrand(key);
+    }).catch(function(){ renderBrand(key); });
+  } else {
+    renderBrand(key);
+  }
 }
 
 function _drawRadarChart(canvasId, dims, scores, baseline, color) {
@@ -8970,6 +9032,46 @@ function renderBrand(key) {
   html += '<div style="font-family:DM Mono,monospace;font-size:8px;color:var(--muted2);margin-bottom:12px;padding:6px 10px;background:var(--s2);border-radius:2px;">';
   html += 'Demand Potential = (A÷100)<sup>0.6</sup> × (S÷100)<sup>1.4</sup> — index 100 = benchmark competitor (A=S=50). ';
   html += 'Current: '+Math.round(dpRaw*1000)/1000+' ÷ 0.25 = '+dpIdx+'%</div>';
+
+  // CoM bias section
+  if (b.homeCountry) {
+    var cbLookup = {};
+    (_comBiasData||[]).forEach(function(e){ cbLookup[e.sales_country_code] = {m:parseFloat(e.bias_multiplier)||1.0, label:e.sentiment_label||''}; });
+    var COUNTRY_FLAGS = {DE:'🇩🇪',FR:'🇫🇷',GB:'🇬🇧',IT:'🇮🇹',ES:'🇪🇸',TR:'🇹🇷',PL:'🇵🇱',NL:'🇳🇱',BE:'🇧🇪',SE:'🇸🇪',AT:'🇦🇹',ROE:'🇪🇺',
+      US:'🇺🇸',CA:'🇨🇦',MX:'🇲🇽',RONA:'🌎',CN:'🇨🇳',JP:'🇯🇵',IN:'🇮🇳',KR:'🇰🇷',AU:'🇦🇺',ID:'🇮🇩',TH:'🇹🇭',MY:'🇲🇾',ROA:'🌏',
+      BR:'🇧🇷',AR:'🇦🇷',CL:'🇨🇱',CO:'🇨🇴',PE:'🇵🇪',ROSA:'🌎',SAU:'🇸🇦',ZA:'🇿🇦',EG:'🇪🇬',AE:'🇦🇪',MA:'🇲🇦',DZ:'🇩🇿',ROMEA:'🌍'};
+    var COUNTRY_NAMES = {DE:'Germany',FR:'France',GB:'UK',IT:'Italy',ES:'Spain',TR:'Turkey',PL:'Poland',NL:'Netherlands',BE:'Belgium',SE:'Sweden',AT:'Austria',ROE:'Rest EU',
+      US:'United States',CA:'Canada',MX:'Mexico',RONA:'Rest NA',CN:'China',JP:'Japan',IN:'India',KR:'South Korea',AU:'Australia',ID:'Indonesia',TH:'Thailand',MY:'Malaysia',ROA:'Rest APAC',
+      BR:'Brazil',AR:'Argentina',CL:'Chile',CO:'Colombia',PE:'Peru',ROSA:'Rest SA',SAU:'Saudi Arabia',ZA:'South Africa',EG:'Egypt',AE:'UAE',MA:'Morocco',DZ:'Algeria',ROMEA:'Rest MEA'};
+    html += '<div style="background:var(--s2);border:1px solid var(--border2);border-radius:3px;padding:10px 12px;margin-bottom:12px;">';
+    html += '<div style="font-family:DM Mono,monospace;font-size:9px;color:var(--gold);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">🏭 COUNTRY OF ORIGIN — '+b.homeFlag+' '+b.homeLabel+'</div>';
+    html += '<div style="font-size:8px;color:var(--muted2);margin-bottom:8px;">Consumer perception bias by sales market. Scales demand relative to a neutral foreign brand.</div>';
+    var REGIONS_COM = ['EU','NA','APAC','SA','MEA'];
+    var REGION_COUNTRY_CODES = {EU:['DE','FR','GB','IT','ES','TR','PL','NL','BE','SE','AT','ROE'],
+      NA:['US','CA','MX','RONA'], APAC:['CN','JP','IN','KR','AU','ID','TH','MY','ROA'],
+      SA:['BR','AR','CL','CO','PE','ROSA'], MEA:['SAU','ZA','EG','AE','MA','DZ','ROMEA']};
+    REGIONS_COM.forEach(function(reg) {
+      html += '<div style="margin-bottom:8px;">';
+      html += '<div style="font-family:DM Mono,monospace;font-size:8px;color:var(--muted2);text-transform:uppercase;margin-bottom:4px;">'+reg+'</div>';
+      html += '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:3px;">';
+      (REGION_COUNTRY_CODES[reg]||[]).forEach(function(cc) {
+        var entry = cbLookup[cc];
+        var m = entry ? entry.m : 1.0;
+        var lbl = entry ? entry.label : 'Neutral';
+        var pct = Math.round((m-1)*100);
+        var col = m>1.05?'var(--green)':m<0.95?'var(--red)':'var(--muted2)';
+        var pctStr = (pct>0?'+':'')+pct+'%';
+        html += '<div title="'+lbl+'" style="display:flex;align-items:center;gap:4px;padding:2px 4px;border-radius:2px;background:rgba(255,255,255,.02);">';
+        html += '<span style="font-size:10px;">'+(COUNTRY_FLAGS[cc]||'🌐')+'</span>';
+        html += '<span style="font-size:8px;color:var(--muted2);flex:1;overflow:hidden;white-space:nowrap;">'+(COUNTRY_NAMES[cc]||cc)+'</span>';
+        html += '<span style="font-family:DM Mono,monospace;font-size:8px;font-weight:700;color:'+col+'">'+pctStr+'</span>';
+        html += '</div>';
+      });
+      html += '</div></div>';
+    });
+    html += '<div style="font-size:8px;color:var(--muted2);margin-top:4px;font-style:italic;">Instructor can edit via Admin panel or API.</div>';
+    html += '</div>';
+  }
 
   // 9-dim radar chart
   html += '<div style="display:flex;gap:16px;align-items:flex-start;margin-bottom:16px;">';
