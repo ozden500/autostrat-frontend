@@ -6157,6 +6157,19 @@ var _MARKET_E = {
     var segK  = this.SEG_SIZE_K[seg] || 500;
     var volK  = Math.round(share / 100 * segK * 10) / 10;
 
+    // ── 4b. Demand Potential scaling (Awareness × Strength) ──────
+    // DP = (A/100)^0.6 × (S/100)^1.4; benchmark = 0.5^2 = 0.25
+    var demandPotential = null;
+    var BENCH_DP_JS = Math.pow(0.5, 0.6) * Math.pow(0.5, 1.4);  // ≈ 0.250
+    if (bs && bs.awareness_score != null && bs.bei_score != null) {
+      var An = Math.max(0, Math.min(100, parseFloat(bs.awareness_score))) / 100;
+      var Sn = Math.max(0, Math.min(100, parseFloat(bs.bei_score)))       / 100;
+      var dp = Math.pow(An, 0.6) * Math.pow(Sn, 1.4);
+      demandPotential = Math.round(dp / BENCH_DP_JS * 100) / 100;  // 1.0 = benchmark
+      share = Math.round(share * demandPotential * 10) / 10;
+      volK  = Math.round(share / 100 * segK * 10) / 10;
+    }
+
     // ── 5. CO2 compliance tier ───────────────────────────────────
     var co2 = parseFloat(o.co2_g_km || 0);
     if (pwt === 'bev_only') co2 = 0;
@@ -6218,7 +6231,8 @@ var _MARKET_E = {
         segment_size_k:  segK,
         est_share_pct:   share,
         est_volume_k:    volK,
-        num_competitors: N
+        num_competitors: N,
+        demand_potential: demandPotential
       },
       co2: { g_km: co2, label: co2Tier.label, color: co2Tier.color },
       brand_fit: { score: bfScore, notes: bfNotes },
@@ -8815,9 +8829,17 @@ function onBrandMktTotalChange(key, val) {
 
 function onBrandMktAllocChange(key, dim, val) {
   if (!_brandMktAlloc[key]) _brandMktAlloc[key] = {};
-  _brandMktAlloc[key][dim] = parseFloat(val) || 0;
+  var v = parseFloat(val) || 0;
+  _brandMktAlloc[key][dim] = v;
   var el = document.getElementById('brd-alloc-v-'+key+'-'+dim);
-  if (el) el.textContent = '€' + (parseFloat(val)||0) + 'M';
+  if (el) el.textContent = '€' + v + 'M';
+  // For awareness: update live ad component preview
+  if (dim === 'awareness') {
+    var comp = v > 0 ? Math.round(100 / (1 + Math.exp(-0.12*(v-15)))) : 0;
+    var col = comp>=60?'var(--green)':comp>=35?'var(--gold)':'var(--orange)';
+    var compEl = document.getElementById('brd-aware-comp-'+key);
+    if (compEl) { compEl.textContent = '→ ad component: '+comp+'/100'; compEl.style.color=col; }
+  }
 }
 
 async function saveBrandMktDecision(key) {
@@ -8864,6 +8886,19 @@ function renderBrand(key) {
   var beiScore = (_brandScores && _brandScores.bei_score) ? Math.round(_brandScores.bei_score) : Math.round(baseline.reduce(function(s,v){return s+v;},0)/baseline.length);
   var beiCol = beiScore>=65?'var(--green)':beiScore>=40?'var(--cyan)':'var(--red)';
 
+  // Awareness
+  var AWARENESS_BASELINES = {alpha:55, apex:50, arrow:30};
+  var awareScore = (_brandScores && _brandScores.awareness_score!=null)
+    ? Math.round(_brandScores.awareness_score)
+    : (AWARENESS_BASELINES[key]||50);
+  var awareCol = awareScore>=65?'var(--green)':awareScore>=40?'var(--gold)':'var(--orange)';
+
+  // Demand Potential
+  var BENCH_DP_FE = Math.pow(0.5, 0.6) * Math.pow(0.5, 1.4);  // 0.25
+  var dpRaw = Math.pow(awareScore/100, 0.6) * Math.pow(beiScore/100, 1.4);
+  var dpIdx  = Math.round(dpRaw / BENCH_DP_FE * 100);  // 100 = benchmark; >100 = above
+  var dpCol  = dpIdx>=120?'var(--green)':dpIdx>=80?'var(--cyan)':'var(--orange)';
+
   // Marketing decision
   var mktTotal = _brandDecision ? parseFloat(_brandDecision.total_spend_m||0) : b.mktBudget;
   var mktAlloc = (_brandDecision && _brandDecision.allocation) ? _brandDecision.allocation : {};
@@ -8883,10 +8918,24 @@ function renderBrand(key) {
   html += '<div class="brand-logo-box" style="background:'+b.color+'22;color:'+b.color+'">'+b.name[0]+'</div>';
   html += '<div><div class="brand-hname" style="color:'+b.color+'">'+b.name+'</div>';
   html += '<div class="brand-hmeta">'+b.tier+' · '+b.tagline+'</div></div>';
-  html += '<div class="brand-hright">';
-  html += '<div style="font-family:Orbitron,sans-serif;font-size:22px;font-weight:700;color:'+beiCol+'">'+beiScore+'</div>';
-  html += '<div style="font-size:9px;color:var(--muted2);font-family:DM Mono,monospace;">BEI / 100</div></div>';
+  // A / S / DP compound KPI bar
+  html += '<div style="display:flex;gap:12px;margin-left:auto;">';
+  function _kpitile(lbl, val, col, unit) {
+    return '<div style="text-align:center;min-width:52px;">'
+      + '<div style="font-family:Orbitron,sans-serif;font-size:20px;font-weight:700;color:'+col+'">'+val+'</div>'
+      + '<div style="font-size:8px;color:var(--muted2);font-family:DM Mono,monospace;">'+lbl+(unit?' '+unit:'')+'</div></div>';
+  }
+  html += _kpitile('AWARENESS', awareScore, awareCol, '/ 100');
+  html += '<div style="font-size:18px;color:var(--border2);align-self:center;">×</div>';
+  html += _kpitile('STRENGTH', beiScore, beiCol, '/ 100');
+  html += '<div style="font-size:18px;color:var(--border2);align-self:center;">=</div>';
+  html += _kpitile('DEMAND POT.', dpIdx, dpCol, 'idx');
   html += '</div>';
+  html += '</div>';
+  // DP explanation
+  html += '<div style="font-family:DM Mono,monospace;font-size:8px;color:var(--muted2);margin-bottom:12px;padding:6px 10px;background:var(--s2);border-radius:2px;">';
+  html += 'Demand Potential = (A÷100)<sup>0.6</sup> × (S÷100)<sup>1.4</sup> — index 100 = benchmark competitor (A=S=50). ';
+  html += 'Current: '+Math.round(dpRaw*1000)/1000+' ÷ 0.25 = '+dpIdx+'%</div>';
 
   // 9-dim radar chart
   html += '<div style="display:flex;gap:16px;align-items:flex-start;margin-bottom:16px;">';
@@ -8934,7 +8983,22 @@ function renderBrand(key) {
   html += '</div>';
   html += '<span id="brd-mkt-total-v-'+key+'" style="font-family:DM Mono,monospace;font-size:10px;color:var(--muted2);">€'+mktTotal+'M</span>';
   html += '</div>';
-  html += '<div style="font-family:DM Mono,monospace;font-size:8px;color:var(--muted2);margin-bottom:8px;text-transform:uppercase;letter-spacing:1px;">ALLOCATE BY DIMENSION (optional)</div>';
+  // Awareness spend (dedicated advertising reach budget)
+  var awareSpend = mktAlloc['awareness'] != null ? parseFloat(mktAlloc['awareness']) : 0;
+  var awareAdComp = awareSpend > 0 ? Math.round(100 / (1 + Math.exp(-0.12*(awareSpend-15)))) : 0;
+  var awareCompCol = awareAdComp>=60?'var(--green)':awareAdComp>=35?'var(--gold)':'var(--orange)';
+  html += '<div style="margin-bottom:10px;padding:8px 10px;background:rgba(255,255,255,.03);border:1px solid var(--border2);border-radius:3px;">';
+  html += '<div style="font-family:DM Mono,monospace;font-size:8px;color:'+awareCol+';text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;">📡 ADVERTISING REACH — Builds Brand Awareness (A)</div>';
+  html += '<div style="display:flex;align-items:center;gap:10px;">';
+  html += '<span style="font-size:9px;color:var(--muted2);">€M / qtr:</span>';
+  html += '<input type="number" min="0" max="150" step="5" value="'+awareSpend+'" ';
+  html += 'oninput="onBrandMktAllocChange(\''+key+'\',\'awareness\',this.value)" ';
+  html += 'style="width:65px;background:var(--s1);border:1px solid var(--border2);border-radius:2px;color:'+awareCol+';font-family:DM Mono,monospace;font-size:12px;text-align:center;padding:3px 4px;">';
+  html += '<span id="brd-alloc-v-'+key+'-awareness" style="font-size:8px;color:var(--muted2);font-family:DM Mono,monospace;">€'+awareSpend+'M</span>';
+  html += '<span id="brd-aware-comp-'+key+'" style="font-family:DM Mono,monospace;font-size:9px;color:'+awareCompCol+';">→ ad component: '+awareAdComp+'/100</span>';
+  html += '</div></div>';
+
+  html += '<div style="font-family:DM Mono,monospace;font-size:8px;color:var(--muted2);margin-bottom:8px;text-transform:uppercase;letter-spacing:1px;">ALLOCATE BY DIMENSION (brand strength)</div>';
   html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:12px;">';
   DIMS.forEach(function(d,i) {
     var allocVal = mktAlloc[d] != null ? parseFloat(mktAlloc[d]) : 0;
