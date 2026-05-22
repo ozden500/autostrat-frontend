@@ -1911,13 +1911,14 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
   <div id="perf-content">
 
     <!-- ── KPI Strip ────────────────────────────────── -->
-    <div id="perf-kpi-strip" style="display:grid;grid-template-columns:repeat(6,1fr);gap:8px;margin-bottom:14px;">
+    <div id="perf-kpi-strip" style="display:grid;grid-template-columns:repeat(7,1fr);gap:8px;margin-bottom:14px;">
       <div class="kpi kk-c"><div class="kl">Revenue / Quarter</div><div class="kv" id="pk-rev" style="color:var(--cyan)">—</div><div class="kd neu" id="pk-rev-d">latest round</div></div>
       <div class="kpi kk-g"><div class="kl">Gross Margin</div><div class="kv" id="pk-gm" style="color:var(--gold)">—</div><div class="kd neu">this quarter</div></div>
       <div class="kpi kk-b"><div class="kl">EBIT</div><div class="kv" id="pk-ebit" style="color:var(--blue)">—</div><div class="kd neu">this quarter</div></div>
       <div class="kpi"><div class="kl">Units Sold</div><div class="kv" id="pk-units">—</div><div class="kd neu">this quarter</div></div>
       <div class="kpi kk-g"><div class="kl">Revenue Rank</div><div class="kv" id="pk-rank" style="color:var(--green)">—</div><div class="kd neu" id="pk-rank-sub">of — teams</div></div>
       <div class="kpi kk-p"><div class="kl">Avg Utility Score</div><div class="kv" id="pk-util" style="color:var(--purple)">—</div><div class="kd neu">portfolio avg</div></div>
+      <div class="kpi kk-b"><div class="kl">Brand Equity</div><div class="kv" id="pk-bei" style="color:var(--cyan)">—</div><div class="kd neu" id="pk-bei-sub">BEI score</div></div>
     </div>
 
     <!-- ── Charts grid (existing + new Revenue+Margin canvas) ── -->
@@ -1941,6 +1942,11 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
         <div class="perf-card-title">Units Sold — All Teams</div>
         <div class="perf-chart" id="chart-units"><div class="perf-no-data">No data yet</div></div>
         <div class="perf-legend" id="legend-units"></div>
+      </div>
+      <div class="perf-card">
+        <div class="perf-card-title">Brand Equity Index — All Teams (0–100, 50 = benchmark)</div>
+        <div class="perf-chart" id="chart-bei"><div class="perf-no-data">No data yet</div></div>
+        <div class="perf-legend" id="legend-bei"></div>
       </div>
     </div>
 
@@ -2783,7 +2789,7 @@ function nav(page, el) {
   if(page==='dashboard') loadTeamHistoricalSummary();
   if(page==='commercial') loadCommercialPage();
   if(page==='market-intel') loadMarketIntel();
-  if(page==='brands') renderBrand(currentBrand);
+  if(page==='brands') loadBrandsPage();
   if(page==='financial') loadFinancePanel();
   if(page==='engineering') {
     loadBaseConfigs(currentModType);
@@ -6104,10 +6110,32 @@ var _MARKET_E = {
     // Reliability: 0-100%
     sc.reliability = this._score(d01(o.reliability, 0.5) * 100, bench.reliability, 'hi', 2.0);
 
-    // ── 2. Brand bonus ───────────────────────────────────────────
+    // ── 2. Brand dimension bonuses ───────────────────────────────
     var brand = (o.brand_code || '').toUpperCase();
     var bf    = this.BRAND_FIT[brand];
-    if (bf) {
+    var bs    = o.brand_scores || null;  // 9-dim brand scores from brand_scores_rounds
+    if (bs) {
+      // 9-dimension model: each dimension scaled to its market attribute
+      var DIM_ATTR = {
+        tech_leadership:'technology', safety_protection:'safety',
+        performance_dynamics:'performance', quality_reliability:'reliability',
+        sustainability:'efficiency', value_for_money:'price',
+        luxury_comfort:'comfort'
+      };
+      Object.entries(DIM_ATTR).forEach(function(e2) {
+        var dim=e2[0], attr=e2[1];
+        var dimScore = typeof bs[dim]==='number' ? bs[dim] : 50;
+        var bonus2 = Math.round((dimScore - 50) * 0.20);
+        if (sc[attr] != null) sc[attr] = Math.max(0, Math.min(100, sc[attr] + bonus2));
+      });
+      // lifestyle_appeal: small omnibus bonus
+      var lifestyle = typeof bs.lifestyle_appeal==='number' ? bs.lifestyle_appeal : 50;
+      var lifestyleBonus = Math.round((lifestyle - 50) * 0.06);
+      if (lifestyleBonus) {
+        Object.keys(sc).forEach(function(a) { sc[a] = Math.max(0, Math.min(100, sc[a] + lifestyleBonus)); });
+      }
+    } else if (bf) {
+      // Fallback: static brand bonuses (no brand_scores available)
       var bonus = bf.bonus || {};
       Object.keys(bonus).forEach(function(a) {
         if (sc[a] != null) sc[a] = Math.min(100, sc[a] + bonus[a]);
@@ -6908,7 +6936,8 @@ function _bcMiniBar(val, max, col, w) {
     '<div style="width:'+filled+'px;height:100%;background:'+col+';border-radius:2px;"></div></div>';
 }
 
-function _buildBizCasePanels(byYear,mktEcon,modTpc,modRd,mktsBC,plants,tpcNum,rdM,toolingM,totalInvM,npv,irr,paybackQ,avgEbitPct,rateP,cumFcf,fcfArr,bcYears) {
+function _buildBizCasePanels(byYear,mktEcon,modTpc,modRd,mktsBC,plants,tpcNum,rdM,toolingM,totalInvM,npv,irr,paybackQ,avgEbitPct,rateP,cumFcf,fcfArr,bcYears,marketingM) {
+  marketingM = marketingM || 0;
   var DM='font-family:DM Mono,monospace;';
   var TH=DM+'font-size:8px;text-transform:uppercase;letter-spacing:1px;';
   var TS='font-size:10px;'+DM;
@@ -7120,22 +7149,24 @@ function _buildBizCasePanels(byYear,mktEcon,modTpc,modRd,mktsBC,plants,tpcNum,rd
     html += '<div style="'+TS+'color:var(--muted2);">No financial data — configure modules and markets first.</div>';
   } else {
     html += '<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;">';
-    html += '<thead><tr>'+th('Year')+th('Revenue')+th('COGS')+th('Gross Profit')+th('GM%')+th('EBIT')+th('FCF')+th('EBIT%')+'</tr></thead><tbody>';
-    var totR=0,totC=0,totG=0,totE=0,totF=0;
+    html += '<thead><tr>'+th('Year')+th('Revenue')+th('COGS')+th('Gross Profit')+th('GM%')+th('Marketing')+th('EBIT')+th('FCF')+th('EBIT%')+'</tr></thead><tbody>';
+    var totR=0,totC=0,totG=0,totMk=0,totE=0,totF=0;
     byYear.forEach(function(y){
       var gm=y.rev>0?y.gp/y.rev*100:0, em=y.rev>0?y.ebit/y.rev*100:0;
       var ec=em>10?'var(--green)':em>0?'var(--cyan)':'var(--red)';
+      var yrMktg=y.mktg||marketingM*4;
       html += '<tr style="border-bottom:1px solid var(--border);">';
       html += tdl(y.year,'var(--white)');
       html += td(fmtM(y.rev),'var(--text)');
       html += td(fmtM(y.cogs),'var(--muted2)');
       html += td(fmtM(y.gp),'var(--cyan)');
       html += td(gm.toFixed(1)+'%','var(--cyan)');
+      html += td(fmtM(yrMktg),'var(--gold)');
       html += td(fmtM(y.ebit),ec);
       html += td(fmtM(y.fcf),ec);
       html += td(em.toFixed(1)+'%',ec,true);
       html += '</tr>';
-      totR+=y.rev; totC+=y.cogs; totG+=y.gp; totE+=y.ebit; totF+=y.fcf;
+      totR+=y.rev; totC+=y.cogs; totG+=y.gp; totMk+=yrMktg; totE+=y.ebit; totF+=y.fcf;
     });
     var totGM=totR>0?totG/totR*100:0, totEM=totR>0?totE/totR*100:0;
     var tec=totEM>10?'var(--green)':totEM>0?'var(--cyan)':'var(--red)';
@@ -7145,6 +7176,7 @@ function _buildBizCasePanels(byYear,mktEcon,modTpc,modRd,mktsBC,plants,tpcNum,rd
     html += td(fmtM(totC),'var(--muted2)',true);
     html += td(fmtM(totG),'var(--cyan)',true);
     html += td(totGM.toFixed(1)+'%','var(--cyan)',true);
+    html += td(fmtM(totMk),'var(--gold)',true);
     html += td(fmtM(totE),tec,true);
     html += td(fmtM(totF),tec,true);
     html += td(totEM.toFixed(1)+'%',tec,true);
@@ -8636,6 +8668,39 @@ async function saveVehicle() {
 
 // ── BRAND MANAGEMENT ─────────────────────────────────────────
 let currentBrand='alpha';
+var _brandScores = null;      // fetched from /brand-scores for current round
+var _brandDecision = null;    // fetched from /brand-decisions/{team_id}
+var _brandDataRoundId = null; // track which round we loaded for
+
+async function loadBrandsPage() {
+  if (!sessionId || !teamId) { renderBrand(currentBrand); return; }
+  try {
+    // Get latest round
+    var rndRes = await fetch(API_URL+'/sessions/'+sessionId+'/rounds');
+    var rndData = rndRes.ok ? await rndRes.json() : null;
+    var rounds2 = (rndData && (rndData.rounds||rndData)) || [];
+    var latestRnd = rounds2.length ? rounds2[rounds2.length-1] : null;
+    var rid = latestRnd && latestRnd.id;
+    if (!rid) { renderBrand(currentBrand); return; }
+    _brandDataRoundId = rid;
+
+    // Fetch brand scores
+    var bsRes = await fetch(API_URL+'/sessions/'+sessionId+'/rounds/'+rid+'/brand-scores');
+    if (bsRes.ok) {
+      var bsData = await bsRes.json();
+      var myScore = (bsData.scores||[]).find(function(s){ return s.team_id===teamId; });
+      _brandScores = myScore || null;
+    }
+
+    // Fetch my marketing decision
+    var bdRes = await fetch(API_URL+'/sessions/'+sessionId+'/rounds/'+rid+'/brand-decisions/'+teamId);
+    if (bdRes.ok) {
+      var bdData = await bdRes.json();
+      _brandDecision = bdData.decision || null;
+    }
+  } catch(e) { console.warn('loadBrandsPage:', e); }
+  renderBrand(currentBrand);
+}
 const BRANDS_FULL = {
   alpha:{name:'ALPHA',tier:'Core Volume',color:'#4a8ce0',colorVar:'var(--h1)',tagline:'Accessible, reliable, modern.',
     revenue:'—',share:'—',ebit:'—',nps:'—',
@@ -8657,29 +8722,241 @@ function selectBrand(key, el) {
   el.classList.add('active'); renderBrand(key);
 }
 
+function _drawRadarChart(canvasId, dims, scores, baseline, color) {
+  var cv = document.getElementById(canvasId);
+  if (!cv) return;
+  var W=cv.width, H=cv.height, cx=W/2, cy=H/2;
+  var R = Math.min(W,H)/2 - 28;
+  var N = dims.length;
+  var ctx = cv.getContext('2d');
+  ctx.clearRect(0,0,W,H);
+
+  // Grid rings
+  [25,50,75,100].forEach(function(v) {
+    ctx.beginPath();
+    for (var i=0;i<N;i++) {
+      var a=(i/N)*Math.PI*2-Math.PI/2;
+      var r=v/100*R;
+      var px=cx+Math.cos(a)*r, py=cy+Math.sin(a)*r;
+      if(i===0) ctx.moveTo(px,py); else ctx.lineTo(px,py);
+    }
+    ctx.closePath();
+    ctx.strokeStyle=v===50?'rgba(200,164,60,.35)':'rgba(255,255,255,.07)';
+    ctx.lineWidth=v===50?1.5:0.8;
+    ctx.stroke();
+  });
+
+  // Axes
+  for (var i=0;i<N;i++) {
+    var a=(i/N)*Math.PI*2-Math.PI/2;
+    ctx.beginPath();
+    ctx.moveTo(cx,cy);
+    ctx.lineTo(cx+Math.cos(a)*R, cy+Math.sin(a)*R);
+    ctx.strokeStyle='rgba(255,255,255,.10)';
+    ctx.lineWidth=0.8;
+    ctx.stroke();
+  }
+
+  function plotPolygon(vals, fillColor, strokeColor, alpha) {
+    ctx.beginPath();
+    for (var i=0;i<N;i++) {
+      var a=(i/N)*Math.PI*2-Math.PI/2;
+      var r=(vals[i]/100)*R;
+      var px=cx+Math.cos(a)*r, py=cy+Math.sin(a)*r;
+      if(i===0) ctx.moveTo(px,py); else ctx.lineTo(px,py);
+    }
+    ctx.closePath();
+    ctx.fillStyle=fillColor;
+    ctx.globalAlpha=alpha;
+    ctx.fill();
+    ctx.globalAlpha=1;
+    ctx.strokeStyle=strokeColor;
+    ctx.lineWidth=2;
+    ctx.stroke();
+  }
+
+  // Baseline polygon (archetype)
+  plotPolygon(baseline, 'rgba(100,100,120,.15)', 'rgba(150,150,170,.4)', 0.4);
+  // Current scores polygon
+  plotPolygon(scores, color+'33', color, 1);
+
+  // Dot + labels
+  ctx.font='bold 8px DM Mono,monospace';
+  ctx.textAlign='center'; ctx.textBaseline='middle';
+  for (var i=0;i<N;i++) {
+    var a=(i/N)*Math.PI*2-Math.PI/2;
+    var r=(scores[i]/100)*R;
+    var px=cx+Math.cos(a)*r, py=cy+Math.sin(a)*r;
+    ctx.beginPath();
+    ctx.arc(px,py,3,0,Math.PI*2);
+    ctx.fillStyle=color;
+    ctx.fill();
+    // Label at axis end
+    var lx=cx+Math.cos(a)*(R+16), ly=cy+Math.sin(a)*(R+16);
+    ctx.fillStyle='rgba(200,200,200,.75)';
+    var dimLabel=['Tech','Design','Safety','Perf','Quality','Sustain','Value','Luxury','Lifestyle'];
+    ctx.fillText(dimLabel[i]||dims[i], lx, ly);
+    // Score value near dot
+    ctx.fillStyle=color;
+    ctx.font='bold 7px DM Mono,monospace';
+    ctx.fillText(Math.round(scores[i]), px + Math.cos(a)*10, py + Math.sin(a)*10);
+    ctx.font='bold 8px DM Mono,monospace';
+  }
+}
+
+var _brandMktTotal = {};   // key → total spend value (local state before save)
+var _brandMktAlloc = {};   // key → allocation dict
+
+function onBrandMktTotalChange(key, val) {
+  _brandMktTotal[key] = parseFloat(val) || 0;
+  var el = document.getElementById('brd-mkt-total-v-'+key);
+  if (el) el.textContent = '€' + (parseFloat(val)||0) + 'M';
+}
+
+function onBrandMktAllocChange(key, dim, val) {
+  if (!_brandMktAlloc[key]) _brandMktAlloc[key] = {};
+  _brandMktAlloc[key][dim] = parseFloat(val) || 0;
+  var el = document.getElementById('brd-alloc-v-'+key+'-'+dim);
+  if (el) el.textContent = '€' + (parseFloat(val)||0) + 'M';
+}
+
+async function saveBrandMktDecision(key) {
+  if (!sessionId || !teamId || !_brandDataRoundId) { toast('Session not ready'); return; }
+  var b = BRANDS_FULL[key];
+  var inputEl = document.getElementById('brd-mkt-input-'+key);
+  var total = _brandMktTotal[key] != null
+    ? _brandMktTotal[key]
+    : (inputEl ? (parseFloat(inputEl.value)||0) : ((_brandDecision&&_brandDecision.total_spend_m)||0));
+  var alloc = _brandMktAlloc[key] || ((_brandDecision&&_brandDecision.allocation)||{});
+  try {
+    var res = await fetch(API_URL+'/sessions/'+sessionId+'/rounds/'+_brandDataRoundId+'/brand-decisions', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({team_id:teamId, brand_id:b.name, total_spend_m:total, allocation:alloc})
+    });
+    if (res.ok) { toast('Marketing decision saved'); _brandDecision={total_spend_m:total,allocation:alloc}; }
+    else toast('Save failed');
+  } catch(e) { toast('Save error: '+e.message); }
+}
+
 function renderBrand(key) {
-  const b=BRANDS_FULL[key]; const da=document.getElementById('brand-detail-area'); if(!da) return;
-  const segChips=['c_segment','b_segment','d_segment','f_segment','c_van'].map(seg=>{
-    const on=b.segments[seg]?'on':'';
-    return `<div class="chip ${on}" onclick="toggleChip(this)">${SEG_NAMES[seg]||seg}</div>`;
-  }).join('');
-  const brandModels=activeVehicles.length;
-  da.innerHTML=`<div class="brand-card" style="--bc:${b.color}">
-    <div class="brand-header">
-      <div class="brand-logo-box" style="background:${b.color}22;color:${b.color}">${b.name[0]}</div>
-      <div><div class="brand-hname" style="color:${b.color}">${b.name}</div><div class="brand-hmeta">${b.tier} · ${b.tagline}</div></div>
-      <div class="brand-hright"><div class="brand-revenue">${b.revenue}</div><div class="brand-share">Vehicles in plan: ${brandModels}</div></div>
-    </div>
-    <div class="brand-kpis">
-      <div class="bkpi"><div class="bkl">EV Target</div><div class="bkv">${b.evTarget}%</div></div>
-      <div class="bkpi"><div class="bkl">Price Index</div><div class="bkv">${b.priceIndex>0?'+':''}${b.priceIndex}%</div></div>
-      <div class="bkpi"><div class="bkl">Reliability Tgt</div><div class="bkv">${b.reliabilityTarget}%</div></div>
-      <div class="bkpi"><div class="bkl">Mkt Budget</div><div class="bkv">€${b.mktBudget}M</div></div>
-    </div>
-    <div class="ctrl"><label class="ctrl-lbl-top" style="color:${b.color}">Active Segments</label><div class="chip-wrap">${segChips}</div></div>
-    <div class="ctrl"><div class="ctrl-lbl"><span>Marketing Budget (€M)</span><span class="ctrl-v">${b.mktBudget}</span></div><input type="range" min="20" max="500" value="${b.mktBudget}" oninput="this.previousElementSibling.querySelector('.ctrl-v').textContent=this.value"></div>
-    <div class="ctrl"><div class="ctrl-lbl"><span>EV Mix Target</span><span class="ctrl-v">${b.evTarget}%</span></div><input type="range" min="0" max="100" value="${b.evTarget}" oninput="this.previousElementSibling.querySelector('.ctrl-v').textContent=this.value+'%'"></div>
-  </div>`;
+  const b = BRANDS_FULL[key];
+  const da = document.getElementById('brand-detail-area');
+  if (!da) return;
+
+  var DIMS = ['tech_leadership','design_aesthetics','safety_protection','performance_dynamics',
+              'quality_reliability','sustainability','value_for_money','luxury_comfort','lifestyle_appeal'];
+  var DIM_LABELS = ['Technology','Design','Safety','Performance','Quality','Sustainability','Value','Luxury','Lifestyle'];
+  var DIM_ICONS  = ['⚡','🎨','🛡️','🏎️','✅','🌱','💶','🛋️','❤️'];
+
+  // Brand archetype baselines
+  var BASELINES = {
+    alpha:[48,55,58,48,65,45,72,45,50],
+    apex: [62,75,65,72,72,50,38,75,65],
+    arrow:[75,60,60,58,55,85,55,50,68]
+  };
+  var baseline = BASELINES[key] || BASELINES.alpha;
+
+  // Live scores from API or fallback to archetype
+  var liveScores = DIMS.map(function(d,i) {
+    if (_brandScores && typeof _brandScores[d] === 'number') return _brandScores[d];
+    return baseline[i];
+  });
+  var beiScore = (_brandScores && _brandScores.bei_score) ? Math.round(_brandScores.bei_score) : Math.round(baseline.reduce(function(s,v){return s+v;},0)/baseline.length);
+  var beiCol = beiScore>=65?'var(--green)':beiScore>=40?'var(--cyan)':'var(--red)';
+
+  // Marketing decision
+  var mktTotal = _brandDecision ? parseFloat(_brandDecision.total_spend_m||0) : b.mktBudget;
+  var mktAlloc = (_brandDecision && _brandDecision.allocation) ? _brandDecision.allocation : {};
+
+  // Cannibalisation check — vehicles in same segment
+  var segCounts = {};
+  (activeVehicles||[]).forEach(function(v) {
+    var s = v.segment_code || v.study_segment;
+    if (s) segCounts[s] = (segCounts[s]||0)+1;
+  });
+  var cannibSegs = Object.keys(segCounts).filter(function(s){ return segCounts[s]>1; });
+
+  var html = '<div class="brand-card" style="--bc:'+b.color+';border-color:'+b.color+'44">';
+
+  // Header
+  html += '<div class="brand-header">';
+  html += '<div class="brand-logo-box" style="background:'+b.color+'22;color:'+b.color+'">'+b.name[0]+'</div>';
+  html += '<div><div class="brand-hname" style="color:'+b.color+'">'+b.name+'</div>';
+  html += '<div class="brand-hmeta">'+b.tier+' · '+b.tagline+'</div></div>';
+  html += '<div class="brand-hright">';
+  html += '<div style="font-family:Orbitron,sans-serif;font-size:22px;font-weight:700;color:'+beiCol+'">'+beiScore+'</div>';
+  html += '<div style="font-size:9px;color:var(--muted2);font-family:DM Mono,monospace;">BEI / 100</div></div>';
+  html += '</div>';
+
+  // 9-dim radar chart
+  html += '<div style="display:flex;gap:16px;align-items:flex-start;margin-bottom:16px;">';
+  html += '<canvas id="brand-radar-'+key+'" width="260" height="260" style="flex-shrink:0;"></canvas>';
+
+  // Score bars (right of radar)
+  html += '<div style="flex:1;min-width:0;">';
+  html += '<div style="font-family:DM Mono,monospace;font-size:9px;color:var(--muted2);margin-bottom:8px;text-transform:uppercase;letter-spacing:1px;">BRAND DIMENSIONS</div>';
+  DIMS.forEach(function(d,i) {
+    var v = liveScores[i];
+    var base = baseline[i];
+    var delta = Math.round(v - base);
+    var vCol = v>=65?'var(--green)':v>=45?'var(--cyan)':'var(--orange)';
+    var dStr = delta>0?'+'+delta:delta===0?'':''+delta;
+    var dCol = delta>0?'var(--green)':delta<0?'var(--red)':'var(--muted2)';
+    html += '<div style="margin-bottom:5px;">';
+    html += '<div style="display:flex;justify-content:space-between;margin-bottom:2px;">';
+    html += '<span style="font-size:9px;color:var(--muted2);">'+DIM_ICONS[i]+' '+DIM_LABELS[i]+'</span>';
+    html += '<span style="font-family:DM Mono,monospace;font-size:9px;color:'+vCol+'">'+Math.round(v)+'</span>';
+    html += '<span style="font-family:DM Mono,monospace;font-size:8px;color:'+dCol+'">'+dStr+'</span>';
+    html += '</div>';
+    html += '<div style="height:3px;background:var(--border2);border-radius:2px;overflow:hidden;">';
+    html += '<div style="height:100%;width:'+v+'%;background:'+b.color+';border-radius:2px;transition:width .3s;"></div>';
+    html += '</div></div>';
+  });
+  html += '</div></div>';
+
+  // Cannibalisation warning
+  if (cannibSegs.length > 0) {
+    var segN = cannibSegs.map(function(s){ return (SEG_NAMES[s]||s)+'('+segCounts[s]+'x)'; }).join(', ');
+    html += '<div style="margin-bottom:12px;padding:8px 12px;background:rgba(251,191,36,.08);border:1px solid rgba(251,191,36,.3);border-radius:3px;font-family:DM Mono,monospace;font-size:9px;color:var(--gold);">';
+    html += '⚠ Cannibalisation risk — multiple vehicles in same segment: '+segN;
+    html += '. Total OEM share grows sub-linearly vs. consolidating into one vehicle.</div>';
+  }
+
+  // Marketing decision panel
+  html += '<div style="background:var(--s2);border:1px solid var(--border2);border-radius:3px;padding:12px 14px;">';
+  html += '<div style="font-family:DM Mono,monospace;font-size:9px;color:var(--gold);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px;">MARKETING BUDGET — QUARTER INVESTMENT</div>';
+  html += '<div style="display:flex;align-items:center;gap:16px;margin-bottom:12px;flex-wrap:wrap;">';
+  html += '<div style="display:flex;align-items:center;gap:8px;">';
+  html += '<span style="font-size:9px;color:var(--muted2);">Total €M / quarter:</span>';
+  html += '<input type="number" min="0" max="300" step="5" value="'+mktTotal+'" id="brd-mkt-input-'+key+'" ';
+  html += 'oninput="onBrandMktTotalChange(\''+key+'\',this.value)" ';
+  html += 'style="width:80px;background:var(--s1);border:1px solid var(--border2);border-radius:2px;color:var(--gold);font-family:DM Mono,monospace;font-size:13px;text-align:center;padding:4px 6px;">';
+  html += '</div>';
+  html += '<span id="brd-mkt-total-v-'+key+'" style="font-family:DM Mono,monospace;font-size:10px;color:var(--muted2);">€'+mktTotal+'M</span>';
+  html += '</div>';
+  html += '<div style="font-family:DM Mono,monospace;font-size:8px;color:var(--muted2);margin-bottom:8px;text-transform:uppercase;letter-spacing:1px;">ALLOCATE BY DIMENSION (optional)</div>';
+  html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:12px;">';
+  DIMS.forEach(function(d,i) {
+    var allocVal = mktAlloc[d] != null ? parseFloat(mktAlloc[d]) : 0;
+    html += '<div style="display:flex;align-items:center;gap:6px;">';
+    html += '<span style="font-size:9px;color:var(--muted2);min-width:90px;">'+DIM_ICONS[i]+' '+DIM_LABELS[i]+'</span>';
+    html += '<input type="number" min="0" max="100" step="5" value="'+allocVal+'" ';
+    html += 'oninput="onBrandMktAllocChange(\''+key+'\',\''+d+'\',this.value)" ';
+    html += 'style="width:60px;background:var(--s1);border:1px solid var(--border2);border-radius:2px;color:var(--text);font-family:DM Mono,monospace;font-size:10px;text-align:center;padding:3px 4px;">';
+    html += '<span id="brd-alloc-v-'+key+'-'+d+'" style="font-size:8px;color:var(--muted2);font-family:DM Mono,monospace;">€'+allocVal+'M</span>';
+    html += '</div>';
+  });
+  html += '</div>';
+  html += '<button onclick="saveBrandMktDecision(\''+key+'\')" style="font-family:DM Mono,monospace;font-size:10px;padding:6px 16px;border-radius:2px;border:1px solid '+b.color+'44;background:'+b.color+'11;color:'+b.color+';cursor:pointer;">Save Decision</button>';
+  html += '</div>';
+
+  html += '</div>';
+  da.innerHTML = html;
+
+  // Draw radar after DOM is populated
+  setTimeout(function() {
+    _drawRadarChart('brand-radar-'+key, DIMS, liveScores, baseline, b.color);
+  }, 50);
 }
 
 
@@ -12112,7 +12389,7 @@ async function loadPerformanceData() {
   document.getElementById('perf-content').style.display    = 'block';
 
   try {
-    // ── 1. Fetch dashboard data + financial history in parallel ─
+    // ── 1. Fetch dashboard data + financial history + BEI in parallel ─
     var dashUrl = API_URL + '/sessions/' + sessionId + '/performance-dashboard'
                 + (teamId ? '?team_id=' + teamId : '');
     var finHistUrl = API_URL + '/sessions/' + sessionId + '/financial-history'
@@ -12154,6 +12431,32 @@ async function loadPerformanceData() {
       sub.textContent = 'Latest: ' + lrLabel + ' · ' + allTeams.length + ' teams';
     }
 
+    // ── 1b. Fetch brand scores (needs latest_round from dash) ────
+    var latestRoundId = dash.latest_round && dash.latest_round.id;
+    var beiData = null;
+    if (latestRoundId) {
+      try {
+        // Prefer 9-dim brand-scores; fall back to legacy brand-equity
+        var bsRes = await fetch(API_URL + '/sessions/' + sessionId + '/rounds/' + latestRoundId + '/brand-scores');
+        if (bsRes.ok) {
+          var bsRaw = await bsRes.json();
+          // Normalise to same shape as legacy beiData for compatibility
+          beiData = {
+            round_id: bsRaw.round_id,
+            round_label: bsRaw.round_label,
+            scores: (bsRaw.scores||[]).map(function(s) {
+              return {team_id:s.team_id,team_name:s.team_name,color_hex:s.color_hex,
+                      brand_id:s.brand_id,bei_score:s.bei_score,dims:s};
+            }),
+            history: bsRaw.history||[],
+          };
+        } else {
+          var beiRes = await fetch(API_URL + '/sessions/' + sessionId + '/rounds/' + latestRoundId + '/brand-equity');
+          if (beiRes.ok) beiData = await beiRes.json();
+        }
+      } catch(e) { /* BEI fetch non-fatal */ }
+    }
+
     // ── 2. Update KPI strip from market-clearing data ────────
     var kpis = dash.kpis || {};
     if (kpis.revenue_m != null) {
@@ -12164,6 +12467,7 @@ async function loadPerformanceData() {
       _setText('pk-rank',  kpis.revenue_rank ? '#' + kpis.revenue_rank : '—');
       _setText('pk-rank-sub', 'of ' + (kpis.total_teams||'—') + ' teams');
       _setText('pk-util',  kpis.avg_utility != null ? kpis.avg_utility : '—');
+      // BEI tile (updated below after beiData fetch)
       var dEl = document.getElementById('pk-rev-d');
       if (dEl && kpis.revenue_delta_pct != null) {
         var dp = kpis.revenue_delta_pct;
@@ -12248,6 +12552,50 @@ async function loadPerformanceData() {
     // ── 7. Multi-round history table (with real financials) ──
     var myRos = allRos.filter(function(ro){ return ro.team_id === teamId; });
     renderHistoryTable(myRos, allVos, teamId, finHist[teamId] || {});
+
+    // ── 8. Brand Equity tile + trajectory chart ──────────────
+    if (beiData) {
+      // KPI tile — my team's current BEI
+      if (teamId && beiData.scores) {
+        var myBei = beiData.scores.find(function(s){ return s.team_id === teamId; });
+        if (myBei) {
+          var beiVal = Math.round(parseFloat(myBei.bei_score));
+          var beiCol = beiVal >= 65 ? 'var(--green)' : beiVal >= 40 ? 'var(--cyan)' : 'var(--red)';
+          _setText('pk-bei', beiVal);
+          var beiEl = document.getElementById('pk-bei');
+          if (beiEl) beiEl.style.color = beiCol;
+          _setText('pk-bei-sub', (myBei.brand_id || '') + ' brand · ' + beiVal + '/100');
+        }
+      }
+      // Trajectory chart using drawLineChart
+      if (beiData.history && beiData.history.length > 0) {
+        var beiLabelSet = [], beiLabelArr = [];
+        var beiSeriesMap = {};
+        beiData.history.forEach(function(h) {
+          if (!beiSeriesMap[h.team_id]) beiSeriesMap[h.team_id] = [];
+          if (beiLabelSet.indexOf(h.round_label) === -1) {
+            beiLabelSet.push(h.round_label);
+            beiLabelArr.push(h.round_label);
+          }
+        });
+        // Build series compatible with drawLineChart: {teamId: {bei: [values]}}
+        var beiSeries = {};
+        Object.keys(beiSeriesMap).forEach(function(tid) {
+          beiSeries[tid] = {bei: beiLabelArr.map(function(lbl) {
+            var match = beiData.history.find(function(h){ return h.team_id===tid && h.round_label===lbl; });
+            return match ? parseFloat(match.bei_score) : null;
+          })};
+        });
+        // Add benchmark line at 50
+        var benchId = '__bench__';
+        beiSeries[benchId] = {bei: beiLabelArr.map(function(){ return 50; })};
+        teamMap[benchId] = {id: benchId, name: 'Benchmark (50)', color: '#475569'};
+        var beiChartTeams = [teamMap[benchId]].concat(
+          Object.keys(beiSeriesMap).map(function(tid){ return teamMap[tid] || {id:tid,name:tid,color:'#888'}; })
+        );
+        drawLineChart('chart-bei','legend-bei',beiLabelArr,beiChartTeams,teamMap,beiSeries,'bei','','');
+      }
+    }
 
   } catch(e) {
     console.error('Performance data error:', e);
@@ -14671,7 +15019,8 @@ function buildReviewSection() {
         reliability:    thS.reliability!= null ? thS.reliability : (plS.reliability || 50),
         adas_level:     esS.adas_level  || 1,
         connectivity:   esS.connectivity|| 30,
-        brand_code:     _prop.study ? (_prop.study.brand_code || '') : ''
+        brand_code:     _prop.study ? (_prop.study.brand_code || '') : '',
+        brand_scores:   _brandScores || null
       });
     } catch(e) { console.warn('Market engine error:', e); return; }
 
@@ -15076,6 +15425,8 @@ function buildCommercialSection() {
   var tpcNum=_computeBaseTpc();
   var TH='font-family:DM Mono,monospace;font-size:8px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:8px;display:block;';
   var html='<div style="margin-bottom:12px;font-size:11px;color:var(--muted2);">Set pricing and volume for each market. Assigned plant determines logistics and tariff. Gross contribution must be positive in every market-year to proceed.</div>';
+  html+='<div style="margin-bottom:12px;padding:8px 12px;background:rgba(74,140,224,.06);border:1px solid rgba(74,140,224,.2);border-radius:3px;font-size:9px;color:var(--muted2);font-family:DM Mono,monospace;">';
+  html+='ℹ Marketing budget is set at brand level — go to <strong style="color:var(--h1)">Brand Management</strong> to configure your quarterly investment and dimension allocation.</div>';
   SALES_MARKETS.forEach(function(sm){
     var mkt=_prop.commercial.markets.find(function(m){return m.region===sm.region;})||{region:sm.region,selected:false,plant_id:null,msrp_eur_k:defPK,years:[]};
     var sel=mkt.selected;
@@ -15171,6 +15522,15 @@ function onPropComYearVolume(region,idx,val){
   var mkt=((_prop.commercial&&_prop.commercial.markets)||[]).find(function(m){return m.region===region;});
   if(mkt&&mkt.years&&mkt.years[idx])mkt.years[idx].volume=parseInt(val)||0;
   _refreshMarketRows(region);
+}
+function onPropComMarketingM(val){
+  var v=parseFloat(val)||0;
+  if(!_prop.commercial)_prop.commercial={};
+  _prop.commercial.marketing_m=v;
+  var comp=v>0?Math.round(100/(1+Math.exp(-0.05*(v-40)))):0;
+  var col=comp>60?'var(--green)':comp>40?'var(--gold)':'var(--orange)';
+  var el=document.getElementById('prop-com-bei-preview');
+  if(el){el.textContent='Marketing component: '+comp+'/100 → BEI shifts toward '+comp+' over time';el.style.color=col;}
 }
 function _refreshMarketRows(region){
   var mkt=((_prop.commercial&&_prop.commercial.markets)||[]).find(function(m){return m.region===region;});
@@ -15882,6 +16242,7 @@ async function advanceToBizCase() {
 
 function calcPropBizCase() {
   var comYears = (_prop.commercial && _prop.commercial.years) || [];
+  var marketingM = 0; // Marketing is now brand-level (set in Brand Management page)
   var tpcNum   = 0;
   ['platform','pwt','epwt','tophat','eands'].forEach(function(k) {
     var p = _prop[k];
@@ -15943,8 +16304,8 @@ function calcPropBizCase() {
         revM=uQ*pE/1e6; cogsM=finalTpcNum>0?uQ*finalTpcNum/1e6:revM*0.70;
       }
       var gpM=revM-cogsM, sgaM=revM*0.06, rdMq=revM*0.04;
-      var wM=revM*_bcQual.warranty_pct, ebitM=gpM-sgaM-rdMq-wM, fcfM=ebitM*0.75;
-      fcfArr.push({rev:revM,cogs:cogsM,gp:gpM,ebit:ebitM,fcf:fcfM});
+      var wM=revM*_bcQual.warranty_pct, ebitM=gpM-sgaM-rdMq-wM-marketingM, fcfM=ebitM*0.75;
+      fcfArr.push({rev:revM,cogs:cogsM,gp:gpM,ebit:ebitM,fcf:fcfM,mktg:marketingM});
     }
   })
 
@@ -15988,7 +16349,8 @@ function calcPropBizCase() {
       cogs:sl.reduce(function(s,f){return s+f.cogs;},0),
       gp:sl.reduce(function(s,f){return s+f.gp;},0),
       ebit:sl.reduce(function(s,f){return s+f.ebit;},0),
-      fcf:sl.reduce(function(s,f){return s+f.fcf;},0)};
+      fcf:sl.reduce(function(s,f){return s+f.fcf;},0),
+      mktg:sl.reduce(function(s,f){return s+(f.mktg||0);},0)};
   });
   var _bcPlants=(_prop.operations&&_prop.operations.plants)||[];
   var _bcMkts=((_prop.commercial&&_prop.commercial.markets)||[]).filter(function(m){return m.selected;});
@@ -16017,7 +16379,7 @@ function calcPropBizCase() {
   var _bcEl=document.getElementById('prop-bc-content');
   if (_bcEl) {
     _bcEl.innerHTML=_buildBizCasePanels(_byYear,_mktEcon,_modTpc,_modRd,_bcMkts,_bcPlants,
-      tpcNum,rdM,toolingM,totalInvM,npv,irr,paybackQ,avgEbitPct,rateP,_cumFcf,fcfArr,_bcYears);
+      tpcNum,rdM,toolingM,totalInvM,npv,irr,paybackQ,avgEbitPct,rateP,_cumFcf,fcfArr,_bcYears,marketingM);
   }
 
 
