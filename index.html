@@ -6158,13 +6158,32 @@ var _MARKET_E = {
     var volK  = Math.round(share / 100 * segK * 10) / 10;
 
     // ── 4b. Demand Potential scaling (Awareness × Strength) ──────
-    // DP = (A/100)^0.6 × (S/100)^1.4; benchmark = 0.5^2 = 0.25
+    // DP = (effective_A/100)^0.6 × (S/100)^1.4; benchmark = 0.5^2 = 0.25
     var demandPotential = null;
     var BENCH_DP_JS = Math.pow(0.5, 0.6) * Math.pow(0.5, 1.4);  // ≈ 0.250
-    if (bs && bs.awareness_score != null && bs.bei_score != null) {
-      var An = Math.max(0, Math.min(100, parseFloat(bs.awareness_score))) / 100;
-      var Sn = Math.max(0, Math.min(100, parseFloat(bs.bei_score)))       / 100;
-      var dp = Math.pow(An, 0.6) * Math.pow(Sn, 1.4);
+    var _GLOBAL_RW_JS = {EU:0.40, NA:0.25, APAC:0.20, SA:0.08, MEA:0.07};
+    var _REGS_JS = ['EU','NA','APAC','SA','MEA'];
+    if (bs && bs.bei_score != null) {
+      // Compute effective_A: regional-aware or composite fallback
+      var An_eff;
+      if (bs.regional_awareness && o.region_weights) {
+        // Vehicle's commercial plan region mix × regional awareness
+        var rw = o.region_weights;
+        An_eff = _REGS_JS.reduce(function(s,r) {
+          return s + (parseFloat(bs.regional_awareness[r])||50) * (rw[r.toLowerCase()]||0);
+        }, 0) / 100;
+      } else if (bs.regional_awareness) {
+        // Global market weights as fallback
+        An_eff = _REGS_JS.reduce(function(s,r) {
+          return s + (parseFloat(bs.regional_awareness[r])||50) * (_GLOBAL_RW_JS[r]||0.2);
+        }, 0) / 100;
+      } else if (bs.awareness_score != null) {
+        An_eff = Math.max(0, Math.min(100, parseFloat(bs.awareness_score))) / 100;
+      } else {
+        An_eff = 0.5;
+      }
+      var Sn = Math.max(0, Math.min(100, parseFloat(bs.bei_score))) / 100;
+      var dp = Math.pow(An_eff, 0.6) * Math.pow(Sn, 1.4);
       demandPotential = Math.round(dp / BENCH_DP_JS * 100) / 100;  // 1.0 = benchmark
       share = Math.round(share * demandPotential * 10) / 10;
       volK  = Math.round(share / 100 * segK * 10) / 10;
@@ -8833,12 +8852,13 @@ function onBrandMktAllocChange(key, dim, val) {
   _brandMktAlloc[key][dim] = v;
   var el = document.getElementById('brd-alloc-v-'+key+'-'+dim);
   if (el) el.textContent = '€' + v + 'M';
-  // For awareness: update live ad component preview
-  if (dim === 'awareness') {
-    var comp = v > 0 ? Math.round(100 / (1 + Math.exp(-0.12*(v-15)))) : 0;
-    var col = comp>=60?'var(--green)':comp>=35?'var(--gold)':'var(--orange)';
-    var compEl = document.getElementById('brd-aware-comp-'+key);
-    if (compEl) { compEl.textContent = '→ ad component: '+comp+'/100'; compEl.style.color=col; }
+  // For regional awareness: update live ad component preview
+  if (dim.indexOf('awareness_') === 0) {
+    var reg2 = dim.replace('awareness_','');
+    var comp = v > 0 ? Math.round(100 / (1 + Math.exp(-0.15*(v-10)))) : 0;
+    var col = comp>=60?'var(--green)':comp>=35?'var(--gold)':'var(--muted2)';
+    var compEl = document.getElementById('brd-aware-comp-'+key+'-'+reg2);
+    if (compEl) { compEl.textContent = '→'+comp; compEl.style.color=col; }
   }
 }
 
@@ -8886,11 +8906,25 @@ function renderBrand(key) {
   var beiScore = (_brandScores && _brandScores.bei_score) ? Math.round(_brandScores.bei_score) : Math.round(baseline.reduce(function(s,v){return s+v;},0)/baseline.length);
   var beiCol = beiScore>=65?'var(--green)':beiScore>=40?'var(--cyan)':'var(--red)';
 
-  // Awareness
-  var AWARENESS_BASELINES = {alpha:55, apex:50, arrow:30};
-  var awareScore = (_brandScores && _brandScores.awareness_score!=null)
-    ? Math.round(_brandScores.awareness_score)
-    : (AWARENESS_BASELINES[key]||50);
+  // Regional awareness
+  var REGIONS_FE       = ['EU','NA','APAC','SA','MEA'];
+  var REGION_LABELS_FE = ['Europe','N. America','Asia-Pacific','S. America','MEA'];
+  var REGION_FLAGS_FE  = ['🇪🇺','🌎','🌏','🌎','🌍'];
+  var REGION_WEIGHTS_FE = {EU:0.40, NA:0.25, APAC:0.20, SA:0.08, MEA:0.07};
+  var REGIONAL_BASELINES_FE = {
+    alpha:{EU:62,NA:48,APAC:40,SA:52,MEA:45},
+    apex: {EU:60,NA:65,APAC:52,SA:32,MEA:35},
+    arrow:{EU:48,NA:30,APAC:28,SA:18,MEA:16}
+  };
+  var liveRegionalA = REGIONS_FE.map(function(r) {
+    var ra = _brandScores && _brandScores.regional_awareness;
+    if (ra && ra[r] != null) return parseFloat(ra[r]);
+    return (REGIONAL_BASELINES_FE[key] || REGIONAL_BASELINES_FE.alpha)[r] || 50;
+  });
+  // Composite A = global-market-weight-average of regional scores
+  var awareScore = Math.round(
+    REGIONS_FE.reduce(function(s,r,i){ return s + liveRegionalA[i] * (REGION_WEIGHTS_FE[r]||0.2); }, 0)
+  );
   var awareCol = awareScore>=65?'var(--green)':awareScore>=40?'var(--gold)':'var(--orange)';
 
   // Demand Potential
@@ -8983,20 +9017,32 @@ function renderBrand(key) {
   html += '</div>';
   html += '<span id="brd-mkt-total-v-'+key+'" style="font-family:DM Mono,monospace;font-size:10px;color:var(--muted2);">€'+mktTotal+'M</span>';
   html += '</div>';
-  // Awareness spend (dedicated advertising reach budget)
-  var awareSpend = mktAlloc['awareness'] != null ? parseFloat(mktAlloc['awareness']) : 0;
-  var awareAdComp = awareSpend > 0 ? Math.round(100 / (1 + Math.exp(-0.12*(awareSpend-15)))) : 0;
-  var awareCompCol = awareAdComp>=60?'var(--green)':awareAdComp>=35?'var(--gold)':'var(--orange)';
+  // Regional advertising reach — 5 separate sliders, one per sales region
   html += '<div style="margin-bottom:10px;padding:8px 10px;background:rgba(255,255,255,.03);border:1px solid var(--border2);border-radius:3px;">';
-  html += '<div style="font-family:DM Mono,monospace;font-size:8px;color:'+awareCol+';text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;">📡 ADVERTISING REACH — Builds Brand Awareness (A)</div>';
-  html += '<div style="display:flex;align-items:center;gap:10px;">';
-  html += '<span style="font-size:9px;color:var(--muted2);">€M / qtr:</span>';
-  html += '<input type="number" min="0" max="150" step="5" value="'+awareSpend+'" ';
-  html += 'oninput="onBrandMktAllocChange(\''+key+'\',\'awareness\',this.value)" ';
-  html += 'style="width:65px;background:var(--s1);border:1px solid var(--border2);border-radius:2px;color:'+awareCol+';font-family:DM Mono,monospace;font-size:12px;text-align:center;padding:3px 4px;">';
-  html += '<span id="brd-alloc-v-'+key+'-awareness" style="font-size:8px;color:var(--muted2);font-family:DM Mono,monospace;">€'+awareSpend+'M</span>';
-  html += '<span id="brd-aware-comp-'+key+'" style="font-family:DM Mono,monospace;font-size:9px;color:'+awareCompCol+';">→ ad component: '+awareAdComp+'/100</span>';
-  html += '</div></div>';
+  html += '<div style="font-family:DM Mono,monospace;font-size:8px;color:'+awareCol+';text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">📡 REGIONAL ADVERTISING REACH — Builds Local Brand Awareness</div>';
+  html += '<div style="font-size:8px;color:var(--muted2);margin-bottom:8px;">Set advertising spend per region. Each region builds awareness independently — vehicles sold in a region also passively build local presence.</div>';
+  REGIONS_FE.forEach(function(r,i) {
+    var allocKey = 'awareness_'+r;
+    var rSpend   = mktAlloc[allocKey] != null ? parseFloat(mktAlloc[allocKey]) : 0;
+    var rA       = liveRegionalA[i];
+    var rACol    = rA>=65?'var(--green)':rA>=40?'var(--gold)':'var(--orange)';
+    var adComp   = rSpend > 0 ? Math.round(100 / (1 + Math.exp(-0.15*(rSpend-10)))) : 0;
+    var barW     = Math.round(rA);
+    html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:5px;">';
+    html += '<span style="font-size:11px;min-width:20px;">'+REGION_FLAGS_FE[i]+'</span>';
+    html += '<span style="font-size:9px;color:var(--muted2);min-width:88px;">'+REGION_LABELS_FE[i]+'</span>';
+    html += '<div style="flex:1;height:3px;background:var(--border2);border-radius:2px;overflow:hidden;min-width:60px;">';
+    html += '<div style="height:100%;width:'+barW+'%;background:'+rACol+';border-radius:2px;"></div></div>';
+    html += '<span style="font-family:DM Mono,monospace;font-size:9px;color:'+rACol+';min-width:28px;text-align:right;">'+Math.round(rA)+'</span>';
+    html += '<input type="number" min="0" max="80" step="5" value="'+rSpend+'" ';
+    html += 'oninput="onBrandMktAllocChange(\''+key+'\',\'awareness_'+r+'\',this.value)" ';
+    html += 'style="width:55px;background:var(--s1);border:1px solid var(--border2);border-radius:2px;color:var(--gold);font-family:DM Mono,monospace;font-size:10px;text-align:center;padding:2px 4px;">';
+    html += '<span id="brd-alloc-v-'+key+'-awareness_'+r+'" style="font-size:8px;color:var(--muted2);font-family:DM Mono,monospace;min-width:32px;">€'+rSpend+'M</span>';
+    html += '<span id="brd-aware-comp-'+key+'-'+r+'" style="font-family:DM Mono,monospace;font-size:8px;color:'+(adComp>=60?'var(--green)':adComp>=35?'var(--gold)':'var(--muted2)')+'">→'+adComp+'</span>';
+    html += '</div>';
+  });
+  html += '<div style="margin-top:6px;font-family:DM Mono,monospace;font-size:8px;color:var(--muted2);">Composite A = '+awareScore+'/100 (global-market-weighted average)</div>';
+  html += '</div>';
 
   html += '<div style="font-family:DM Mono,monospace;font-size:8px;color:var(--muted2);margin-bottom:8px;text-transform:uppercase;letter-spacing:1px;">ALLOCATE BY DIMENSION (brand strength)</div>';
   html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:12px;">';
