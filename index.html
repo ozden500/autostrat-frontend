@@ -8714,6 +8714,7 @@ let currentBrand='alpha';
 var _brandScores = null;      // fetched from /brand-scores for current round
 var _brandDecision = null;    // fetched from /brand-decisions/{team_id}
 var _brandDataRoundId = null; // track which round we loaded for
+var _brandAwareCollapsed = {}; // collapse state per brandKey+'_'+reg
 
 async function loadBrandsPage() {
   if (!sessionId || !teamId) { renderAllBrands(); return; }
@@ -9071,14 +9072,12 @@ function renderBrand(key) {
   html += '<div style="font-family:DM Mono,monospace;font-size:9px;color:var(--gold);margin-bottom:10px;text-transform:uppercase;letter-spacing:1px;">GLOBAL STRENGTH — €M / dimension</div>';
   DIMS.forEach(function(d,i) {
     var allocVal = mktAlloc[d] != null ? parseFloat(mktAlloc[d]) : 0;
-    html += '<div style="margin-bottom:8px;">';
-    html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px;">';
-    html += '<span style="font-size:9px;color:var(--muted2);">'+DIM_ICONS[i]+' '+DIM_LABELS[i]+'</span>';
-    html += '<span id="brd-alloc-v-'+key+'-'+d+'" style="font-family:DM Mono,monospace;font-size:9px;color:var(--gold);">€'+allocVal+'M</span>';
-    html += '</div>';
+    html += '<div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;">';
+    html += '<span style="font-size:9px;color:var(--muted2);min-width:88px;white-space:nowrap;flex-shrink:0;">'+DIM_ICONS[i]+' '+DIM_LABELS[i]+'</span>';
     html += '<input type="range" min="0" max="100" step="5" value="'+allocVal+'" ';
     html += 'oninput="onBrandMktAllocChange(\''+key+'\',\''+d+'\',this.value);document.getElementById(\'brd-alloc-v-'+key+'-'+d+'\').textContent=\'€\'+this.value+\'M\'" ';
-    html += 'style="width:100%;accent-color:'+b.color+';margin:0;">';
+    html += 'style="flex:1;accent-color:'+b.color+';margin:0;">';
+    html += '<span id="brd-alloc-v-'+key+'-'+d+'" style="font-family:DM Mono,monospace;font-size:9px;color:var(--gold);min-width:32px;text-align:right;flex-shrink:0;">€'+allocVal+'M</span>';
     html += '</div>';
   });
   html += '</div></div>';
@@ -9119,29 +9118,55 @@ function renderBrand(key) {
   var REG_LABELS_CC = {EU:'Europe',NA:'North America',APAC:'Asia-Pacific',SA:'South America',MEA:'Middle East & Africa'};
   Object.entries(_REGION_COUNTRIES_JS).forEach(function(entry) {
     var reg = entry[0], countries = entry[1];
+    // Compute region totals
+    var sumShares = countries.reduce(function(s,c){ return s+c.share; }, 0) || 1;
+    var regTotal  = countries.reduce(function(s,c){ return s+(mktAlloc['awareness_'+c.code]!=null?parseFloat(mktAlloc['awareness_'+c.code]):0); }, 0);
+    var regAware  = 0;
+    countries.forEach(function(c){
+      var bl2 = (REGIONAL_BASELINES_FE[key]||{})[reg]||50;
+      var cA  = countryAwareness[c.code]!=null ? parseFloat(countryAwareness[c.code]) : Math.round(Math.max(0,Math.min(100,bl2+(c.share-0.10)*20)));
+      regAware += (c.share/sumShares)*cA;
+    });
+    regAware = Math.round(regAware);
+    var rACol = regAware>=65?'var(--green)':regAware>=40?'var(--gold)':'var(--orange)';
+    var collapsed = !!_brandAwareCollapsed[key+'_'+reg];
+    var arrow = collapsed ? '▶' : '▼';
     html += '<div style="border-top:1px solid var(--border);">';
-    html += '<div style="padding:4px 10px;background:rgba(255,255,255,.02);font-family:DM Mono,monospace;font-size:8px;color:var(--muted2);text-transform:uppercase;letter-spacing:1px;">'+REG_LABELS_CC[reg]+'</div>';
+    // Region header row — click left part to toggle, budget input on right
+    html += '<div style="display:flex;align-items:center;gap:8px;padding:5px 10px;background:rgba(255,255,255,.02);user-select:none;">';
+    html += '<span id="brand-aware-arrow-'+key+'-'+reg+'" onclick="toggleBrandAwareRegion(\''+key+'\',\''+reg+'\')" ';
+    html += 'style="font-size:8px;color:var(--muted2);cursor:pointer;min-width:10px;">'+arrow+'</span>';
+    html += '<span onclick="toggleBrandAwareRegion(\''+key+'\',\''+reg+'\')" ';
+    html += 'style="font-family:DM Mono,monospace;font-size:8px;color:var(--muted2);text-transform:uppercase;letter-spacing:1px;flex:1;cursor:pointer;">'+REG_LABELS_CC[reg]+'</span>';
+    html += '<span style="font-family:DM Mono,monospace;font-size:8px;color:'+rACol+';margin-right:6px;">A:'+regAware+'</span>';
+    html += '<input type="number" id="brd-aware-reg-'+key+'-'+reg+'" min="0" max="300" step="5" value="'+Math.round(regTotal*10)/10+'" ';
+    html += 'oninput="onBrandRegionAwareChange(\''+key+'\',\''+reg+'\',this.value)" ';
+    html += 'style="width:54px;background:var(--s1);border:1px solid var(--border2);border-radius:2px;color:var(--gold);font-family:DM Mono,monospace;font-size:9px;text-align:center;padding:2px 3px;">';
+    html += '<span style="font-size:7px;color:var(--muted2);white-space:nowrap;">€M→auto</span>';
+    html += '</div>';
+    // Country rows
+    html += '<div id="brand-aware-reg-body-'+key+'-'+reg+'" style="display:'+(collapsed?'none':'block')+'">';
     countries.forEach(function(c) {
       var cc       = c.code;
       var allocKey = 'awareness_'+cc;
       var ccSpend  = mktAlloc[allocKey] != null ? parseFloat(mktAlloc[allocKey]) : 0;
-      var baseline = (REGIONAL_BASELINES_FE[key]||{})[reg] || 50;
-      var ccA      = countryAwareness[cc] != null ? parseFloat(countryAwareness[cc]) : Math.round(Math.max(0,Math.min(100, baseline + (c.share - 0.10)*20)));
+      var bl3      = (REGIONAL_BASELINES_FE[key]||{})[reg] || 50;
+      var ccA      = countryAwareness[cc] != null ? parseFloat(countryAwareness[cc]) : Math.round(Math.max(0,Math.min(100, bl3+(c.share-0.10)*20)));
       var ccACol   = ccA>=65?'var(--green)':ccA>=40?'var(--gold)':'var(--orange)';
       var adComp   = ccSpend > 0 ? Math.round(100/(1+Math.exp(-0.18*(ccSpend-8)))) : 0;
-      html += '<div style="display:flex;align-items:center;gap:6px;padding:3px 10px;border-bottom:1px solid rgba(255,255,255,.03);">';
+      html += '<div style="display:flex;align-items:center;gap:6px;padding:3px 10px 3px 22px;border-bottom:1px solid rgba(255,255,255,.03);">';
       html += '<span style="font-size:10px;min-width:18px;">'+(CC_FLAGS[cc]||'🌐')+'</span>';
-      html += '<span style="font-size:8px;color:var(--muted2);min-width:90px;overflow:hidden;white-space:nowrap;">'+(CC_NAMES[cc]||cc)+'</span>';
-      html += '<div style="flex:1;height:3px;background:var(--border2);border-radius:2px;overflow:hidden;min-width:40px;">';
+      html += '<span style="font-size:8px;color:var(--muted2);min-width:80px;overflow:hidden;white-space:nowrap;">'+(CC_NAMES[cc]||cc)+'</span>';
+      html += '<div style="flex:1;height:3px;background:var(--border2);border-radius:2px;overflow:hidden;min-width:30px;">';
       html += '<div style="height:100%;width:'+Math.round(ccA)+'%;background:'+ccACol+';border-radius:2px;"></div></div>';
-      html += '<span style="font-family:DM Mono,monospace;font-size:8px;color:'+ccACol+';min-width:24px;text-align:right;">'+Math.round(ccA)+'</span>';
-      html += '<input type="number" min="0" max="30" step="1" value="'+ccSpend+'" ';
+      html += '<span style="font-family:DM Mono,monospace;font-size:8px;color:'+ccACol+';min-width:22px;text-align:right;">'+Math.round(ccA)+'</span>';
+      html += '<input type="number" id="brd-aware-input-'+key+'-'+cc+'" min="0" max="30" step="1" value="'+ccSpend+'" ';
       html += 'oninput="onBrandMktAllocChange(\''+key+'\',\'awareness_'+cc+'\',this.value)" ';
-      html += 'style="width:48px;background:var(--s1);border:1px solid var(--border2);border-radius:2px;color:var(--gold);font-family:DM Mono,monospace;font-size:9px;text-align:center;padding:2px 3px;">';
-      html += '<span id="brd-alloc-v-'+key+'-awareness_'+cc+'" style="font-size:7px;color:var(--muted2);font-family:DM Mono,monospace;min-width:26px;">€'+ccSpend+'M</span>';
+      html += 'style="width:44px;background:var(--s1);border:1px solid var(--border2);border-radius:2px;color:var(--gold);font-family:DM Mono,monospace;font-size:9px;text-align:center;padding:2px 3px;">';
       html += '<span style="font-family:DM Mono,monospace;font-size:7px;color:'+(adComp>=60?'var(--green)':adComp>=35?'var(--gold)':'var(--muted2)')+'">→'+adComp+'</span>';
       html += '</div>';
     });
+    html += '</div>';
     html += '</div>';
   });
   html += '</div>';
@@ -9155,6 +9180,29 @@ function renderBrand(key) {
 
 // ── Collapsible brand cards ───────────────────────────────────────
 var _brandExpanded = {alpha:false, apex:false, arrow:false};
+
+function toggleBrandAwareRegion(brandKey, reg) {
+  var sk = brandKey+'_'+reg;
+  _brandAwareCollapsed[sk] = !_brandAwareCollapsed[sk];
+  var collapsed = _brandAwareCollapsed[sk];
+  var bodyEl  = document.getElementById('brand-aware-reg-body-'+brandKey+'-'+reg);
+  var arrowEl = document.getElementById('brand-aware-arrow-'+brandKey+'-'+reg);
+  if (bodyEl)  bodyEl.style.display  = collapsed ? 'none' : 'block';
+  if (arrowEl) arrowEl.textContent   = collapsed ? '▶' : '▼';
+}
+
+function onBrandRegionAwareChange(brandKey, reg, totalVal) {
+  var total    = parseFloat(totalVal) || 0;
+  var countries = (_REGION_COUNTRIES_JS || {})[reg] || [];
+  var sumShares = countries.reduce(function(s,c){ return s+(c.share||0); }, 0) || 1;
+  countries.forEach(function(c) {
+    var cc      = c.code;
+    var ccSpend = Math.round(total * (c.share / sumShares) * 10) / 10;
+    var inputEl = document.getElementById('brd-aware-input-'+brandKey+'-'+cc);
+    if (inputEl) inputEl.value = ccSpend;
+    onBrandMktAllocChange(brandKey, 'awareness_'+cc, ccSpend);
+  });
+}
 
 function toggleBrandCard(key) {
   _brandExpanded[key] = !_brandExpanded[key];
