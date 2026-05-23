@@ -9066,25 +9066,20 @@ function renderBrand(key) {
   html += '<div style="display:flex;gap:16px;align-items:flex-start;margin-bottom:16px;">';
   html += '<canvas id="brand-radar-'+key+'" width="260" height="260" style="flex-shrink:0;"></canvas>';
 
-  // Score bars (right of radar)
+  // 9-dim allocation sliders (right of radar)
   html += '<div style="flex:1;min-width:0;">';
-  html += '<div style="font-family:DM Mono,monospace;font-size:9px;color:var(--muted2);margin-bottom:8px;text-transform:uppercase;letter-spacing:1px;">BRAND DIMENSIONS</div>';
+  html += '<div style="font-family:DM Mono,monospace;font-size:9px;color:var(--gold);margin-bottom:10px;text-transform:uppercase;letter-spacing:1px;">GLOBAL STRENGTH — €M / dimension</div>';
   DIMS.forEach(function(d,i) {
-    var v = liveScores[i];
-    var base = baseline[i];
-    var delta = Math.round(v - base);
-    var vCol = v>=65?'var(--green)':v>=45?'var(--cyan)':'var(--orange)';
-    var dStr = delta>0?'+'+delta:delta===0?'':''+delta;
-    var dCol = delta>0?'var(--green)':delta<0?'var(--red)':'var(--muted2)';
-    html += '<div style="margin-bottom:5px;">';
-    html += '<div style="display:flex;justify-content:space-between;margin-bottom:2px;">';
+    var allocVal = mktAlloc[d] != null ? parseFloat(mktAlloc[d]) : 0;
+    html += '<div style="margin-bottom:8px;">';
+    html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px;">';
     html += '<span style="font-size:9px;color:var(--muted2);">'+DIM_ICONS[i]+' '+DIM_LABELS[i]+'</span>';
-    html += '<span style="font-family:DM Mono,monospace;font-size:9px;color:'+vCol+'">'+Math.round(v)+'</span>';
-    html += '<span style="font-family:DM Mono,monospace;font-size:8px;color:'+dCol+'">'+dStr+'</span>';
+    html += '<span id="brd-alloc-v-'+key+'-'+d+'" style="font-family:DM Mono,monospace;font-size:9px;color:var(--gold);">€'+allocVal+'M</span>';
     html += '</div>';
-    html += '<div style="height:3px;background:var(--border2);border-radius:2px;overflow:hidden;">';
-    html += '<div style="height:100%;width:'+v+'%;background:'+b.color+';border-radius:2px;transition:width .3s;"></div>';
-    html += '</div></div>';
+    html += '<input type="range" min="0" max="100" step="5" value="'+allocVal+'" ';
+    html += 'oninput="onBrandMktAllocChange(\''+key+'\',\''+d+'\',this.value);document.getElementById(\'brd-alloc-v-'+key+'-'+d+'\').textContent=\'€\'+this.value+\'M\'" ';
+    html += 'style="width:100%;accent-color:'+b.color+';margin:0;">';
+    html += '</div>';
   });
   html += '</div></div>';
 
@@ -9151,19 +9146,6 @@ function renderBrand(key) {
   });
   html += '</div>';
 
-  html += '<div style="font-family:DM Mono,monospace;font-size:8px;color:var(--muted2);margin-bottom:8px;text-transform:uppercase;letter-spacing:1px;">🌐 GLOBAL BRAND STRENGTH — 9-Dimension Allocation (Worldwide Effect)</div>';
-  html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:12px;">';
-  DIMS.forEach(function(d,i) {
-    var allocVal = mktAlloc[d] != null ? parseFloat(mktAlloc[d]) : 0;
-    html += '<div style="display:flex;align-items:center;gap:6px;">';
-    html += '<span style="font-size:9px;color:var(--muted2);min-width:90px;">'+DIM_ICONS[i]+' '+DIM_LABELS[i]+'</span>';
-    html += '<input type="number" min="0" max="100" step="5" value="'+allocVal+'" ';
-    html += 'oninput="onBrandMktAllocChange(\''+key+'\',\''+d+'\',this.value)" ';
-    html += 'style="width:60px;background:var(--s1);border:1px solid var(--border2);border-radius:2px;color:var(--text);font-family:DM Mono,monospace;font-size:10px;text-align:center;padding:3px 4px;">';
-    html += '<span id="brd-alloc-v-'+key+'-'+d+'" style="font-size:8px;color:var(--muted2);font-family:DM Mono,monospace;">€'+allocVal+'M</span>';
-    html += '</div>';
-  });
-  html += '</div>';
   html += '<button onclick="saveBrandMktDecision(\''+key+'\')" style="font-family:DM Mono,monospace;font-size:10px;padding:6px 16px;border-radius:2px;border:1px solid '+b.color+'44;background:'+b.color+'11;color:'+b.color+';cursor:pointer;">Save Decision</button>';
   html += '</div>';
 
