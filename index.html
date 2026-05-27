@@ -9282,6 +9282,16 @@ function renderAllBrands() {
     // Vehicle names strip (always visible)
     var brandVehs = _brandPageVehicles.filter(function(v) {
       var bk = (v.brand_id || (v.rolled_up_specs && v.rolled_up_specs.brand_name) || '').toLowerCase();
+      if (!bk) {
+        // Infer brand from specs for AI vehicles or legacy confirmed vehicles
+        var rs  = v.rolled_up_specs || {};
+        var pwt = (rs.pwt_type || '').toLowerCase();
+        var sz  = (rs.platform_size || '').toLowerCase();
+        var pk  = parseFloat(v.price_eur_k || 0);
+        if (pwt === 'bev_only') bk = 'arrow';
+        else if (sz === 'large' || sz === 'performance' || pk >= 45) bk = 'apex';
+        else bk = 'alpha';
+      }
       return bk === key && (v.status === 'approved' || v.status === 'on_sale');
     });
     if (brandVehs.length) {
@@ -16932,6 +16942,7 @@ async function confirmProposal() {
     var _rolledSpecs = {
       pwt_type: _pwtType, platform_size: _plS.size||'medium',
       body_type: _bodyC, segment_code: _prop.study.segment_code,
+      brand_name:  (_prop.study.rolled_up_specs && _prop.study.rolled_up_specs.brand_name) || '',
       safety:      parseFloat(_thS.safety||_plS.safety||50),
       comfort:     parseFloat(_thS.comfort||_plS.comfort||50),
       reliability: parseFloat(_thS.reliability||_plS.reliability||50),
