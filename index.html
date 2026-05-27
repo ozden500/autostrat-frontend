@@ -8903,11 +8903,8 @@ function onBrandMktAllocChange(key, dim, val) {
 async function saveBrandMktDecision(key) {
   if (!sessionId || !teamId || !_brandDataRoundId) { toast('Session not ready'); return; }
   var b = BRANDS_FULL[key];
-  var inputEl = document.getElementById('brd-mkt-input-'+key);
-  var total = _brandMktTotal[key] != null
-    ? _brandMktTotal[key]
-    : (inputEl ? (parseFloat(inputEl.value)||0) : ((_brandDecision&&_brandDecision.total_spend_m)||0));
   var alloc = _brandMktAlloc[key] || ((_brandDecision&&_brandDecision.allocation)||{});
+  var total = Object.values(alloc).reduce(function(s,v){ return s+parseFloat(v||0); }, 0);
   try {
     var res = await fetch(API_URL+'/sessions/'+sessionId+'/rounds/'+_brandDataRoundId+'/brand-decisions', {
       method:'POST', headers:{'Content-Type':'application/json'},
@@ -9093,15 +9090,6 @@ function renderBrand(key) {
   // Marketing decision panel
   html += '<div style="background:var(--s2);border:1px solid var(--border2);border-radius:3px;padding:12px 14px;">';
   html += '<div style="font-family:DM Mono,monospace;font-size:9px;color:var(--gold);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px;">MARKETING BUDGET — QUARTER INVESTMENT</div>';
-  html += '<div style="display:flex;align-items:center;gap:16px;margin-bottom:12px;flex-wrap:wrap;">';
-  html += '<div style="display:flex;align-items:center;gap:8px;">';
-  html += '<span style="font-size:9px;color:var(--muted2);">Total €M / quarter:</span>';
-  html += '<input type="number" min="0" max="300" step="5" value="'+mktTotal+'" id="brd-mkt-input-'+key+'" ';
-  html += 'oninput="onBrandMktTotalChange(\''+key+'\',this.value)" ';
-  html += 'style="width:80px;background:var(--s1);border:1px solid var(--border2);border-radius:2px;color:var(--gold);font-family:DM Mono,monospace;font-size:13px;text-align:center;padding:4px 6px;">';
-  html += '</div>';
-  html += '<span id="brd-mkt-total-v-'+key+'" style="font-family:DM Mono,monospace;font-size:10px;color:var(--muted2);">€'+mktTotal+'M</span>';
-  html += '</div>';
   // Per-country advertising reach — 38 countries grouped by region
   var CC_FLAGS = {DE:'🇩🇪',FR:'🇫🇷',GB:'🇬🇧',IT:'🇮🇹',ES:'🇪🇸',TR:'🇹🇷',PL:'🇵🇱',NL:'🇳🇱',BE:'🇧🇪',SE:'🇸🇪',AT:'🇦🇹',ROE:'🇪🇺',
     US:'🇺🇸',CA:'🇨🇦',MX:'🇲🇽',RONA:'🌎',CN:'🇨🇳',JP:'🇯🇵',IN:'🇮🇳',KR:'🇰🇷',AU:'🇦🇺',ID:'🇮🇩',TH:'🇹🇭',MY:'🇲🇾',ROA:'🌏',
