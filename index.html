@@ -993,6 +993,7 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
     <div class="ops-tab" onclick="opsTab('decisions',this)">⚙ Decisions</div>
     <div class="ops-tab" onclick="opsTab('pipeline',this)">📋 Pipeline</div>
     <div class="ops-tab" onclick="opsTab('manufacturing',this)">🏭 Manufacturing</div>
+    <div class="ops-tab" onclick="opsTab('sc-round',this);loadScRoundTab()">♻ Supply Chain</div>
   </div>
 
   <!-- MANUFACTURING TAB -->
@@ -1003,6 +1004,15 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
     <div id="mfg-plan-content">
       <div style="color:var(--muted2);font-family:'DM Mono',monospace;font-size:11px;padding:16px 0;">
         Freeze your Sales Plan first to generate manufacturing requirements.
+      </div>
+    </div>
+  </div>
+
+  <!-- SUPPLY CHAIN TAB -->
+  <div class="ops-panel" id="ops-sc-round">
+    <div id="sc-round-content">
+      <div style="color:var(--muted2);font-family:'DM Mono',monospace;font-size:11px;padding:16px 0;">
+        Loading supply chain decisions…
       </div>
     </div>
   </div>
@@ -12354,6 +12364,7 @@ function opsTab(tab, el) {
   if (tab === 'decisions')     updateDecisionForm();
   if (tab === 'pipeline')      renderPipeline();
   if (tab === 'manufacturing') loadMfgPlanTab();
+  if (tab === 'sc-round')      loadScRoundTab();
 }
 
 async function loadMfgFootprint(forceRefresh = false) {
@@ -19877,6 +19888,291 @@ function drawRadar() {
     </div>
   </div>
 </div>
+
+<!-- ══════════════════════════════════════════════════════════════════
+     SUPPLY CHAIN MODULE — Round Tactics UI
+     State: _scRoundState  |  Preview engine: _SC_COST_PREVIEW
+     ══════════════════════════════════════════════════════════════════ -->
+<script>
+// ── Client-side mirror of SupplyChainCostEngine.calc() ──────────────────────
+var _SC_COST_PREVIEW = {
+  SOURCING_MAT_ADJ:   {LOCAL:+0.12, BALANCED:0.00, GLOBAL:-0.08},
+  QUALITY_ADD:        {BASIC:0, STANDARD:120, PREMIUM:280, WORLD_CLASS:500},
+  CONCENTRATION_ADJ:  {SOLE:0.00, DUAL:0.01, MULTI:0.03},
+  CONTRACT_ADJ:       {SPOT:+0.025, SHORT_TERM:0.00, LONG_TERM:-0.015},
+  QC_ADD:             {INCOMING:0, PROCESS:30, EOL:60},
+  SAFETY_STOCK_CARRY: {LEAN:-15, STANDARD:0, BUFFER:+25},
+  SPARE_PARTS_ADD:    {REACTIVE:0, PROACTIVE:25, DEALER_MANAGED:10},
+  FIELD_SERVICE_ADD:  {NONE:0, BASIC:0, PREMIUM:15},
+  RAMP_ADD:           {FAST:+80, STANDARD:0, SLOW:-20},
+  OT_POLICY_ADD:      {NONE:0, PLANNED:+8, REACTIVE:+12},
+  RECYCLED_ADJ:       {0:0, 10:-5, 20:+10, 30:+30},
+  LOGISTICS_MULT:     {ROAD:1.00, RAIL:0.85, SEA:0.65, AIR:2.50},
+  DELIVERY_ADD:       {WEEKLY:+18, BIWEEKLY:0, MONTHLY:-12},
+  DISRUPT_BASE:       {LOCAL:0.05, BALANCED:0.12, GLOBAL:0.22},
+  DISRUPT_CONC:       {SOLE:2.5, DUAL:1.0, MULTI:0.6},
+  DISRUPT_BCP:        {NONE:1.5, BASIC:1.0, ADVANCED:0.5, FULL:0.2},
+  DISRUPT_STOCK:      {LEAN:1.5, STANDARD:1.0, BUFFER:0.4},
+
+  calc: function(locked, tactical, baseTpc, baseLogistics) {
+    locked   = locked   || {};
+    tactical = tactical || {};
+    baseTpc  = baseTpc  || 0;
+    var log  = baseLogistics || 350;
+    var mf   = 0.50;
+
+    var srcAdj  = baseTpc * mf * (this.SOURCING_MAT_ADJ[tactical.sourcing_strategy || 'BALANCED'] || 0);
+    var qualAdd = this.QUALITY_ADD[(locked.quality_tier || 'STANDARD').toUpperCase()] || 0;
+    var concAdj = baseTpc * (this.CONCENTRATION_ADJ[(locked.supplier_concentration || 'DUAL').toUpperCase()] || 0.01);
+    var conAdj  = baseTpc * mf * (this.CONTRACT_ADJ[(locked.contract_duration || 'SHORT_TERM').toUpperCase()] || 0);
+    var qcAdd   = this.QC_ADD[(locked.qc_intensity || 'PROCESS').toUpperCase()] || 0;
+    var ssAdd   = this.SAFETY_STOCK_CARRY[(tactical.component_safety_stock || 'STANDARD').toUpperCase()] || 0;
+    var spAdd   = this.SPARE_PARTS_ADD[(locked.spare_parts_strategy || 'REACTIVE').toUpperCase()] || 0;
+    var fsAdd   = this.FIELD_SERVICE_ADD[(locked.field_service_network || 'BASIC').toUpperCase()] || 0;
+    var otAdd   = this.OT_POLICY_ADD[(tactical.overtime_policy || 'REACTIVE').toUpperCase()] || 0;
+    var rcAdj   = this.RECYCLED_ADJ[parseInt(locked.recycled_content_pct || 0)] || 0;
+    var inter   = (tactical.transport_mode_inter || 'SEA').toUpperCase();
+    var logAdj  = log * ((this.LOGISTICS_MULT[inter] || 0.65) - 0.65);
+    var delAdd  = this.DELIVERY_ADD[(tactical.delivery_frequency || 'BIWEEKLY').toUpperCase()] || 0;
+    var dpoSur  = parseInt(tactical.supplier_dpo_days || 45) >= 90 ? 8 : 0;
+
+    var net = Math.round(srcAdj + qualAdd + concAdj + conAdj + qcAdd + ssAdd + spAdd + fsAdd +
+                         otAdd + rcAdj + logAdj + delAdd + dpoSur);
+
+    return {
+      net: net,
+      sourcing_adj: Math.round(srcAdj),
+      quality_add: qualAdd,
+      logistics_adj: Math.round(logAdj + delAdd),
+      disruption_pct: this.disruptionProb(locked, tactical),
+    };
+  },
+
+  disruptionProb: function(locked, tactical) {
+    var base = this.DISRUPT_BASE[(tactical.sourcing_strategy || 'BALANCED').toUpperCase()] || 0.12;
+    var c    = this.DISRUPT_CONC[(locked.supplier_concentration || 'DUAL').toUpperCase()] || 1.0;
+    var b    = this.DISRUPT_BCP[(locked.bcp_tier || 'BASIC').toUpperCase()] || 1.0;
+    var ss   = this.DISRUPT_STOCK[(tactical.component_safety_stock || 'STANDARD').toUpperCase()] || 1.0;
+    return Math.min(0.60, base * c * b * ss);
+  },
+};
+
+// ── SC Round state ───────────────────────────────────────────────────────────
+var _scRoundState = {
+  vehicles: [],          // [{id, name, locked:{...}, tactical:{...}}]
+  activeVehIdx: 0,
+  saving: false,
+};
+
+var _scRoundDefaults = {
+  sourcing_strategy: 'BALANCED',
+  material_hedging_ratio: 25,
+  shift_model: 'DOUBLE',
+  production_leveling: 'MIXED',
+  overtime_policy: 'REACTIVE',
+  component_safety_stock: 'STANDARD',
+  delivery_frequency: 'BIWEEKLY',
+  transport_mode_intra: 'ROAD',
+  transport_mode_inter: 'SEA',
+  emergency_fund_deployment_m: 25,
+  supplier_dpo_days: 45,
+  supply_chain_financing: 'NONE',
+  inventory_financing: 'NONE',
+};
+
+// ── Main load function ───────────────────────────────────────────────────────
+async function loadScRoundTab() {
+  if (!sessionId || !roundId || !teamId) return;
+  var el = document.getElementById('sc-round-content');
+  if (!el) return;
+  el.innerHTML = '<div style="color:var(--muted2);font-family:DM Mono,monospace;font-size:11px;padding:16px 0;">Loading…</div>';
+  try {
+    var vRes  = await fetch(API_URL + '/teams/' + teamId + '/vehicles?session_id=' + sessionId);
+    var vData = await vRes.json();
+    var vehs  = (vData.vehicles || []).filter(function(v){ return v.status === 'approved' || v.status === 'on_sale'; });
+    if (!vehs.length) {
+      el.innerHTML = '<div style="color:var(--muted2);font-family:DM Mono,monospace;font-size:11px;padding:16px 0;">No active vehicles. Submit and approve a vehicle proposal first.</div>';
+      return;
+    }
+    // Locked structural configs (per vehicle)
+    var lockedData = await Promise.all(vehs.map(function(v){
+      return fetch(API_URL + '/vehicles/' + v.id + '/supply-chain')
+        .then(function(r){ return r.json(); }).catch(function(){ return {}; });
+    }));
+    // Round tactics (team-scoped GET)
+    var tacRes  = await fetch(API_URL + '/sessions/' + sessionId + '/rounds/' + roundId + '/sc-tactics?team_id=' + teamId);
+    var tacData = await tacRes.json();
+    var tacByVid = {};
+    (tacData.tactics || []).forEach(function(t){ tacByVid[t.vehicle_id] = t; });
+
+    _scRoundState.vehicles = vehs.map(function(v, i) {
+      var locked   = lockedData[i] || {};
+      var tactical = tacByVid[v.id] || Object.assign({}, _scRoundDefaults);
+      return { id: v.id, name: v.name, tpc: parseFloat(v.total_unit_tpc_eur) || 0, locked: locked, tactical: tactical };
+    });
+    _scRoundState.activeVehIdx = 0;
+    _renderScRoundTab();
+  } catch(e) {
+    el.innerHTML = '<div style="color:var(--red);font-family:DM Mono,monospace;font-size:11px;padding:16px 0;">Failed: ' + e.message + '</div>';
+  }
+}
+
+// ── Render SC round tab ──────────────────────────────────────────────────────
+function _renderScRoundTab() {
+  var el = document.getElementById('sc-round-content');
+  if (!el) return;
+  var vehs = _scRoundState.vehicles;
+  if (!vehs.length) { el.innerHTML = ''; return; }
+  var idx = Math.min(_scRoundState.activeVehIdx, vehs.length - 1);
+  var veh = vehs[idx];
+
+  var vehTabs = vehs.map(function(v, i) {
+    var active = i === idx ? 'background:var(--accent);color:#fff;' : 'background:var(--bg2);color:var(--muted);cursor:pointer;';
+    return '<span onclick="_scSelectVeh(' + i + ')" style="' + active +
+           'padding:4px 10px;border-radius:4px;font-size:11px;font-family:DM Mono,monospace;margin-right:4px;">' +
+           _esc(v.name) + '</span>';
+  }).join('');
+
+  var t = veh.tactical;
+  var locked = veh.locked;
+  var preview = _SC_COST_PREVIEW.calc(locked, t, veh.tpc, 350);
+  var riskPct = Math.round(preview.disruption_pct * 100);
+  var riskCol = riskPct < 15 ? 'var(--green)' : riskPct < 35 ? 'var(--gold)' : 'var(--red)';
+  var riskLabel = riskPct < 15 ? 'LOW' : riskPct < 35 ? 'MEDIUM' : 'HIGH';
+  var isLocked  = t.is_locked;
+  var fmtAdj = function(n) { return (n >= 0 ? '+' : '') + '€' + Math.abs(Math.round(n)) + '/unit'; };
+
+  var html = '<div style="margin-bottom:12px;">' + vehTabs + '</div>';
+
+  if (isLocked) {
+    html += '<div style="background:var(--bg2);border:1px solid var(--border);border-radius:6px;padding:10px 14px;font-size:11px;font-family:DM Mono,monospace;color:var(--gold);margin-bottom:12px;">🔒 SC decisions locked for this round (market clearing complete)</div>';
+  }
+
+  var sc = function(label, key, options, labelMap) {
+    var cur = t[key] || '';
+    var btns = options.map(function(opt) {
+      var active = (cur === opt || (!cur && opt === (_scRoundDefaults[key] || '')));
+      var bg = active ? 'var(--accent)' : 'var(--bg2)';
+      var col = active ? '#fff' : 'var(--muted)';
+      var dis = isLocked ? 'pointer-events:none;opacity:0.5;' : 'cursor:pointer;';
+      return '<button onclick="_scSet(\'' + key + '\',\'' + opt + '\')" style="' + bg + ';color:' + col + ';border:1px solid var(--border);border-radius:4px;padding:3px 9px;font-size:10px;font-family:DM Mono,monospace;' + dis + '">' +
+             _esc((labelMap && labelMap[opt]) || opt) + '</button>';
+    }).join(' ');
+    return '<div style="display:flex;align-items:center;margin-bottom:7px;gap:8px;">' +
+           '<span style="font-size:10px;color:var(--muted2);font-family:DM Mono,monospace;min-width:150px;">' + label + '</span>' +
+           '<div style="display:flex;gap:4px;flex-wrap:wrap;">' + btns + '</div></div>';
+  };
+
+  // Section builder
+  var section = function(title, content) {
+    return '<div style="background:var(--bg2);border:1px solid var(--border);border-radius:6px;padding:12px 16px;margin-bottom:10px;">' +
+           '<div style="font-size:11px;font-weight:600;color:var(--fg);font-family:DM Mono,monospace;margin-bottom:10px;letter-spacing:.04em;">' + title + '</div>' +
+           content + '</div>';
+  };
+
+  // [G] Working Capital — ACTIVE
+  var wcContent = sc('Supplier DPO', 'supplier_dpo_days', [30,45,60,90], {30:'30 days',45:'45 days',60:'60 days',90:'90 days'}) +
+    sc('SC Financing', 'supply_chain_financing', ['NONE','FACTORING','REVERSE_FACTORING'], {NONE:'None',FACTORING:'Factoring',REVERSE_FACTORING:'Reverse Factoring'}) +
+    sc('Inventory Financing', 'inventory_financing', ['NONE','FLOOR_PLAN'], {NONE:'None',FLOOR_PLAN:'Floor Plan'});
+  html += section('[G] Working Capital', wcContent);
+
+  // [A] Procurement & Sourcing — ACTIVE
+  var procContent = sc('Sourcing Strategy', 'sourcing_strategy', ['LOCAL','BALANCED','GLOBAL']) +
+    sc('Material Hedging', 'material_hedging_ratio', [0,25,50,75,100], {0:'0%',25:'25%',50:'50%',75:'75%',100:'100%'});
+  html += section('[A] Procurement & Sourcing', procContent);
+
+  // [B] Production Scheduling — ACTIVE
+  var prodContent = sc('Shift Model', 'shift_model', ['SINGLE','DOUBLE','CONTINENTAL']) +
+    sc('Production Leveling', 'production_leveling', ['CHASE','MIXED','LEVEL']) +
+    sc('Overtime Policy', 'overtime_policy', ['NONE','PLANNED','REACTIVE']);
+  html += section('[B] Production Scheduling', prodContent);
+
+  // [C] Inventory & Logistics — ACTIVE
+  var invContent = sc('Safety Stock', 'component_safety_stock', ['LEAN','STANDARD','BUFFER']) +
+    sc('Transport (intra)', 'transport_mode_intra', ['ROAD','RAIL']) +
+    sc('Transport (inter-region)', 'transport_mode_inter', ['ROAD','RAIL','SEA','AIR']) +
+    sc('Delivery Frequency', 'delivery_frequency', ['WEEKLY','BIWEEKLY','MONTHLY']);
+  html += section('[C] Inventory & Logistics', invContent);
+
+  // [E] Risk Deployment — ACTIVE
+  var riskContent = sc('Emergency Fund', 'emergency_fund_deployment_m', [0,25,50,100,200], {0:'€0',25:'€25M',50:'€50M',100:'€100M',200:'€200M'});
+  html += section('[E] Risk Deployment', riskContent);
+
+  // Impact summary
+  var impactRows = [
+    ['Sourcing adj', fmtAdj(preview.sourcing_adj), preview.sourcing_adj],
+    ['Quality tier', fmtAdj(preview.quality_add), preview.quality_add],
+    ['Logistics mode', fmtAdj(preview.logistics_adj), preview.logistics_adj],
+  ];
+  var impactHtml = impactRows.map(function(r) {
+    var col = r[2] > 0 ? 'var(--red)' : r[2] < 0 ? 'var(--green)' : 'var(--muted)';
+    return '<div style="display:flex;justify-content:space-between;margin-bottom:3px;">' +
+           '<span style="color:var(--muted2);">' + r[0] + '</span>' +
+           '<span style="color:' + col + ';">' + r[1] + '</span></div>';
+  }).join('');
+  var netCol = preview.net > 0 ? 'var(--red)' : preview.net < 0 ? 'var(--green)' : 'var(--fg)';
+
+  html += '<div style="background:var(--bg2);border:1px solid var(--border);border-radius:6px;padding:12px 16px;margin-bottom:10px;font-family:DM Mono,monospace;font-size:11px;">' +
+          '<div style="font-size:11px;font-weight:600;color:var(--fg);margin-bottom:8px;letter-spacing:.04em;">SC ROUND IMPACT PREVIEW</div>' +
+          impactHtml +
+          '<div style="border-top:1px solid var(--border);margin:6px 0;"></div>' +
+          '<div style="display:flex;justify-content:space-between;margin-bottom:4px;">' +
+          '<span style="color:var(--fg);font-weight:600;">Net SC adj</span>' +
+          '<span style="color:' + netCol + ';font-weight:600;">' + fmtAdj(preview.net) + '</span></div>' +
+          '<div style="display:flex;justify-content:space-between;">' +
+          '<span style="color:var(--muted2);">Disruption risk</span>' +
+          '<span style="color:' + riskCol + ';">' + riskPct + '%   ' + riskLabel + ' RISK</span></div>' +
+          '</div>';
+
+  if (!isLocked) {
+    html += '<button onclick="saveScRoundDecisions()" style="background:var(--accent);color:#fff;border:none;border-radius:6px;padding:8px 20px;font-size:12px;font-family:DM Mono,monospace;cursor:pointer;width:100%;">SAVE SC DECISIONS</button>';
+  }
+
+  el.innerHTML = html;
+}
+
+function _scSelectVeh(idx) {
+  _scRoundState.activeVehIdx = idx;
+  _renderScRoundTab();
+}
+
+function _esc(s) {
+  return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function _scSet(key, val) {
+  var idx = _scRoundState.activeVehIdx;
+  var veh = _scRoundState.vehicles[idx];
+  if (!veh || veh.tactical.is_locked) return;
+  // Convert numeric keys
+  if (['material_hedging_ratio','supplier_dpo_days','emergency_fund_deployment_m'].indexOf(key) >= 0) {
+    val = parseInt(val);
+  }
+  veh.tactical[key] = val;
+  _renderScRoundTab();
+}
+
+async function saveScRoundDecisions() {
+  if (_scRoundState.saving) return;
+  _scRoundState.saving = true;
+  var idx  = _scRoundState.activeVehIdx;
+  var veh  = _scRoundState.vehicles[idx];
+  if (!veh) { _scRoundState.saving = false; return; }
+  try {
+    var res = await fetch(API_URL + '/vehicles/' + veh.id + '/rounds/' + roundId + '/sc-tactics', {
+      method: 'PATCH',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify(veh.tactical),
+    });
+    if (!res.ok) throw new Error(await res.text());
+    toast('SC decisions saved');
+  } catch(e) {
+    toast('✗ Save failed: ' + e.message);
+  } finally {
+    _scRoundState.saving = false;
+  }
+}
+</script>
 
 </body>
 </html>
