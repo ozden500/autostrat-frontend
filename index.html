@@ -8029,7 +8029,8 @@ async function renderCommercialPricing() {
 
     var effPct = _computeEffectiveDiscount(rd, v.commercial_plan);
 
-    var isCollapsed = !!_cardCollapsed[vid];
+    if (_cardCollapsed[vid] === undefined) _cardCollapsed[vid] = true;
+    var isCollapsed = _cardCollapsed[vid];
     h += '<div style="background:var(--s2);border:1px solid var(--border2);border-radius:6px;padding:18px 22px;">';
 
     // ── Vehicle header (always visible, click to toggle) ──
