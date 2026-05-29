@@ -6072,6 +6072,15 @@ var SEG_COUNTRY_VOL_K = {
 var _MARKET_E = {
   VERSION: "1.0.0",
 
+  // Own-price elasticity per segment (absolute values). Mirrors _MCE_SEG_ELASTICITY in main.py.
+  // Applied server-side during market clearing: adj_vol = base_vol × (ref_price / avg_price)^ε
+  // Not used in proposal preview (competition unknown at proposal time).
+  SEG_ELASTICITY: {
+    a_segment:2.0, b_segment:1.8, c_segment:1.5, d_segment:1.3,
+    e_segment:1.0, f_segment:0.6, sports:0.9,    mpv:1.2,
+    pickup:1.1,    c_van:1.4,     d_van:1.3,      e_van:1.2
+  },
+
   // Total addressable market per segment — derived from per-country data (k units / year)
   SEG_SIZE_K: (function() {
     var t = {};
