@@ -4629,18 +4629,34 @@ function fetchEPWTStdCost() {
 // Scales a single C_HB base BOM by segment × body-type factors.
 // ════════════════════════════════════════════════════════════════════
 var _TOPHAT_PC = {
-  VERSION: "1.0.0",
+  VERSION: "2.0.0",
   US_LABOR: 58.0, US_ELEC: 0.08,
   US_FTE_RATE_MONTH: 13333, RD_FTE_SHARE: 0.60, RD_MAT_SHARE: 0.40, RD_MAT_INDEX: 1.00,
   MAT: {
+    // Structural & glazing
     BODY_STEEL:    {p:1.10, sc:1.32, sm:1.18, sd:1.05, n:"Body Panel Mild Steel"},
     UHSS_PILLAR:   {p:2.10, sc:1.40, sm:1.22, sd:1.05, n:"UHSS Pillars & Side Sills"},
     GLASS_UNIT:    {p:12.0, sc:1.00, sm:1.00, sd:1.02, n:"Automotive Glass Units"},
+    // Interior trim & seating
     INT_PLASTIC:   {p:3.50, sc:1.00, sm:1.00, sd:1.15, n:"Interior Trim Plastics"},
     SEAT_FRAME:    {p:2.80, sc:1.25, sm:1.20, sd:1.08, n:"Seat Frame Steel"},
     TRIM_TEXTILE:  {p:8.50, sc:1.00, sm:1.00, sd:1.08, n:"Upholstery & Carpet"},
     NVH_RUBBER:    {p:4.50, sc:1.00, sm:1.00, sd:1.03, n:"Sound Deadening Material"},
     SEALANT:       {p:6.00, sc:1.00, sm:1.00, sd:1.02, n:"Body Sealant & Adhesive"},
+    // Mechatronics & closures
+    CLOSURE_MECH:  {p:12.0, sc:1.05, sm:1.05, sd:1.05, n:"Door & Closure Mechatronics"},
+    WINDOW_REG:    {p:22.0, sc:1.02, sm:1.02, sd:1.02, n:"Window Regulator Assemblies"},
+    EXT_MIRROR:    {p:35.0, sc:1.02, sm:1.02, sd:1.02, n:"Exterior Mirror Assemblies"},
+    WEATHERSTRIP:  {p:5.50, sc:1.03, sm:1.03, sd:1.03, n:"Weatherstrips & Aperture Seals"},
+    // Safety systems
+    AIRBAG_MODULE: {p:35.0, sc:1.00, sm:1.00, sd:1.00, n:"Airbag Modules (Inflator+Bag+Housing)"},
+    SEATBELT_ASY:  {p:40.0, sc:1.00, sm:1.00, sd:1.00, n:"Seatbelt Assemblies w/ Pretensioner"},
+    // Seat sub-systems
+    SEAT_FOAM:     {p:3.80, sc:1.02, sm:1.02, sd:1.02, n:"Polyurethane Seat Foam"},
+    SEAT_MECH:     {p:10.0, sc:1.05, sm:1.05, sd:1.05, n:"Seat Adjustment Mechanisms"},
+    // Dashboard & fasteners
+    DASH_STRUCT:   {p:11.0, sc:1.08, sm:1.08, sd:1.08, n:"Dashboard / IP Structure & Skin"},
+    FASTENERS:     {p:8.00, sc:1.00, sm:1.00, sd:1.00, n:"Body Clips, Fasteners & Fixings"},
   },
   PROC: {
     PANEL_STAMP:     {m:0.65, l:0.80, e:8.0,  n:"Exterior Panel Stamping"},
@@ -4648,32 +4664,51 @@ var _TOPHAT_PC = {
     TRIM_ASSEMBLY:   {m:0.10, l:1.20, e:2.0,  n:"Interior Trim Assembly"},
     SEAT_ASSEMBLY:   {m:0.20, l:3.50, e:2.5,  n:"Seat Assembly & Installation"},
     NVH_APPLICATION: {m:0.15, l:2.00, e:1.5,  n:"NVH Material Application"},
+    MECH_ASSEMBLY:   {m:0.40, l:4.00, e:3.0,  n:"Mechatronics Sub-Assembly & Fitting"},
+    SEAL_ASSEMBLY:   {m:0.10, l:2.50, e:1.0,  n:"Seal & Weatherstrip Fitting"},
+    SAFETY_INSTALL:  {m:0.30, l:6.00, e:2.0,  n:"Safety System Installation (Airbag/Belt)"},
+    FOAM_MOULD:      {m:1.20, l:1.50, e:18.0, n:"Seat Foam Moulding"},
   },
-  PRECISION: {GLASS_INSTALL:1, SEAT_ASSEMBLY:1},
+  PRECISION: {GLASS_INSTALL:1, SEAT_ASSEMBLY:1, SAFETY_INSTALL:1},
   SEGMENT_SCALE: {A:0.55, B:0.75, C:1.00, D:1.30, E:1.55, F:1.80},
   BODY_SCALE:    {HB:1.00, SUV:1.20, SEDAN:1.05, COUPE:0.90, VAN:1.45},
   // Base BOM at C_HB scale = 1.0 (net kg, process code)
+  // Indices 2,3,5,12,14 referenced by spec steps in calc() — do not reorder
   BASE_BOM: [
-    ["BODY_STEEL",  30, "PANEL_STAMP"],
-    ["UHSS_PILLAR",  6, "PANEL_STAMP"],
-    ["GLASS_UNIT",   7, "GLASS_INSTALL"],
-    ["INT_PLASTIC", 16, "TRIM_ASSEMBLY"],
-    ["SEAT_FRAME",  12, "SEAT_ASSEMBLY"],
-    ["TRIM_TEXTILE", 4, "TRIM_ASSEMBLY"],
-    ["NVH_RUBBER",   5, "NVH_APPLICATION"],
-    ["SEALANT",      2, "TRIM_ASSEMBLY"],
+    ["BODY_STEEL",   55, "PANEL_STAMP"],    // [0]
+    ["UHSS_PILLAR",  14, "PANEL_STAMP"],    // [1]
+    ["GLASS_UNIT",   22, "GLASS_INSTALL"],  // [2] ← roominess ref
+    ["INT_PLASTIC",  24, "TRIM_ASSEMBLY"],  // [3] ← roominess ref
+    ["SEAT_FRAME",   30, "SEAT_ASSEMBLY"],  // [4]
+    ["TRIM_TEXTILE", 20, "TRIM_ASSEMBLY"],  // [5] ← roominess + premiumness ref
+    ["NVH_RUBBER",   10, "NVH_APPLICATION"],// [6]
+    ["SEALANT",       4, "TRIM_ASSEMBLY"],  // [7]
+    ["CLOSURE_MECH", 10, "MECH_ASSEMBLY"],  // [8]
+    ["WINDOW_REG",    5, "MECH_ASSEMBLY"],  // [9]
+    ["EXT_MIRROR",    2, "MECH_ASSEMBLY"],  // [10]
+    ["WEATHERSTRIP",  6, "SEAL_ASSEMBLY"],  // [11]
+    ["AIRBAG_MODULE", 9, "SAFETY_INSTALL"], // [12] ← safety ref
+    ["SEATBELT_ASY",  5, "SAFETY_INSTALL"], // [13]
+    ["SEAT_FOAM",    22, "FOAM_MOULD"],     // [14] ← comfort ref
+    ["SEAT_MECH",     7, "MECH_ASSEMBLY"],  // [15]
+    ["DASH_STRUCT",   9, "TRIM_ASSEMBLY"],  // [16]
+    ["FASTENERS",     2, "TRIM_ASSEMBLY"],  // [17]
   ],
-  // Base process throughput (gross kg) at C_HB scale = 1.0
+  // Base process throughput (gross kg) at C_HB scale = 1.0 — derived from BOM gross weights
   BASE_PROCS: [
-    ["PANEL_STAMP",     47.5],
-    ["GLASS_INSTALL",    7.1],
-    ["TRIM_ASSEMBLY",   38.0],
-    ["SEAT_ASSEMBLY",   15.0],
-    ["NVH_APPLICATION",  5.2],
+    ["PANEL_STAMP",     92.2],  // BODY_STEEL(72.6)+UHSS_PILLAR(19.6)
+    ["GLASS_INSTALL",   22.4],  // GLASS_UNIT(22.4)
+    ["TRIM_ASSEMBLY",   65.0],  // INT_PLASTIC(27.6)+TRIM_TEXTILE(21.6)+SEALANT(4.1)+DASH_STRUCT(9.7)+FASTENERS(2.0)
+    ["SEAT_ASSEMBLY",   32.4],  // SEAT_FRAME(32.4)
+    ["NVH_APPLICATION", 10.3],  // NVH_RUBBER(10.3)
+    ["MECH_ASSEMBLY",   25.0],  // CLOSURE_MECH(10.5)+WINDOW_REG(5.1)+EXT_MIRROR(2.0)+SEAT_MECH(7.4)
+    ["SEAL_ASSEMBLY",    6.2],  // WEATHERSTRIP(6.2)
+    ["SAFETY_INSTALL",  14.0],  // AIRBAG_MODULE(9.0)+SEATBELT_ASY(5.0)
+    ["FOAM_MOULD",      22.4],  // SEAT_FOAM(22.4)
   ],
   BASE_RD: {
-    "A_HB":60, "B_HB":80, "C_HB":100, "C_SUV":110,
-    "D_SUV":140, "E_SEDAN":160, "F_COUPE":180, "C_VAN":90,
+    "A_HB":85,  "B_HB":110, "C_HB":140, "C_SUV":155,
+    "D_SUV":195, "E_SEDAN":220, "F_COUPE":250, "C_VAN":125,
   },
   scrap: function(code, proc) {
     var m = this.MAT[code]; if (!m) return 1.05;
@@ -4720,13 +4755,16 @@ var _TOPHAT_PC = {
       if (ep+et > 0.1) procs.push({code:'TRIM_ASSEMBLY',name:'Extra Trim Assembly (Roominess)',gross:(ep*1.15+et*1.08),m:0.10,l:1.20,e:2.0,spec:true,label:'Roominess'});
     }
 
-    // Step 5 — Premiumness spec (price premium on textiles + plastic above 0.30 baseline)
+    // Step 5 — Premiumness spec: price premiums on finish, mirrors, closures, dash
     var prem_delta = Math.max(0, premiumness - 0.30);
     if (prem_delta > 0.01) {
       var pf = prem_delta / 0.70;
       mats.forEach(function(l){
         if (l.code==='TRIM_TEXTILE'&&!l.spec) { l.price=l.price*(1+pf*0.80); l.cost=l.gross*l.price; }
         if (l.code==='INT_PLASTIC'&&!l.spec)  { l.price=l.price*(1+pf*0.30); l.cost=l.gross*l.price; }
+        if (l.code==='EXT_MIRROR'&&!l.spec)   { l.price=l.price*(1+pf*0.60); l.cost=l.gross*l.price; }
+        if (l.code==='CLOSURE_MECH'&&!l.spec) { l.price=l.price*(1+pf*0.40); l.cost=l.gross*l.price; }
+        if (l.code==='DASH_STRUCT'&&!l.spec)  { l.price=l.price*(1+pf*0.35); l.cost=l.gross*l.price; }
       });
       if (premiumness > 0.70) {
         var pex = _TOPHAT_PC.BASE_BOM[5][1] * scale * (premiumness-0.70)/0.30 * 0.20;
@@ -4734,7 +4772,7 @@ var _TOPHAT_PC = {
       }
     }
 
-    // Step 6 — Safety spec: replace BODY_STEEL fraction with UHSS (mirrors _PC)
+    // Step 6 — Safety spec: UHSS substitution + extra airbag modules
     if (safety > 0.001) {
       var sf = safety * 0.35;
       mats.forEach(function(l){
@@ -4745,16 +4783,21 @@ var _TOPHAT_PC = {
         }
       });
       procs.forEach(function(l){ if(l.code==='PANEL_STAMP') l.e=l.e*(1+safety*0.15); });
+      var ab_extra = _TOPHAT_PC.BASE_BOM[12][1] * scale * safety * 0.40;
+      if (ab_extra > 0.2) mats.push({code:'AIRBAG_MODULE',name:'Additional Airbag Modules (Safety)',net:ab_extra,sc:1.00,gross:ab_extra,price:35.0,cost:ab_extra*35.0,proc:'SAFETY_INSTALL',spec:true,label:'Safety'});
     }
 
-    // Step 7 — Comfort spec: extra NVH + trim assembly labor
+    // Step 7 — Comfort spec: extra NVH + seat foam density + weatherstrip quality
     if (comfort > 0.001) {
       mats.forEach(function(l){
         if (l.code==='NVH_RUBBER'&&!l.spec){
           var ex=l.net*comfort*0.40;
           mats.push({code:'NVH_RUBBER',name:'Extra Sound Deadening (Comfort)',net:ex,sc:1.03,gross:ex*1.03,price:4.50,cost:ex*1.03*4.50,proc:'NVH_APPLICATION',spec:true,label:'Comfort'});
         }
+        if (l.code==='WEATHERSTRIP'&&!l.spec) { l.price=l.price*(1+comfort*0.15); l.cost=l.gross*l.price; }
       });
+      var sf_extra = _TOPHAT_PC.BASE_BOM[14][1] * scale * comfort * 0.25;
+      if (sf_extra > 0.1) mats.push({code:'SEAT_FOAM',name:'Extra Seat Foam Density (Comfort)',net:sf_extra,sc:1.02,gross:sf_extra*1.02,price:3.80,cost:sf_extra*1.02*3.80,proc:'FOAM_MOULD',spec:true,label:'Comfort'});
       procs.forEach(function(l){ if(l.code==='TRIM_ASSEMBLY') l.l=l.l*(1+comfort*0.15); });
     }
 
@@ -4773,10 +4816,15 @@ var _TOPHAT_PC = {
       });
     }
 
-    // Step 9 — Reliability: precision labor + sealant grade premium
+    // Step 9 — Reliability: precision labor + material grade premiums
     if (reliability > 0.001) {
       procs.forEach(function(l){ if(_TOPHAT_PC.PRECISION[l.code]) l.l=l.l*(1+reliability*0.20); });
-      mats.forEach(function(l){ if(l.code==='SEALANT'&&!l.spec){ l.price=l.price*(1+reliability*0.15); l.cost=l.gross*l.price; }});
+      mats.forEach(function(l){
+        if (l.code==='SEALANT'&&!l.spec)      { l.price=l.price*(1+reliability*0.15); l.cost=l.gross*l.price; }
+        if (l.code==='WINDOW_REG'&&!l.spec)   { l.price=l.price*(1+reliability*0.12); l.cost=l.gross*l.price; }
+        if (l.code==='CLOSURE_MECH'&&!l.spec) { l.price=l.price*(1+reliability*0.10); l.cost=l.gross*l.price; }
+        if (l.code==='FASTENERS'&&!l.spec)    { l.price=l.price*(1+reliability*0.08); l.cost=l.gross*l.price; }
+      });
     }
 
     // Step 10 — Cost opt: reduce scrap + labor (embedded in BOM, mirrors _PC)
@@ -4809,7 +4857,7 @@ var _TOPHAT_PC = {
     var sc85=dc*0.85, soh=sc85*0.05, spf=sc85*0.10, stot=sc85*1.15, oem=dc*0.15, std=stot+oem, tpc=std;
 
     // Step 12 — R&D
-    var brd    = _TOPHAT_PC.BASE_RD[config_key] || 100;
+    var brd    = _TOPHAT_PC.BASE_RD[config_key] || 140;
     var room_d = 0.08 * Math.min(1, Math.max(0, roominess-2.5)/5.0);
     var prem_d = 0.10 * premiumness;
     var saf_d  = 0.12*(Math.exp(3*safety)-1)/(Math.exp(3)-1);
