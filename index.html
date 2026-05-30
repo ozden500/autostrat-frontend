@@ -900,7 +900,6 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
       <div class="sb-lbl" style="color:#a78bfa">🎓 Instructor Mode</div>
       <div class="nav-item active" onclick="navInstr('instr-hub',this)"><span class="nav-icon">⚡</span> Session Hub</div>
       <div class="nav-item" onclick="navInstr('instr-results',this)"><span class="nav-icon">📊</span> Results Analyst</div>
-      <div class="nav-item" onclick="navInstr('instr-monitor',this)"><span class="nav-icon">👁</span> Team Monitor</div>
       <div class="nav-item" onclick="navInstr('instr-footprint',this)"><span class="nav-icon">🏭</span> Footprint Manager</div>
       <div class="nav-item" onclick="navInstr('instr-events',this)"><span class="nav-icon">⚠</span> Event Injector</div>
       <div class="nav-item" onclick="navInstr('instr-demand',this)"><span class="nav-icon">📊</span> Demand Model</div>
@@ -2148,16 +2147,6 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
 </div>
 
 <!-- ████ INSTRUCTOR: MARKET ROUND CONTROL ████ -->
-
-<!-- ████ INSTRUCTOR: TEAM MONITOR ████ -->
-<div class="instr-page" id="page-instr-monitor">
-  <div class="pg-title" style="color:#a78bfa">TEAM MONITOR</div>
-  <div class="pg-sub">Live view of all team decisions this round</div>
-  <button onclick="loadTeamMonitor()" style="background:#4c1d95;color:#c4b5fd;border:none;border-radius:6px;padding:8px 16px;font-size:12px;cursor:pointer;margin-bottom:16px">↻ Refresh</button>
-  <div id="team-monitor-content">
-    <div style="color:var(--muted2);font-size:13px;padding:40px 0;text-align:center">Loading team decisions...</div>
-  </div>
-</div>
 
 <!-- ████ INSTRUCTOR: TECH BENCHMARKS ████ -->
 <div class="instr-page" id="page-instr-techcompare">
@@ -10509,7 +10498,6 @@ function navInstr(page, el) {
   const target = document.getElementById('page-' + page);
   if (target) target.classList.add('active');
   if (page === 'instr-hub')       refreshInstructorHub();
-  if (page === 'instr-monitor')   loadTeamMonitor();
   if (page === 'instr-footprint') loadFootprintManager();
   if (page === 'instr-results')   loadAnalystRounds();
   if (page === 'instr-demand')    loadDemandModel();
@@ -10561,21 +10549,32 @@ async function refreshInstructorHub() {
       if (btnNext)  { btnNext.disabled  = latest.phase !== 'results';  btnNext.style.opacity  = latest.phase === 'results'  ? '1' : '.4'; }
     }
 
-    // Load submissions
+    // Load submissions + vehicles + history in parallel
     if (latest && latest.id) {
-      const sRes  = await fetch(`${API_URL}/sessions/${sessionId}/rounds/${latest.id}/submissions`);
+      const [sRes, vRes, histRes] = await Promise.all([
+        fetch(`${API_URL}/sessions/${sessionId}/rounds/${latest.id}/submissions`),
+        fetch(`${API_URL}/sessions/${sessionId}/vehicles`),
+        fetch(`${API_URL}/sessions/${sessionId}/market-history`).then(r=>r.json()).catch(()=>({history:[]})),
+      ]);
       const sData = await sRes.json();
+      const vData = await vRes.json();
       const subs  = sData.submissions || [];
+      const veh   = vData.vehicles || [];
       const submitted = subs.filter(s => s.status === 'submitted');
       document.getElementById('hub-sub-summary').textContent = `${submitted.length} / ${humanTeams.length} human claimed`;
       document.getElementById('instr-sub-count').textContent = `${submitted.length} / ${humanTeams.length}`;
 
       const subMap = {};
       subs.forEach(s => subMap[s.team_id] = s);
+      const teamHasVeh = new Set(
+        veh.filter(v => v.status === 'on_sale' || v.status === 'approved').map(v => v.team_id)
+      );
+
       document.getElementById('hub-submissions').innerHTML =
         humanTeams.map(t => {
           const sub  = subMap[t.id];
           const done = sub?.status === 'submitted';
+          const hasV = teamHasVeh.has(t.id);
           return `<div style="background:${done?'rgba(74,222,128,.08)':'rgba(251,191,36,.06)'};border:1px solid ${done?'rgba(74,222,128,.25)':'rgba(251,191,36,.2)'};border-radius:8px;padding:12px">
             <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
               <span style="font-size:16px">${done?'✅':'⏳'}</span>
@@ -10583,30 +10582,27 @@ async function refreshInstructorHub() {
               <span style="font-size:10px;background:#22c55e22;color:#22c55e;border:1px solid #22c55e44;border-radius:4px;padding:1px 5px">HUMAN</span>
             </div>
             <div style="font-size:10px;color:${done?'#4ade80':'#fbbf24'}">${done?'Submitted':'Pending'}</div>
+            <div style="font-size:9px;color:${hasV?'#2dd4bf':'#475569'};margin-top:3px">${hasV?'🚗 Vehicle ready':'— No vehicle'}</div>
           </div>`;
         }).join('') +
-        aiTeams.map(t => `
-          <div style="background:rgba(148,163,184,.06);border:1px solid rgba(148,163,184,.2);border-radius:8px;padding:12px">
+        aiTeams.map(t => {
+          const hasV = teamHasVeh.has(t.id);
+          return `<div style="background:rgba(148,163,184,.06);border:1px solid rgba(148,163,184,.2);border-radius:8px;padding:12px">
             <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
               <span style="font-size:16px">🤖</span>
               <span style="font-size:12px;font-weight:700;color:${t.color_hex||'#94a3b8'}">${t.name}</span>
               <span style="font-size:10px;background:#6366f122;color:#818cf8;border:1px solid #6366f144;border-radius:4px;padding:1px 5px">AI AUTO</span>
             </div>
             <div style="font-size:10px;color:#64748b">Unclaimed — AI will simulate</div>
-          </div>`
-        ).join('');
+            <div style="font-size:9px;color:${hasV?'#2dd4bf':'#475569'};margin-top:3px">${hasV?'🚗 Vehicle ready':'— No vehicle'}</div>
+          </div>`;
+        }).join('');
 
-      // Vehicle status + market tab data
+      // Vehicle status tiles + market tab data
       try {
-        const [vRes, histRes] = await Promise.all([
-          fetch(`${API_URL}/sessions/${sessionId}/vehicles`),
-          fetch(`${API_URL}/sessions/${sessionId}/market-history`).then(r=>r.json()).catch(()=>({history:[]})),
-        ]);
-        const vData   = await vRes.json();
-        const veh     = vData.vehicles || [];
         const history = (histRes && histRes.history) || [];
-        const year2   = latest ? latest.year  : 2025;
-        const qtr2    = latest ? latest.quarter : 1;
+        const year2   = latest.year;
+        const qtr2    = latest.quarter;
         const curQabs = (year2 - 2025) * 4 + (qtr2 - 1);
 
         const onSaleVeh   = veh.filter(v => v.status === 'on_sale');
@@ -11573,41 +11569,6 @@ async function loadAnalystResults() {
     console.error('loadAnalystResults error:', e);
     if (content) content.innerHTML = '<div style="color:var(--red)">Error: ' + e.message + '</div>';
   }
-}
-
-async function loadTeamMonitor() {
-  if (!sessionId) return;
-  var el = document.getElementById('team-monitor-content');
-  if (!el) return;
-  try {
-    var res = await fetch(API_URL + '/sessions/' + sessionId + '/team-readiness');
-    if (!res.ok) throw new Error('HTTP ' + res.status);
-    var data = await res.json();
-    var teams = data.teams || [];
-    var label = data.round_year ? 'Y' + (data.round_year - 2024) + 'Q' + data.round_quarter : '';
-    var h = '<div style="font-family:DM Mono,monospace;font-size:8px;color:var(--muted);margin-bottom:12px;text-transform:uppercase;letter-spacing:1px;">Current Round' + (label ? ' — ' + label : '') + '</div>';
-    h += '<table class="mi-tbl"><thead><tr>' +
-      '<th class="mi-th">Team</th>' +
-      '<th class="mi-th" style="text-align:center">Control</th>' +
-      '<th class="mi-th" style="text-align:center">Vehicle Ready</th>' +
-      '</tr></thead><tbody>';
-    teams.forEach(function(t) {
-      var humanBadge = t.is_human_claimed
-        ? '<span style="background:#166534;color:#4ade80;padding:2px 7px;border-radius:4px;font-size:9px;font-weight:700;">HUMAN</span>'
-        : '<span style="background:#3b0764;color:#a78bfa;padding:2px 7px;border-radius:4px;font-size:9px;font-weight:700;">AI AUTO</span>';
-      var vehIcon = t.has_active_vehicle ? '✓' : '⏳';
-      var vehCol  = t.has_active_vehicle ? 'var(--green)' : 'var(--gold)';
-      var vehLabel = t.has_active_vehicle ? 'Ready' : 'No vehicle';
-      h += '<tr class="mi-tr">' +
-        '<td class="mi-td" style="font-weight:600;">' + t.name + '</td>' +
-        '<td class="mi-td" style="text-align:center;">' + humanBadge + '</td>' +
-        '<td class="mi-td" style="text-align:center;color:' + vehCol + ';">' + vehIcon + ' ' + vehLabel + '</td>' +
-        '</tr>';
-    });
-    if (!teams.length) h += '<tr><td colspan="3" class="mi-td" style="text-align:center;color:var(--muted2);">No teams found.</td></tr>';
-    h += '</tbody></table>';
-    el.innerHTML = h;
-  } catch(e) { el.innerHTML = '<div style="color:var(--red)">Error: ' + e.message + '</div>'; }
 }
 
 // ── TECH BENCHMARKS ──────────────────────────────────────────────
