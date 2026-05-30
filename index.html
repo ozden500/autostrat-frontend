@@ -6129,6 +6129,22 @@ var _MARKET_E = {
     e_van:     {price:0.17,efficiency:0.15,performance:0.04,safety:0.14,comfort:0.13,technology:0.10,reliability:0.27}
   },
 
+  // External competitor profile per segment: n=count, u=utility, ext_dp=incumbent brand advantage
+  SEG_EXT: {
+    a_segment: {n:6, u:53, ext_dp:1.7},
+    b_segment: {n:7, u:57, ext_dp:1.8},
+    c_segment: {n:6, u:57, ext_dp:1.8},
+    d_segment: {n:5, u:55, ext_dp:1.5},
+    e_segment: {n:4, u:60, ext_dp:1.5},
+    f_segment: {n:3, u:68, ext_dp:1.6},
+    sports:    {n:3, u:65, ext_dp:1.6},
+    mpv:       {n:4, u:52, ext_dp:1.4},
+    pickup:    {n:5, u:63, ext_dp:1.7},
+    c_van:     {n:4, u:55, ext_dp:1.4},
+    d_van:     {n:4, u:58, ext_dp:1.5},
+    e_van:     {n:3, u:55, ext_dp:1.4}
+  },
+
   // Brand positioning: best-fit segments, price band, PWT preference, attribute bonuses
   BRAND_FIT: {
     ALPHA: {segments:['a_segment','b_segment','c_segment','d_segment'],band:[0.75,1.10],pwt:null,     bonus:{efficiency:5,reliability:5}},
@@ -6242,12 +6258,12 @@ var _MARKET_E = {
     attrs.forEach(function(a) { utility += (sc[a]||50) * (weights[a]||0); });
     utility = Math.round(utility);
 
-    // ── 4. Market share (logit vs N-1 benchmark competitors) ─────
-    var N   = 5;                        // assumed competitor count in segment
-    var lam = 0.04;                     // logit scale (sensitivity)
-    var expU = Math.exp(lam * utility);
-    var expB = Math.exp(lam * 50);      // benchmark competitor utility
-    var share = Math.round(expU / (expU + expB * (N - 1)) * 100 * 10) / 10;
+    // ── 4. Market share (logit vs segment-specific external competitors) ─
+    var lam    = 0.04;
+    var segExt = this.SEG_EXT[seg] || {n:4, u:50, ext_dp:1.0};
+    var expU   = Math.exp(lam * utility);
+    var extExp = Math.exp(lam * segExt.u) * segExt.ext_dp * segExt.n;
+    var share  = Math.round(expU / (expU + extExp) * 100 * 10) / 10;
     var segK  = this.SEG_SIZE_K[seg] || 500;
     var volK  = Math.round(share / 100 * segK * 10) / 10;
 
