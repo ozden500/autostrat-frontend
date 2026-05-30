@@ -2565,9 +2565,7 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
       <div class="study-field">
         <label>Brand</label>
         <select id="st-brand" style="width:100%;">
-          <option value="alpha">Alpha — Core Volume</option>
-          <option value="apex">Apex — Premium</option>
-          <option value="arrow">Arrow — EV Specialist</option>
+          <option value="">— Loading brands… —</option>
         </select>
       </div>
       <div class="study-field">
@@ -8521,6 +8519,15 @@ async function openStudyModal() {
     const sel = document.getElementById('st-segment');
     if (sel) sel.innerHTML = '<option value="">— select —</option>' + segs.map(s=>`<option value="${s.code}">${s.name}</option>`).join('');
   } catch(e){}
+  // Populate team-specific brand pool
+  try {
+    const br = await fetch(`${API_URL}/teams/${teamId}/brand-pool`);
+    const bd = await br.json();
+    const bsel = document.getElementById('st-brand');
+    if (bsel && bd.brands && bd.brands.length) {
+      bsel.innerHTML = bd.brands.map(b => `<option value="${b.brand_key}">${b.brand_name}</option>`).join('');
+    }
+  } catch(e) {}
   updateStudyBodyTypes(); // reset body types to defaults
   document.getElementById('studyModal').classList.add('open');
 }
