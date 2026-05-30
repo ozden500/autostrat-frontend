@@ -8846,6 +8846,8 @@ var _brandDecision = null;    // fetched from /brand-decisions/{team_id}
 var _brandDataRoundId = null; // track which round we loaded for
 var _brandAwareCollapsed = {}; // collapse state per brandKey+'_'+reg
 var _brandPageVehicles  = []; // vehicles fetched for the brand page
+var _teamBrandPool = [];      // [{brand_key, brand_name, sort_order}] for this team
+var _teamBrandData = {};      // {brand_key: {name, color, tier, tagline, mktBudget}}
 
 async function loadBrandsPage() {
   if (!sessionId || !teamId) { renderAllBrands(); return; }
@@ -8893,6 +8895,23 @@ async function loadBrandsPage() {
         _brandPageVehicles = (vData.vehicles || vData || []);
       }
     } catch(e2) { /* non-fatal */ }
+    // Fetch team's reserved brand pool
+    try {
+      var _BRAND_PALETTE = ['#4a8ce0','#e04a4a','#38d486','#c8a43c','#a070e0',
+                            '#e08030','#30c8e0','#e030a0','#70c030','#c0c030'];
+      var bpRes = await fetch(API_URL+'/teams/'+teamId+'/brand-pool');
+      if (bpRes.ok) {
+        var bpData = await bpRes.json();
+        _teamBrandPool = bpData.brands || [];
+        _teamBrandData = {};
+        _teamBrandPool.forEach(function(b) {
+          var col = _BRAND_PALETTE[(b.sort_order-1) % _BRAND_PALETTE.length];
+          _teamBrandData[b.brand_key] = {name:b.brand_name, color:col, tier:'Team Brand',
+            tagline:'Vehicle brand · '+b.brand_name, mktBudget:100};
+        });
+        if (_teamBrandPool.length > 0) currentBrand = _teamBrandPool[0].brand_key;
+      }
+    } catch(e3) { /* non-fatal */ }
   } catch(e) { console.warn('loadBrandsPage:', e); }
   renderAllBrands();
 }
@@ -9055,7 +9074,7 @@ async function saveBrandMktDecision(key) {
 }
 
 function renderBrand(key) {
-  const b = BRANDS_FULL[key];
+  const b = BRANDS_FULL[key] || _teamBrandData[key];
   if (!b) return {html:'', key:key, dims:[], scores:[], baseline:[], color:'#888'};
 
   var DIMS = ['tech_leadership','design_aesthetics','safety_protection','performance_dynamics',
@@ -9358,14 +9377,19 @@ function renderAllBrands() {
   var BENCH_DP_CARDS = Math.pow(0.5,0.6)*Math.pow(0.5,1.4);
   var REG_AWARE_BASE = {alpha:[62,48,40,52,45], apex:[60,65,52,32,35], arrow:[48,30,28,18,16]};
   var STR_BASE       = {alpha:[48,55,58,48,65,45,72,45,50], apex:[62,75,65,72,72,50,38,75,65], arrow:[75,60,60,58,55,85,55,50,68]};
+  var _DEFAULT_STR   = [50,50,50,50,50,50,50,50,50];
   var html = '';
-  ['alpha','apex','arrow'].forEach(function(key) {
-    var b = BRANDS_FULL[key];
-    var baseS   = STR_BASE[key];
-    var bei     = (_brandScores && _brandScores.bei_score != null && (_brandScores.brand_id||'').toLowerCase()===key)
+  var _brandKeys = _teamBrandPool.length > 0
+    ? _teamBrandPool.map(function(bp){ return bp.brand_key; })
+    : ['alpha','apex','arrow'];
+  _brandKeys.forEach(function(key) {
+    var b = (_teamBrandData[key] || BRANDS_FULL[key]);
+    if (!b) return;
+    var baseS   = STR_BASE[key] || _DEFAULT_STR;
+    var bei     = (_brandScores && _brandScores.bei_score != null && (_teamBrandPool.length > 0 || (_brandScores.brand_id||'').toLowerCase()===key))
                   ? Math.round(_brandScores.bei_score)
                   : Math.round(baseS.reduce(function(s,v){return s+v;},0)/baseS.length);
-    var aware   = (_brandScores && _brandScores.awareness_score != null && (_brandScores.brand_id||'').toLowerCase()===key)
+    var aware   = (_brandScores && _brandScores.awareness_score != null && (_teamBrandPool.length > 0 || (_brandScores.brand_id||'').toLowerCase()===key))
                   ? Math.round(_brandScores.awareness_score)
                   : Math.round((REG_AWARE_BASE[key]||[50,50,50,50,50]).reduce(function(s,v,i){
                       return s+v*[0.40,0.25,0.20,0.08,0.07][i];}, 0));
@@ -9402,8 +9426,8 @@ function renderAllBrands() {
     // Vehicle names strip (always visible)
     var brandVehs = _brandPageVehicles.filter(function(v) {
       var bk = (v.brand_id || (v.rolled_up_specs && v.rolled_up_specs.brand_name) || '').toLowerCase();
-      if (!bk) {
-        // Infer brand from specs for AI vehicles or legacy confirmed vehicles
+      if (!bk && _teamBrandPool.length === 0) {
+        // Infer brand from specs only in legacy 3-brand mode
         var rs  = v.rolled_up_specs || {};
         var pwt = (rs.pwt_type || '').toLowerCase();
         var sz  = (rs.platform_size || '').toLowerCase();
