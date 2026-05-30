@@ -821,6 +821,20 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
     <div id="instructor-section" style="display:none">
       <div class="login-label">Create or load a session</div>
       <input class="login-input" id="session-name-input" type="text" placeholder="Session name e.g. Cohort A" style="letter-spacing:normal;font-size:14px;font-family:inherit" maxlength="60"/>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-bottom:6px">
+        <div>
+          <div style="color:#94a3b8;font-size:10px;margin-bottom:2px">Min lead time (qtrs)</div>
+          <input class="login-input" id="sess-min-lt" type="number" min="1" max="12" value="4" style="letter-spacing:normal;font-size:13px;padding:6px 8px;margin:0"/>
+        </div>
+        <div>
+          <div style="color:#94a3b8;font-size:10px;margin-bottom:2px">R&amp;D cap €M/qtr/team</div>
+          <input class="login-input" id="sess-rd-budget" type="number" min="0" step="0.5" placeholder="unlimited" style="letter-spacing:normal;font-size:13px;padding:6px 8px;margin:0"/>
+        </div>
+        <div>
+          <div style="color:#94a3b8;font-size:10px;margin-bottom:2px">Max eng FTE/team</div>
+          <input class="login-input" id="sess-max-fte" type="number" min="0" placeholder="unlimited" style="letter-spacing:normal;font-size:13px;padding:6px 8px;margin:0"/>
+        </div>
+      </div>
       <button class="login-btn" onclick="instructorCreateSession()" style="margin-bottom:10px">＋ Create New Session</button>
       <div style="color:#475569;font-size:12px;margin:8px 0">— or load existing —</div>
       <input class="login-input" id="session-id-input" type="text" placeholder="Paste Session ID" style="letter-spacing:normal;font-size:13px;font-family:monospace" maxlength="40"/>
@@ -2025,6 +2039,31 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
       <div style="font-size:10px;color:#475569;margin-top:4px">Click to copy</div>
     </div>
   </div>
+
+  <!-- Session Parameters (Resource Constraints) -->
+  <details id="hub-session-params" style="background:var(--s1);border:1px solid var(--border);border-radius:10px;padding:16px;margin-bottom:16px">
+    <summary style="cursor:pointer;font-family:'DM Mono',monospace;font-size:9px;text-transform:uppercase;letter-spacing:1.5px;color:#a78bfa;list-style:none;display:flex;align-items:center;justify-content:space-between">
+      Session Parameters &nbsp;<span style="color:#475569;font-size:10px">▾ expand to edit R&amp;D constraints</span>
+    </summary>
+    <div style="margin-top:14px;display:grid;grid-template-columns:repeat(3,1fr);gap:12px">
+      <div>
+        <label style="font-size:11px;color:#94a3b8;display:block;margin-bottom:4px">Min lead time (quarters)</label>
+        <input id="hub-min-lt" type="number" min="1" max="12" style="width:100%;background:var(--s2);border:1px solid var(--border);border-radius:6px;color:#f1f5f9;padding:7px 10px;font-size:13px"/>
+      </div>
+      <div>
+        <label style="font-size:11px;color:#94a3b8;display:block;margin-bottom:4px">R&amp;D cap €M/qtr/team</label>
+        <input id="hub-rd-budget" type="number" min="0" step="0.5" placeholder="unlimited" style="width:100%;background:var(--s2);border:1px solid var(--border);border-radius:6px;color:#f1f5f9;padding:7px 10px;font-size:13px"/>
+      </div>
+      <div>
+        <label style="font-size:11px;color:#94a3b8;display:block;margin-bottom:4px">Max eng FTE/team</label>
+        <input id="hub-max-fte" type="number" min="0" placeholder="unlimited" style="width:100%;background:var(--s2);border:1px solid var(--border);border-radius:6px;color:#f1f5f9;padding:7px 10px;font-size:13px"/>
+      </div>
+    </div>
+    <div style="margin-top:12px;display:flex;align-items:center;gap:10px">
+      <button onclick="hubSaveSessionConfig()" style="background:#4c1d95;color:#c4b5fd;border:1px solid #7c3aed;border-radius:6px;padding:7px 16px;font-size:12px;cursor:pointer;font-weight:600">💾 Save Parameters</button>
+      <span id="hub-cfg-status" style="font-size:11px;color:#22c55e;display:none">Saved ✓</span>
+    </div>
+  </details>
 
   <!-- Submission Tracker -->
   <div style="background:var(--s1);border:1px solid var(--border);border-radius:10px;padding:16px;margin-bottom:16px">
@@ -6655,15 +6694,26 @@ async function buildEngineeringDashboard() {
   if (!el || !teamId) return;
   el.innerHTML = '<div style="text-align:center;padding:40px;color:var(--muted2);font-family:DM Mono,monospace;font-size:11px;">Loading...</div>';
   try {
-    var mr = await fetch(API_URL+'/teams/'+teamId+'/modules');
+    var [mr, vr, pr, cfgR] = await Promise.all([
+      fetch(API_URL+'/teams/'+teamId+'/modules'),
+      fetch(API_URL+'/teams/'+teamId+'/vehicles'),
+      fetch(API_URL+'/teams/'+teamId+'/modules/pipeline'),
+      sessionId ? fetch(API_URL+'/sessions/'+sessionId+'/config').catch(()=>null) : Promise.resolve(null),
+    ]);
     var md = await mr.json(); var mods = md.modules||[];
     teamModuleLibrary = mods;
-    var vr = await fetch(API_URL+'/teams/'+teamId+'/vehicles');
     var vd = await vr.json(); var vehicles = vd.vehicles||[];
+    // Attach progress_pct from pipeline to in-dev modules
+    try {
+      var pd = await pr.json(); var pipelineRows = pd.pipeline||[];
+      var pipeMap = {}; pipelineRows.forEach(function(p){ pipeMap[p.id] = p; });
+      mods.forEach(function(m){ if(pipeMap[m.id]) m._pipeline = pipeMap[m.id]; });
+    } catch(pe){ /* non-critical */ }
+    var sessionCfg = {};
+    if (cfgR && cfgR.ok) { try { var cd = await cfgR.json(); sessionCfg = cd.config||{}; } catch(e){} }
 
-    // Current quarter from game round (falls back to latest submitted module)
     var todayQabs = (currentRoundYear - 2025) * 4 + (currentRoundQuarter - 1);
-    _renderEngineeringDashboard(mods, vehicles, todayQabs);
+    _renderEngineeringDashboard(mods, vehicles, todayQabs, sessionCfg);
   } catch(e) {
     el.innerHTML='<div style="color:var(--red);font-family:DM Mono,monospace;font-size:11px;padding:20px;">Error: '+e.message+'</div>';
   }
@@ -6671,11 +6721,13 @@ async function buildEngineeringDashboard() {
 
 function _qLabel(qabs){ return (2025+Math.floor(qabs/4))+' Q'+(qabs%4+1); }
 
-function _renderEngineeringDashboard(mods, vehicles, todayQabs) {
+function _renderEngineeringDashboard(mods, vehicles, todayQabs, sessionCfg) {
+  sessionCfg = sessionCfg || {};
   var el = document.getElementById('eng-dashboard-content');
   if (!el) return;
 
-  var inDev  = mods.filter(function(m){return m.development_status==='in_development';}).length;
+  var inDevMods = mods.filter(function(m){return m.development_status==='in_development';});
+  var inDev  = inDevMods.length;
   var done   = mods.filter(function(m){return m.development_status==='completed';}).length;
   var totalRd= mods.reduce(function(s,m){return s+parseFloat(m.total_rd_spend_m||0);},0);
   var readyQs= mods.filter(function(m){return m.ready_year&&m.development_status!=='cancelled';})
@@ -6683,10 +6735,24 @@ function _renderEngineeringDashboard(mods, vehicles, todayQabs) {
   var earliest= readyQs.length?_qLabel(Math.min.apply(null,readyQs)):'—';
   var latest  = readyQs.length?_qLabel(Math.max.apply(null,readyQs)):'—';
 
+  // R&D utilization this round
+  var rdBudget = sessionCfg.rd_budget_per_team_per_qtr_m;
+  var rdRequired = inDevMods.reduce(function(s,m){
+    return s + parseFloat((m._pipeline&&m._pipeline.pipeline)?m._pipeline.pipeline.rd_budget_required_per_qtr_m||0:0);
+  },0);
+  var rdAllocated = inDevMods.reduce(function(s,m){
+    return s + parseFloat((m._pipeline&&m._pipeline.pipeline)?m._pipeline.pipeline.rd_budget_allocated_per_qtr_m||0:0);
+  },0);
+  var rdUtilStr = rdBudget!=null
+    ? Math.round(rdRequired/rdBudget*100)+'%'
+    : (rdRequired>0?'€'+rdRequired.toFixed(1)+'M':'—');
+  var rdUtilColor = rdBudget!=null&&rdRequired>rdBudget?'var(--red)':'var(--green)';
+
   var h = '';
 
-  // ── KPI strip ──
-  h += '<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-bottom:14px;">';
+  // ── KPI strip (6 tiles when budget configured, else 5) ──
+  var kpiCols = rdBudget!=null || rdRequired>0 ? 6 : 5;
+  h += '<div style="display:grid;grid-template-columns:repeat('+kpiCols+',1fr);gap:8px;margin-bottom:14px;">';
   function kpi(v,l,c){ return '<div style="background:var(--s2);border-radius:3px;border:1px solid var(--border2);padding:10px 12px;text-align:center;">'+
     '<div style="font-family:Orbitron,sans-serif;font-size:14px;font-weight:700;color:'+c+';margin-bottom:3px;">'+v+'</div>'+
     '<div style="font-family:DM Mono,monospace;font-size:8px;color:var(--muted2);text-transform:uppercase;letter-spacing:.5px;">'+l+'</div></div>'; }
@@ -6695,6 +6761,7 @@ function _renderEngineeringDashboard(mods, vehicles, todayQabs) {
   h += kpi('€'+Math.round(totalRd)+'M','Total R&D Committed','var(--cyan)');
   h += kpi(earliest,'Earliest Ready','var(--purple)');
   h += kpi(latest,  'Latest Ready',  'var(--orange)');
+  if (kpiCols===6) h += kpi(rdUtilStr, rdBudget!=null?'R&D vs Budget':'R&D This Qtr', rdUtilColor);
   h += '</div>';
 
   // ── Gantt ──
@@ -6704,7 +6771,7 @@ function _renderEngineeringDashboard(mods, vehicles, todayQabs) {
   h += '<span style="font-family:DM Mono,monospace;font-size:8px;color:var(--muted2);">TODAY: '+_qLabel(todayQabs)+'</span>';
   h += '</div>';
   h += '<div style="padding:14px;overflow-x:auto;">';
-  h += _buildModuleGantt(mods, vehicles, todayQabs);
+  h += _buildModuleGantt(mods, vehicles, todayQabs, sessionCfg);
   h += '</div></div>';
 
   // ── Resource chart ──
@@ -6724,6 +6791,9 @@ function _renderEngineeringDashboard(mods, vehicles, todayQabs) {
   });
   h += '<span style="display:flex;align-items:center;gap:4px;font-family:DM Mono,monospace;font-size:8px;color:rgba(255,100,100,.7);">'+
     '<span style="width:1px;height:10px;background:rgba(255,100,100,.7);display:inline-block;"></span>TODAY</span>';
+  if (sessionCfg && sessionCfg.rd_budget_per_team_per_qtr_m != null)
+    h += '<span style="display:flex;align-items:center;gap:4px;font-family:DM Mono,monospace;font-size:8px;color:rgba(250,204,21,.8);">'+
+      '<span style="display:inline-block;width:10px;height:1.5px;background:rgba(250,204,21,.8);border-top:1.5px dashed rgba(250,204,21,.8);"></span>BUDGET CAP €'+sessionCfg.rd_budget_per_team_per_qtr_m+'M</span>';
   h += '</div></div></div>';
 
   // ── Vehicle-module matrix ──
@@ -6737,10 +6807,11 @@ function _renderEngineeringDashboard(mods, vehicles, todayQabs) {
   }
 
   el.innerHTML = h;
-  setTimeout(function(){ _drawResourceChart(mods, todayQabs); }, 60);
+  setTimeout(function(){ _drawResourceChart(mods, todayQabs, sessionCfg); }, 60);
 }
 
-function _buildModuleGantt(mods, vehicles, todayQabs) {
+function _buildModuleGantt(mods, vehicles, todayQabs, sessionCfg) {
+  sessionCfg = sessionCfg || {};
   if (mods.length===0) return '<div style="color:var(--muted2);font-family:DM Mono,monospace;font-size:11px;padding:20px;text-align:center;">No modules in library yet.</div>';
 
   // Quarter range
@@ -6795,17 +6866,30 @@ function _buildModuleGantt(mods, vehicles, todayQabs) {
       var left=toLeft(qs), width=toWidth(qs,qe);
       var opacity=isDone?'.45':isCancelled?'.2':'.82';
       var readyStr=m.ready_year?_qLabel((m.ready_year-2025)*4+(m.ready_quarter-1)):'?';
-      var tipText=m.name+' | '+(isDone?'READY':isCancelled?'CANCELLED':'→'+readyStr)+' | R&D €'+parseFloat(m.total_rd_spend_m||0).toFixed(0)+'M | TPC €'+Math.round(m.per_unit_tpc_eur||0)+'/veh';
+      var pip=m._pipeline?m._pipeline.pipeline||{}:{};
+      var progressPct=isDone?100:Math.min(100,Math.round(parseFloat(pip.progress_pct||0)));
+      var rdReq=parseFloat(pip.rd_budget_required_per_qtr_m||0);
+      var rdAlloc=parseFloat(pip.rd_budget_allocated_per_qtr_m||0);
+      var underfunded=!isDone&&rdReq>0&&rdAlloc<rdReq*0.99;
+      var allocPct=rdReq>0?Math.round(rdAlloc/rdReq*100):100;
+      var tipText=m.name+' | '+(isDone?'READY':isCancelled?'CANCELLED':'→'+readyStr)+
+        ' | Progress: '+progressPct+'%'+
+        (underfunded?' | ⚠ '+allocPct+'% funded':'')+
+        ' | R&D €'+parseFloat(m.total_rd_spend_m||0).toFixed(0)+'M | TPC €'+Math.round(m.per_unit_tpc_eur||0)+'/veh';
       h+='<div style="display:flex;align-items:center;margin-bottom:4px;">';
       h+='<div style="width:170px;flex-shrink:0;padding-right:10px;overflow:hidden;">';
       h+='<div style="font-size:10px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">'+(isCancelled?'<s>':'')+m.name+(isCancelled?'</s>':'')+'</div>';
-      h+='<div style="font-family:DM Mono,monospace;font-size:8px;color:var(--muted2);">'+(m.development_type==='modify'?'MOD':'NEW')+(isDone?' ✓ READY':isCancelled?' ✗':(m.ready_year?' → '+readyStr:''))+'</div>';
+      h+='<div style="font-family:DM Mono,monospace;font-size:8px;color:var(--muted2);">'+(m.development_type==='modify'?'MOD':'NEW')+(isDone?' ✓ READY':isCancelled?' ✗':(m.ready_year?' → '+readyStr:''))+(underfunded?' <span style="color:#f97316;">⚠'+allocPct+'%</span>':'')+'</div>';
       h+='</div>';
       h+='<div style="flex:1;height:24px;position:relative;">';
       for(var gq2=qMin+1;gq2<=qMax;gq2++)
         h+='<div style="position:absolute;top:0;bottom:0;left:'+((gq2-qMin)/numQ*100)+'%;width:1px;background:rgba(255,255,255,.04);"></div>';
+      // Outer bar (full scheduled span)
       h+='<div title="'+tipText+'" style="position:absolute;top:3px;bottom:3px;left:'+left+'%;width:'+width+'%;background:'+col+';opacity:'+opacity+';border-radius:2px;overflow:hidden;display:flex;align-items:center;padding:0 5px;box-sizing:border-box;">';
-      if(width>9) h+='<span style="font-family:DM Mono,monospace;font-size:8px;color:var(--bg);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600;">'+m.name.substring(0,14)+(isDone?' ✓':'')+'</span>';
+      // Progress fill overlay (only for in-dev modules)
+      if(!isDone&&!isCancelled&&progressPct>0)
+        h+='<div style="position:absolute;top:0;left:0;height:100%;width:'+progressPct+'%;background:rgba(255,255,255,.25);border-radius:2px 0 0 2px;pointer-events:none;"></div>';
+      if(width>9) h+='<span style="font-family:DM Mono,monospace;font-size:8px;color:var(--bg);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600;position:relative;">'+m.name.substring(0,14)+(isDone?' ✓':(!isCancelled&&progressPct>0?' '+progressPct+'%':''))+'</span>';
       h+='</div>';
       h+='<div style="position:absolute;top:0;bottom:0;left:'+todayLeft+'%;width:1.5px;background:rgba(255,80,80,.45);pointer-events:none;"></div>';
       h+='</div></div>';
@@ -6846,7 +6930,8 @@ function _buildModuleGantt(mods, vehicles, todayQabs) {
   return h;
 }
 
-function _drawResourceChart(mods, todayQabs) {
+function _drawResourceChart(mods, todayQabs, sessionCfg) {
+  sessionCfg = sessionCfg || {};
   var canvas=document.getElementById('eng-resource-canvas');
   if(!canvas) return;
   canvas.width=canvas.offsetWidth||700;
@@ -6930,6 +7015,20 @@ function _drawResourceChart(mods, todayQabs) {
   ctx.setLineDash([3,2]);
   ctx.beginPath(); ctx.moveTo(todayX,PT); ctx.lineTo(todayX,PT+cH); ctx.stroke();
   ctx.setLineDash([]);
+
+  // Budget ceiling line
+  var rdBudget=sessionCfg.rd_budget_per_team_per_qtr_m;
+  if(rdBudget!=null&&rdBudget>0&&rdBudget<=maxTotal*1.5){
+    var budgetY=PT+cH*(1-rdBudget/maxTotal);
+    if(budgetY>=PT&&budgetY<=PT+cH){
+      ctx.strokeStyle='rgba(250,204,21,.8)'; ctx.lineWidth=1.5;
+      ctx.setLineDash([5,3]);
+      ctx.beginPath(); ctx.moveTo(PL,budgetY); ctx.lineTo(W-PR,budgetY); ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle='rgba(250,204,21,.8)'; ctx.font='8px DM Mono,monospace'; ctx.textAlign='left';
+      ctx.fillText('Budget cap €'+rdBudget+'M',PL+3,budgetY-3);
+    }
+  }
 }
 
 function _buildVehicleModuleMatrix(mods, vehicles) {
@@ -6990,23 +7089,69 @@ async function loadModulePipeline() {
     const emptyEl=document.getElementById('mod-pipeline-empty');
     if(pipeline.length===0){ emptyEl.style.display='block'; pipeEl.innerHTML=''; return; }
     emptyEl.style.display='none';
-    pipeEl.innerHTML=pipeline.map(p=>{
-      const m=p.module||{};
-      const total=p.quarters_total||1;
-      const remaining=p.quarters_remaining||0;
-      const pct=Math.round(((total-remaining)/total)*100);
-      return `<div style="padding:10px 0;border-bottom:1px solid var(--border);">
-        <div style="display:flex;justify-content:space-between;margin-bottom:4px;">
-          <span style="font-size:11px;font-weight:600;">${m.name||'—'}</span>
-          <span style="font-family:'DM Mono',monospace;font-size:9px;color:var(--gold);">${remaining} qtrs left</span>
+    // Sort by priority_order ascending, then by name
+    const sorted=[...pipeline].sort((a,b)=>{
+      const pa=(a.priority_order??999), pb=(b.priority_order??999);
+      return pa!==pb?pa-pb:(a.name||'').localeCompare(b.name||'');
+    });
+    pipeEl.innerHTML=sorted.map((m,idx)=>{
+      const pip=m.pipeline||{};
+      const pct=Math.min(100,Math.round(parseFloat(pip.progress_pct||0)));
+      const remaining=pip.quarters_remaining??'?';
+      const rdReq=parseFloat(pip.rd_budget_required_per_qtr_m||0);
+      const rdAlloc=parseFloat(pip.rd_budget_allocated_per_qtr_m||0);
+      const underfunded=rdReq>0&&rdAlloc<rdReq*0.99;
+      const allocPct=rdReq>0?Math.round(rdAlloc/rdReq*100):100;
+      const readyLabel=m.ready_year?`Est. ready Y${m.ready_year-2024}Q${m.ready_quarter}`:'—';
+      const priOrder=m.priority_order??999;
+      const priLabel=priOrder<999?`P${priOrder}`:'—';
+      const fundBadge=underfunded
+        ?`<span style="background:#7f1d1d;color:#fca5a5;font-size:8px;padding:1px 5px;border-radius:3px;margin-left:4px;">⚠ ${allocPct}% funded</span>`
+        :'';
+      return `<div style="padding:10px 0;border-bottom:1px solid var(--border);" id="pipe-row-${m.id}">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+          <span style="font-size:11px;font-weight:600;">${m.name||'—'}${m.development_type==='modify'?' <span style="color:var(--purple);font-size:8px;">MOD</span>':''}</span>
+          <div style="display:flex;align-items:center;gap:6px;">
+            ${fundBadge}
+            <span style="font-family:'DM Mono',monospace;font-size:9px;color:var(--gold);">${pct}%</span>
+            <span style="font-family:'DM Mono',monospace;font-size:9px;color:var(--muted2);">${remaining} qtrs left</span>
+          </div>
         </div>
-        <div style="height:3px;background:var(--border2);border-radius:2px;overflow:hidden;">
-          <div style="height:100%;width:${pct}%;background:var(--gold);border-radius:2px;"></div>
+        <div style="height:4px;background:var(--border2);border-radius:2px;overflow:hidden;margin-bottom:4px;">
+          <div style="height:100%;width:${pct}%;background:${underfunded?'#f97316':'var(--gold)'};border-radius:2px;transition:width 0.3s;"></div>
         </div>
-        <div style="font-family:'DM Mono',monospace;font-size:8px;color:var(--muted2);margin-top:3px;">${m.module_type||''} · ${m.config_key||''} · €${parseFloat(p.rd_budget_required_per_qtr_m||0).toFixed(1)}M/qtr</div>
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+          <div style="font-family:'DM Mono',monospace;font-size:8px;color:var(--muted2);">${m.module_type||''} · ${m.config_key||''} · €${rdReq.toFixed(1)}M/qtr req · ${readyLabel}</div>
+          <div style="display:flex;align-items:center;gap:4px;">
+            <span style="font-family:'DM Mono',monospace;font-size:8px;color:var(--muted2);">Pri:${priLabel}</span>
+            <button onclick="setModulePriority('${m.id}',${idx+1})" title="Increase priority" style="background:rgba(255,255,255,.06);border:1px solid var(--border);border-radius:3px;color:var(--muted);font-size:9px;padding:1px 5px;cursor:pointer;">▲</button>
+            <button onclick="setModulePriority('${m.id}',${idx+101})" title="Decrease priority" style="background:rgba(255,255,255,.06);border:1px solid var(--border);border-radius:3px;color:var(--muted);font-size:9px;padding:1px 5px;cursor:pointer;">▼</button>
+            <button onclick="clearModulePriority('${m.id}')" title="Remove priority (proportional allocation)" style="background:rgba(255,255,255,.04);border:1px solid var(--border);border-radius:3px;color:var(--muted2);font-size:9px;padding:1px 5px;cursor:pointer;">✕</button>
+          </div>
+        </div>
       </div>`;
     }).join('');
   } catch(e){ console.warn('loadModulePipeline:',e); }
+}
+
+async function setModulePriority(moduleId, order) {
+  try {
+    await fetch(`${API_URL}/modules/${moduleId}/priority`, {
+      method:'PATCH', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({priority_order: order})
+    });
+    await loadModulePipeline();
+  } catch(e){ console.warn('setModulePriority:',e); }
+}
+
+async function clearModulePriority(moduleId) {
+  try {
+    await fetch(`${API_URL}/modules/${moduleId}/priority`, {
+      method:'PATCH', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({priority_order: 999})
+    });
+    await loadModulePipeline();
+  } catch(e){ console.warn('clearModulePriority:',e); }
 }
 
 // ── VEHICLE PLAN ──────────────────────────────────────────────
@@ -9677,10 +9822,20 @@ async function instructorCreateSession() {
   // Clear any old session state
   sessionStorage.clear();
   sessionId = null; teamId = null; roundId = null; submitted = false;
+  // Read resource constraint inputs
+  const minLtVal  = parseInt(document.getElementById('sess-min-lt')?.value) || 4;
+  const rdBudgRaw = document.getElementById('sess-rd-budget')?.value?.trim();
+  const fteLimRaw = document.getElementById('sess-max-fte')?.value?.trim();
+  const sessionBody = {
+    name, total_rounds:20, round_duration_minutes:30,
+    min_lead_time_quarters: minLtVal,
+    rd_budget_per_team_per_qtr_m: rdBudgRaw ? parseFloat(rdBudgRaw) : null,
+    max_eng_fte_per_team: fteLimRaw ? parseInt(fteLimRaw) : null,
+  };
   try {
     const sRes  = await fetch(`${API_URL}/sessions`, {
       method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({name, total_rounds:20, round_duration_minutes:30})
+      body: JSON.stringify(sessionBody)
     });
     const sData = await sRes.json();
     console.log('Session created:', sData);
@@ -10593,6 +10748,30 @@ function navInstr(page, el) {
   if (page === 'instr-techcompare') loadTechCompare();
 }
 
+async function hubSaveSessionConfig() {
+  if (!sessionId) return;
+  const ltVal  = document.getElementById('hub-min-lt')?.value;
+  const rdVal  = document.getElementById('hub-rd-budget')?.value?.trim();
+  const fteVal = document.getElementById('hub-max-fte')?.value?.trim();
+  const body = {};
+  if (ltVal)  body.min_lead_time_quarters = parseInt(ltVal);
+  if (rdVal)  body.rd_budget_per_team_per_qtr_m = parseFloat(rdVal);
+  else        body.rd_budget_per_team_per_qtr_m = null;
+  if (fteVal) body.max_eng_fte_per_team = parseInt(fteVal);
+  else        body.max_eng_fte_per_team = null;
+  try {
+    const res = await fetch(`${API_URL}/sessions/${sessionId}/config`, {
+      method:'PATCH', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)
+    });
+    if (!res.ok) throw new Error(await res.text());
+    // Clear dirty flags after save
+    ['hub-min-lt','hub-rd-budget','hub-max-fte'].forEach(id => { const el = document.getElementById(id); if (el) delete el.dataset.dirty; });
+    const st = document.getElementById('hub-cfg-status');
+    if (st) { st.style.display = 'inline'; setTimeout(() => st.style.display = 'none', 3000); }
+    toast('✓ Session parameters saved');
+  } catch(e) { toast('❌ Save failed: ' + e.message); }
+}
+
 function copySessionId() {
   if (!sessionId) return;
   navigator.clipboard.writeText(sessionId).then(() => toast('✓ Session ID copied!'));
@@ -10636,6 +10815,23 @@ async function refreshInstructorHub() {
       const btnNext  = document.getElementById('hub-btn-next');
       if (btnNext)  { btnNext.disabled  = latest.phase !== 'results';  btnNext.style.opacity  = latest.phase === 'results'  ? '1' : '.4'; }
     }
+
+    // Populate session config panel (only if inputs are empty to avoid overwriting edits)
+    try {
+      const cfgRes = await fetch(`${API_URL}/sessions/${sessionId}/config`);
+      if (cfgRes.ok) {
+        const cfgData = await cfgRes.json();
+        const cfg = cfgData.config || {};
+        const ltEl  = document.getElementById('hub-min-lt');
+        const rdEl  = document.getElementById('hub-rd-budget');
+        const fteEl = document.getElementById('hub-max-fte');
+        if (ltEl  && !ltEl.dataset.dirty)  ltEl.value  = cfg.min_lead_time_quarters ?? 2;
+        if (rdEl  && !rdEl.dataset.dirty)  rdEl.value  = cfg.rd_budget_per_team_per_qtr_m != null ? cfg.rd_budget_per_team_per_qtr_m : '';
+        if (fteEl && !fteEl.dataset.dirty) fteEl.value = cfg.max_eng_fte_per_team != null ? cfg.max_eng_fte_per_team : '';
+        // Mark dirty on user input to avoid overwriting edits during auto-refresh
+        [ltEl, rdEl, fteEl].forEach(el => { if (el && !el._dirtyBound) { el._dirtyBound = true; el.addEventListener('input', () => el.dataset.dirty = '1'); }});
+      }
+    } catch(e) { /* non-critical */ }
 
     // Load submissions + vehicles + history in parallel
     if (latest && latest.id) {
