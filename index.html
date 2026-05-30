@@ -9385,6 +9385,21 @@ function renderAllBrands() {
   _brandKeys.forEach(function(key) {
     var b = (_teamBrandData[key] || BRANDS_FULL[key]);
     if (!b) return;
+    // Pre-compute vehicle list and skip brand card if no active vehicles
+    var brandVehs = _brandPageVehicles.filter(function(v) {
+      var bk = (v.brand_id || (v.rolled_up_specs && v.rolled_up_specs.brand_name) || '').toLowerCase();
+      if (!bk && _teamBrandPool.length === 0) {
+        var rs = v.rolled_up_specs || {};
+        var pwt = (rs.pwt_type || '').toLowerCase();
+        var sz  = (rs.platform_size || '').toLowerCase();
+        var pk  = parseFloat(v.price_eur_k || 0);
+        if (pwt === 'bev_only') bk = 'arrow';
+        else if (sz === 'large' || sz === 'performance' || pk >= 45) bk = 'apex';
+        else bk = 'alpha';
+      }
+      return bk === key && (v.status === 'approved' || v.status === 'on_sale');
+    });
+    if (brandVehs.length === 0) return;
     var baseS   = STR_BASE[key] || _DEFAULT_STR;
     var bei     = (_brandScores && _brandScores.bei_score != null && (_teamBrandPool.length > 0 || (_brandScores.brand_id||'').toLowerCase()===key))
                   ? Math.round(_brandScores.bei_score)
@@ -9423,21 +9438,7 @@ function renderAllBrands() {
     html += '</div>';
     html += '<span id="brand-arrow-'+key+'" style="font-size:11px;color:var(--muted2);margin-left:14px;">'+(expanded?'▲':'▼')+'</span>';
     html += '</div>';
-    // Vehicle names strip (always visible)
-    var brandVehs = _brandPageVehicles.filter(function(v) {
-      var bk = (v.brand_id || (v.rolled_up_specs && v.rolled_up_specs.brand_name) || '').toLowerCase();
-      if (!bk && _teamBrandPool.length === 0) {
-        // Infer brand from specs only in legacy 3-brand mode
-        var rs  = v.rolled_up_specs || {};
-        var pwt = (rs.pwt_type || '').toLowerCase();
-        var sz  = (rs.platform_size || '').toLowerCase();
-        var pk  = parseFloat(v.price_eur_k || 0);
-        if (pwt === 'bev_only') bk = 'arrow';
-        else if (sz === 'large' || sz === 'performance' || pk >= 45) bk = 'apex';
-        else bk = 'alpha';
-      }
-      return bk === key && (v.status === 'approved' || v.status === 'on_sale');
-    });
+    // Vehicle names strip (always visible; brandVehs computed above)
     if (brandVehs.length) {
       html += '<div style="padding:5px 14px;display:flex;flex-wrap:wrap;gap:5px;background:var(--s1);border-top:1px solid var(--border);">';
       brandVehs.forEach(function(v) {
