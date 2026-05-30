@@ -821,20 +821,6 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
     <div id="instructor-section" style="display:none">
       <div class="login-label">Create or load a session</div>
       <input class="login-input" id="session-name-input" type="text" placeholder="Session name e.g. Cohort A" style="letter-spacing:normal;font-size:14px;font-family:inherit" maxlength="60"/>
-      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-bottom:6px">
-        <div>
-          <div style="color:#94a3b8;font-size:10px;margin-bottom:2px">Min lead time (qtrs)</div>
-          <input class="login-input" id="sess-min-lt" type="number" min="1" max="12" value="4" style="letter-spacing:normal;font-size:13px;padding:6px 8px;margin:0"/>
-        </div>
-        <div>
-          <div style="color:#94a3b8;font-size:10px;margin-bottom:2px">R&amp;D cap €M/qtr/team</div>
-          <input class="login-input" id="sess-rd-budget" type="number" min="0" step="0.5" placeholder="unlimited" style="letter-spacing:normal;font-size:13px;padding:6px 8px;margin:0"/>
-        </div>
-        <div>
-          <div style="color:#94a3b8;font-size:10px;margin-bottom:2px">Max eng FTE/team</div>
-          <input class="login-input" id="sess-max-fte" type="number" min="0" placeholder="unlimited" style="letter-spacing:normal;font-size:13px;padding:6px 8px;margin:0"/>
-        </div>
-      </div>
       <button class="login-btn" onclick="instructorCreateSession()" style="margin-bottom:10px">＋ Create New Session</button>
       <div style="color:#475569;font-size:12px;margin:8px 0">— or load existing —</div>
       <input class="login-input" id="session-id-input" type="text" placeholder="Paste Session ID" style="letter-spacing:normal;font-size:13px;font-family:monospace" maxlength="40"/>
@@ -919,6 +905,7 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
       <div class="nav-item" onclick="navInstr('instr-demand',this)"><span class="nav-icon">📊</span> Demand Model</div>
       <div class="nav-item" onclick="navInstr('instr-history',this)"><span class="nav-icon">📅</span> Historical Data</div>
       <div class="nav-item" onclick="navInstr('instr-techcompare',this)"><span class="nav-icon">🔬</span> Tech Benchmarks</div>
+      <div class="nav-item" onclick="navInstr('instr-settings',this)"><span class="nav-icon">⚙</span> Settings</div>
     </div>
     <div class="sb-sec" style="flex:1">
       <div class="sb-lbl" style="color:#a78bfa">Session</div>
@@ -2040,31 +2027,6 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
     </div>
   </div>
 
-  <!-- Session Parameters (Resource Constraints) -->
-  <details id="hub-session-params" style="background:var(--s1);border:1px solid var(--border);border-radius:10px;padding:16px;margin-bottom:16px">
-    <summary style="cursor:pointer;font-family:'DM Mono',monospace;font-size:9px;text-transform:uppercase;letter-spacing:1.5px;color:#a78bfa;list-style:none;display:flex;align-items:center;justify-content:space-between">
-      Session Parameters &nbsp;<span style="color:#475569;font-size:10px">▾ expand to edit R&amp;D constraints</span>
-    </summary>
-    <div style="margin-top:14px;display:grid;grid-template-columns:repeat(3,1fr);gap:12px">
-      <div>
-        <label style="font-size:11px;color:#94a3b8;display:block;margin-bottom:4px">Min lead time (quarters)</label>
-        <input id="hub-min-lt" type="number" min="1" max="12" style="width:100%;background:var(--s2);border:1px solid var(--border);border-radius:6px;color:#f1f5f9;padding:7px 10px;font-size:13px"/>
-      </div>
-      <div>
-        <label style="font-size:11px;color:#94a3b8;display:block;margin-bottom:4px">R&amp;D cap €M/qtr/team</label>
-        <input id="hub-rd-budget" type="number" min="0" step="0.5" placeholder="unlimited" style="width:100%;background:var(--s2);border:1px solid var(--border);border-radius:6px;color:#f1f5f9;padding:7px 10px;font-size:13px"/>
-      </div>
-      <div>
-        <label style="font-size:11px;color:#94a3b8;display:block;margin-bottom:4px">Max eng FTE/team</label>
-        <input id="hub-max-fte" type="number" min="0" placeholder="unlimited" style="width:100%;background:var(--s2);border:1px solid var(--border);border-radius:6px;color:#f1f5f9;padding:7px 10px;font-size:13px"/>
-      </div>
-    </div>
-    <div style="margin-top:12px;display:flex;align-items:center;gap:10px">
-      <button onclick="hubSaveSessionConfig()" style="background:#4c1d95;color:#c4b5fd;border:1px solid #7c3aed;border-radius:6px;padding:7px 16px;font-size:12px;cursor:pointer;font-weight:600">💾 Save Parameters</button>
-      <span id="hub-cfg-status" style="font-size:11px;color:#22c55e;display:none">Saved ✓</span>
-    </div>
-  </details>
-
   <!-- Submission Tracker -->
   <div style="background:var(--s1);border:1px solid var(--border);border-radius:10px;padding:16px;margin-bottom:16px">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
@@ -2385,6 +2347,45 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
           Loading matrix...
         </div>
       </div>
+    </div>
+  </div>
+</div>
+
+<!-- ████ INSTRUCTOR: SETTINGS ████ -->
+<div class="instr-page" id="page-instr-settings">
+  <div class="pg-title" style="color:#a78bfa">SETTINGS</div>
+  <div class="pg-sub">Session-level parameters — R&D constraints · Module lead times</div>
+
+  <!-- Module Development Constraints -->
+  <div style="background:var(--s1);border:1px solid var(--border);border-radius:10px;padding:20px;margin-bottom:16px;max-width:640px;">
+    <div style="font-family:'DM Mono',monospace;font-size:9px;text-transform:uppercase;letter-spacing:1.5px;color:#a78bfa;margin-bottom:16px;">Module Development Constraints</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px;">
+      <div>
+        <label style="font-size:12px;color:#94a3b8;display:block;margin-bottom:6px;">Minimum lead time <span style="color:var(--muted2)">(quarters)</span></label>
+        <input id="cfg-min-lt" type="number" min="1" max="12"
+          style="width:100%;background:var(--s2);border:1px solid var(--border);border-radius:6px;color:#f1f5f9;padding:9px 12px;font-size:14px;font-family:'DM Mono',monospace"/>
+        <div style="font-size:10px;color:var(--muted2);margin-top:4px;">Floor applied to every module regardless of type or Modify/New path.</div>
+      </div>
+      <div></div>
+    </div>
+    <div style="font-family:'DM Mono',monospace;font-size:9px;text-transform:uppercase;letter-spacing:1px;color:#475569;margin-bottom:12px;padding-top:12px;border-top:1px solid var(--border);">Resource caps per team per quarter — leave blank for unlimited</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px;">
+      <div>
+        <label style="font-size:12px;color:#94a3b8;display:block;margin-bottom:6px;">R&amp;D budget cap <span style="color:var(--muted2)">(€M / quarter / team)</span></label>
+        <input id="cfg-rd-budget" type="number" min="0" step="0.5" placeholder="unlimited"
+          style="width:100%;background:var(--s2);border:1px solid var(--border);border-radius:6px;color:#f1f5f9;padding:9px 12px;font-size:14px;font-family:'DM Mono',monospace"/>
+        <div style="font-size:10px;color:var(--muted2);margin-top:4px;">If exceeded, module progress slows proportionally or by priority.</div>
+      </div>
+      <div>
+        <label style="font-size:12px;color:#94a3b8;display:block;margin-bottom:6px;">Engineering FTE cap <span style="color:var(--muted2)">(headcount / team)</span></label>
+        <input id="cfg-max-fte" type="number" min="0" placeholder="unlimited"
+          style="width:100%;background:var(--s2);border:1px solid var(--border);border-radius:6px;color:#f1f5f9;padding:9px 12px;font-size:14px;font-family:'DM Mono',monospace"/>
+        <div style="font-size:10px;color:var(--muted2);margin-top:4px;">Derived from R&D spend (60% FTE share). Both constraints apply independently.</div>
+      </div>
+    </div>
+    <div style="display:flex;align-items:center;gap:12px;">
+      <button onclick="settingsSave()" style="background:#4c1d95;color:#c4b5fd;border:1px solid #7c3aed;border-radius:7px;padding:9px 22px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;">💾 Save Settings</button>
+      <span id="cfg-save-status" style="font-size:12px;color:#22c55e;display:none;">Saved ✓</span>
     </div>
   </div>
 </div>
@@ -9822,20 +9823,10 @@ async function instructorCreateSession() {
   // Clear any old session state
   sessionStorage.clear();
   sessionId = null; teamId = null; roundId = null; submitted = false;
-  // Read resource constraint inputs
-  const minLtVal  = parseInt(document.getElementById('sess-min-lt')?.value) || 4;
-  const rdBudgRaw = document.getElementById('sess-rd-budget')?.value?.trim();
-  const fteLimRaw = document.getElementById('sess-max-fte')?.value?.trim();
-  const sessionBody = {
-    name, total_rounds:20, round_duration_minutes:30,
-    min_lead_time_quarters: minLtVal,
-    rd_budget_per_team_per_qtr_m: rdBudgRaw ? parseFloat(rdBudgRaw) : null,
-    max_eng_fte_per_team: fteLimRaw ? parseInt(fteLimRaw) : null,
-  };
   try {
     const sRes  = await fetch(`${API_URL}/sessions`, {
       method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify(sessionBody)
+      body: JSON.stringify({name, total_rounds:20, round_duration_minutes:30})
     });
     const sData = await sRes.json();
     console.log('Session created:', sData);
@@ -10746,6 +10737,46 @@ function navInstr(page, el) {
   if (page === 'instr-demand')    loadDemandModel();
   if (page === 'instr-history')     { loadInstrHistory(); loadScenarios(); }
   if (page === 'instr-techcompare') loadTechCompare();
+  if (page === 'instr-settings')    loadSettingsPage();
+}
+
+// ── SETTINGS PAGE ────────────────────────
+async function loadSettingsPage() {
+  if (!sessionId) return;
+  try {
+    const res = await fetch(`${API_URL}/sessions/${sessionId}/config`);
+    if (!res.ok) return;
+    const data = await res.json();
+    const cfg  = data.config || {};
+    const ltEl  = document.getElementById('cfg-min-lt');
+    const rdEl  = document.getElementById('cfg-rd-budget');
+    const fteEl = document.getElementById('cfg-max-fte');
+    if (ltEl)  ltEl.value  = cfg.min_lead_time_quarters ?? 2;
+    if (rdEl)  rdEl.value  = cfg.rd_budget_per_team_per_qtr_m != null ? cfg.rd_budget_per_team_per_qtr_m : '';
+    if (fteEl) fteEl.value = cfg.max_eng_fte_per_team != null ? cfg.max_eng_fte_per_team : '';
+  } catch(e) { console.warn('loadSettingsPage:', e); }
+}
+
+async function settingsSave() {
+  if (!sessionId) return;
+  const ltVal  = document.getElementById('cfg-min-lt')?.value?.trim();
+  const rdVal  = document.getElementById('cfg-rd-budget')?.value?.trim();
+  const fteVal = document.getElementById('cfg-max-fte')?.value?.trim();
+  const body = {
+    min_lead_time_quarters:       ltVal  ? parseInt(ltVal)   : undefined,
+    rd_budget_per_team_per_qtr_m: rdVal  ? parseFloat(rdVal) : null,
+    max_eng_fte_per_team:         fteVal ? parseInt(fteVal)  : null,
+  };
+  if (body.min_lead_time_quarters === undefined) delete body.min_lead_time_quarters;
+  try {
+    const res = await fetch(`${API_URL}/sessions/${sessionId}/config`, {
+      method: 'PATCH', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body)
+    });
+    if (!res.ok) throw new Error(await res.text());
+    const st = document.getElementById('cfg-save-status');
+    if (st) { st.style.display = 'inline'; setTimeout(() => st.style.display = 'none', 3000); }
+    toast('✓ Settings saved');
+  } catch(e) { toast('❌ Save failed: ' + e.message); }
 }
 
 async function hubSaveSessionConfig() {
@@ -10816,22 +10847,6 @@ async function refreshInstructorHub() {
       if (btnNext)  { btnNext.disabled  = latest.phase !== 'results';  btnNext.style.opacity  = latest.phase === 'results'  ? '1' : '.4'; }
     }
 
-    // Populate session config panel (only if inputs are empty to avoid overwriting edits)
-    try {
-      const cfgRes = await fetch(`${API_URL}/sessions/${sessionId}/config`);
-      if (cfgRes.ok) {
-        const cfgData = await cfgRes.json();
-        const cfg = cfgData.config || {};
-        const ltEl  = document.getElementById('hub-min-lt');
-        const rdEl  = document.getElementById('hub-rd-budget');
-        const fteEl = document.getElementById('hub-max-fte');
-        if (ltEl  && !ltEl.dataset.dirty)  ltEl.value  = cfg.min_lead_time_quarters ?? 2;
-        if (rdEl  && !rdEl.dataset.dirty)  rdEl.value  = cfg.rd_budget_per_team_per_qtr_m != null ? cfg.rd_budget_per_team_per_qtr_m : '';
-        if (fteEl && !fteEl.dataset.dirty) fteEl.value = cfg.max_eng_fte_per_team != null ? cfg.max_eng_fte_per_team : '';
-        // Mark dirty on user input to avoid overwriting edits during auto-refresh
-        [ltEl, rdEl, fteEl].forEach(el => { if (el && !el._dirtyBound) { el._dirtyBound = true; el.addEventListener('input', () => el.dataset.dirty = '1'); }});
-      }
-    } catch(e) { /* non-critical */ }
 
     // Load submissions + vehicles + history in parallel
     if (latest && latest.id) {
