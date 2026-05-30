@@ -4645,12 +4645,12 @@ var _TOPHAT_PC = {
     SEALANT:       {p:6.00, sc:1.00, sm:1.00, sd:1.02, n:"Body Sealant & Adhesive"},
     // Mechatronics & closures
     CLOSURE_MECH:  {p:12.0, sc:1.05, sm:1.05, sd:1.05, n:"Door & Closure Mechatronics"},
-    WINDOW_REG:    {p:22.0, sc:1.02, sm:1.02, sd:1.02, n:"Window Regulator Assemblies"},
+    WINDOW_REG:    {p:42.0, sc:1.02, sm:1.02, sd:1.02, n:"Window Regulator Assemblies"},
     EXT_MIRROR:    {p:35.0, sc:1.02, sm:1.02, sd:1.02, n:"Exterior Mirror Assemblies"},
     WEATHERSTRIP:  {p:5.50, sc:1.03, sm:1.03, sd:1.03, n:"Weatherstrips & Aperture Seals"},
     // Safety systems
-    AIRBAG_MODULE: {p:35.0, sc:1.00, sm:1.00, sd:1.00, n:"Airbag Modules (Inflator+Bag+Housing)"},
-    SEATBELT_ASY:  {p:40.0, sc:1.00, sm:1.00, sd:1.00, n:"Seatbelt Assemblies w/ Pretensioner"},
+    AIRBAG_MODULE: {p:20.0, sc:1.00, sm:1.00, sd:1.00, n:"Airbag Modules (Inflator+Bag+Housing)"},
+    SEATBELT_ASY:  {p:22.0, sc:1.00, sm:1.00, sd:1.00, n:"Seatbelt Assemblies w/ Pretensioner"},
     // Seat sub-systems
     SEAT_FOAM:     {p:3.80, sc:1.02, sm:1.02, sd:1.02, n:"Polyurethane Seat Foam"},
     SEAT_MECH:     {p:10.0, sc:1.05, sm:1.05, sd:1.05, n:"Seat Adjustment Mechanisms"},
@@ -4784,7 +4784,7 @@ var _TOPHAT_PC = {
       });
       procs.forEach(function(l){ if(l.code==='PANEL_STAMP') l.e=l.e*(1+safety*0.15); });
       var ab_extra = _TOPHAT_PC.BASE_BOM[12][1] * scale * safety * 0.40;
-      if (ab_extra > 0.2) mats.push({code:'AIRBAG_MODULE',name:'Additional Airbag Modules (Safety)',net:ab_extra,sc:1.00,gross:ab_extra,price:35.0,cost:ab_extra*35.0,proc:'SAFETY_INSTALL',spec:true,label:'Safety'});
+      if (ab_extra > 0.2) mats.push({code:'AIRBAG_MODULE',name:'Additional Airbag Modules (Safety)',net:ab_extra,sc:1.00,gross:ab_extra,price:20.0,cost:ab_extra*20.0,proc:'SAFETY_INSTALL',spec:true,label:'Safety'});
     }
 
     // Step 7 — Comfort spec: extra NVH + seat foam density + weatherstrip quality
