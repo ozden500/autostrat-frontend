@@ -4672,6 +4672,14 @@ var _TOPHAT_PC = {
   PRECISION: {GLASS_INSTALL:1, SEAT_ASSEMBLY:1, SAFETY_INSTALL:1},
   SEGMENT_SCALE: {A:0.55, B:0.75, C:1.00, D:1.30, E:1.55, F:1.80},
   BODY_SCALE:    {HB:1.00, SUV:1.20, SEDAN:1.05, COUPE:0.90, VAN:1.45},
+  // Fixed-count items: quantity = fixed_base + (bom_qty − fixed_base) × scale
+  // These don't grow linearly with vehicle size — unit count is fixed, only mass/complexity grows
+  FIXED_BASE: {
+    AIRBAG_MODULE: 5.0,  // ~4 core modules always present (frontal×2 + curtains×2)
+    SEATBELT_ASY:  3.0,  // 4 basic belts always present; 5th + heavier hardware scales
+    EXT_MIRROR:    1.2,  // 2 mirrors always; housing/motor mass scales slightly
+    WINDOW_REG:    2.5,  // 4 regulators always; motor size scales with glass weight
+  },
   // Base BOM at C_HB scale = 1.0 (net kg, process code)
   // Indices 2,3,5,12,14 referenced by spec steps in calc() — do not reorder
   BASE_BOM: [
@@ -4726,17 +4734,23 @@ var _TOPHAT_PC = {
     var scale   = (_TOPHAT_PC.SEGMENT_SCALE[segment]||1.00) * (_TOPHAT_PC.BODY_SCALE[body]||1.00);
 
     // Step 2 — Build scaled material lines
+    // Fixed-count items use base + proportional formula instead of pure linear scale
     var mats = _TOPHAT_PC.BASE_BOM.map(function(r) {
       var ms = _TOPHAT_PC.MAT[r[0]] || {p:1.0,sc:1.05,sm:1.05,sd:1.05,n:r[0]};
-      var net = r[1] * scale;
+      var fb = _TOPHAT_PC.FIXED_BASE[r[0]];
+      var net = fb != null ? fb + (r[1] - fb) * scale : r[1] * scale;
       var sc  = _TOPHAT_PC.scrap(r[0], r[2]);
       return {code:r[0],name:ms.n,net:net,sc:sc,gross:net*sc,price:ms.p,cost:net*sc*ms.p,proc:r[2],spec:false,label:""};
     });
 
-    // Step 3 — Build scaled process lines
+    // Step 3 — Build process lines; throughput derived from actual BOM gross weights
+    // so process costs stay self-consistent with the non-linearly-scaled BOM
+    var procGross = {};
+    mats.forEach(function(l){ if(!l.spec) procGross[l.proc]=(procGross[l.proc]||0)+l.gross; });
     var procs = _TOPHAT_PC.BASE_PROCS.map(function(r) {
       var ps = _TOPHAT_PC.PROC[r[0]] || {m:0.5,l:1.0,e:5.0,n:r[0]};
-      return {code:r[0],name:ps.n,gross:r[1]*scale,m:ps.m,l:ps.l,e:ps.e,spec:false,label:""};
+      var gross = procGross[r[0]] != null ? procGross[r[0]] : r[1]*scale;
+      return {code:r[0],name:ps.n,gross:gross,m:ps.m,l:ps.l,e:ps.e,spec:false,label:""};
     });
 
     // Step 4 — Roominess spec (extra glass + interior trim above 2.5 m³ baseline)
@@ -4783,7 +4797,8 @@ var _TOPHAT_PC = {
         }
       });
       procs.forEach(function(l){ if(l.code==='PANEL_STAMP') l.e=l.e*(1+safety*0.15); });
-      var ab_extra = _TOPHAT_PC.BASE_BOM[12][1] * scale * safety * 0.40;
+      var ab_base_eff = 5.0 + (_TOPHAT_PC.BASE_BOM[12][1] - 5.0) * scale;
+      var ab_extra = ab_base_eff * safety * 0.40;
       if (ab_extra > 0.2) mats.push({code:'AIRBAG_MODULE',name:'Additional Airbag Modules (Safety)',net:ab_extra,sc:1.00,gross:ab_extra,price:20.0,cost:ab_extra*20.0,proc:'SAFETY_INSTALL',spec:true,label:'Safety'});
     }
 
