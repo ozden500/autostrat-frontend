@@ -4667,7 +4667,7 @@ var _TOPHAT_PC = {
   BASE_PROCS: [
     ["PANEL_STAMP",     47.5],
     ["GLASS_INSTALL",    7.1],
-    ["TRIM_ASSEMBLY",   82.0],
+    ["TRIM_ASSEMBLY",   38.0],
     ["SEAT_ASSEMBLY",   15.0],
     ["NVH_APPLICATION",  5.2],
   ],
@@ -15279,7 +15279,7 @@ function buildReviewSection() {
       motor_efficiency: edmS.efficiency != null ? parseFloat(edmS.efficiency) : null,
       battery_kwh:      batS.target_kwh || null,
       battery_chemistry:batS.chemistry || null,
-      weight_opt:       plS.weight_opt || 0,
+      weight_opt:       Math.max(plS.weight_opt || 0, thS.weight_opt || 0),
       safety:           thS.safety != null ? thS.safety : (plS.safety || 50),
       adas_level:       esS.adas_level || 0
     };
