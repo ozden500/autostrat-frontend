@@ -6259,11 +6259,15 @@ var _MARKET_E = {
     utility = Math.round(utility);
 
     // ── 4. Market share (logit vs segment-specific external competitors) ─
-    var lam    = 0.04;
-    var segExt = this.SEG_EXT[seg] || {n:4, u:50, ext_dp:1.0};
-    var expU   = Math.exp(lam * utility);
-    var extExp = Math.exp(lam * segExt.u) * segExt.ext_dp * segExt.n;
-    var share  = Math.round(expU / (expU + extExp) * 100 * 10) / 10;
+    // Both sides raised to NEST_THETA=0.6 to match backend nested logit scale.
+    var lam      = 0.04;
+    var nestT    = 0.6;
+    var segExt   = this.SEG_EXT[seg] || {n:4, u:50, ext_dp:1.0};
+    var expU     = Math.exp(lam * utility);
+    var expU_n   = Math.pow(expU, nestT);
+    var extRaw   = Math.exp(lam * segExt.u) * segExt.ext_dp * segExt.n;
+    var extExp_n = Math.pow(extRaw, nestT);
+    var share    = Math.round(expU_n / (expU_n + extExp_n) * 100 * 10) / 10;
     var segK  = this.SEG_SIZE_K[seg] || 500;
     var volK  = Math.round(share / 100 * segK * 10) / 10;
 
@@ -10816,7 +10820,7 @@ function mcRenderVehicles() {
        + segName + ' <span style="color:var(--muted2);">· ' + segVeh.length + ' vehicle' + (segVeh.length>1?'s':'') + ' competing</span></div>';
     h += '<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-family:DM Mono,monospace;font-size:9px;">';
     h += '<thead><tr style="border-bottom:1px solid var(--border2);">';
-    ['Team','Vehicle','Status','Price €k','TPC','Utility Score','Est Share','Perf Class','0-100'].forEach(function(c) {
+    ['Team','Brand','Vehicle','Status','Price €k','TPC','Utility Score','Est Share','Perf Class','0-100'].forEach(function(c) {
       h += '<th style="padding:4px 10px;text-align:left;color:var(--muted);font-size:7px;text-transform:uppercase;letter-spacing:.8px;white-space:nowrap;">'+c+'</th>';
     });
     h += '</tr></thead><tbody>';
@@ -10833,8 +10837,13 @@ function mcRenderVehicles() {
       var estSh   = v._est_share ? parseFloat(v._est_share).toFixed(1)+'%' : '—';
       var stCol   = v.status==='on_sale'?'#4ade80':'#fbbf24';
       var bg      = i%2===0?'':'background:rgba(255,255,255,.02);';
+      var brandKey = (v.brand_id || sp.brand_name || '').toLowerCase();
+      var brandDat = BRAND_DATA[brandKey] || {};
+      var brandLabel = brandDat.name || (brandKey ? brandKey.charAt(0).toUpperCase()+brandKey.slice(1) : '—');
+      var brandColor = brandDat.color || 'var(--muted2)';
       h += '<tr style="border-bottom:1px solid rgba(255,255,255,.04);'+bg+'">';
       h += '<td style="padding:5px 10px;"><span style="color:'+team.color+';font-weight:700;">'+(team.name||'?')+'</span></td>';
+      h += '<td style="padding:5px 10px;"><span style="color:'+brandColor+';font-weight:600;font-size:8px;text-transform:uppercase;letter-spacing:.5px;">'+brandLabel+'</span></td>';
       h += '<td style="padding:5px 10px;color:var(--white);font-weight:600;">'+(v.name||'—')+'</td>';
       h += '<td style="padding:5px 10px;"><span style="font-size:7px;padding:2px 5px;border-radius:2px;background:'+stCol+'22;color:'+stCol+';">'+v.status.toUpperCase().replace('_',' ')+'</span></td>';
       h += '<td style="padding:5px 10px;color:#fbbf24;">€'+priceK+'k</td>';
