@@ -5983,89 +5983,90 @@ var _PERF_E = {
 // Real-world annual market volume per segment per country (k units / year, 2023 baseline).
 // Mirrors backend _MCE_SEG_COUNTRY_VOL_K in main.py — keep in sync.
 // Full-scale: totals match real 2023 global new-vehicle registrations (~86.5M total across segments).
+// China corrected to ~25.4M (29.4% of global) based on 2023 CAAM data (30.1M total vehicles).
 var SEG_COUNTRY_VOL_K = {
   a_segment: {
-    DE:88,  FR:350, GB:131, IT:438, ES:160, TR:117, PL:58,  NL:35,  BE:44,  SE:23,  AT:23,  ROE:213,
-    US:52,  CA:6,   MX:9,   RONA:3,
-    CN:292, JP:525, IN:262, KR:58,  AU:15,  ID:44,  TH:29,  MY:58,  ROA:117,
-    BR:102, AR:29,  CL:15,  CO:15,  PE:9,   ROSA:41,
-    SAU:9,  ZA:23,  EG:29,  AE:9,   MA:23,  DZ:20,  ROMEA:26
+    DE:63,   FR:251,  GB:94,   IT:314,  ES:115,  TR:84,   PL:42,   NL:25,   BE:32,   SE:16,   AT:16,   ROE:153,
+    US:37,   CA:4,    MX:6,    RONA:2,
+    CN:1200, JP:377,  IN:188,  KR:42,   AU:11,   ID:32,   TH:21,   MY:42,   ROA:84,
+    BR:73,   AR:21,   CL:11,   CO:11,   PE:6,    ROSA:29,
+    SAU:6,   ZA:16,   EG:21,   AE:6,    MA:16,   DZ:14,   ROMEA:19
   },
   b_segment: {
-    DE:800,  FR:1000, GB:800,  IT:667,  ES:500,  TR:367,  PL:233,  NL:133,  BE:120,  SE:100,  AT:80,   ROE:1200,
-    US:800,  CA:167,  MX:167,  RONA:67,
-    CN:1331, JP:533,  IN:800,  KR:200,  AU:133,  ID:200,  TH:167,  MY:167,  ROA:67,
-    BR:367,  AR:120,  CL:67,   CO:67,   PE:33,   ROSA:67,
-    SAU:67,  ZA:100,  EG:100,  AE:53,   MA:53,   DZ:47,   ROMEA:60
+    DE:637,  FR:797,  GB:637,  IT:531,  ES:398,  TR:292,  PL:186,  NL:106,  BE:96,   SE:80,   AT:64,   ROE:960,
+    US:637,  CA:133,  MX:133,  RONA:53,
+    CN:3500, JP:425,  IN:637,  KR:159,  AU:106,  ID:159,  TH:133,  MY:133,  ROA:53,
+    BR:292,  AR:96,   CL:53,   CO:53,   PE:26,   ROSA:53,
+    SAU:53,  ZA:80,   EG:80,   AE:42,   MA:42,   DZ:37,   ROMEA:48
   },
   c_segment: {
-    DE:1008, FR:864,  GB:828,  IT:504,  ES:468,  TR:346,  PL:245,  NL:173,  BE:137,  SE:122,  AT:94,   ROE:972,
-    US:2736, CA:468,  MX:540,  RONA:216,
-    CN:3237, JP:648,  IN:792,  KR:432,  AU:324,  ID:288,  TH:324,  MY:216,  ROA:216,
-    BR:540,  AR:180,  CL:130,  CO:108,  PE:58,   ROSA:65,
-    SAU:108, ZA:130,  EG:108,  AE:108,  MA:72,   DZ:58,   ROMEA:137
+    DE:819,  FR:702,  GB:673,  IT:410,  ES:380,  TR:281,  PL:199,  NL:141,  BE:111,  SE:99,   AT:76,   ROE:790,
+    US:2224, CA:380,  MX:439,  RONA:176,
+    CN:6000, JP:527,  IN:644,  KR:351,  AU:263,  ID:234,  TH:263,  MY:176,  ROA:176,
+    BR:439,  AR:146,  CL:106,  CO:88,   PE:47,   ROSA:53,
+    SAU:88,  ZA:106,  EG:88,   AE:88,   MA:59,   DZ:47,   ROMEA:111
   },
   d_segment: {
-    DE:900,  FR:600,  GB:600,  IT:367,  ES:333,  TR:267,  PL:200,  NL:150,  BE:117,  SE:117,  AT:83,   ROE:667,
-    US:4166, CA:750,  MX:750,  RONA:333,
-    CN:3417, JP:917,  IN:833,  KR:583,  AU:500,  ID:333,  TH:367,  MY:250,  ROA:400,
-    BR:467,  AR:167,  CL:117,  CO:117,  PE:50,   ROSA:83,
-    SAU:167, ZA:200,  EG:133,  AE:200,  MA:83,   DZ:83,   ROMEA:133
+    DE:706,  FR:470,  GB:470,  IT:288,  ES:261,  TR:209,  PL:157,  NL:118,  BE:92,   SE:92,   AT:65,   ROE:523,
+    US:3264, CA:588,  MX:588,  RONA:261,
+    CN:7000, JP:719,  IN:653,  KR:457,  AU:392,  ID:261,  TH:288,  MY:196,  ROA:314,
+    BR:366,  AR:131,  CL:92,   CO:92,   PE:39,   ROSA:65,
+    SAU:131, ZA:157,  EG:104,  AE:157,  MA:65,   DZ:65,   ROMEA:104
   },
   e_segment: {
-    DE:560,  FR:252,  GB:252,  IT:168,  ES:112,  TR:112,  PL:70,   NL:70,   BE:56,   SE:70,   AT:56,   ROE:182,
-    US:1050, CA:210,  MX:168,  RONA:112,
-    CN:1400, JP:350,  IN:210,  KR:252,  AU:168,  ID:112,  TH:112,  MY:84,   ROA:112,
-    BR:126,  AR:42,   CL:28,   CO:28,   PE:14,   ROSA:42,
-    SAU:84,  ZA:56,   EG:42,   AE:98,   MA:28,   DZ:28,   ROMEA:84
+    DE:455,  FR:205,  GB:205,  IT:136,  ES:91,   TR:91,   PL:57,   NL:57,   BE:46,   SE:57,   AT:46,   ROE:148,
+    US:852,  CA:171,  MX:136,  RONA:91,
+    CN:2450, JP:284,  IN:171,  KR:205,  AU:136,  ID:91,   TH:91,   MY:68,   ROA:91,
+    BR:102,  AR:34,   CL:23,   CO:23,   PE:11,   ROSA:34,
+    SAU:68,  ZA:46,   EG:34,   AE:80,   MA:23,   DZ:23,   ROMEA:68
   },
   f_segment: {
-    DE:112,  FR:50,   GB:50,   IT:38,   ES:25,   TR:25,   PL:12,   NL:12,   BE:12,   SE:12,   AT:12,   ROE:12,
-    US:212,  CA:38,   MX:25,   RONA:25,
-    CN:444,  JP:75,   IN:38,   KR:50,   AU:25,   ID:12,   TH:12,   MY:12,   ROA:12,
-    BR:25,   AR:12,   CL:12,   CO:0,    PE:0,    ROSA:0,
-    SAU:25,  ZA:12,   EG:12,   AE:25,   MA:0,    DZ:0,    ROMEA:25
+    DE:95,   FR:43,   GB:43,   IT:32,   ES:21,   TR:21,   PL:10,   NL:10,   BE:10,   SE:10,   AT:10,   ROE:10,
+    US:187,  CA:32,   MX:21,   RONA:21,
+    CN:600,  JP:64,   IN:32,   KR:43,   AU:21,   ID:10,   TH:10,   MY:10,   ROA:10,
+    BR:21,   AR:10,   CL:10,   CO:0,    PE:0,    ROSA:0,
+    SAU:21,  ZA:10,   EG:10,   AE:21,   MA:0,    DZ:0,    ROMEA:21
   },
   sports: {
-    DE:105,  FR:38,   GB:52,   IT:45,   ES:22,   TR:15,   PL:8,    NL:8,    BE:8,    SE:8,    AT:8,    ROE:15,
-    US:481,  CA:75,   MX:38,   RONA:30,
-    CN:188,  JP:75,   IN:22,   KR:30,   AU:30,   ID:8,    TH:15,   MY:8,    ROA:15,
-    BR:30,   AR:8,    CL:8,    CO:8,    PE:8,    ROSA:0,
-    SAU:22,  ZA:15,   EG:8,    AE:30,   MA:8,    DZ:0,    ROMEA:8
+    DE:102,  FR:37,   GB:51,   IT:44,   ES:21,   TR:15,   PL:8,    NL:8,    BE:8,    SE:8,    AT:8,    ROE:15,
+    US:463,  CA:73,   MX:37,   RONA:29,
+    CN:225,  JP:73,   IN:21,   KR:29,   AU:29,   ID:8,    TH:15,   MY:8,    ROA:15,
+    BR:29,   AR:8,    CL:8,    CO:8,    PE:8,    ROSA:0,
+    SAU:21,  ZA:15,   EG:8,    AE:29,   MA:8,    DZ:0,    ROMEA:8
   },
   mpv: {
-    DE:192,  FR:158,  GB:140,  IT:114,  ES:88,   TR:70,   PL:52,   NL:44,   BE:44,   SE:35,   AT:26,   ROE:158,
-    US:280,  CA:70,   MX:44,   RONA:26,
-    CN:1046, JP:262,  IN:131,  KR:70,   AU:44,   ID:70,   TH:52,   MY:44,   ROA:26,
-    BR:70,   AR:18,   CL:18,   CO:18,   PE:9,    ROSA:9,
-    SAU:18,  ZA:9,    EG:18,   AE:9,    MA:9,    DZ:9,    ROMEA:0
+    DE:178,  FR:146,  GB:130,  IT:106,  ES:82,   TR:65,   PL:48,   NL:41,   BE:41,   SE:32,   AT:24,   ROE:146,
+    US:260,  CA:65,   MX:41,   RONA:24,
+    CN:1225, JP:243,  IN:121,  KR:65,   AU:41,   ID:65,   TH:48,   MY:41,   ROA:24,
+    BR:65,   AR:17,   CL:17,   CO:17,   PE:8,    ROSA:8,
+    SAU:17,  ZA:8,    EG:17,   AE:8,    MA:8,    DZ:8,    ROMEA:0
   },
-  pickup: {  // NA-dominant: US alone = 43% of global (12M total, up from 700k)
-    DE:103,  FR:86,   GB:154,  IT:51,   ES:69,   TR:137,  PL:69,   NL:34,   BE:34,   SE:51,   AT:34,   ROE:137,
-    US:5144, CA:771,  MX:480,  RONA:206,
-    CN:343,  JP:86,   IN:257,  KR:51,   AU:429,  ID:171,  TH:343,  MY:86,   ROA:34,
-    BR:1029, AR:343,  CL:309,  CO:206,  PE:137,  ROSA:137,
-    SAU:103, ZA:137,  EG:51,   AE:69,   MA:34,   DZ:34,   ROMEA:51
+  pickup: {  // NA-dominant: US alone = 42% of global; CN growing ~5%
+    DE:101,  FR:84,   GB:151,  IT:50,   ES:67,   TR:134,  PL:67,   NL:33,   BE:33,   SE:50,   AT:33,   ROE:134,
+    US:5035, CA:754,  MX:469,  RONA:201,
+    CN:600,  JP:84,   IN:251,  KR:50,   AU:420,  ID:167,  TH:335,  MY:84,   ROA:33,
+    BR:1006, AR:335,  CL:302,  CO:201,  PE:134,  ROSA:134,
+    SAU:101, ZA:134,  EG:50,   AE:67,   MA:33,   DZ:33,   ROMEA:50
   },
   c_van: {
-    DE:360,  FR:270,  GB:240,  IT:180,  ES:120,  TR:90,   PL:72,   NL:60,   BE:48,   SE:30,   AT:24,   ROE:66,
-    US:330,  CA:90,   MX:72,   RONA:48,
-    CN:360,  JP:90,   IN:72,   KR:36,   AU:30,   ID:30,   TH:24,   MY:12,   ROA:6,
-    BR:60,   AR:18,   CL:12,   CO:12,   PE:6,    ROSA:12,
-    SAU:24,  ZA:24,   EG:24,   AE:18,   MA:12,   DZ:12,   ROMEA:6
+    DE:269,  FR:199,  GB:177,  IT:133,  ES:89,   TR:66,   PL:53,   NL:44,   BE:35,   SE:22,   AT:18,   ROE:49,
+    US:244,  CA:66,   MX:53,   RONA:35,
+    CN:1050, JP:66,   IN:53,   KR:27,   AU:22,   ID:22,   TH:18,   MY:9,    ROA:4,
+    BR:44,   AR:13,   CL:9,    CO:9,    PE:4,    ROSA:9,
+    SAU:18,  ZA:18,   EG:18,   AE:13,   MA:9,    DZ:9,    ROMEA:4
   },
   d_van: {
-    DE:368,  FR:295,  GB:322,  IT:166,  ES:129,  TR:83,   PL:74,   NL:64,   BE:55,   SE:37,   AT:28,   ROE:129,
-    US:461,  CA:111,  MX:83,   RONA:46,
-    CN:414,  JP:111,  IN:92,   KR:46,   AU:46,   ID:28,   TH:28,   MY:9,    ROA:0,
-    BR:64,   AR:18,   CL:18,   CO:18,   PE:9,    ROSA:9,
-    SAU:28,  ZA:28,   EG:28,   AE:28,   MA:18,   DZ:9,    ROMEA:0
+    DE:271,  FR:217,  GB:237,  IT:122,  ES:95,   TR:61,   PL:55,   NL:47,   BE:41,   SE:27,   AT:21,   ROE:95,
+    US:338,  CA:82,   MX:61,   RONA:34,
+    CN:1225, JP:82,   IN:68,   KR:34,   AU:34,   ID:21,   TH:21,   MY:7,    ROA:0,
+    BR:47,   AR:13,   CL:13,   CO:13,   PE:7,    ROSA:7,
+    SAU:21,  ZA:21,   EG:21,   AE:21,   MA:13,   DZ:7,    ROMEA:0
   },
   e_van: {
-    DE:90,   FR:70,   GB:75,   IT:40,   ES:30,   TR:20,   PL:15,   NL:15,   BE:10,   SE:5,    AT:5,    ROE:5,
-    US:160,  CA:40,   MX:30,   RONA:20,
-    CN:140,  JP:35,   IN:25,   KR:15,   AU:10,   ID:10,   TH:5,    MY:5,    ROA:5,
-    BR:30,   AR:10,   CL:10,   CO:10,   PE:5,    ROSA:5,
+    DE:68,   FR:53,   GB:57,   IT:30,   ES:23,   TR:15,   PL:11,   NL:11,   BE:8,    SE:4,    AT:4,    ROE:4,
+    US:115,  CA:30,   MX:23,   RONA:15,
+    CN:350,  JP:26,   IN:19,   KR:11,   AU:8,    ID:8,    TH:4,    MY:4,    ROA:4,
+    BR:23,   AR:8,    CL:8,    CO:8,    PE:4,    ROSA:4,
     SAU:10,  ZA:10,   EG:10,   AE:10,   MA:5,    DZ:5,    ROMEA:0
   }
 };
