@@ -7189,73 +7189,100 @@ function _valSummaryTile(label, v, color) {
     '</div>';
 }
 
-function _renderCAERow(disc, caeLevel, c) {
+function _renderValidationTableRow(disc, c, activeCenters) {
+  var caeLevel  = _validationState.cae_levels[disc.id] || 0;
+  var facData   = _validationState.facilities[disc.id] || {};
+  var hasDemand = c.demand > 0.005;
+  var net       = c.netOutsource;
+
+  // Row shading
+  var rowBg = !hasDemand ? 'rgba(255,255,255,0.01)'
+            : net < 0.05 ? 'rgba(56,212,134,.05)'
+            : 'transparent';
+
+  // Discipline cell
+  var caeBadge = disc.max_cae_pct > 0
+    ? '<span style="font-size:6px;color:var(--cyan);background:rgba(34,211,238,.12);border-radius:2px;padding:1px 4px;margin-left:5px;">MAX ' + disc.max_cae_pct + '%</span>'
+    : '<span style="font-size:6px;color:var(--muted2);background:var(--bg3);border-radius:2px;padding:1px 4px;margin-left:5px;">NO CAE</span>';
+
+  // CAE dots + upgrade button
   var dots = '';
   for (var i = 1; i <= 4; i++) {
-    dots += '<span style="font-size:11px;color:' + (i <= caeLevel ? 'var(--cyan)' : 'var(--border)') + ';">' + (i <= caeLevel ? '●' : '○') + '</span>';
+    dots += '<span style="font-size:9px;color:' + (i <= caeLevel ? 'var(--cyan)' : 'var(--border)') + ';">' + (i <= caeLevel ? '●' : '○') + '</span>';
   }
-  var savingPct = Math.round((caeLevel / 4) * disc.max_cae_pct);
-  var actionHtml;
-  if (disc.max_cae_pct === 0) {
-    actionHtml = '<span style="font-size:8px;color:var(--muted2);font-family:DM Mono,monospace;">CAE N/A</span>';
-  } else if (caeLevel >= 4) {
-    actionHtml = '<span style="font-size:8px;color:var(--green);font-family:DM Mono,monospace;">MAX CAE ✓</span>';
-  } else {
+  var upgradeBtn = '';
+  if (disc.max_cae_pct > 0 && caeLevel < 4) {
     var nl = caeLevel + 1;
     var cost = disc.cae_costs[nl - 1];
     var pctNext = Math.round((nl / 4) * disc.max_cae_pct);
-    actionHtml = '<button onclick="onValUpgradeCAE(\'' + disc.id + '\',' + nl + ',' + cost + ',' + pctNext + ')" ' +
-      'style="font-family:DM Mono,monospace;font-size:7px;background:rgba(34,211,238,.1);color:var(--cyan);' +
-      'border:1px solid rgba(34,211,238,.4);border-radius:3px;padding:3px 7px;cursor:pointer;white-space:nowrap;">' +
-      'L' + nl + ' +' + pctNext + '% · €' + cost + 'M</button>';
+    upgradeBtn = '<button onclick="onValUpgradeCAE(\'' + disc.id + '\',' + nl + ',' + cost + ',' + pctNext + ')" ' +
+      'style="font-family:DM Mono,monospace;font-size:6px;background:rgba(34,211,238,.1);color:var(--cyan);' +
+      'border:1px solid rgba(34,211,238,.4);border-radius:2px;padding:2px 5px;cursor:pointer;white-space:nowrap;margin-left:4px;">' +
+      'L' + nl + ' · €' + cost + 'M</button>';
+  } else if (disc.max_cae_pct > 0 && caeLevel >= 4) {
+    upgradeBtn = '<span style="font-size:6px;color:var(--green);font-family:DM Mono,monospace;margin-left:4px;">MAX ✓</span>';
   }
-  var rowBg = (savingPct > 0) ? 'rgba(34,211,238,.04)' : 'transparent';
-  return '<div style="display:grid;grid-template-columns:160px 60px 44px auto;align-items:center;gap:6px;' +
-    'padding:6px 10px;border-bottom:1px solid var(--border);background:' + rowBg + ';">' +
-    '<div style="font-family:DM Mono,monospace;font-size:8px;color:var(--fg);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + disc.name + '</div>' +
-    '<div style="letter-spacing:2px;">' + dots + '</div>' +
-    '<div style="font-family:DM Mono,monospace;font-size:7px;color:var(--cyan);text-align:right;">' + (savingPct > 0 ? '−' + savingPct + '%' : '') + '</div>' +
-    '<div style="text-align:right;">' + actionHtml + '</div>' +
-    '</div>';
-}
 
-function _renderFacilityCard(disc, c) {
-  var facData      = _validationState.facilities[disc.id] || {};
-  var activeCenters= (_engState.centers || []).filter(function(ctr){ return ctr.status === 'active'; });
-  var coverPct     = Math.round((c.coveragePct || 0) * 100);
-  var coverColor   = coverPct >= 100 ? 'var(--green)' : (coverPct > 0 ? 'var(--gold)' : 'var(--muted2)');
-  var html = '<div style="background:var(--bg2);border-radius:6px;padding:9px 11px;margin-bottom:7px;">';
-  html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px;">';
-  html += '<div style="font-family:DM Mono,monospace;font-size:8px;color:var(--fg);font-weight:700;">' + disc.name + '</div>';
-  html += '<div style="font-family:DM Mono,monospace;font-size:7px;color:' + coverColor + ';">' +
-    (c.totalFacs || 0) + ' lab' + ((c.totalFacs||0)!==1?'s':'') + ' · ' + coverPct + '% covered</div>';
-  html += '</div>';
-  if (c.demand > 0) {
-    html += '<div style="font-family:DM Mono,monospace;font-size:7px;color:var(--muted2);margin-bottom:6px;">' +
-      'Physical demand ' + _valFmt(c.physDemand) + '/yr · Cap ' + _valFmt(c.annualCap) + '/yr · €' + disc.capex_eur_m + 'M capex/lab</div>';
-  } else {
-    html += '<div style="font-family:DM Mono,monospace;font-size:7px;color:var(--muted2);margin-bottom:6px;">No pipeline demand — facility useful once modules are in development.</div>';
-  }
+  // Facility controls (per tech center pills)
+  var facControls = '';
   if (activeCenters.length === 0) {
-    html += '<div style="font-family:DM Mono,monospace;font-size:7px;color:var(--muted2);">Open tech centers in 🏢 CAPACITY first to place labs.</div>';
+    facControls = '<span style="font-size:6px;color:var(--muted2);font-family:DM Mono,monospace;margin-left:4px;">No centers</span>';
   } else {
-    html += '<div style="display:flex;flex-wrap:wrap;gap:5px;">';
+    facControls = '<div style="display:flex;flex-wrap:wrap;gap:3px;margin-left:4px;">';
     activeCenters.forEach(function(ctr) {
-      var count = (facData[ctr.country_code] || 0);
-      html += '<div style="display:flex;align-items:center;gap:3px;background:var(--bg3);border-radius:4px;padding:3px 7px;">';
-      html += '<span style="font-family:DM Mono,monospace;font-size:7px;color:var(--muted2);">' + ctr.country_code.toUpperCase() + '</span>';
-      html += '<button onclick="onValFacilityRemove(\'' + disc.id + '\',\'' + ctr.country_code + '\')" ' +
-        'style="background:none;border:none;color:' + (count>0?'var(--red)':'var(--border)') + ';cursor:' + (count>0?'pointer':'default') + ';font-size:12px;line-height:1;padding:0;width:14px;" ' +
-        (count>0?'':'disabled') + '>−</button>';
-      html += '<span style="font-family:DM Mono,monospace;font-size:9px;color:var(--fg);min-width:12px;text-align:center;">' + count + '</span>';
-      html += '<button onclick="onValFacilityAdd(\'' + disc.id + '\',\'' + ctr.country_code + '\')" ' +
-        'style="background:none;border:none;color:var(--cyan);cursor:pointer;font-size:12px;line-height:1;padding:0;width:14px;">+</button>';
-      html += '</div>';
+      var cnt = (facData[ctr.country_code] || 0);
+      facControls += '<div style="display:inline-flex;align-items:center;gap:1px;background:var(--bg3);border-radius:3px;padding:2px 4px;">' +
+        '<span style="font-family:DM Mono,monospace;font-size:6px;color:var(--muted2);">' + ctr.country_code.toUpperCase() + '</span>' +
+        '<button onclick="onValFacilityRemove(\'' + disc.id + '\',\'' + ctr.country_code + '\')" ' +
+          'style="background:none;border:none;color:' + (cnt>0?'var(--red)':'var(--border)') + ';cursor:' + (cnt>0?'pointer':'default') + ';font-size:11px;line-height:1;padding:0;width:12px;" ' +
+          (cnt>0?'':'disabled') + '>−</button>' +
+        '<span style="font-family:DM Mono,monospace;font-size:8px;color:var(--fg);min-width:9px;text-align:center;">' + cnt + '</span>' +
+        '<button onclick="onValFacilityAdd(\'' + disc.id + '\',\'' + ctr.country_code + '\')" ' +
+          'style="background:none;border:none;color:var(--cyan);cursor:pointer;font-size:11px;line-height:1;padding:0;width:12px;">+</button>' +
+        '</div>';
     });
-    html += '</div>';
+    facControls += '</div>';
   }
-  html += '</div>';
-  return html;
+
+  var fgColor  = hasDemand ? 'var(--fg)'     : 'var(--muted2)';
+  var remColor = !hasDemand ? 'var(--muted2)' : (net < 0.05 ? 'var(--green)' : 'var(--orange)');
+  var remWeight= (hasDemand && net > 0.05) ? '700' : '400';
+
+  return '<tr style="border-bottom:1px solid var(--border);background:' + rowBg + ';">' +
+
+    // Discipline
+    '<td style="padding:8px 10px;">' +
+      '<div style="font-family:DM Mono,monospace;font-size:8px;color:' + fgColor + ';white-space:nowrap;">' + disc.name + caeBadge + '</div>' +
+    '</td>' +
+
+    // Std Outsource
+    '<td style="padding:8px 10px;text-align:right;font-family:DM Mono,monospace;font-size:9px;color:' + fgColor + ';">' +
+      _valFmt(c.demand) +
+    '</td>' +
+
+    // CAE Saving
+    '<td style="padding:8px 10px;">' +
+      '<div style="display:flex;align-items:center;justify-content:flex-end;flex-wrap:wrap;gap:3px;">' +
+        '<span style="font-family:DM Mono,monospace;font-size:9px;color:' + (c.caeSaving>0.005?'var(--cyan)':'var(--muted2)') + ';">' + _valFmt(c.caeSaving) + '</span>' +
+        '<span>' + dots + '</span>' +
+        upgradeBtn +
+      '</div>' +
+    '</td>' +
+
+    // Facility Saving
+    '<td style="padding:8px 10px;">' +
+      '<div style="display:flex;align-items:center;justify-content:flex-end;flex-wrap:wrap;gap:3px;">' +
+        '<span style="font-family:DM Mono,monospace;font-size:9px;color:' + (c.facSaving>0.005?'var(--gold)':'var(--muted2)') + ';">' + _valFmt(c.facSaving) + '</span>' +
+        facControls +
+      '</div>' +
+    '</td>' +
+
+    // Remaining
+    '<td style="padding:8px 10px;text-align:right;font-family:DM Mono,monospace;font-size:9px;font-weight:' + remWeight + ';color:' + remColor + ';">' +
+      _valFmt(net) +
+    '</td>' +
+
+  '</tr>';
 }
 
 function _renderModuleImpactTable(inDevMods, costs) {
@@ -7310,9 +7337,10 @@ async function buildValidationLabsTab() {
     await loadValidationSettings();
   }
 
-  var costs  = _calcValidationCosts();
-  var totals = costs._totals;
-  var inDev  = (teamModuleLibrary||[]).filter(function(m){ return m.development_status==='in_development'; });
+  var costs         = _calcValidationCosts();
+  var totals        = costs._totals;
+  var inDev         = (teamModuleLibrary||[]).filter(function(m){ return m.development_status==='in_development'; });
+  var activeCenters = (_engState.centers||[]).filter(function(c){ return c.status==='active'; });
 
   var html = '<div style="font-family:Orbitron,sans-serif;font-size:11px;font-weight:700;letter-spacing:2px;color:var(--text);margin-bottom:14px;">DESIGN VALIDATION SKILLS</div>';
 
@@ -7329,31 +7357,21 @@ async function buildValidationLabsTab() {
     html += '<div style="font-family:DM Mono,monospace;font-size:9px;color:var(--muted2);padding:8px 12px;background:var(--bg2);border-radius:4px;margin-bottom:12px;">No modules currently in development — validation demand is €0. Figures update once modules enter the pipeline (🔬 MODULE LAB tab).</div>';
   }
 
-  // Two-column
-  html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start;">';
-
-  // Left: CAE Strategy
-  html += '<div><div style="font-family:DM Mono,monospace;font-size:9px;color:var(--gold);letter-spacing:1px;margin-bottom:8px;">CAE STRATEGY</div>';
+  // Unified discipline table
   html += '<div style="background:var(--bg2);border-radius:6px;overflow:hidden;">';
-  html += '<div style="display:grid;grid-template-columns:160px 60px 44px auto;gap:6px;padding:5px 10px;border-bottom:1px solid var(--border);background:var(--bg3);">';
-  html += '<div style="font-family:DM Mono,monospace;font-size:7px;color:var(--muted2);">DISCIPLINE</div>';
-  html += '<div style="font-family:DM Mono,monospace;font-size:7px;color:var(--muted2);">LEVEL</div>';
-  html += '<div style="font-family:DM Mono,monospace;font-size:7px;color:var(--muted2);text-align:right;">SAVING</div>';
-  html += '<div></div>';
-  html += '</div>';
+  html += '<table style="width:100%;border-collapse:collapse;">';
+  html += '<thead><tr style="background:var(--bg3);border-bottom:1px solid var(--border);">';
+  html += '<th style="text-align:left;padding:7px 10px;font-family:DM Mono,monospace;font-size:7px;color:var(--muted2);letter-spacing:1px;font-weight:400;">DISCIPLINE</th>';
+  html += '<th style="text-align:right;padding:7px 10px;font-family:DM Mono,monospace;font-size:7px;color:var(--muted2);letter-spacing:1px;font-weight:400;">STD OUTSOURCE €M</th>';
+  html += '<th style="text-align:right;padding:7px 10px;font-family:DM Mono,monospace;font-size:7px;color:var(--cyan);letter-spacing:1px;font-weight:400;">CAE SAVING €M</th>';
+  html += '<th style="text-align:right;padding:7px 10px;font-family:DM Mono,monospace;font-size:7px;color:var(--gold);letter-spacing:1px;font-weight:400;">FACILITY SAVING €M</th>';
+  html += '<th style="text-align:right;padding:7px 10px;font-family:DM Mono,monospace;font-size:7px;color:var(--orange);letter-spacing:1px;font-weight:400;">REMAINING €M</th>';
+  html += '</tr></thead>';
+  html += '<tbody>';
   VALIDATION_DISCIPLINES.forEach(function(disc) {
-    html += _renderCAERow(disc, _validationState.cae_levels[disc.id]||0, costs[disc.id]);
+    html += _renderValidationTableRow(disc, costs[disc.id], activeCenters);
   });
-  html += '</div></div>';
-
-  // Right: Physical Facilities
-  html += '<div><div style="font-family:DM Mono,monospace;font-size:9px;color:var(--gold);letter-spacing:1px;margin-bottom:8px;">PHYSICAL FACILITIES</div>';
-  VALIDATION_DISCIPLINES.forEach(function(disc) {
-    html += _renderFacilityCard(disc, costs[disc.id]);
-  });
-  html += '</div>';
-
-  html += '</div>'; // end two-column
+  html += '</tbody></table></div>';
 
   // Module impact
   if (inDev.length > 0) html += _renderModuleImpactTable(inDev, costs);
