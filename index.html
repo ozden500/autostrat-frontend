@@ -6731,7 +6731,7 @@ function _calcCapacityMetrics() {
     var co = _getEngCountry(ctr.country_code);
     if (!co) return;
     var effOn  = ctr.onroll     * co.eng_index;
-    var effCon = ctr.contractor * 0.75 * co.eng_index;
+    var effCon = ctr.contractor * co.eng_index;
     effTotal  += effOn + effCon;
     rawTotal  += ctr.onroll + ctr.contractor;
     costPerMo += ctr.onroll     * co.eng_fte_eur_mo
@@ -6745,13 +6745,18 @@ function _calcCapacityMetrics() {
 }
 
 function _calcModuleDemandFteMo() {
-  return (teamModuleLibrary||[]).filter(function(m){
+  var totalOnroll = _engState.centers.reduce(function(s,c){ return s+(c.onroll||0); }, 0);
+  var totalHC     = _engState.centers.reduce(function(s,c){ return s+(c.onroll||0)+(c.contractor||0); }, 0);
+  // Onroll engineers deliver more work per FTE-month; effect is hidden — shows up as lower demand
+  var prodFactor  = totalHC > 0 ? (1 - 0.25 * (totalOnroll / totalHC)) : 1.0;
+  var rawDemand   = (teamModuleLibrary||[]).filter(function(m){
     return m.development_status==='in_development';
   }).reduce(function(s,m){
-    var lt = Math.max(1, parseFloat(m.lead_time_quarters||4));
+    var lt    = Math.max(1, parseFloat(m.lead_time_quarters||4));
     var rdFteM = parseFloat(m.total_rd_spend_m||0) * 0.60;
-    return s + Math.round(rdFteM * 1e6 / 13333 / lt);
+    return s + rdFteM * 1e6 / 13333 / lt;
   }, 0);
+  return Math.round(rawDemand * prodFactor);
 }
 
 function _updateBlendedFTERate() {
@@ -7005,7 +7010,7 @@ function buildEngCapacityTab() {
 function _buildCenterCard(ctr) {
   var co = _getEngCountry(ctr.country_code);
   if (!co) return '';
-  var effFteMo  = Math.round((ctr.onroll + ctr.contractor * 0.75) * co.eng_index * 3);
+  var effFteMo  = Math.round((ctr.onroll + ctr.contractor) * co.eng_index * 3);
   var qtrlyCost = Math.round((ctr.onroll * co.eng_fte_eur_mo + ctr.contractor * co.eng_fte_eur_mo * 1.30) * 3 / 1e6 * 100) / 100;
   var idxPct    = Math.round(co.eng_index * 100);
 
