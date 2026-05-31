@@ -7226,7 +7226,10 @@ function _renderValidationTableRow(disc, c, activeCenters) {
   // Facility controls (per tech center pills)
   var facControls = '';
   if (activeCenters.length === 0) {
-    facControls = '<span style="font-size:6px;color:var(--muted2);font-family:DM Mono,monospace;margin-left:4px;">No centers</span>';
+    facControls = '<button onclick="openEngCenterDialog()" ' +
+      'style="font-family:DM Mono,monospace;font-size:6px;background:rgba(56,212,134,.1);color:var(--green);' +
+      'border:1px solid rgba(56,212,134,.35);border-radius:2px;padding:2px 6px;cursor:pointer;margin-left:4px;white-space:nowrap;">' +
+      '+ Open tech center</button>';
   } else {
     facControls = '<div style="display:flex;flex-wrap:wrap;gap:3px;margin-left:4px;">';
     activeCenters.forEach(function(ctr) {
@@ -7357,6 +7360,17 @@ async function buildValidationLabsTab() {
     html += '<div style="font-family:DM Mono,monospace;font-size:9px;color:var(--muted2);padding:8px 12px;background:var(--bg2);border-radius:4px;margin-bottom:12px;">No modules currently in development — validation demand is €0. Figures update once modules enter the pipeline (🔬 MODULE LAB tab).</div>';
   }
 
+  // Zero-centers banner
+  if (activeCenters.length === 0) {
+    html += '<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;' +
+      'background:rgba(56,212,134,.06);border:1px solid rgba(56,212,134,.20);border-radius:6px;margin-bottom:12px;">' +
+      '<div style="font-family:DM Mono,monospace;font-size:9px;color:var(--muted2);">No engineering centers open — physical facility labs require a tech center to be placed in.</div>' +
+      '<button onclick="openEngCenterDialog()" style="font-family:DM Mono,monospace;font-size:8px;' +
+        'background:rgba(56,212,134,.15);color:var(--green);border:1px solid rgba(56,212,134,.40);' +
+        'border-radius:4px;padding:5px 12px;cursor:pointer;white-space:nowrap;font-weight:700;letter-spacing:.5px;">+ OPEN CENTER</button>' +
+      '</div>';
+  }
+
   // Unified discipline table
   html += '<div style="background:var(--bg2);border-radius:6px;overflow:hidden;">';
   html += '<table style="width:100%;border-collapse:collapse;">';
@@ -7364,7 +7378,12 @@ async function buildValidationLabsTab() {
   html += '<th style="text-align:left;padding:7px 10px;font-family:DM Mono,monospace;font-size:7px;color:var(--muted2);letter-spacing:1px;font-weight:400;">DISCIPLINE</th>';
   html += '<th style="text-align:right;padding:7px 10px;font-family:DM Mono,monospace;font-size:7px;color:var(--muted2);letter-spacing:1px;font-weight:400;">STD OUTSOURCE €M</th>';
   html += '<th style="text-align:right;padding:7px 10px;font-family:DM Mono,monospace;font-size:7px;color:var(--cyan);letter-spacing:1px;font-weight:400;">CAE SAVING €M</th>';
-  html += '<th style="text-align:right;padding:7px 10px;font-family:DM Mono,monospace;font-size:7px;color:var(--gold);letter-spacing:1px;font-weight:400;">FACILITY SAVING €M</th>';
+  html += '<th style="text-align:right;padding:7px 10px;font-family:DM Mono,monospace;font-size:7px;color:var(--gold);letter-spacing:1px;font-weight:400;">' +
+    'FACILITY SAVING €M' +
+    '<button onclick="engView(\'capacity\')" title="Manage engineering centers" ' +
+      'style="font-family:DM Mono,monospace;font-size:6px;background:none;color:var(--muted2);border:none;cursor:pointer;margin-left:5px;padding:0;vertical-align:middle;" ' +
+      'onmouseover="this.style.color=\'var(--gold)\'" onmouseout="this.style.color=\'var(--muted2)\'">🏢↗</button>' +
+    '</th>';
   html += '<th style="text-align:right;padding:7px 10px;font-family:DM Mono,monospace;font-size:7px;color:var(--orange);letter-spacing:1px;font-weight:400;">REMAINING €M</th>';
   html += '</tr></thead>';
   html += '<tbody>';
