@@ -1389,6 +1389,9 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
     <div class="eng-view-tab" data-tab="lab" onclick="engView('lab')"
       style="font-family:DM Mono,monospace;font-size:9px;letter-spacing:1px;padding:7px 18px;cursor:pointer;
       border-bottom:2px solid transparent;color:var(--muted2);transition:all .15s;">🔬 MODULE LAB</div>
+    <div class="eng-view-tab" data-tab="capacity" onclick="engView('capacity')"
+      style="font-family:DM Mono,monospace;font-size:9px;letter-spacing:1px;padding:7px 18px;cursor:pointer;
+      border-bottom:2px solid transparent;color:var(--muted2);transition:all .15s;">🏢 CAPACITY</div>
   </div>
 
   <!-- ── DASHBOARD VIEW ── -->
@@ -1599,6 +1602,14 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
   </div>
 
   </div><!-- /#eng-lab-view -->
+
+  <!-- ── CAPACITY VIEW ── -->
+  <div id="eng-capacity-view" style="display:none;">
+    <div id="eng-capacity-content">
+      <div style="text-align:center;padding:40px;color:var(--muted2);font-family:DM Mono,monospace;font-size:11px;">Loading capacity data…</div>
+    </div>
+  </div>
+
 </div>
 
 <!-- ████ VEHICLE PROPOSAL ████ -->
@@ -2564,6 +2575,22 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
   </div>
 </div>
 
+<!-- ████ ENGINEERING CENTER MODAL ████ -->
+<div class="bc-modal-overlay" id="engCenterModal">
+  <div class="bc-modal-panel" style="width:500px;max-width:96vw;">
+    <div class="bc-modal-header">
+      <div>
+        <div class="bc-modal-title" id="eng-center-modal-title">TECH CENTER</div>
+        <div style="font-family:'DM Mono',monospace;font-size:9px;color:var(--muted2);margin-top:2px;" id="eng-center-modal-sub">Engineering workforce management</div>
+      </div>
+      <button onclick="closeEngCenterModal()" style="background:var(--s3);border:1px solid var(--border2);
+        color:var(--muted2);border-radius:4px;padding:6px 12px;cursor:pointer;font-size:13px;">✕ Close</button>
+    </div>
+    <div class="bc-modal-body" id="eng-center-modal-body" style="padding:20px;">
+    </div>
+  </div>
+</div>
+
 <!-- ████ STUDY MODAL ████ -->
 <div class="study-modal" id="studyModal">
   <div class="study-panel">
@@ -2814,6 +2841,7 @@ function nav(page, el) {
   if(page==='engineering') {
     loadBaseConfigs(currentModType);
     if(teamId) { loadProductStudies(); buildEngineeringDashboard(); }
+    _updateBlendedFTERate();
   }
 }
 
@@ -6674,8 +6702,9 @@ async function loadModuleLibrary() {
 // ════════════════════════════════════════════════════════════════
 
 function engView(tab) {
-  document.getElementById('eng-dashboard-view').style.display = tab==='dashboard'?'block':'none';
-  document.getElementById('eng-lab-view').style.display       = tab==='lab'      ?'block':'none';
+  document.getElementById('eng-dashboard-view').style.display  = tab==='dashboard'?'block':'none';
+  document.getElementById('eng-lab-view').style.display        = tab==='lab'      ?'block':'none';
+  document.getElementById('eng-capacity-view').style.display   = tab==='capacity' ?'block':'none';
   document.querySelectorAll('.eng-view-tab').forEach(function(t){
     var active = t.dataset.tab===tab;
     t.style.borderBottomColor = active?'var(--gold)':'transparent';
@@ -6683,7 +6712,361 @@ function engView(tab) {
     t.classList.toggle('active',active);
   });
   if (tab==='dashboard') buildEngineeringDashboard();
-  if (tab==='lab') { loadBaseConfigs(currentModType); if(teamId) loadModuleLibrary(); }
+  if (tab==='lab')       { loadBaseConfigs(currentModType); if(teamId) loadModuleLibrary(); }
+  if (tab==='capacity')  buildEngCapacityTab();
+}
+
+// ════════════════════════════════════════════════════════════════
+// ENGINEERING CAPACITY TAB
+// ════════════════════════════════════════════════════════════════
+
+function _getEngCountry(code) {
+  return ENG_COUNTRIES.find(function(c){ return c.code===code; }) || null;
+}
+
+function _calcCapacityMetrics() {
+  var active = _engState.centers.filter(function(c){ return c.status==='active'; });
+  var rawTotal=0, effTotal=0, costPerMo=0;
+  active.forEach(function(ctr){
+    var co = _getEngCountry(ctr.country_code);
+    if (!co) return;
+    var effOn  = ctr.onroll     * co.eng_index;
+    var effCon = ctr.contractor * 0.75 * co.eng_index;
+    effTotal  += effOn + effCon;
+    rawTotal  += ctr.onroll + ctr.contractor;
+    costPerMo += ctr.onroll     * co.eng_fte_eur_mo
+               + ctr.contractor * co.eng_fte_eur_mo * 1.30;
+  });
+  var blendedRate = (effTotal > 0) ? Math.round(costPerMo / effTotal) : 13333;
+  var qtrCapFteMo = Math.round(effTotal * 3);
+  var qtrlyCostM  = Math.round(costPerMo * 3 / 1e6 * 100) / 100;
+  return { centers:active, totalRaw:rawTotal, totalEff:Math.round(effTotal*10)/10,
+           qtrCapFteMo:qtrCapFteMo, qtrlyCostM:qtrlyCostM, blendedRate:blendedRate };
+}
+
+function _calcModuleDemandFteMo() {
+  return (teamModuleLibrary||[]).filter(function(m){
+    return m.development_status==='in_development';
+  }).reduce(function(s,m){
+    var lt = Math.max(1, parseFloat(m.lead_time_quarters||4));
+    var rdFteM = parseFloat(m.total_rd_spend_m||0) * 0.60;
+    return s + Math.round(rdFteM * 1e6 / 13333 / lt);
+  }, 0);
+}
+
+function _updateBlendedFTERate() {
+  var m = _calcCapacityMetrics();
+  var rate = (m.totalRaw > 0 && m.blendedRate > 0) ? m.blendedRate : 13333;
+  [_PC, _ICE_PC, _EPWT_PC, _EANDS_PC, _TOPHAT_PC].forEach(function(eng){
+    if (eng && eng.US_FTE_RATE_MONTH !== undefined) eng.US_FTE_RATE_MONTH = rate;
+  });
+}
+
+function _persistEngState() {
+  if (!teamId) return;
+  try { sessionStorage.setItem('as_engState_'+teamId, JSON.stringify(_engState)); } catch(e){}
+}
+
+function _restoreEngState() {
+  if (!teamId) return;
+  try {
+    var raw = sessionStorage.getItem('as_engState_'+teamId);
+    if (!raw) return;
+    var d = JSON.parse(raw);
+    if (d.centers) _engState.centers = d.centers;
+  } catch(e){}
+}
+
+// ── Modal helpers ──────────────────────────────────────────────
+function closeEngCenterModal() {
+  document.getElementById('engCenterModal').classList.remove('open');
+}
+
+function _miniKpiBlock(label, value, color) {
+  return '<div style="text-align:center;">' +
+    '<div style="font-family:Orbitron,sans-serif;font-size:13px;font-weight:700;color:'+color+';margin-bottom:2px;">'+value+'</div>' +
+    '<div style="font-family:DM Mono,monospace;font-size:8px;color:var(--muted2);text-transform:uppercase;letter-spacing:.5px;">'+label+'</div>' +
+    '</div>';
+}
+
+// ── Open new center dialog ─────────────────────────────────────
+function openEngCenterDialog() {
+  if (_engState.centers.filter(function(c){return c.status==='active';}).length >= 5) {
+    toast('Maximum 5 active tech centers allowed.'); return;
+  }
+  var existingCodes = _engState.centers.map(function(c){ return c.country_code; });
+  var available = ENG_COUNTRIES.filter(function(c){ return existingCodes.indexOf(c.code)<0; });
+  if (!available.length) { toast('No more countries available.'); return; }
+
+  document.getElementById('eng-center-modal-title').textContent = 'OPEN NEW TECH CENTER';
+  document.getElementById('eng-center-modal-sub').textContent = 'Select a country to establish an engineering hub';
+
+  var opts = available.map(function(c){
+    return '<option value="'+c.code+'">'+c.flag+' '+c.name+
+           '  —  €'+c.eng_fte_eur_mo.toLocaleString()+'/mo  ·  idx '+(c.eng_index*100).toFixed(0)+'%</option>';
+  }).join('');
+
+  document.getElementById('eng-center-modal-body').innerHTML =
+    '<div style="font-family:DM Mono,monospace;">' +
+    '<div style="margin-bottom:14px;font-size:10px;color:var(--muted2);">One-time setup cost applies. You may open up to 5 tech centers in total.</div>' +
+    '<div style="margin-bottom:12px;">' +
+    '<label style="font-family:DM Mono,monospace;font-size:9px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);display:block;margin-bottom:5px;">Country</label>' +
+    '<select id="new-center-cc" onchange="updateNewCenterPreview()" style="background:var(--s2);border:1px solid var(--border2);border-radius:6px;color:var(--text);padding:8px 10px;font-size:12px;font-family:DM Mono,monospace;width:100%;">'+opts+'</select></div>' +
+    '<div id="new-center-preview" style="margin-bottom:16px;"></div>' +
+    '<div style="display:flex;gap:10px;">' +
+    '<button onclick="confirmOpenCenter()" style="flex:1;background:rgba(56,212,134,.15);border:1px solid rgba(56,212,134,.4);color:var(--green);border-radius:8px;padding:11px 24px;font-family:DM Mono,monospace;font-size:10px;font-weight:700;cursor:pointer;letter-spacing:1px;">OPEN CENTER</button>' +
+    '<button onclick="closeEngCenterModal()" style="background:transparent;border:1px solid var(--border2);color:var(--muted2);border-radius:8px;padding:11px 24px;cursor:pointer;font-size:12px;">Cancel</button>' +
+    '</div></div>';
+
+  document.getElementById('engCenterModal').classList.add('open');
+  updateNewCenterPreview();
+}
+
+function updateNewCenterPreview() {
+  var sel = document.getElementById('new-center-cc');
+  if (!sel) return;
+  var co = _getEngCountry(sel.value);
+  if (!co) return;
+  document.getElementById('new-center-preview').innerHTML =
+    '<div style="background:var(--s3);border-radius:6px;padding:12px;display:grid;grid-template-columns:repeat(3,1fr);gap:8px;">' +
+    _miniKpiBlock('Setup Cost', '€'+co.setup_cost_m+'M', 'var(--red)') +
+    _miniKpiBlock('Rate / FTE / mo', '€'+co.eng_fte_eur_mo.toLocaleString(), 'var(--gold)') +
+    _miniKpiBlock('Productivity', (co.eng_index*100).toFixed(0)+'%', 'var(--cyan)') +
+    '</div>';
+}
+
+function confirmOpenCenter() {
+  var sel = document.getElementById('new-center-cc');
+  if (!sel || !sel.value) return;
+  var co = _getEngCountry(sel.value);
+  if (!co) return;
+  _engState.centers.push({ id: Date.now(), country_code: co.code, onroll: 0, contractor: 0, status:'active' });
+  _persistEngState();
+  _updateBlendedFTERate();
+  closeEngCenterModal();
+  toast('✓ Tech center opened: '+co.flag+' '+co.name+' (setup cost: €'+co.setup_cost_m+'M)');
+  buildEngCapacityTab();
+}
+
+// ── Close center (severance) dialog ───────────────────────────
+function showSeveranceModal(centerId) {
+  var ctr = _engState.centers.find(function(c){ return c.id===centerId; });
+  if (!ctr) return;
+  var co = _getEngCountry(ctr.country_code);
+  if (!co) return;
+  var sevCostM = Math.round(ctr.onroll * co.eng_fte_eur_mo * 3 / 1e6 * 100) / 100;
+
+  document.getElementById('eng-center-modal-title').textContent = 'CLOSE TECH CENTER';
+  document.getElementById('eng-center-modal-sub').textContent = co.flag+' '+co.name;
+
+  var sevHtml = ctr.onroll > 0
+    ? '<div style="background:rgba(239,68,68,.10);border:1px solid rgba(239,68,68,.30);border-radius:6px;padding:12px;margin-bottom:14px;">' +
+      '<div style="font-family:DM Mono,monospace;font-size:9px;font-weight:700;color:var(--red);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;">⚠ Severance Cost</div>' +
+      '<div style="font-family:DM Mono,monospace;font-size:10px;color:var(--text);margin-bottom:8px;">'+ctr.onroll+' onroll staff × 3 months × €'+co.eng_fte_eur_mo.toLocaleString()+'/mo</div>' +
+      '<div style="font-family:Orbitron,sans-serif;font-size:20px;font-weight:700;color:var(--red);">€'+sevCostM+'M</div>' +
+      '</div>'
+    : '<div style="font-family:DM Mono,monospace;font-size:10px;color:var(--muted2);margin-bottom:14px;padding:10px;background:var(--s3);border-radius:6px;">No onroll staff — zero severance cost.</div>';
+
+  document.getElementById('eng-center-modal-body').innerHTML =
+    '<div style="font-family:DM Mono,monospace;">' +
+    sevHtml +
+    (ctr.contractor > 0
+      ? '<div style="font-family:DM Mono,monospace;font-size:10px;color:var(--muted2);margin-bottom:14px;">'+ctr.contractor+' contractor(s) released at zero cost.</div>'
+      : '') +
+    '<div style="display:flex;gap:10px;">' +
+    '<button onclick="confirmCloseCenter('+centerId+')" style="flex:1;background:rgba(239,68,68,.15);border:1px solid rgba(239,68,68,.45);color:var(--red);border-radius:8px;padding:11px 24px;font-family:DM Mono,monospace;font-size:10px;font-weight:700;cursor:pointer;letter-spacing:1px;">CLOSE CENTER' + (sevCostM>0?' (€'+sevCostM+'M)':'') + '</button>' +
+    '<button onclick="closeEngCenterModal()" style="background:transparent;border:1px solid var(--border2);color:var(--muted2);border-radius:8px;padding:11px 24px;cursor:pointer;font-size:12px;">Cancel</button>' +
+    '</div></div>';
+
+  document.getElementById('engCenterModal').classList.add('open');
+}
+
+function confirmCloseCenter(centerId) {
+  var idx = _engState.centers.findIndex(function(c){ return c.id===centerId; });
+  if (idx>=0) _engState.centers.splice(idx, 1);
+  _persistEngState();
+  _updateBlendedFTERate();
+  closeEngCenterModal();
+  toast('Tech center closed.');
+  buildEngCapacityTab();
+}
+
+// ── Headcount change ───────────────────────────────────────────
+function _updateCenterHC(id, field, val) {
+  var ctr = _engState.centers.find(function(c){ return c.id===id; });
+  if (!ctr) return;
+  ctr[field] = Math.max(0, parseInt(val)||0);
+  _persistEngState();
+  _updateBlendedFTERate();
+  buildEngCapacityTab();
+}
+
+// ── Main Capacity tab renderer ─────────────────────────────────
+function buildEngCapacityTab() {
+  var el = document.getElementById('eng-capacity-content');
+  if (!el) return;
+
+  // Restore persisted state on first load
+  if (!_engState._restored) { _restoreEngState(); _engState._restored=true; _updateBlendedFTERate(); }
+
+  var m = _calcCapacityMetrics();
+  var demand = _calcModuleDemandFteMo();
+  var covPct = m.qtrCapFteMo > 0 ? Math.round(demand / m.qtrCapFteMo * 100) : (demand > 0 ? 200 : 0);
+  var covStatus = (m.qtrCapFteMo===0 && demand===0) ? 'NO MODULES'
+                : covPct <= 90  ? 'OVERLOADED'
+                : covPct <= 110 ? 'TIGHT'
+                : 'HEALTHY';
+  var statusColor = covStatus==='HEALTHY' ? 'var(--green)'
+                  : covStatus==='TIGHT'   ? 'var(--gold)'
+                  : covStatus==='NO MODULES' ? 'var(--muted2)'
+                  : 'var(--red)';
+  var barFill = Math.min(covPct, 100);
+
+  function kpiTile(value, label, color) {
+    return '<div style="background:var(--s2);border:1px solid var(--border2);border-radius:6px;padding:12px;text-align:center;">' +
+      '<div style="font-family:Orbitron,sans-serif;font-size:15px;font-weight:700;color:'+color+';margin-bottom:4px;">'+value+'</div>' +
+      '<div style="font-family:DM Mono,monospace;font-size:8px;color:var(--muted2);text-transform:uppercase;letter-spacing:.5px;">'+label+'</div>' +
+      '</div>';
+  }
+
+  var h = '';
+  h += '<div style="font-family:Orbitron,sans-serif;font-size:11px;font-weight:700;letter-spacing:2px;color:var(--text);margin-bottom:16px;">ENGINEERING WORKFORCE CAPACITY</div>';
+
+  // KPI strip
+  h += '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:16px;">';
+  h += kpiTile(m.centers.length+' / 5', 'Tech Centers', 'var(--cyan)');
+  h += kpiTile(m.totalRaw, 'Total Headcount', 'var(--gold)');
+  h += kpiTile(m.qtrCapFteMo+' FTE-mo', 'Eff. Capacity / Qtr', 'var(--purple)');
+  h += kpiTile('€'+m.qtrlyCostM+'M', 'Quarterly Cost', 'var(--orange)');
+  h += '</div>';
+
+  // Capacity status bar
+  h += '<div style="background:var(--s2);border:1px solid var(--border2);border-radius:6px;padding:14px;margin-bottom:16px;">';
+  h += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">';
+  h += '<span style="font-family:DM Mono,monospace;font-size:9px;color:var(--muted2);text-transform:uppercase;letter-spacing:1px;">Pipeline Demand vs. Capacity</span>';
+  h += '<span style="font-family:Orbitron,sans-serif;font-size:11px;font-weight:700;color:'+statusColor+';">'+covStatus+'</span>';
+  h += '</div>';
+  h += '<div style="background:var(--s3);border-radius:3px;height:8px;overflow:hidden;margin-bottom:8px;">';
+  h += '<div style="height:100%;width:'+barFill+'%;background:'+statusColor+';border-radius:3px;transition:width .4s;"></div>';
+  h += '</div>';
+  h += '<div style="font-family:DM Mono,monospace;font-size:9px;color:var(--muted2);">Pipeline demand: <span style="color:var(--text);">'+demand+' FTE-mo/qtr</span> &nbsp;·&nbsp; Capacity: <span style="color:var(--text);">'+m.qtrCapFteMo+' FTE-mo/qtr</span></div>';
+  if (covStatus==='OVERLOADED') {
+    var gap = demand - m.qtrCapFteMo;
+    h += '<div style="margin-top:8px;padding:7px 10px;background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.20);border-radius:4px;font-family:DM Mono,monospace;font-size:9px;color:var(--red);">▲ Module pipeline demand exceeds capacity by '+gap+' FTE-mo/qtr — R&D may be delayed.</div>';
+  }
+  h += '</div>';
+
+  // Centers section header
+  h += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">';
+  h += '<span style="font-family:DM Mono,monospace;font-size:8px;letter-spacing:2px;color:var(--muted);text-transform:uppercase;">Tech Centers ('+m.centers.length+' active)</span>';
+  if (m.centers.length < 5) {
+    h += '<button onclick="openEngCenterDialog()" style="background:rgba(56,212,134,.12);border:1px solid rgba(56,212,134,.35);color:var(--green);border-radius:6px;padding:6px 14px;font-family:DM Mono,monospace;font-size:9px;font-weight:700;cursor:pointer;letter-spacing:1px;">+ OPEN CENTER</button>';
+  }
+  h += '</div>';
+
+  if (m.centers.length === 0) {
+    h += '<div style="background:var(--s2);border:1px dashed var(--border2);border-radius:8px;padding:40px;text-align:center;">';
+    h += '<div style="font-size:28px;margin-bottom:10px;">🏢</div>';
+    h += '<div style="font-family:DM Mono,monospace;font-size:11px;color:var(--muted2);margin-bottom:6px;">No tech centers open.</div>';
+    h += '<div style="font-family:DM Mono,monospace;font-size:9px;color:var(--muted2);">Open a center to reduce your blended R&D FTE rate and manage engineering capacity.</div>';
+    h += '</div>';
+  } else {
+    h += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(290px,1fr));gap:14px;">';
+    _engState.centers.forEach(function(ctr){
+      if (ctr.status==='active') h += _buildCenterCard(ctr);
+    });
+    h += '</div>';
+  }
+
+  // Blended rate footer
+  if (m.centers.length > 0) {
+    var saving = Math.round((13333 - m.blendedRate) / 13333 * 100);
+    h += '<div style="margin-top:16px;background:var(--s3);border-radius:6px;padding:12px;display:flex;justify-content:space-between;align-items:center;">';
+    h += '<div style="font-family:DM Mono,monospace;font-size:9px;color:var(--muted2);">Blended FTE rate applied to all R&D cost calculations</div>';
+    h += '<div style="display:flex;align-items:center;gap:12px;">';
+    if (saving > 0) {
+      h += '<span style="font-family:DM Mono,monospace;font-size:9px;color:var(--green);">▼ '+saving+'% vs US baseline</span>';
+    }
+    h += '<span style="font-family:Orbitron,sans-serif;font-size:14px;font-weight:700;color:var(--gold);">€'+m.blendedRate.toLocaleString()+'/mo</span>';
+    h += '</div></div>';
+  }
+
+  el.innerHTML = h;
+
+  // Wire headcount inputs after render
+  _engState.centers.forEach(function(ctr){
+    var onEl  = document.getElementById('hc-onroll-'+ctr.id);
+    var conEl = document.getElementById('hc-contractor-'+ctr.id);
+    if (onEl)  onEl.addEventListener('change',  function(){ _updateCenterHC(ctr.id,'onroll',    this.value); });
+    if (conEl) conEl.addEventListener('change',  function(){ _updateCenterHC(ctr.id,'contractor',this.value); });
+  });
+}
+
+function _buildCenterCard(ctr) {
+  var co = _getEngCountry(ctr.country_code);
+  if (!co) return '';
+  var effFteMo  = Math.round((ctr.onroll + ctr.contractor * 0.75) * co.eng_index * 3);
+  var qtrlyCost = Math.round((ctr.onroll * co.eng_fte_eur_mo + ctr.contractor * co.eng_fte_eur_mo * 1.30) * 3 / 1e6 * 100) / 100;
+  var idxPct    = Math.round(co.eng_index * 100);
+
+  var hubLabel, hubBg;
+  if (co.eng_fte_eur_mo >= 8000) { hubLabel='PREMIUM HUB'; hubBg='rgba(200,164,60,.15)'; }
+  else if (co.eng_fte_eur_mo >= 4000) { hubLabel='MID-COST HUB'; hubBg='rgba(56,189,212,.12)'; }
+  else { hubLabel='COST HUB'; hubBg='rgba(56,212,134,.12)'; }
+
+  // 10-segment productivity index bar
+  var idxBar='';
+  for(var i=0;i<10;i++){
+    idxBar+='<span style="display:inline-block;width:9px;height:6px;border-radius:1px;margin-right:1px;background:'+(i<Math.round(co.eng_index*10)?'var(--cyan)':'var(--border2)')+'"></span>';
+  }
+
+  var inpStyle = 'background:var(--s3);border:1px solid var(--border2);border-radius:6px;color:var(--text);padding:8px 10px;font-size:13px;font-family:DM Mono,monospace;width:100%;box-sizing:border-box;';
+  var lblStyle = 'font-family:DM Mono,monospace;font-size:8px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);display:block;margin-bottom:4px;';
+
+  return '<div style="background:var(--s2);border:1px solid var(--border2);border-radius:8px;padding:16px;">' +
+
+    // Header
+    '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">' +
+    '<div style="display:flex;align-items:center;gap:10px;">' +
+    '<span style="font-size:22px;line-height:1;">'+co.flag+'</span>' +
+    '<div>' +
+      '<div style="font-size:13px;font-weight:700;color:var(--text);font-family:DM Mono,monospace;">'+co.name+'</div>' +
+      '<div style="font-family:DM Mono,monospace;font-size:8px;color:var(--green);margin-top:1px;">● ACTIVE</div>' +
+    '</div></div>' +
+    '<span style="font-family:DM Mono,monospace;font-size:8px;padding:3px 8px;border-radius:3px;background:'+hubBg+';color:var(--text);">'+hubLabel+'</span>' +
+    '</div>' +
+
+    // Headcount inputs
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px;">' +
+    '<div><label style="'+lblStyle+'">Onroll FTE</label>' +
+    '<input id="hc-onroll-'+ctr.id+'" type="number" min="0" value="'+ctr.onroll+'" style="'+inpStyle+'"></div>' +
+    '<div><label style="'+lblStyle+'">Contractor FTE</label>' +
+    '<input id="hc-contractor-'+ctr.id+'" type="number" min="0" value="'+ctr.contractor+'" style="'+inpStyle+'"></div>' +
+    '</div>' +
+
+    // Rate + productivity index
+    '<div style="background:var(--s3);border-radius:5px;padding:10px;margin-bottom:12px;">' +
+    '<div style="font-family:DM Mono,monospace;font-size:8px;color:var(--muted2);margin-bottom:4px;">'+
+      'RATE: €'+co.eng_fte_eur_mo.toLocaleString()+'/mo onroll &nbsp;·&nbsp; €'+Math.round(co.eng_fte_eur_mo*1.30).toLocaleString()+'/mo contractor' +
+    '</div>' +
+    '<div style="font-family:DM Mono,monospace;font-size:8px;color:var(--muted2);display:flex;align-items:center;gap:6px;">' +
+    'PRODUCTIVITY: '+idxBar+' <span style="color:var(--cyan);">'+idxPct+'%</span>' +
+    '</div></div>' +
+
+    // Metrics
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px;">' +
+    '<div style="background:var(--s3);border-radius:5px;padding:8px;">' +
+      '<div style="font-family:DM Mono,monospace;font-size:8px;color:var(--muted2);margin-bottom:2px;">EFF FTE-MO / QTR</div>' +
+      '<div style="font-family:Orbitron,sans-serif;font-size:16px;font-weight:700;color:var(--cyan);">'+effFteMo+'</div>' +
+    '</div>' +
+    '<div style="background:var(--s3);border-radius:5px;padding:8px;">' +
+      '<div style="font-family:DM Mono,monospace;font-size:8px;color:var(--muted2);margin-bottom:2px;">QUARTERLY COST</div>' +
+      '<div style="font-family:Orbitron,sans-serif;font-size:16px;font-weight:700;color:var(--orange);">€'+qtrlyCost+'M</div>' +
+    '</div></div>' +
+
+    // Close button
+    '<button onclick="showSeveranceModal('+ctr.id+')" style="width:100%;background:transparent;border:1px solid rgba(239,68,68,.30);color:var(--red);border-radius:6px;padding:8px;font-family:DM Mono,monospace;font-size:9px;letter-spacing:1px;cursor:pointer;transition:background .15s;" onmouseover="this.style.background=\'rgba(239,68,68,.10)\'" onmouseout="this.style.background=\'transparent\'">CLOSE CENTER ×</button>' +
+    '</div>';
 }
 
 var _ENG_MOD_COLORS = {platform:'#c8a43c',ice_pwt:'#f97316',epwt:'#22d3ee',tophat:'#a78bfa',eands:'#60a5fa',battery:'#4ade80'};
@@ -9749,6 +10132,12 @@ let currentRoundQuarter = 1;
 
 // Session feature flags (populated at login from GET /sessions/{id})
 var _sessionFlags = { supply_planning_enabled: false };
+
+// Engineering workforce state (in-memory + sessionStorage persistence)
+var _engState = {
+  _restored: false,
+  centers: [],  // [{id, country_code, onroll, contractor, status:'active'}]
+};
 
 async function _loadSessionFlags(sid) {
   if (!sid) return;
@@ -16381,6 +16770,23 @@ var INDUSTRIAL_COUNTRIES = {
     {code:'ID',  name:'Indonesia',       region:'APAC',labor_eur_hr:3,  elec_eur_kwh:0.070, logistics_idx:1.25},
   ],
 };
+
+var ENG_COUNTRIES = [
+  {code:'US', name:'United States',  region:'NA',   flag:'🇺🇸', eng_fte_eur_mo:13333, eng_index:1.00, setup_cost_m:2.5},
+  {code:'CA', name:'Canada',         region:'NA',   flag:'🇨🇦', eng_fte_eur_mo:11000, eng_index:0.95, setup_cost_m:2.8},
+  {code:'MX', name:'Mexico',         region:'NA',   flag:'🇲🇽', eng_fte_eur_mo:4500,  eng_index:0.75, setup_cost_m:1.5},
+  {code:'DE', name:'Germany',        region:'EU',   flag:'🇩🇪', eng_fte_eur_mo:9500,  eng_index:0.98, setup_cost_m:3.0},
+  {code:'GB', name:'United Kingdom', region:'EU',   flag:'🇬🇧', eng_fte_eur_mo:8800,  eng_index:0.93, setup_cost_m:2.8},
+  {code:'FR', name:'France',         region:'EU',   flag:'🇫🇷', eng_fte_eur_mo:8200,  eng_index:0.92, setup_cost_m:2.5},
+  {code:'PL', name:'Poland',         region:'EU',   flag:'🇵🇱', eng_fte_eur_mo:4800,  eng_index:0.82, setup_cost_m:1.5},
+  {code:'RO', name:'Romania',        region:'EU',   flag:'🇷🇴', eng_fte_eur_mo:3200,  eng_index:0.75, setup_cost_m:1.2},
+  {code:'JP', name:'Japan',          region:'APAC', flag:'🇯🇵', eng_fte_eur_mo:8500,  eng_index:0.96, setup_cost_m:3.5},
+  {code:'KR', name:'South Korea',    region:'APAC', flag:'🇰🇷', eng_fte_eur_mo:6500,  eng_index:0.90, setup_cost_m:2.5},
+  {code:'CN', name:'China',          region:'APAC', flag:'🇨🇳', eng_fte_eur_mo:4200,  eng_index:0.85, setup_cost_m:2.0},
+  {code:'IN', name:'India',          region:'APAC', flag:'🇮🇳', eng_fte_eur_mo:1800,  eng_index:0.70, setup_cost_m:1.0},
+  {code:'BR', name:'Brazil',         region:'SA',   flag:'🇧🇷', eng_fte_eur_mo:3200,  eng_index:0.72, setup_cost_m:1.3},
+  {code:'ZA', name:'South Africa',   region:'MEA',  flag:'🇿🇦', eng_fte_eur_mo:2500,  eng_index:0.70, setup_cost_m:1.0},
+];
 
 var SOURCING_STRATEGIES = [
   {key:'LOCAL',    label:'Local Sourcing',  desc:'>60% local content · Supply chain resilience · Higher material cost',   resilience:'★★★', mat_adj:+0.12},
