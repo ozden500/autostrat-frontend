@@ -1392,6 +1392,9 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
     <div class="eng-view-tab" data-tab="capacity" onclick="engView('capacity')"
       style="font-family:DM Mono,monospace;font-size:9px;letter-spacing:1px;padding:7px 18px;cursor:pointer;
       border-bottom:2px solid transparent;color:var(--muted2);transition:all .15s;">🏢 CAPACITY</div>
+    <div class="eng-view-tab" data-tab="validation" onclick="engView('validation')"
+      style="font-family:DM Mono,monospace;font-size:9px;letter-spacing:1px;padding:7px 18px;cursor:pointer;
+      border-bottom:2px solid transparent;color:var(--muted2);transition:all .15s;">🧪 VALIDATION</div>
   </div>
 
   <!-- ── DASHBOARD VIEW ── -->
@@ -1607,6 +1610,13 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
   <div id="eng-capacity-view" style="display:none;">
     <div id="eng-capacity-content">
       <div style="text-align:center;padding:40px;color:var(--muted2);font-family:DM Mono,monospace;font-size:11px;">Loading capacity data…</div>
+    </div>
+  </div>
+
+  <!-- ── VALIDATION LABS VIEW ── -->
+  <div id="eng-validation-view" style="display:none;">
+    <div id="eng-validation-content">
+      <div style="text-align:center;padding:40px;color:var(--muted2);font-family:DM Mono,monospace;font-size:11px;">Select a team to manage validation labs.</div>
     </div>
   </div>
 
@@ -6702,18 +6712,20 @@ async function loadModuleLibrary() {
 // ════════════════════════════════════════════════════════════════
 
 function engView(tab) {
-  document.getElementById('eng-dashboard-view').style.display  = tab==='dashboard'?'block':'none';
-  document.getElementById('eng-lab-view').style.display        = tab==='lab'      ?'block':'none';
-  document.getElementById('eng-capacity-view').style.display   = tab==='capacity' ?'block':'none';
+  document.getElementById('eng-dashboard-view').style.display  = tab==='dashboard' ?'block':'none';
+  document.getElementById('eng-lab-view').style.display        = tab==='lab'       ?'block':'none';
+  document.getElementById('eng-capacity-view').style.display   = tab==='capacity'  ?'block':'none';
+  document.getElementById('eng-validation-view').style.display = tab==='validation'?'block':'none';
   document.querySelectorAll('.eng-view-tab').forEach(function(t){
     var active = t.dataset.tab===tab;
     t.style.borderBottomColor = active?'var(--gold)':'transparent';
     t.style.color = active?'var(--gold)':'var(--muted2)';
     t.classList.toggle('active',active);
   });
-  if (tab==='dashboard') buildEngineeringDashboard();
-  if (tab==='lab')       { loadBaseConfigs(currentModType); if(teamId) loadModuleLibrary(); }
-  if (tab==='capacity')  buildEngCapacityTab();
+  if (tab==='dashboard')  buildEngineeringDashboard();
+  if (tab==='lab')        { loadBaseConfigs(currentModType); if(teamId) loadModuleLibrary(); }
+  if (tab==='capacity')   buildEngCapacityTab();
+  if (tab==='validation') buildValidationLabsTab();
 }
 
 // ════════════════════════════════════════════════════════════════
@@ -7072,6 +7084,324 @@ function _buildCenterCard(ctr) {
     // Close button
     '<button onclick="showSeveranceModal('+ctr.id+')" style="width:100%;background:transparent;border:1px solid rgba(239,68,68,.30);color:var(--red);border-radius:6px;padding:8px;font-family:DM Mono,monospace;font-size:9px;letter-spacing:1px;cursor:pointer;transition:background .15s;" onmouseover="this.style.background=\'rgba(239,68,68,.10)\'" onmouseout="this.style.background=\'transparent\'">CLOSE CENTER ×</button>' +
     '</div>';
+}
+
+// ════════════════════════════════════════════════════════════════
+// VALIDATION LABS TAB
+// ════════════════════════════════════════════════════════════════
+
+async function loadValidationSettings() {
+  if (!teamId) return;
+  // Initialise empty state so calcCosts is safe even if fetch fails
+  VALIDATION_DISCIPLINES.forEach(function(d) {
+    if (!_validationState.cae_levels[d.id]) _validationState.cae_levels[d.id] = 0;
+    if (!_validationState.facilities[d.id])  _validationState.facilities[d.id]  = {};
+  });
+  try {
+    var r = await fetch(API_URL + '/teams/' + teamId + '/validation-settings');
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    var d = await r.json();
+    (d.cae_investments || []).forEach(function(inv) {
+      _validationState.cae_levels[inv.discipline_id] = inv.cae_level || 0;
+    });
+    (d.facilities || []).forEach(function(fac) {
+      if (!_validationState.facilities[fac.discipline_id]) _validationState.facilities[fac.discipline_id] = {};
+      if (fac.facility_count > 0)
+        _validationState.facilities[fac.discipline_id][fac.tech_center_code] = fac.facility_count;
+    });
+  } catch(e) { /* silent — state is already initialised to zeros */ }
+  _validationState.loaded = true;
+}
+
+async function _saveValidationSetting(payload) {
+  var r = await fetch(API_URL + '/teams/' + teamId + '/validation-settings', {
+    method: 'PATCH',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify(payload)
+  });
+  if (!r.ok) { alert('Save failed: HTTP ' + r.status); throw new Error('HTTP ' + r.status); }
+  return r.json();
+}
+
+// Returns { disciplineId: demand_eur_m } summed over in-dev modules
+function _calcValidationDemand() {
+  var demands = {};
+  VALIDATION_DISCIPLINES.forEach(function(d) { demands[d.id] = 0; });
+  var inDev = (teamModuleLibrary || []).filter(function(m) {
+    return m.development_status === 'in_development';
+  });
+  inDev.forEach(function(m) {
+    var map = VALIDATION_MODULE_MAP[m.module_type];
+    if (!map) return;
+    var rdTotal = (m.total_rd_spend_m && m.total_rd_spend_m > 0)
+                  ? m.total_rd_spend_m
+                  : (_VAL_BASE_RD_M[m.module_type] || 200);
+    var facCost = rdTotal * 0.40 * map.facility_share;
+    Object.keys(map.disciplines).forEach(function(discId) {
+      demands[discId] = (demands[discId] || 0) + facCost * map.disciplines[discId];
+    });
+  });
+  return demands;
+}
+
+// Returns per-discipline cost breakdown + _totals
+function _calcValidationCosts() {
+  var demands = _calcValidationDemand();
+  var res = {};
+  var tot = { baseline:0, caeSaving:0, facilitySaving:0, netOutsource:0, depreciation:0 };
+
+  VALIDATION_DISCIPLINES.forEach(function(disc) {
+    var demand     = Math.round((demands[disc.id] || 0) * 100) / 100;
+    var caeLevel   = _validationState.cae_levels[disc.id] || 0;
+    var caeRed     = (caeLevel / 4) * (disc.max_cae_pct / 100);
+    var physDemand = Math.round(demand * (1 - caeRed) * 100) / 100;
+    var caeSaving  = Math.round(demand * caeRed * 100) / 100;
+
+    var facData      = _validationState.facilities[disc.id] || {};
+    var totalFacs    = Object.keys(facData).reduce(function(s,k){ return s+(facData[k]||0); }, 0);
+    var annualCap    = Math.round(totalFacs * (disc.capex_eur_m / 3) * 100) / 100;
+    var coveragePct  = physDemand > 0 ? Math.min(1.0, annualCap / physDemand) : 0;
+    var facSaving    = Math.round(physDemand * coveragePct * 100) / 100;
+    var netOutsource = Math.round((physDemand - facSaving) * 100) / 100;
+    var depreciation = Math.round(totalFacs * disc.capex_eur_m / 15 * 100) / 100;
+
+    res[disc.id] = { demand, caeSaving, physDemand, annualCap, coveragePct, facSaving, netOutsource, depreciation, totalFacs };
+    tot.baseline      += demand;
+    tot.caeSaving     += caeSaving;
+    tot.facilitySaving+= facSaving;
+    tot.netOutsource  += netOutsource;
+    tot.depreciation  += depreciation;
+  });
+
+  res._totals = { baseline: Math.round(tot.baseline*100)/100, caeSaving: Math.round(tot.caeSaving*100)/100,
+    facilitySaving: Math.round(tot.facilitySaving*100)/100, netOutsource: Math.round(tot.netOutsource*100)/100,
+    depreciation: Math.round(tot.depreciation*100)/100 };
+  return res;
+}
+
+function _valFmt(v) { return '€' + (Math.round(v*10)/10).toFixed(1) + 'M'; }
+
+function _valSummaryTile(label, v, color) {
+  return '<div style="background:var(--bg2);border-radius:6px;padding:12px 8px;text-align:center;">' +
+    '<div style="font-family:DM Mono,monospace;font-size:8px;color:var(--muted2);letter-spacing:1px;margin-bottom:6px;white-space:nowrap;">' + label + '</div>' +
+    '<div style="font-family:Orbitron,sans-serif;font-size:14px;font-weight:700;color:' + color + ';">' + _valFmt(v) + '</div>' +
+    '<div style="font-family:DM Mono,monospace;font-size:7px;color:var(--muted2);margin-top:2px;">per year</div>' +
+    '</div>';
+}
+
+function _renderCAERow(disc, caeLevel, c) {
+  var dots = '';
+  for (var i = 1; i <= 4; i++) {
+    dots += '<span style="font-size:11px;color:' + (i <= caeLevel ? 'var(--cyan)' : 'var(--border)') + ';">' + (i <= caeLevel ? '●' : '○') + '</span>';
+  }
+  var savingPct = Math.round((caeLevel / 4) * disc.max_cae_pct);
+  var actionHtml;
+  if (disc.max_cae_pct === 0) {
+    actionHtml = '<span style="font-size:8px;color:var(--muted2);font-family:DM Mono,monospace;">CAE N/A</span>';
+  } else if (caeLevel >= 4) {
+    actionHtml = '<span style="font-size:8px;color:var(--green);font-family:DM Mono,monospace;">MAX CAE ✓</span>';
+  } else {
+    var nl = caeLevel + 1;
+    var cost = disc.cae_costs[nl - 1];
+    var pctNext = Math.round((nl / 4) * disc.max_cae_pct);
+    actionHtml = '<button onclick="onValUpgradeCAE(\'' + disc.id + '\',' + nl + ',' + cost + ',' + pctNext + ')" ' +
+      'style="font-family:DM Mono,monospace;font-size:7px;background:rgba(34,211,238,.1);color:var(--cyan);' +
+      'border:1px solid rgba(34,211,238,.4);border-radius:3px;padding:3px 7px;cursor:pointer;white-space:nowrap;">' +
+      'L' + nl + ' +' + pctNext + '% · €' + cost + 'M</button>';
+  }
+  var rowBg = (savingPct > 0) ? 'rgba(34,211,238,.04)' : 'transparent';
+  return '<div style="display:grid;grid-template-columns:160px 60px 44px auto;align-items:center;gap:6px;' +
+    'padding:6px 10px;border-bottom:1px solid var(--border);background:' + rowBg + ';">' +
+    '<div style="font-family:DM Mono,monospace;font-size:8px;color:var(--fg);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + disc.name + '</div>' +
+    '<div style="letter-spacing:2px;">' + dots + '</div>' +
+    '<div style="font-family:DM Mono,monospace;font-size:7px;color:var(--cyan);text-align:right;">' + (savingPct > 0 ? '−' + savingPct + '%' : '') + '</div>' +
+    '<div style="text-align:right;">' + actionHtml + '</div>' +
+    '</div>';
+}
+
+function _renderFacilityCard(disc, c) {
+  var facData      = _validationState.facilities[disc.id] || {};
+  var activeCenters= (_engState.centers || []).filter(function(ctr){ return ctr.status === 'active'; });
+  var coverPct     = Math.round((c.coveragePct || 0) * 100);
+  var coverColor   = coverPct >= 100 ? 'var(--green)' : (coverPct > 0 ? 'var(--gold)' : 'var(--muted2)');
+  var html = '<div style="background:var(--bg2);border-radius:6px;padding:9px 11px;margin-bottom:7px;">';
+  html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px;">';
+  html += '<div style="font-family:DM Mono,monospace;font-size:8px;color:var(--fg);font-weight:700;">' + disc.name + '</div>';
+  html += '<div style="font-family:DM Mono,monospace;font-size:7px;color:' + coverColor + ';">' +
+    (c.totalFacs || 0) + ' lab' + ((c.totalFacs||0)!==1?'s':'') + ' · ' + coverPct + '% covered</div>';
+  html += '</div>';
+  if (c.demand > 0) {
+    html += '<div style="font-family:DM Mono,monospace;font-size:7px;color:var(--muted2);margin-bottom:6px;">' +
+      'Physical demand ' + _valFmt(c.physDemand) + '/yr · Cap ' + _valFmt(c.annualCap) + '/yr · €' + disc.capex_eur_m + 'M capex/lab</div>';
+  } else {
+    html += '<div style="font-family:DM Mono,monospace;font-size:7px;color:var(--muted2);margin-bottom:6px;">No pipeline demand — facility useful once modules are in development.</div>';
+  }
+  if (activeCenters.length === 0) {
+    html += '<div style="font-family:DM Mono,monospace;font-size:7px;color:var(--muted2);">Open tech centers in 🏢 CAPACITY first to place labs.</div>';
+  } else {
+    html += '<div style="display:flex;flex-wrap:wrap;gap:5px;">';
+    activeCenters.forEach(function(ctr) {
+      var count = (facData[ctr.country_code] || 0);
+      html += '<div style="display:flex;align-items:center;gap:3px;background:var(--bg3);border-radius:4px;padding:3px 7px;">';
+      html += '<span style="font-family:DM Mono,monospace;font-size:7px;color:var(--muted2);">' + ctr.country_code.toUpperCase() + '</span>';
+      html += '<button onclick="onValFacilityRemove(\'' + disc.id + '\',\'' + ctr.country_code + '\')" ' +
+        'style="background:none;border:none;color:' + (count>0?'var(--red)':'var(--border)') + ';cursor:' + (count>0?'pointer':'default') + ';font-size:12px;line-height:1;padding:0;width:14px;" ' +
+        (count>0?'':'disabled') + '>−</button>';
+      html += '<span style="font-family:DM Mono,monospace;font-size:9px;color:var(--fg);min-width:12px;text-align:center;">' + count + '</span>';
+      html += '<button onclick="onValFacilityAdd(\'' + disc.id + '\',\'' + ctr.country_code + '\')" ' +
+        'style="background:none;border:none;color:var(--cyan);cursor:pointer;font-size:12px;line-height:1;padding:0;width:14px;">+</button>';
+      html += '</div>';
+    });
+    html += '</div>';
+  }
+  html += '</div>';
+  return html;
+}
+
+function _renderModuleImpactTable(inDevMods, costs) {
+  var html = '<div style="margin-top:18px;">';
+  html += '<div style="font-family:DM Mono,monospace;font-size:9px;color:var(--gold);letter-spacing:1px;margin-bottom:8px;">MODULE PIPELINE IMPACT</div>';
+  html += '<table style="width:100%;border-collapse:collapse;font-family:DM Mono,monospace;font-size:8px;">';
+  html += '<thead><tr style="color:var(--muted2);border-bottom:1px solid var(--border);">';
+  ['Module','Type','Baseline','CAE Saving','Facility Saving','Net Outsource'].forEach(function(h){
+    html += '<th style="text-align:'+(h==='Module'||h==='Type'?'left':'right')+';padding:4px 8px;font-weight:400;">' + h + '</th>';
+  });
+  html += '</tr></thead><tbody>';
+  inDevMods.forEach(function(m) {
+    var map = VALIDATION_MODULE_MAP[m.module_type];
+    if (!map) return;
+    var rdTotal = (m.total_rd_spend_m && m.total_rd_spend_m > 0) ? m.total_rd_spend_m : (_VAL_BASE_RD_M[m.module_type]||200);
+    var facCost = rdTotal * 0.40 * map.facility_share;
+    var baseline=0, caeSav=0, facSav=0;
+    Object.keys(map.disciplines).forEach(function(discId) {
+      var w = map.disciplines[discId];
+      var disc = VALIDATION_DISCIPLINES.find(function(d){ return d.id===discId; });
+      if (!disc) return;
+      var base = facCost * w;
+      var caeRed = ((_validationState.cae_levels[discId]||0)/4)*(disc.max_cae_pct/100);
+      var phys = base * (1 - caeRed);
+      baseline += base;
+      caeSav   += base * caeRed;
+      facSav   += phys * ((costs[discId]||{}).coveragePct || 0);
+    });
+    var net = baseline - caeSav - facSav;
+    html += '<tr style="border-bottom:1px solid var(--border);">';
+    html += '<td style="padding:4px 8px;color:var(--fg);">' + (m.name||'—') + '</td>';
+    html += '<td style="padding:4px 8px;color:var(--muted2);">' + m.module_type + '</td>';
+    html += '<td style="padding:4px 8px;color:var(--muted2);text-align:right;">' + _valFmt(baseline) + '</td>';
+    html += '<td style="padding:4px 8px;color:var(--cyan);text-align:right;">' + (caeSav>0.005?'−':'')+_valFmt(caeSav) + '</td>';
+    html += '<td style="padding:4px 8px;color:var(--gold);text-align:right;">' + (facSav>0.005?'−':'')+_valFmt(facSav) + '</td>';
+    html += '<td style="padding:4px 8px;color:var(--orange);text-align:right;">' + _valFmt(net) + '</td>';
+    html += '</tr>';
+  });
+  html += '</tbody></table></div>';
+  return html;
+}
+
+async function buildValidationLabsTab() {
+  var el = document.getElementById('eng-validation-content');
+  if (!el) return;
+  if (!teamId) {
+    el.innerHTML = '<div style="text-align:center;padding:40px;color:var(--muted2);font-family:DM Mono,monospace;font-size:11px;">Select a team to manage validation labs.</div>';
+    return;
+  }
+  if (!_validationState.loaded) {
+    el.innerHTML = '<div style="text-align:center;padding:40px;color:var(--muted2);font-family:DM Mono,monospace;font-size:10px;">Loading…</div>';
+    await loadValidationSettings();
+  }
+
+  var costs  = _calcValidationCosts();
+  var totals = costs._totals;
+  var inDev  = (teamModuleLibrary||[]).filter(function(m){ return m.development_status==='in_development'; });
+
+  var html = '<div style="font-family:Orbitron,sans-serif;font-size:11px;font-weight:700;letter-spacing:2px;color:var(--text);margin-bottom:14px;">DESIGN VALIDATION SKILLS</div>';
+
+  // Summary strip
+  html += '<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-bottom:16px;">';
+  html += _valSummaryTile('BASELINE DEMAND', totals.baseline, 'var(--muted2)');
+  html += _valSummaryTile('CAE SAVING', totals.caeSaving, 'var(--cyan)');
+  html += _valSummaryTile('FACILITY SAVING', totals.facilitySaving, 'var(--gold)');
+  html += _valSummaryTile('NET OUTSOURCE', totals.netOutsource, 'var(--orange)');
+  html += _valSummaryTile('ANNUAL DEPREC.', totals.depreciation, 'var(--purple)');
+  html += '</div>';
+
+  if (inDev.length === 0) {
+    html += '<div style="font-family:DM Mono,monospace;font-size:9px;color:var(--muted2);padding:8px 12px;background:var(--bg2);border-radius:4px;margin-bottom:12px;">No modules currently in development — validation demand is €0. Figures update once modules enter the pipeline (🔬 MODULE LAB tab).</div>';
+  }
+
+  // Two-column
+  html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start;">';
+
+  // Left: CAE Strategy
+  html += '<div><div style="font-family:DM Mono,monospace;font-size:9px;color:var(--gold);letter-spacing:1px;margin-bottom:8px;">CAE STRATEGY</div>';
+  html += '<div style="background:var(--bg2);border-radius:6px;overflow:hidden;">';
+  html += '<div style="display:grid;grid-template-columns:160px 60px 44px auto;gap:6px;padding:5px 10px;border-bottom:1px solid var(--border);background:var(--bg3);">';
+  html += '<div style="font-family:DM Mono,monospace;font-size:7px;color:var(--muted2);">DISCIPLINE</div>';
+  html += '<div style="font-family:DM Mono,monospace;font-size:7px;color:var(--muted2);">LEVEL</div>';
+  html += '<div style="font-family:DM Mono,monospace;font-size:7px;color:var(--muted2);text-align:right;">SAVING</div>';
+  html += '<div></div>';
+  html += '</div>';
+  VALIDATION_DISCIPLINES.forEach(function(disc) {
+    html += _renderCAERow(disc, _validationState.cae_levels[disc.id]||0, costs[disc.id]);
+  });
+  html += '</div></div>';
+
+  // Right: Physical Facilities
+  html += '<div><div style="font-family:DM Mono,monospace;font-size:9px;color:var(--gold);letter-spacing:1px;margin-bottom:8px;">PHYSICAL FACILITIES</div>';
+  VALIDATION_DISCIPLINES.forEach(function(disc) {
+    html += _renderFacilityCard(disc, costs[disc.id]);
+  });
+  html += '</div>';
+
+  html += '</div>'; // end two-column
+
+  // Module impact
+  if (inDev.length > 0) html += _renderModuleImpactTable(inDev, costs);
+
+  el.innerHTML = html;
+}
+
+async function onValUpgradeCAE(discId, newLevel, costM, pctUnlocked) {
+  var disc = VALIDATION_DISCIPLINES.find(function(d){ return d.id===discId; });
+  if (!disc || newLevel <= (_validationState.cae_levels[discId]||0)) return;
+  if (!confirm('Upgrade ' + disc.name + ' CAE to Level ' + newLevel + '?\n\nInvestment: €' + costM + 'M\nCAE coverage: ' + pctUnlocked + '% of physical work covered by simulation\n\nThis reduces outsourcing costs for all modules using this discipline.')) return;
+  try {
+    await _saveValidationSetting({ cae_investments: [{ discipline_id: discId, cae_level: newLevel }] });
+    _validationState.cae_levels[discId] = newLevel;
+    buildValidationLabsTab();
+  } catch(e) {}
+}
+
+async function onValFacilityAdd(discId, techCenter) {
+  var disc = VALIDATION_DISCIPLINES.find(function(d){ return d.id===discId; });
+  if (!disc) return;
+  var facData  = _validationState.facilities[discId] || {};
+  var newCount = (facData[techCenter] || 0) + 1;
+  var addCap   = Math.round(disc.capex_eur_m / 3 * 10) / 10;
+  var annDepr  = Math.round(disc.capex_eur_m / 15 * 10) / 10;
+  if (!confirm('Build ' + disc.name + ' facility at ' + techCenter.toUpperCase() + '?\n\nCapex: €' + disc.capex_eur_m + 'M\nAdds annual capacity: €' + addCap + 'M/yr\nAnnual depreciation (indirect): €' + annDepr + 'M/yr')) return;
+  try {
+    await _saveValidationSetting({ facilities: [{ discipline_id: discId, tech_center_code: techCenter, facility_count: newCount }] });
+    if (!_validationState.facilities[discId]) _validationState.facilities[discId] = {};
+    _validationState.facilities[discId][techCenter] = newCount;
+    buildValidationLabsTab();
+  } catch(e) {}
+}
+
+async function onValFacilityRemove(discId, techCenter) {
+  var disc = VALIDATION_DISCIPLINES.find(function(d){ return d.id===discId; });
+  if (!disc) return;
+  var facData  = _validationState.facilities[discId] || {};
+  var curCount = facData[techCenter] || 0;
+  if (curCount <= 0) return;
+  var newCount = curCount - 1;
+  var remCap   = Math.round(disc.capex_eur_m / 3 * 10) / 10;
+  if (!confirm('Remove one ' + disc.name + ' facility from ' + techCenter.toUpperCase() + '?\n\nReduces annual capacity by €' + remCap + 'M/yr.')) return;
+  try {
+    await _saveValidationSetting({ facilities: [{ discipline_id: discId, tech_center_code: techCenter, facility_count: newCount }] });
+    _validationState.facilities[discId][techCenter] = newCount;
+    buildValidationLabsTab();
+  } catch(e) {}
 }
 
 var _ENG_MOD_COLORS = {platform:'#c8a43c',ice_pwt:'#f97316',epwt:'#22d3ee',tophat:'#a78bfa',eands:'#60a5fa',battery:'#4ade80'};
@@ -10144,6 +10474,64 @@ var _engState = {
   centers: [],  // [{id, country_code, onroll, contractor, status:'active'}]
 };
 
+// ── Validation Labs constants ──────────────────────────────────
+
+var VALIDATION_DISCIPLINES = [
+  { id:'crash',        name:'Crashworthiness',        max_cae_pct:80, cae_costs:[8,18,35,60],   capex_eur_m:45, physical_for:'Homologation sign-off' },
+  { id:'thermal',      name:'Thermal Management',     max_cae_pct:80, cae_costs:[6,14,28,48],   capex_eur_m:25, physical_for:'Edge cases, calibration' },
+  { id:'pwt_perf',     name:'Powertrain Performance', max_cae_pct:80, cae_costs:[7,16,32,54],   capex_eur_m:30, physical_for:'Calibration, emissions cert' },
+  { id:'dynamics',     name:'Vehicle Dynamics',       max_cae_pct:60, cae_costs:[5,12,24,40],   capex_eur_m:20, physical_for:'Subjective sign-off' },
+  { id:'structural',   name:'Structural Durability',  max_cae_pct:60, cae_costs:[6,14,28,48],   capex_eur_m:30, physical_for:'Correlation, assembly effects' },
+  { id:'func_safety',  name:'Functional Safety',      max_cae_pct:60, cae_costs:[4,10,20,34],   capex_eur_m:15, physical_for:'End-to-end system validation' },
+  { id:'nvh',          name:'NVH',                    max_cae_pct:60, cae_costs:[5,12,24,40],   capex_eur_m:20, physical_for:'High freq, jury evaluation' },
+  { id:'emc',          name:'EMC',                    max_cae_pct:40, cae_costs:[4,10,18,28],   capex_eur_m:12, physical_for:'Full vehicle chamber testing' },
+  { id:'ergo_hmi',     name:'Ergonomics / HMI',       max_cae_pct:40, cae_costs:[3,8,14,22],    capex_eur_m:10, physical_for:'Usability with real users' },
+  { id:'adas',         name:'ADAS Validation',        max_cae_pct:40, cae_costs:[5,12,22,35],   capex_eur_m:18, physical_for:'Sensor physics, real-world edge' },
+  { id:'sealing',      name:'Sealing/Weatherproofing',max_cae_pct:20, cae_costs:[2,5,9,14],     capex_eur_m:8,  physical_for:'Almost all of it' },
+  { id:'corrosion',    name:'Corrosion & Materials',  max_cae_pct:20, cae_costs:[2,5,10,16],    capex_eur_m:10, physical_for:'Almost all of it' },
+  { id:'homologation', name:'Homologation/Compliance',max_cae_pct:20, cae_costs:[3,6,12,18],    capex_eur_m:12, physical_for:'Legally required physical tests' },
+  { id:'dfm_dfa',      name:'DFM / DFA',              max_cae_pct:20, cae_costs:[2,5,9,14],     capex_eur_m:8,  physical_for:'Physical builds, tooling trials' },
+  { id:'subjective',   name:'Subjective Evaluation',  max_cae_pct:0,  cae_costs:[0,0,0,0],      capex_eur_m:15, physical_for:'Everything — irreducibly human' },
+];
+
+// facility_share: fraction of rd_mat_cost that is facility cost
+// disciplines: weight per discipline (must sum to 1.0 per module type)
+var VALIDATION_MODULE_MAP = {
+  platform: {
+    facility_share: 0.50,
+    disciplines: { crash:0.25, thermal:0.05, dynamics:0.15, structural:0.20, nvh:0.15, corrosion:0.08, dfm_dfa:0.08, subjective:0.04 }
+  },
+  ice_pwt: {
+    facility_share: 0.45,
+    disciplines: { thermal:0.35, pwt_perf:0.45, homologation:0.20 }
+  },
+  epwt: {
+    facility_share: 0.45,
+    disciplines: { thermal:0.30, pwt_perf:0.40, func_safety:0.20, emc:0.10 }
+  },
+  battery: {
+    facility_share: 0.40,
+    disciplines: { thermal:0.40, func_safety:0.40, homologation:0.20 }
+  },
+  tophat: {
+    facility_share: 0.40,
+    disciplines: { crash:0.18, thermal:0.04, dynamics:0.06, structural:0.12, nvh:0.16, ergo_hmi:0.14, sealing:0.08, corrosion:0.06, homologation:0.06, dfm_dfa:0.06, subjective:0.04 }
+  },
+  eands: {
+    facility_share: 0.45,
+    disciplines: { func_safety:0.35, emc:0.20, ergo_hmi:0.20, adas:0.25 }
+  }
+};
+
+// Fallback typical base R&D (€M) when a module has no total_rd_spend_m yet
+var _VAL_BASE_RD_M = { platform:280, ice_pwt:160, epwt:120, battery:400, tophat:140, eands:140 };
+
+var _validationState = {
+  loaded:    false,
+  cae_levels:{},   // discipline_id → 0–4
+  facilities:{}    // discipline_id → { tech_center_code: count }
+};
+
 async function _loadSessionFlags(sid) {
   if (!sid) return;
   try {
@@ -10217,6 +10605,7 @@ async function instructorCreateSession() {
   // Clear any old session state
   sessionStorage.clear();
   sessionId = null; teamId = null; roundId = null; submitted = false;
+  _validationState.loaded = false; _validationState.cae_levels = {}; _validationState.facilities = {};
   try {
     const sRes  = await fetch(`${API_URL}/sessions`, {
       method:'POST', headers:{'Content-Type':'application/json'},
@@ -10329,6 +10718,7 @@ async function teamJoinSession() {
   // Clear old session state
   sessionStorage.clear();
   sessionId = null; teamId = null; roundId = null; submitted = false;
+  _validationState.loaded = false; _validationState.cae_levels = {}; _validationState.facilities = {};
   try {
     const res = await fetch(`${API_URL}/sessions/${id}`);
     if (!res.ok) { err.textContent = 'Session not found. Check the ID and try again.'; return; }
