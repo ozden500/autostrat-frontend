@@ -6863,6 +6863,7 @@ function confirmOpenCenter() {
   closeEngCenterModal();
   toast('✓ Tech center opened: '+co.flag+' '+co.name+' (setup cost: €'+co.setup_cost_m+'M)');
   buildEngCapacityTab();
+  buildValidationLabsTab();
 }
 
 // ── Close center (severance) dialog ───────────────────────────
@@ -6906,6 +6907,7 @@ function confirmCloseCenter(centerId) {
   closeEngCenterModal();
   toast('Tech center closed.');
   buildEngCapacityTab();
+  buildValidationLabsTab();
 }
 
 // ── Headcount change ───────────────────────────────────────────
@@ -7436,6 +7438,17 @@ async function buildValidationLabsTab() {
 async function onValUpgradeCAE(discId, newLevel, costM, pctUnlocked) {
   var disc = VALIDATION_DISCIPLINES.find(function(d){ return d.id===discId; });
   if (!disc || newLevel <= (_validationState.cae_levels[discId]||0)) return;
+  // Guard: enforce cooldown even if button rendered on stale state
+  var currentQabsNow  = (currentRoundYear - 2025) * 4 + (currentRoundQuarter - 1);
+  var achievedQabsNow = _validationState.cae_achieved_qabs[discId];
+  if (achievedQabsNow != null && (currentQabsNow - achievedQabsNow) < 4) {
+    var readyQabs2 = achievedQabsNow + 4;
+    var readyY2 = 2025 + Math.floor(readyQabs2 / 4);
+    var readyQ2 = (readyQabs2 % 4) + 1;
+    alert(disc.name + ' CAE upgrade is on cooldown.\nNext level available: Y' + readyY2 + 'Q' + readyQ2 + '.');
+    buildValidationLabsTab();
+    return;
+  }
   var nextAvailYear = currentRoundYear + 1;
   var nextAvailQtr  = currentRoundQuarter;
   if (!confirm('Upgrade ' + disc.name + ' CAE to Level ' + newLevel + '?\n\nInvestment: €' + costM + 'M\nCAE coverage: ' + pctUnlocked + '% of physical work covered by simulation\n\nNext upgrade available: Y' + nextAvailYear + 'Q' + nextAvailQtr + ' (1 year cooldown)\n\nThis reduces outsourcing costs for all modules using this discipline.')) return;
