@@ -7094,15 +7094,17 @@ async function loadValidationSettings() {
   if (!teamId) return;
   // Initialise empty state so calcCosts is safe even if fetch fails
   VALIDATION_DISCIPLINES.forEach(function(d) {
-    if (!_validationState.cae_levels[d.id]) _validationState.cae_levels[d.id] = 0;
-    if (!_validationState.facilities[d.id])  _validationState.facilities[d.id]  = {};
+    if (!(_validationState.cae_levels[d.id] >= 0))      _validationState.cae_levels[d.id]        = 0;
+    if (_validationState.cae_achieved_qabs[d.id] === undefined) _validationState.cae_achieved_qabs[d.id] = null;
+    if (!_validationState.facilities[d.id])              _validationState.facilities[d.id]         = {};
   });
   try {
     var r = await fetch(API_URL + '/teams/' + teamId + '/validation-settings');
     if (!r.ok) throw new Error('HTTP ' + r.status);
     var d = await r.json();
     (d.cae_investments || []).forEach(function(inv) {
-      _validationState.cae_levels[inv.discipline_id] = inv.cae_level || 0;
+      _validationState.cae_levels[inv.discipline_id]      = inv.cae_level || 0;
+      _validationState.cae_achieved_qabs[inv.discipline_id] = inv.achieved_at_qabs != null ? inv.achieved_at_qabs : null;
     });
     (d.facilities || []).forEach(function(fac) {
       if (!_validationState.facilities[fac.discipline_id]) _validationState.facilities[fac.discipline_id] = {};
@@ -7189,11 +7191,22 @@ function _valSummaryTile(label, v, color) {
     '</div>';
 }
 
+function _valFacToggle(discId) {
+  var detail = document.getElementById('val-fac-detail-' + discId);
+  var btn    = document.getElementById('val-fac-toggle-' + discId);
+  if (!detail) return;
+  var open = detail.style.display !== 'none';
+  detail.style.display = open ? 'none' : 'block';
+  if (btn) btn.textContent = open ? '▼' : '▲';
+}
+
 function _renderValidationTableRow(disc, c, activeCenters) {
-  var caeLevel  = _validationState.cae_levels[disc.id] || 0;
-  var facData   = _validationState.facilities[disc.id] || {};
-  var hasDemand = c.demand > 0.005;
-  var net       = c.netOutsource;
+  var caeLevel      = _validationState.cae_levels[disc.id] || 0;
+  var achievedQabs  = _validationState.cae_achieved_qabs[disc.id];
+  var currentQabs   = (currentRoundYear - 2025) * 4 + (currentRoundQuarter - 1);
+  var facData       = _validationState.facilities[disc.id] || {};
+  var hasDemand     = c.demand > 0.005;
+  var net           = c.netOutsource;
 
   // Row shading
   var rowBg = !hasDemand ? 'rgba(255,255,255,0.01)'
@@ -7205,36 +7218,55 @@ function _renderValidationTableRow(disc, c, activeCenters) {
     ? '<span style="font-size:6px;color:var(--cyan);background:rgba(34,211,238,.12);border-radius:2px;padding:1px 4px;margin-left:5px;">MAX ' + disc.max_cae_pct + '%</span>'
     : '<span style="font-size:6px;color:var(--muted2);background:var(--bg3);border-radius:2px;padding:1px 4px;margin-left:5px;">NO CAE</span>';
 
-  // CAE dots + upgrade button
+  // CAE dots + upgrade/cooldown
   var dots = '';
   for (var i = 1; i <= 4; i++) {
     dots += '<span style="font-size:9px;color:' + (i <= caeLevel ? 'var(--cyan)' : 'var(--border)') + ';">' + (i <= caeLevel ? '●' : '○') + '</span>';
   }
   var upgradeBtn = '';
   if (disc.max_cae_pct > 0 && caeLevel < 4) {
-    var nl = caeLevel + 1;
-    var cost = disc.cae_costs[nl - 1];
-    var pctNext = Math.round((nl / 4) * disc.max_cae_pct);
-    upgradeBtn = '<button onclick="onValUpgradeCAE(\'' + disc.id + '\',' + nl + ',' + cost + ',' + pctNext + ')" ' +
-      'style="font-family:DM Mono,monospace;font-size:6px;background:rgba(34,211,238,.1);color:var(--cyan);' +
-      'border:1px solid rgba(34,211,238,.4);border-radius:2px;padding:2px 5px;cursor:pointer;white-space:nowrap;margin-left:4px;">' +
-      'L' + nl + ' · €' + cost + 'M</button>';
+    var cooldownActive = (achievedQabs != null) && (currentQabs - achievedQabs < 4);
+    if (cooldownActive) {
+      var readyQabs = achievedQabs + 4;
+      var readyYear = 2025 + Math.floor(readyQabs / 4);
+      var readyQtr  = (readyQabs % 4) + 1;
+      upgradeBtn = '<span style="font-size:6px;color:var(--muted2);font-family:DM Mono,monospace;margin-left:4px;white-space:nowrap;">' +
+        '🔒 Y' + readyYear + 'Q' + readyQtr + '</span>';
+    } else {
+      var nl = caeLevel + 1;
+      var cost = disc.cae_costs[nl - 1];
+      var pctNext = Math.round((nl / 4) * disc.max_cae_pct);
+      upgradeBtn = '<button onclick="onValUpgradeCAE(\'' + disc.id + '\',' + nl + ',' + cost + ',' + pctNext + ')" ' +
+        'style="font-family:DM Mono,monospace;font-size:6px;background:rgba(34,211,238,.1);color:var(--cyan);' +
+        'border:1px solid rgba(34,211,238,.4);border-radius:2px;padding:2px 5px;cursor:pointer;white-space:nowrap;margin-left:4px;">' +
+        'L' + nl + ' · €' + cost + 'M</button>';
+    }
   } else if (disc.max_cae_pct > 0 && caeLevel >= 4) {
     upgradeBtn = '<span style="font-size:6px;color:var(--green);font-family:DM Mono,monospace;margin-left:4px;">MAX ✓</span>';
   }
 
-  // Facility controls (per tech center pills)
-  var facControls = '';
+  // Facility controls — summary line + collapsible detail
+  var totalFacs = Object.keys(facData).reduce(function(s,k){ return s+(facData[k]||0); }, 0);
+  var facSummary = '', facDetail = '';
+
   if (activeCenters.length === 0) {
-    facControls = '<button onclick="openEngCenterDialog()" ' +
+    facSummary = '<button onclick="openEngCenterDialog()" ' +
       'style="font-family:DM Mono,monospace;font-size:6px;background:rgba(56,212,134,.1);color:var(--green);' +
       'border:1px solid rgba(56,212,134,.35);border-radius:2px;padding:2px 6px;cursor:pointer;margin-left:4px;white-space:nowrap;">' +
       '+ Open tech center</button>';
   } else {
-    facControls = '<div style="display:flex;flex-wrap:wrap;gap:3px;margin-left:4px;">';
+    var toggleId = 'val-fac-toggle-' + disc.id;
+    var detailId = 'val-fac-detail-' + disc.id;
+    var labLabel = totalFacs + ' lab' + (totalFacs !== 1 ? 's' : '');
+    facSummary = '<span style="font-family:DM Mono,monospace;font-size:7px;color:var(--muted2);margin-left:4px;">' + labLabel + '</span>' +
+      '<button id="' + toggleId + '" onclick="_valFacToggle(\'' + disc.id + '\')" ' +
+        'style="background:none;border:none;color:var(--muted2);cursor:pointer;font-size:8px;padding:0 2px;margin-left:2px;" ' +
+        'title="Manage labs">▼</button>';
+
+    var pills = '';
     activeCenters.forEach(function(ctr) {
       var cnt = (facData[ctr.country_code] || 0);
-      facControls += '<div style="display:inline-flex;align-items:center;gap:1px;background:var(--bg3);border-radius:3px;padding:2px 4px;">' +
+      pills += '<div style="display:inline-flex;align-items:center;gap:1px;background:var(--bg3);border-radius:3px;padding:2px 4px;">' +
         '<span style="font-family:DM Mono,monospace;font-size:6px;color:var(--muted2);">' + ctr.country_code.toUpperCase() + '</span>' +
         '<button onclick="onValFacilityRemove(\'' + disc.id + '\',\'' + ctr.country_code + '\')" ' +
           'style="background:none;border:none;color:' + (cnt>0?'var(--red)':'var(--border)') + ';cursor:' + (cnt>0?'pointer':'default') + ';font-size:11px;line-height:1;padding:0;width:12px;" ' +
@@ -7244,12 +7276,14 @@ function _renderValidationTableRow(disc, c, activeCenters) {
           'style="background:none;border:none;color:var(--cyan);cursor:pointer;font-size:11px;line-height:1;padding:0;width:12px;">+</button>' +
         '</div>';
     });
-    facControls += '</div>';
+    facDetail = '<div id="' + detailId + '" style="display:none;margin-top:5px;">' +
+      '<div style="display:flex;flex-wrap:wrap;gap:3px;justify-content:flex-end;">' + pills + '</div>' +
+      '</div>';
   }
 
-  var fgColor  = hasDemand ? 'var(--fg)'     : 'var(--muted2)';
-  var remColor = !hasDemand ? 'var(--muted2)' : (net < 0.05 ? 'var(--green)' : 'var(--orange)');
-  var remWeight= (hasDemand && net > 0.05) ? '700' : '400';
+  var fgColor   = hasDemand ? 'var(--fg)'     : 'var(--muted2)';
+  var remColor  = !hasDemand ? 'var(--muted2)' : (net < 0.05 ? 'var(--green)' : 'var(--orange)');
+  var remWeight = (hasDemand && net > 0.05) ? '700' : '400';
 
   return '<tr style="border-bottom:1px solid var(--border);background:' + rowBg + ';">' +
 
@@ -7274,10 +7308,11 @@ function _renderValidationTableRow(disc, c, activeCenters) {
 
     // Facility Saving
     '<td style="padding:8px 10px;">' +
-      '<div style="display:flex;align-items:center;justify-content:flex-end;flex-wrap:wrap;gap:3px;">' +
+      '<div style="display:flex;align-items:center;justify-content:flex-end;flex-wrap:wrap;gap:2px;">' +
         '<span style="font-family:DM Mono,monospace;font-size:9px;color:' + (c.facSaving>0.005?'var(--gold)':'var(--muted2)') + ';">' + _valFmt(c.facSaving) + '</span>' +
-        facControls +
+        facSummary +
       '</div>' +
+      facDetail +
     '</td>' +
 
     // Remaining
@@ -7401,10 +7436,14 @@ async function buildValidationLabsTab() {
 async function onValUpgradeCAE(discId, newLevel, costM, pctUnlocked) {
   var disc = VALIDATION_DISCIPLINES.find(function(d){ return d.id===discId; });
   if (!disc || newLevel <= (_validationState.cae_levels[discId]||0)) return;
-  if (!confirm('Upgrade ' + disc.name + ' CAE to Level ' + newLevel + '?\n\nInvestment: €' + costM + 'M\nCAE coverage: ' + pctUnlocked + '% of physical work covered by simulation\n\nThis reduces outsourcing costs for all modules using this discipline.')) return;
+  var nextAvailYear = currentRoundYear + 1;
+  var nextAvailQtr  = currentRoundQuarter;
+  if (!confirm('Upgrade ' + disc.name + ' CAE to Level ' + newLevel + '?\n\nInvestment: €' + costM + 'M\nCAE coverage: ' + pctUnlocked + '% of physical work covered by simulation\n\nNext upgrade available: Y' + nextAvailYear + 'Q' + nextAvailQtr + ' (1 year cooldown)\n\nThis reduces outsourcing costs for all modules using this discipline.')) return;
+  var qabs = (currentRoundYear - 2025) * 4 + (currentRoundQuarter - 1);
   try {
-    await _saveValidationSetting({ cae_investments: [{ discipline_id: discId, cae_level: newLevel }] });
-    _validationState.cae_levels[discId] = newLevel;
+    await _saveValidationSetting({ cae_investments: [{ discipline_id: discId, cae_level: newLevel, achieved_at_qabs: qabs }] });
+    _validationState.cae_levels[discId]       = newLevel;
+    _validationState.cae_achieved_qabs[discId] = qabs;
     buildValidationLabsTab();
   } catch(e) {}
 }
@@ -10564,9 +10603,10 @@ var VALIDATION_MODULE_MAP = {
 var _VAL_BASE_RD_M = { platform:280, ice_pwt:160, epwt:120, battery:400, tophat:140, eands:140 };
 
 var _validationState = {
-  loaded:    false,
-  cae_levels:{},   // discipline_id → 0–4
-  facilities:{}    // discipline_id → { tech_center_code: count }
+  loaded:              false,
+  cae_levels:          {},   // discipline_id → 0–4
+  cae_achieved_qabs:   {},   // discipline_id → qabs when current level was set (null = never upgraded)
+  facilities:          {}    // discipline_id → { tech_center_code: count }
 };
 
 async function _loadSessionFlags(sid) {
@@ -10642,7 +10682,7 @@ async function instructorCreateSession() {
   // Clear any old session state
   sessionStorage.clear();
   sessionId = null; teamId = null; roundId = null; submitted = false;
-  _validationState.loaded = false; _validationState.cae_levels = {}; _validationState.facilities = {};
+  _validationState.loaded = false; _validationState.cae_levels = {}; _validationState.cae_achieved_qabs = {}; _validationState.facilities = {};
   try {
     const sRes  = await fetch(`${API_URL}/sessions`, {
       method:'POST', headers:{'Content-Type':'application/json'},
@@ -10755,7 +10795,7 @@ async function teamJoinSession() {
   // Clear old session state
   sessionStorage.clear();
   sessionId = null; teamId = null; roundId = null; submitted = false;
-  _validationState.loaded = false; _validationState.cae_levels = {}; _validationState.facilities = {};
+  _validationState.loaded = false; _validationState.cae_levels = {}; _validationState.cae_achieved_qabs = {}; _validationState.facilities = {};
   try {
     const res = await fetch(`${API_URL}/sessions/${id}`);
     if (!res.ok) { err.textContent = 'Session not found. Check the ID and try again.'; return; }
