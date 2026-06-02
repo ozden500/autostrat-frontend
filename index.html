@@ -14588,7 +14588,6 @@ var _propTopHatConfigs  = [];   // loaded by loadVehicleProposal for body-type d
 var _propICEPWTConfigs  = [];   // loaded by loadVehicleProposal for cylinder/hybrid dropdowns
 var _propEPWTConfigs    = [];   // loaded by loadVehicleProposal for perf-class dropdown
 var _deployedModules    = null; // cached deployed-module-capacities response for reuse UI
-var _fpExpanded = {vehicle_plants:true, powertrain_plants:false, supplier_parks:false};
 var _footprintFilterCurrent  = false;  // filter to reused/modified modules only
 
 var _prop = {
@@ -17796,157 +17795,201 @@ function renderOpsAggregateSummary(){
 }
 
 function _getConfiguredModuleKeys(){
-  // Returns module keys where current vehicle reuses/modifies an existing design.
   var pk=_pwtKeyFromProp(),isEv=pk==='bev_only',isHybrid=pk==='ice_and_bev',hasIce=!isEv,hasBev=isEv||isHybrid;
   function _reused(m){return m&&(m.mode==='reuse'||m.mode==='modify');}
   var keys=[];
   if(_reused(_prop.platform)) keys.push('platform');
   if(_reused(_prop.tophat))   keys.push('tophat');
   if(_reused(_prop.eands))    keys.push('eands');
-  if(hasIce && _reused(_prop.pwt)){keys.push('pwt');keys.push('pwt_assy');}
+  if(hasIce && _reused(_prop.pwt)) keys.push('pwt');
   if(hasBev && _reused(_prop.epwt))    keys.push('epwt');
   if(hasBev && _reused(_prop.battery)) keys.push('battery');
   return keys;
 }
 
-function _toggleFpSection(type){
-  _fpExpanded[type]=!_fpExpanded[type];
-  var b=document.getElementById('prop-ops-fp-body-'+type);
-  var t=document.getElementById('prop-ops-fp-arrow-'+type);
-  if(b)b.style.display=_fpExpanded[type]?'':'none';
-  if(t)t.textContent=_fpExpanded[type]?'▼':'▶';
+function _getVehicleModuleColumns(){
+  var ALL_COLS=['platform','pwt','epwt','battery','tophat','eands'];
+  var pk=_pwtKeyFromProp(),isEv=pk==='bev_only',
+      isHybrid=(pk==='ice_and_bev'||pk==='hev'||pk==='reev');
+  var hasIce=!isEv,hasBev=isEv||isHybrid;
+  var active=['platform','tophat','eands'];
+  if(hasIce) active.push('pwt');
+  if(hasBev){active.push('epwt');active.push('battery');}
+  return {allCols:ALL_COLS,activeKeys:active};
 }
 
 function _toggleFootprintFilter(){
   _footprintFilterCurrent=!_footprintFilterCurrent;
   var track=document.getElementById('prop-ops-fp-filter-track');
-  var knob =document.getElementById('prop-ops-fp-filter-knob');
-  var lbl  =document.getElementById('prop-ops-fp-filter-lbl');
+  var knob=document.getElementById('prop-ops-fp-filter-knob');
+  var lbl=document.getElementById('prop-ops-fp-filter-lbl');
   if(track)track.style.background=_footprintFilterCurrent?'var(--gold)':'var(--border2)';
-  if(knob) knob.style.left=_footprintFilterCurrent?'15px':'2px';
-  if(lbl)  lbl.style.color=_footprintFilterCurrent?'var(--gold)':'var(--muted2)';
-  ['vehicle_plants','powertrain_plants','supplier_parks'].forEach(function(t){
-    var b=document.getElementById('prop-ops-fp-body-'+t);
-    if(b)b.innerHTML=_renderFpSectionBody(t);
-  });
+  if(knob)knob.style.left=_footprintFilterCurrent?'15px':'2px';
+  if(lbl)lbl.style.color=_footprintFilterCurrent?'var(--gold)':'var(--muted2)';
+  var wrap=document.getElementById('prop-ops-fp-matrix-body');
+  if(wrap)wrap.innerHTML=_renderFootprintMatrixBody();
 }
 
-function _renderFpSectionBody(type){
-  var MOD_LABELS={platform:'Platform',tophat:'TopHat',eands:'E&S',pwt:'ICE PWT',pwt_assy:'PWT Marry',epwt:'e-PWT',battery:'Battery'};
+function _renderFootprintMatrixBody(){
+  var MOD_LABELS={platform:'Platform',pwt:'ICE PWT',epwt:'e-PWT',battery:'Battery',tophat:'TopHat',eands:'E&S'};
   var dm=_deployedModules||{};
-  var ftData=dm[type]||{};
-  var configuredKeys=_getConfiguredModuleKeys();
-  var allowedMods=_footprintFilterCurrent?configuredKeys:null;
+  var vc=_getVehicleModuleColumns();
+  var allCols=vc.allCols,activeKeys=vc.activeKeys;
+  var filteredKeys=_footprintFilterCurrent?_getConfiguredModuleKeys():null;
+  var effectiveActive=filteredKeys?activeKeys.filter(function(k){return filteredKeys.indexOf(k)>=0;}):activeKeys;
 
-  // Aggregate per location → per module → {instK, wipK, instNames, wipNames}
-  var locations={};
-  Object.keys(ftData).forEach(function(locKey){
-    var parts=locKey.split('_'),region=parts[0],cc=parts.length>1?parts.slice(1).join('_'):null;
-    var modData=ftData[locKey];
-    Object.keys(modData).forEach(function(mk){
-      if(allowedMods&&allowedMods.indexOf(mk)<0)return;
-      var entries=modData[mk]||[];
+  // Column header summaries
+  var seg=((_prop.study&&_prop.study.rolled_up_specs&&_prop.study.rolled_up_specs.segment_code)||
+           (_prop.study&&_prop.study.segment_code)||'').replace('_segment','').toUpperCase();
+  function _short(s){return(s||'').split('_').slice(0,2).join('_');}
+  var pw=_prop.pwt||{},ep=_prop.epwt||{},bt=_prop.battery||{},tf=_prop.tophat||{},ea=_prop.eands||{};
+  var COL_SUB={
+    platform:((_prop.platform&&_prop.platform.config_key)||'').toUpperCase()+(seg?' · '+seg+' SEG':''),
+    pwt:(_short(pw.config_key)+(pw.power_hp?' · '+pw.power_hp+'hp':'')).replace(/^[· _]+|[· _]+$/g,''),
+    epwt:(_short(ep.config_key)+(ep.power_kw?' · '+ep.power_kw+'kW':'')).replace(/^[· _]+|[· _]+$/g,''),
+    battery:(_short(bt.config_key)+(bt.target_kwh?' · '+bt.target_kwh+'kWh':'')).replace(/^[· _]+|[· _]+$/g,''),
+    tophat:(tf.config_key||'').toUpperCase()+(seg?' · '+seg+' SEG':''),
+    eands:(ea.adas_level!=null?'ADAS L'+ea.adas_level:'')
+  };
+
+  // CC → country name lookup
+  var CC_NAMES={};
+  Object.keys(INDUSTRIAL_COUNTRIES).forEach(function(r){INDUSTRIAL_COUNTRIES[r].forEach(function(c){CC_NAMES[c.code]=c.name;});});
+
+  // Data source per column key
+  var COL_SRC={platform:'vehicle_plants',tophat:'vehicle_plants',eands:'vehicle_plants',
+               pwt:'powertrain_plants',epwt:'powertrain_plants',battery:'powertrain_plants'};
+
+  // --- Block 1: aggregate plant data ---
+  var locMap={};
+  allCols.forEach(function(mk){
+    if(effectiveActive.indexOf(mk)<0)return;
+    var src=dm[COL_SRC[mk]]||{};
+    Object.keys(src).forEach(function(lk){
+      var entries=(src[lk][mk])||[];
       if(!entries.length)return;
-      if(!locations[locKey])locations[locKey]={cc:cc,region:region,modules:{}};
-      var agg={instK:0,wipK:0,instNames:[],wipNames:[]};
-      entries.forEach(function(e){
-        var capK=Math.round((e.capacity_yr||0)/1000),nm=e.vehicle_name||'';
-        if(e.status==='on_sale'){agg.instK+=capK;if(nm&&agg.instNames.indexOf(nm)<0)agg.instNames.push(nm);}
-        else{agg.wipK+=capK;if(nm&&agg.wipNames.indexOf(nm)<0)agg.wipNames.push(nm);}
-      });
-      if(agg.instK>0||agg.wipK>0)locations[locKey].modules[mk]=agg;
+      if(!locMap[lk]){var parts=lk.split('_');locMap[lk]={region:parts[0],cc:parts.slice(1).join('_')||null,isVeh:false,isPwt:false,cols:{}};}
+      if(COL_SRC[mk]==='vehicle_plants')locMap[lk].isVeh=true; else locMap[lk].isPwt=true;
+      if(!locMap[lk].cols[mk])locMap[lk].cols[mk]={instK:0,wipK:0};
+      entries.forEach(function(e){var k=Math.round((e.capacity_yr||0)/1000);if(e.status==='on_sale')locMap[lk].cols[mk].instK+=k;else locMap[lk].cols[mk].wipK+=k;});
+    });
+  });
+  var regTotals={};
+  Object.keys(locMap).forEach(function(lk){
+    var reg=locMap[lk].region;
+    if(!regTotals[reg])regTotals[reg]={};
+    allCols.forEach(function(mk){
+      if(effectiveActive.indexOf(mk)<0)return;
+      if(!regTotals[reg][mk])regTotals[reg][mk]={instK:0,wipK:0};
+      var d=locMap[lk].cols[mk]||{instK:0,wipK:0};
+      regTotals[reg][mk].instK+=d.instK; regTotals[reg][mk].wipK+=d.wipK;
     });
   });
 
-  var locKeys=Object.keys(locations);
-  var h='';
-
-  // Filter banner
-  if(_footprintFilterCurrent){
-    var badges=configuredKeys.map(function(k){return '<span style="font-family:DM Mono,monospace;font-size:7px;padding:1px 5px;border-radius:2px;background:rgba(200,164,60,0.12);border:1px solid rgba(200,164,60,0.35);color:var(--gold);">'+(MOD_LABELS[k]||k)+'</span>';}).join(' ');
-    h+='<div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap;margin-bottom:8px;padding:4px 7px;background:rgba(200,164,60,0.06);border:1px solid rgba(200,164,60,0.20);border-radius:3px;">';
-    h+='<span style="font-family:DM Mono,monospace;font-size:7px;color:var(--gold);font-weight:700;white-space:nowrap;">REUSED / MODIFIED —</span>'+(badges||'<span style="font-family:DM Mono,monospace;font-size:7px;color:var(--muted2);">none (all new)</span>');
-    h+='</div>';
-  }
-
-  if(!locKeys.length){
-    var typeLabel=type==='vehicle_plants'?'Vehicle Assembly':type==='powertrain_plants'?'PWT Plant':'Supplier Base';
-    var msg=_footprintFilterCurrent
-      ?'No existing capacity for reused/modified modules in '+typeLabel+'.'
-      :'No existing '+typeLabel+' infrastructure — first vehicle in this session.';
-    h+='<div style="padding:10px;text-align:center;color:var(--muted2);font-size:9px;font-family:DM Mono,monospace;border:1px dashed var(--border2);border-radius:3px;">'+msg+'</div>';
-    return h;
-  }
-
-  // Compute max capacity across all modules in this section for bar scaling
-  var maxCap=1;
-  locKeys.forEach(function(lk){Object.values(locations[lk].modules).forEach(function(m){maxCap=Math.max(maxCap,m.instK+m.wipK);});});
-
-  locKeys.forEach(function(locKey){
-    var le=locations[locKey];
-    // Country/region name
-    var name;
-    if(le.cc){var cl=INDUSTRIAL_COUNTRIES[le.region]||[];var found=cl.find(function(c){return c.code===le.cc;});name=found?found.name:le.cc;}
-    else{name=le.region+' (Regional)';}
-
-    h+='<div style="margin-bottom:10px;padding:8px 10px;border:1px solid var(--border2);border-radius:3px;background:var(--s2);">';
-    h+='<div style="font-family:DM Mono,monospace;font-size:9px;font-weight:700;color:var(--text);margin-bottom:7px;">📍 '+name+'</div>';
-
-    Object.keys(le.modules).forEach(function(mk){
-      var m=le.modules[mk];
-      var instPct=Math.round(m.instK/maxCap*100),wipPct=Math.round(m.wipK/maxCap*100);
-      var totalK=m.instK+m.wipK;
-      h+='<div style="margin-bottom:6px;">';
-      // Label row
-      h+='<div style="display:flex;justify-content:space-between;font-family:DM Mono,monospace;font-size:8px;margin-bottom:2px;">';
-      h+='<span style="color:var(--text);">'+(MOD_LABELS[mk]||mk)+'</span>';
-      h+='<span style="color:var(--muted2);">'+totalK+'k total</span>';
-      h+='</div>';
-      // Dual-segment bar
-      h+='<div style="position:relative;height:6px;background:var(--s1);border-radius:3px;overflow:hidden;border:1px solid var(--border);">';
-      if(instPct>0)h+='<div style="position:absolute;left:0;top:0;height:100%;width:'+instPct+'%;background:var(--gold);border-radius:3px 0 0 3px;"></div>';
-      if(wipPct>0) h+='<div style="position:absolute;left:'+instPct+'%;top:0;height:100%;width:'+wipPct+'%;background:rgba(220,140,30,0.65);"></div>';
-      h+='</div>';
-      // Sub-labels
-      h+='<div style="display:flex;gap:8px;margin-top:2px;font-family:DM Mono,monospace;font-size:6px;">';
-      if(m.instK>0)h+='<span style="color:var(--gold);">'+m.instK+'k on sale'+(m.instNames.length?' ('+m.instNames.slice(0,2).join(', ')+(m.instNames.length>2?'…':'')+')':'')+'</span>';
-      if(m.wipK>0) h+='<span style="color:rgba(220,140,30,0.9);">'+m.wipK+'k WIP'+(m.wipNames.length?' ('+m.wipNames.slice(0,2).join(', ')+(m.wipNames.length>2?'…':'')+')':'')+'</span>';
-      if(m.instK===0&&m.wipK===0)h+='<span style="color:var(--muted2);">no capacity data</span>';
-      h+='</div>';
-      h+='</div>';
+  // --- Block 2: aggregate supplier data ---
+  var supMap={},supSrc=dm['supplier_parks']||{};
+  Object.keys(supSrc).forEach(function(rk){
+    allCols.forEach(function(mk){
+      if(effectiveActive.indexOf(mk)<0)return;
+      var entries=(supSrc[rk][mk])||[];
+      if(!entries.length)return;
+      if(!supMap[rk])supMap[rk]={};
+      if(!supMap[rk][mk])supMap[rk][mk]={instK:0,wipK:0};
+      entries.forEach(function(e){var k=Math.round((e.capacity_yr||0)/1000);if(e.status==='on_sale')supMap[rk][mk].instK+=k;else supMap[rk][mk].wipK+=k;});
     });
-    h+='</div>';
   });
+  var supGlobal={};
+  allCols.forEach(function(mk){supGlobal[mk]={instK:0,wipK:0};});
+  Object.keys(supMap).forEach(function(rk){allCols.forEach(function(mk){if(supMap[rk][mk]){supGlobal[mk].instK+=(supMap[rk][mk].instK||0);supGlobal[mk].wipK+=(supMap[rk][mk].wipK||0);}});});
+
+  // --- Rendering helpers ---
+  var BASE_TD='padding:5px 6px;border:1px solid var(--border2);font-family:DM Mono,monospace;font-size:9px;text-align:center;vertical-align:top;';
+  var BASE_TH='padding:5px 6px;border:1px solid var(--border2);font-family:DM Mono,monospace;font-size:8px;font-weight:700;text-align:center;letter-spacing:0.5px;';
+  var TDL='padding:5px 8px;border:1px solid var(--border2);font-family:DM Mono,monospace;font-size:9px;vertical-align:middle;white-space:nowrap;min-width:100px;';
+
+  function dataCell(mk,instK,wipK){
+    var isActive=effectiveActive.indexOf(mk)>=0;
+    if(!isActive)return'<td style="'+BASE_TD+'background:var(--s1);color:var(--border2);">—</td>';
+    if(!instK&&!wipK)return'<td style="'+BASE_TD+'color:var(--muted2);">—</td>';
+    var s='<td style="'+BASE_TD+'">';
+    if(instK)s+='<div style="color:var(--gold);font-weight:700;">'+instK+'k</div>';
+    if(wipK) s+='<div style="color:rgba(220,140,30,0.85);font-size:8px;">'+wipK+'k wip</div>';
+    return s+'</td>';
+  }
+
+  function thead(locationLabel){
+    var h='<thead><tr><th style="'+BASE_TH+'background:var(--s2);color:var(--muted2);text-align:left;min-width:100px;">'+locationLabel+'</th>';
+    allCols.forEach(function(mk){
+      var isActive=effectiveActive.indexOf(mk)>=0;
+      var sub=isActive&&COL_SUB[mk]?'<div style="font-size:7px;font-weight:400;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:72px;">'+COL_SUB[mk]+'</div>':'';
+      h+='<th style="'+BASE_TH+(isActive?'background:var(--s2);color:var(--muted2);':'background:var(--s1);color:var(--border2);')+'min-width:65px;">'+MOD_LABELS[mk]+sub+'</th>';
+    });
+    return h+'</tr></thead>';
+  }
+
+  // --- Render Block 1 ---
+  var locs=Object.keys(locMap);
+  var h='<div style="margin-bottom:4px;font-family:DM Mono,monospace;font-size:8px;font-weight:700;color:var(--gold);letter-spacing:0.5px;">🏭 VEHICLE &amp; PWT PLANTS</div>';
+  h+='<div style="overflow-x:auto;margin-bottom:16px;"><table style="width:100%;border-collapse:collapse;">';
+  h+=thead('Location');
+  h+='<tbody>';
+  if(!locs.length){
+    h+='<tr><td colspan="'+(allCols.length+1)+'" style="'+BASE_TD+'color:var(--muted2);font-style:italic;">No existing plant capacity for configured modules.</td></tr>';
+  } else {
+    locs.forEach(function(lk){
+      var ld=locMap[lk],icon=ld.isVeh?'🏭':'⚙',ccName=ld.cc?(CC_NAMES[ld.cc]||ld.cc):'';
+      h+='<tr><td style="'+TDL+'">'+(icon+' '+ld.region+(ccName?' · '+ccName:''))+'</td>';
+      allCols.forEach(function(mk){var d=ld.cols[mk]||{instK:0,wipK:0};h+=dataCell(mk,d.instK,d.wipK);});
+      h+='</tr>';
+    });
+  }
+  h+='</tbody>';
+  var regs=Object.keys(regTotals);
+  if(regs.length){
+    h+='<tfoot><tr><td colspan="'+(allCols.length+1)+'" style="'+BASE_TD+'background:var(--s2);color:var(--muted2);font-weight:700;text-align:left;padding-left:8px;">REGION TOTAL</td></tr>';
+    regs.forEach(function(reg){
+      h+='<tr style="background:var(--s2);"><td style="'+TDL+'font-weight:700;">'+reg+'</td>';
+      allCols.forEach(function(mk){var d=(regTotals[reg]&&regTotals[reg][mk])||{instK:0,wipK:0};h+=dataCell(mk,d.instK,d.wipK);});
+      h+='</tr>';
+    });
+    h+='</tfoot>';
+  }
+  h+='</table></div>';
+
+  // --- Render Block 2 ---
+  var sups=Object.keys(supMap);
+  h+='<div style="margin-bottom:4px;font-family:DM Mono,monospace;font-size:8px;font-weight:700;color:var(--cyan);letter-spacing:0.5px;">📦 SUPPLIER BASE</div>';
+  h+='<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;">';
+  h+=thead('Sourcing Region');
+  h+='<tbody>';
+  if(!sups.length){
+    h+='<tr><td colspan="'+(allCols.length+1)+'" style="'+BASE_TD+'color:var(--muted2);font-style:italic;">No existing supplier capacity for configured modules.</td></tr>';
+  } else {
+    sups.forEach(function(rk){
+      h+='<tr><td style="'+TDL+'">📦 '+rk+'</td>';
+      allCols.forEach(function(mk){var d=(supMap[rk]&&supMap[rk][mk])||{instK:0,wipK:0};h+=dataCell(mk,d.instK,d.wipK);});
+      h+='</tr>';
+    });
+  }
+  h+='</tbody>';
+  h+='<tfoot><tr style="background:var(--s2);border-top:2px solid var(--border2);"><td style="'+TDL+'font-weight:700;">GLOBAL TOTAL</td>';
+  allCols.forEach(function(mk){var d=supGlobal[mk]||{instK:0,wipK:0};h+=dataCell(mk,d.instK,d.wipK);});
+  h+='</tr></tfoot></table></div>';
   return h;
 }
 
-function _renderFootprintPanels(){
+function _renderFootprintMatrix(){
   var on=_footprintFilterCurrent;
-  var SECTIONS=[
-    {type:'vehicle_plants',    icon:'🏭',label:'Vehicle Assembly',col:'var(--gold)'},
-    {type:'powertrain_plants', icon:'⚙', label:'PWT Plant',       col:'var(--orange)'},
-    {type:'supplier_parks',    icon:'📦',label:'Supplier Base',    col:'var(--cyan)'}
-  ];
-  // Shared header: title + filter toggle
-  var h='<div style="margin-bottom:4px;display:flex;align-items:center;justify-content:space-between;padding:6px 2px;">';
+  var h='<div style="margin-bottom:12px;">';
+  h+='<div style="display:flex;align-items:center;justify-content:space-between;padding:6px 2px;margin-bottom:8px;">';
   h+='<span style="font-family:DM Mono,monospace;font-size:9px;font-weight:700;color:var(--muted2);letter-spacing:1px;">🌐 EXISTING INDUSTRIAL FOOTPRINT</span>';
   h+='<div onclick="event.stopPropagation();_toggleFootprintFilter()" style="display:flex;align-items:center;gap:5px;cursor:pointer;user-select:none;">';
   h+='<span id="prop-ops-fp-filter-lbl" style="font-family:DM Mono,monospace;font-size:8px;color:'+(on?'var(--gold)':'var(--muted2)')+';">This vehicle only</span>';
   h+='<div id="prop-ops-fp-filter-track" style="position:relative;width:28px;height:14px;background:'+(on?'var(--gold)':'var(--border2)')+';border-radius:7px;cursor:pointer;">';
   h+='<div id="prop-ops-fp-filter-knob" style="position:absolute;top:2px;left:'+(on?'15px':'2px')+';width:10px;height:10px;background:white;border-radius:50%;transition:left 0.15s;"></div>';
   h+='</div></div></div>';
-  // 3 section cards
-  SECTIONS.forEach(function(sec){
-    var exp=_fpExpanded[sec.type];
-    h+='<div style="margin-bottom:8px;border:1px solid var(--border2);border-radius:4px;background:var(--s1);">';
-    h+='<div onclick="_toggleFpSection(\''+sec.type+'\')" style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;cursor:pointer;user-select:none;">';
-    h+='<span style="font-family:DM Mono,monospace;font-size:10px;font-weight:700;color:'+sec.col+';">'+sec.icon+' '+sec.label+'</span>';
-    h+='<span id="prop-ops-fp-arrow-'+sec.type+'" style="font-family:DM Mono,monospace;font-size:10px;color:var(--muted2);">'+(exp?'▼':'▶')+'</span>';
-    h+='</div>';
-    h+='<div id="prop-ops-fp-body-'+sec.type+'" style="'+(exp?'':'display:none;')+'padding:0 12px 12px 12px;">';
-    h+=_renderFpSectionBody(sec.type);
-    h+='</div></div>';
-  });
+  h+='<div id="prop-ops-fp-matrix-body">'+_renderFootprintMatrixBody()+'</div>';
+  h+='</div>';
   return h;
 }
 
@@ -17981,7 +18024,7 @@ async function buildOperationsSection() {
   var TH='font-family:DM Mono,monospace;font-size:8px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:8px;display:block;';
   var CB='border-radius:4px;padding:12px;cursor:pointer;border:1px solid var(--border2);background:var(--s2);';
   var CS='border-radius:4px;padding:12px;cursor:pointer;border:1px solid var(--gold);background:var(--s3);';
-  var html = _renderFootprintPanels();
+  var html = _renderFootprintMatrix();
   [{type:'vehicle_plants',label:'🏭 Vehicle Plants',col:'var(--gold)'},
    {type:'powertrain_plants',label:'⚙ Powertrain Plants',col:'var(--orange)'},
    {type:'supplier_parks',label:'📦 Supplier Parks',col:'var(--cyan)'}].forEach(function(sec){
