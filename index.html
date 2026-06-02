@@ -17831,12 +17831,19 @@ function _renderFootprintMatrixBody(){
   var COL_SRC={platform:'vehicle_plants',tophat:'vehicle_plants',eands:'vehicle_plants',
                pwt:'powertrain_plants',epwt:'powertrain_plants',battery:'powertrain_plants'};
 
+  // Module mode + config_key per slot — new = no existing footprint; reuse/modify = filter to exact config_key
+  var PROP_SLOT={platform:_prop.platform,pwt:_prop.pwt,epwt:_prop.epwt,battery:_prop.battery,tophat:_prop.tophat,eands:_prop.eands};
+  function _slotMode(mk){var s=PROP_SLOT[mk];return s?s.mode:null;}
+  function _slotCfg(mk){var s=PROP_SLOT[mk];return s?s.config_key:null;}
+
   // --- Block 1: aggregate plant data ---
   var locMap={};
   cols.forEach(function(mk){
+    if(_slotMode(mk)==='new')return; // new development — zero existing footprint
+    var cfgKey=_slotCfg(mk);
     var src=dm[COL_SRC[mk]]||{};
     Object.keys(src).forEach(function(lk){
-      var entries=(src[lk][mk])||[];
+      var entries=((src[lk][mk])||[]).filter(function(e){return !cfgKey||e.config_key===cfgKey;});
       if(!entries.length)return;
       if(!locMap[lk]){var parts=lk.split('_');locMap[lk]={region:parts[0],cc:parts.slice(1).join('_')||null,isVeh:false,isPwt:false,cols:{}};}
       if(COL_SRC[mk]==='vehicle_plants')locMap[lk].isVeh=true; else locMap[lk].isPwt=true;
@@ -17859,7 +17866,9 @@ function _renderFootprintMatrixBody(){
   var supMap={},supSrc=dm['supplier_parks']||{};
   Object.keys(supSrc).forEach(function(rk){
     cols.forEach(function(mk){
-      var entries=(supSrc[rk][mk])||[];
+      if(_slotMode(mk)==='new')return;
+      var cfgKey=_slotCfg(mk);
+      var entries=((supSrc[rk][mk])||[]).filter(function(e){return !cfgKey||e.config_key===cfgKey;});
       if(!entries.length)return;
       if(!supMap[rk])supMap[rk]={};
       if(!supMap[rk][mk])supMap[rk][mk]={instK:0,wipK:0};
