@@ -14109,14 +14109,14 @@ function _fpToggleVeh(k)   { _fpState.expanded.veh[k]   = !_fpState.expanded.veh
 // ── FOOTPRINT TAB: REALLOCATION PANEL ─────────────────────────────────────────
 function _fpGetPoolEntries(locKey, mk, configKey) {
   var dm = _deployedModules || {};
-  for (var i=0, fts=['vehicle_plants','powertrain_plants','supplier_parks']; i<fts.length; i++) {
-    var entries = ((dm[fts[i]] || {})[locKey] || {})[mk];
-    if (entries && entries.length) {
-      // Filter to same config_key pool if specified
-      return (configKey !== undefined && configKey !== null)
-        ? entries.filter(function(e){ return (e.config_key||'') === configKey; })
-        : entries;
-    }
+  var fts = ['vehicle_plants','powertrain_plants','supplier_parks'];
+  var ck  = (configKey !== undefined && configKey !== null) ? configKey : null;
+  for (var i = 0; i < fts.length; i++) {
+    var all = ((dm[fts[i]] || {})[locKey] || {})[mk];
+    if (!all || !all.length) continue;
+    var filtered = ck !== null ? all.filter(function(e){ return (e.config_key||'') === ck; }) : all;
+    if (filtered.length) return filtered;
+    // configKey filtered out all entries in this facility type — keep looking
   }
   return [];
 }
