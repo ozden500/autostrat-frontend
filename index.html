@@ -706,8 +706,8 @@ input[type=text]:focus,input[type=number]:focus{outline:none;border-color:var(--
 .fp-region-hdr  { display:flex;align-items:center;gap:8px;padding:8px 12px;background:var(--s2);cursor:pointer;user-select:none;border-radius:4px;margin-bottom:4px; }
 .fp-plant-hdr   { display:flex;align-items:center;gap:8px;padding:7px 12px 7px 24px;background:var(--s1);border:1px solid var(--border2);border-radius:3px;cursor:pointer;user-select:none;margin-bottom:2px; }
 .fp-veh-hdr     { display:flex;align-items:center;gap:8px;padding:6px 12px 6px 38px;border-top:1px solid rgba(255,255,255,.04);cursor:pointer;user-select:none;background:rgba(255,255,255,.01); }
-.fp-mod-row     { display:grid;grid-template-columns:130px 56px 56px 56px 1fr 60px 28px;gap:6px;align-items:center;padding:4px 12px 4px 54px;border-top:1px solid rgba(255,255,255,.03);font-family:'DM Mono',monospace;font-size:8px; }
-.fp-mod-hdr-row { display:grid;grid-template-columns:130px 56px 56px 56px 1fr 60px 28px;gap:6px;align-items:center;padding:3px 12px 3px 54px;font-family:'DM Mono',monospace;font-size:7px;color:var(--muted2);text-transform:uppercase;letter-spacing:.5px;background:rgba(0,0,0,.08); }
+.fp-mod-row     { display:grid;grid-template-columns:140px 60px 70px 1fr 64px 28px;gap:6px;align-items:center;padding:4px 12px 4px 54px;border-top:1px solid rgba(255,255,255,.03);font-family:'DM Mono',monospace;font-size:8px; }
+.fp-mod-hdr-row { display:grid;grid-template-columns:140px 60px 70px 1fr 64px 28px;gap:6px;align-items:center;padding:3px 12px 3px 54px;font-family:'DM Mono',monospace;font-size:7px;color:var(--muted2);text-transform:uppercase;letter-spacing:.5px;background:rgba(0,0,0,.08); }
 .fp-cap-bar     { height:5px;background:var(--s3);border-radius:3px;overflow:hidden; }
 .fp-cap-fill    { height:100%;border-radius:3px;transition:width .2s; }
 .fp-alloc-input { width:52px;background:var(--s2);border:1px solid var(--border2);color:var(--text);padding:2px 4px;font-family:'DM Mono',monospace;font-size:8px;text-align:right;border-radius:2px; }
@@ -14024,7 +14024,7 @@ function _fpRenderVehicleBlock(locKey, vd) {
     return hdr + '<div style="padding:6px 12px 6px 54px;font-family:\'DM Mono\',monospace;font-size:9px;color:var(--muted2);">No module data available.</div>';
   }
 
-  var colHdr = '<div class="fp-mod-hdr-row"><span>Module</span><span>Pool</span><span>Used</span><span>Reserved</span><span>Utilisation</span><span>My Alloc</span><span></span></div>';
+  var colHdr = '<div class="fp-mod-hdr-row"><span>Module</span><span>Used</span><span>Reserved</span><span>Utilisation</span><span>My Alloc</span><span></span></div>';
   var rows = modKeys.map(function(mk) {
     var mdata = vd.modules[mk];
     var row = _fpRenderModuleRow(locKey, vd.vid, mk, mdata);
@@ -14051,16 +14051,10 @@ function _fpRenderModuleRow(locKey, vid, mk, md) {
   var mkSafe   = mk.replace(/'/g,"\\'");
   var rlk      = (md._ptLocKey || locKey).replace(/'/g,"\\'");
   var ckSafe   = (md.configKey || '').replace(/'/g,"\\'");
-  // Pool column: show total only when multiple vehicles share this module design
-  var poolCell = (md._poolSize > 1)
-    ? '<span style="color:var(--muted2);">' + md.inst_k + 'k</span>'
-    : '<span style="color:var(--muted2);">—</span>';
-
   return '<div class="fp-mod-row">'
     + '<span><span style="font-size:9px;">' + md.label + '</span>'
     + (md.configKey ? '<br><span style="font-size:7px;color:var(--muted2);">' + md.configKey + '</span>' : '')
     + '</span>'
-    + poolCell
     + '<span style="color:' + (ownUsed > 0 ? 'var(--gold)' : 'var(--muted2)') + ';">' + ownUsed + 'k</span>'
     + '<span id="' + rsvId + '" style="color:' + rsvColor + ';">' + reserved + 'k</span>'
     + '<div class="fp-cap-bar"><div class="fp-cap-fill" style="width:' + Math.min(100, ownPct) + '%;background:' + barColor + ';"></div></div>'
@@ -14136,9 +14130,15 @@ function _fpRenderReallocPanel(locKey, mk, poolEntries, poolInstK, configKey) {
     + totalLine
     + '<div id="fp-ra-total-' + locKey + '__' + mk + '" style="font-size:9px;"></div>'
     + '<div style="display:flex;gap:6px;margin-top:8px;">'
-    + '<button onclick="_fpApplyRealloc(\'' + lkSafe + '\',\'' + mkSafe + '\')" style="background:var(--gold);color:#000;border:none;border-radius:3px;padding:3px 10px;font-size:9px;font-weight:700;cursor:pointer;">Apply</button>'
+    + '<button id="fp-ra-apply-' + locKey + '__' + mk + '" onclick="_fpApplyRealloc(\'' + lkSafe + '\',\'' + mkSafe + '\')" style="background:var(--gold);color:#000;border:none;border-radius:3px;padding:3px 10px;font-size:9px;font-weight:700;cursor:pointer;">Apply</button>'
     + '<button onclick="_fpToggleRealloc(\'' + lkSafe + '\',\'' + mkSafe + '\',\'' + ckSafe + '\')" style="background:transparent;color:var(--muted2);border:1px solid var(--border2);border-radius:3px;padding:3px 8px;font-size:9px;cursor:pointer;">Cancel</button>'
     + '</div></div>';
+}
+
+function _fpReallocPoolInstK(locKey, mk, configKey) {
+  return Math.round(Math.max.apply(null,
+    _fpGetPoolEntries(locKey, mk, configKey).map(function(e){ return (e.capacity_yr||0)/1000; }).concat([0])
+  ));
 }
 
 function _fpReallocUpdate(locKey, mk) {
@@ -14149,16 +14149,29 @@ function _fpReallocUpdate(locKey, mk) {
   var sum = 0;
   inputs.forEach(function(inp) { sum += parseFloat(inp.value) || 0; });
   var ro = _fpState.reallocOpen || {};
-  var poolInstK = Math.round(Math.max.apply(null,
-    _fpGetPoolEntries(locKey, mk, ro.configKey).map(function(e){ return (e.capacity_yr||0)/1000; }).concat([0])
-  ));
-  var ok = sum <= poolInstK + 0.1;
-  totalEl.innerHTML = 'Total: <span style="color:' + (ok ? 'var(--green)' : 'var(--red)') + ';font-weight:600;">'
-    + sum + 'k</span> / ' + poolInstK + 'k pool' + (ok ? '' : ' ⚠ over');
+  var poolInstK = _fpReallocPoolInstK(locKey, mk, ro.configKey);
+  var over = sum > poolInstK + 0.1;
+  totalEl.innerHTML = 'Total allocated: <span style="color:' + (over ? 'var(--red)' : 'var(--green)') + ';font-weight:600;">'
+    + sum + 'k</span> / ' + poolInstK + 'k installed'
+    + (over ? ' <span style="color:var(--red);">⚠ exceeds capacity — reduce by ' + Math.round(sum - poolInstK) + 'k</span>' : '');
+  // Disable Apply button when over capacity
+  var applyBtn = document.getElementById('fp-ra-apply-' + locKey + '__' + mk);
+  if (applyBtn) {
+    applyBtn.disabled = over;
+    applyBtn.style.opacity = over ? '0.4' : '1';
+    applyBtn.style.cursor  = over ? 'not-allowed' : 'pointer';
+  }
 }
 
 function _fpApplyRealloc(locKey, mk) {
   var ro = _fpState.reallocOpen || {};
+  var poolInstK = _fpReallocPoolInstK(locKey, mk, ro.configKey);
+  // Validate total before applying
+  var prefix = 'fp-ra-' + locKey + '__' + mk + '__';
+  var sum = 0;
+  document.querySelectorAll('input[id^="' + prefix + '"]').forEach(function(inp){ sum += parseFloat(inp.value)||0; });
+  if (sum > poolInstK + 0.1) return;  // blocked — button should already be disabled
+
   _fpGetPoolEntries(locKey, mk, ro.configKey).forEach(function(e) {
     var inp = document.getElementById('fp-ra-' + locKey + '__' + mk + '__' + e.vehicle_id);
     if (!inp) return;
