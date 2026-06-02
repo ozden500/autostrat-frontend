@@ -17827,7 +17827,8 @@ function _renderGlobalFootprintGrid(){
   var FAC_INFO={vehicle_plants:{icon:'🏭',label:'Vehicle Plant',col:'var(--gold)'},powertrain_plants:{icon:'⚙',label:'PWT Plant',col:'var(--orange)'},supplier_parks:{icon:'📦',label:'Supplier Park',col:'var(--cyan)'}};
   var MOD_LABELS={platform:'Platform',tophat:'TopHat',eands:'E&S',pwt:'ICE PWT',pwt_assy:'PWT Marry',epwt:'e-PWT',battery:'Battery'};
   var REGION_INFO={NA:{flag:'🌎',label:'NA'},EU:{flag:'🌍',label:'EU'},APAC:{flag:'🌏',label:'APAC'},MEA:{flag:'🌍',label:'MEA'},SA:{flag:'🌎',label:'SA'}};
-  var allowedMods=_footprintFilterCurrent?_getConfiguredModuleKeys():null;
+  var configuredKeys=_getConfiguredModuleKeys();
+  var allowedMods=_footprintFilterCurrent?configuredKeys:null;
   var regionData={NA:{},EU:{},APAC:{},MEA:{},SA:{}};
   var hasAny=false;
   FAC_TYPES.forEach(function(ft){
@@ -17852,13 +17853,22 @@ function _renderGlobalFootprintGrid(){
       });
     });
   });
+  // Filter-active indicator strip
+  var h='';
+  if(_footprintFilterCurrent){
+    var badges=configuredKeys.map(function(k){return '<span style="font-family:DM Mono,monospace;font-size:7px;padding:1px 5px;border-radius:2px;background:rgba(200,164,60,0.12);border:1px solid rgba(200,164,60,0.35);color:var(--gold);">'+(MOD_LABELS[k]||k)+'</span>';}).join(' ');
+    h+='<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:8px;padding:5px 7px;background:rgba(200,164,60,0.06);border:1px solid rgba(200,164,60,0.20);border-radius:3px;">';
+    h+='<span style="font-family:DM Mono,monospace;font-size:7px;color:var(--gold);font-weight:700;white-space:nowrap;">FILTER ACTIVE —</span>'+badges;
+    h+='</div>';
+  }
   if(!hasAny){
     var msg=_footprintFilterCurrent
       ?'No existing capacity for the modules configured in this vehicle.'
       :'No existing footprint — this is your first vehicle in this session.';
-    return '<div style="padding:10px;text-align:center;color:var(--muted2);font-size:9px;font-family:DM Mono,monospace;border:1px dashed var(--border2);border-radius:3px;">'+msg+'</div>';
+    h+='<div style="padding:10px;text-align:center;color:var(--muted2);font-size:9px;font-family:DM Mono,monospace;border:1px dashed var(--border2);border-radius:3px;">'+msg+'</div>';
+    return h;
   }
-  var h='<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:6px;">';
+  h+='<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:6px;">';
   ['NA','EU','APAC','MEA','SA'].forEach(function(reg){
     var ri=REGION_INFO[reg]||{flag:'🌐',label:reg};
     var locMap=regionData[reg]||{};
