@@ -14041,7 +14041,7 @@ function _fpRenderVehicleBlock(locKey, vd) {
 function _fpRenderModuleRow(locKey, vid, mk, md) {
   var ownInst = md.own_inst_k !== undefined ? md.own_inst_k : md.inst_k;
   var ownUsed = md.own_used_k !== undefined ? md.own_used_k : 0;
-  var reserved = Math.max(0, ownInst - ownUsed);
+  var reserved = ownInst;  // total allocated capacity for this vehicle
   var ownPct   = ownInst > 0 ? Math.round(ownUsed / ownInst * 100) : 0;
   var barColor = ownPct < 85 ? 'var(--green)' : ownPct < 95 ? 'var(--gold)' : 'var(--red)';
   var rsvColor = reserved > 0 ? 'var(--green)' : 'var(--muted2)';
@@ -14222,7 +14222,7 @@ function _fpPatchVehicleEffCap(locKey, vid) {
       var ovMk = (_fpState.allocOverrides[t.lk] || {})[mk] || {};
       var ownInst = Math.round((ovMk[vid]!==undefined ? ovMk[vid] : (entry.capacity_yr||0)) / 1000);
       var ownUsed = Math.round((entry.est_volume_yr||0) / 1000);
-      modUpdates[mk] = { reserved: Math.max(0, ownInst - ownUsed) };
+      modUpdates[mk] = { reserved: ownInst };
     });
   });
 
