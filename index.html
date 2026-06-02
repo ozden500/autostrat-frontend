@@ -13915,6 +13915,29 @@ function _fpBuildDataModel() {
       });
     }
 
+    // Fallback: include activeVehicles not returned by deployed-module-capacities endpoint
+    // (happens when operations_plan has no plant data or vehicle was never submitted through Section 7)
+    var firstVehPlantHere = mfgPlants.find(function(mp) {
+      return mp.region === r && mp.type === 'vehicle'
+        && (r + '_' + (mp.country_code || r)) === locKey;
+    });
+    if (facType === 'vehicle_plants') {
+      (activeVehicles || []).forEach(function(v) {
+        if (vehicleMap[v.id]) return;
+        if (['plan','approved','on_sale'].indexOf(v.status) < 0) return;
+        var ops = v.operations_plan || {};
+        var vp  = ops.vehicle_plants || ops.plants || [];
+        if (!vp.length && ops.assembly_region) {
+          vp = [{ region: ops.assembly_region, country_code: ops.assembly_country_code || 'DE' }];
+        }
+        var matchLocKey = vp.length > 0
+          ? vp.some(function(p){ return (p.region||'')+('_')+(p.country_code||p.region||'') === locKey; })
+          : !!firstVehPlantHere;  // no plant configured → show under first vehicle plant in region
+        if (!matchLocKey) return;
+        vehicleMap[v.id] = { vid:v.id, vname:v.name||v.id, vseg:v.segment_code||'', modules:{}, _noDeployData:true };
+      });
+    }
+
     // Effective capacity per vehicle = min pool spare across all modules
     var vehicles = Object.values(vehicleMap).map(function(vd) {
       var spares = Object.values(vd.modules).map(function(m) { return m.spare_k; });
@@ -14029,7 +14052,10 @@ function _fpRenderVehicleBlock(locKey, vd) {
 
   var modKeys = Object.keys(vd.modules);
   if (modKeys.length === 0) {
-    return hdr + '<div style="padding:6px 12px 6px 54px;font-family:\'DM Mono\',monospace;font-size:9px;color:var(--muted2);">No module data available.</div>';
+    var noDataMsg = vd._noDeployData
+      ? 'Vehicle plan confirmed — module capacity data not yet available (complete Industrial Ops section to see capacity details).'
+      : 'No module data available.';
+    return hdr + '<div style="padding:6px 12px 6px 54px;font-family:\'DM Mono\',monospace;font-size:9px;color:var(--muted2);">' + noDataMsg + '</div>';
   }
 
   var colHdr = '<div class="fp-mod-hdr-row"><span>Module</span><span>Used</span><span>Reserved</span><span>Utilisation</span><span>My Alloc</span><span></span></div>';
