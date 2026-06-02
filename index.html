@@ -702,6 +702,18 @@ input[type=text]:focus,input[type=number]:focus{outline:none;border-color:var(--
 .plant-status-sold      { background:rgba(100,116,139,.08); color:#334155; }
 .plant-empty { font-size:11px; color:var(--muted); text-align:center; padding:16px 0; }
 
+/* Footprint collapsible hierarchy */
+.fp-region-hdr  { display:flex;align-items:center;gap:8px;padding:8px 12px;background:var(--s2);cursor:pointer;user-select:none;border-radius:4px;margin-bottom:4px; }
+.fp-plant-hdr   { display:flex;align-items:center;gap:8px;padding:7px 12px 7px 24px;background:var(--s1);border:1px solid var(--border2);border-radius:3px;cursor:pointer;user-select:none;margin-bottom:2px; }
+.fp-veh-hdr     { display:flex;align-items:center;gap:8px;padding:6px 12px 6px 38px;border-top:1px solid rgba(255,255,255,.04);cursor:pointer;user-select:none;background:rgba(255,255,255,.01); }
+.fp-mod-row     { display:grid;grid-template-columns:130px 56px 56px 56px 1fr 60px;gap:6px;align-items:center;padding:4px 12px 4px 54px;border-top:1px solid rgba(255,255,255,.03);font-family:'DM Mono',monospace;font-size:8px; }
+.fp-mod-hdr-row { display:grid;grid-template-columns:130px 56px 56px 56px 1fr 60px;gap:6px;align-items:center;padding:3px 12px 3px 54px;font-family:'DM Mono',monospace;font-size:7px;color:var(--muted2);text-transform:uppercase;letter-spacing:.5px;background:rgba(0,0,0,.08); }
+.fp-cap-bar     { height:5px;background:var(--s3);border-radius:3px;overflow:hidden; }
+.fp-cap-fill    { height:100%;border-radius:3px;transition:width .2s; }
+.fp-alloc-input { width:52px;background:var(--s2);border:1px solid var(--border2);color:var(--text);padding:2px 4px;font-family:'DM Mono',monospace;font-size:8px;text-align:right;border-radius:2px; }
+.fp-badge       { font-family:'DM Mono',monospace;font-size:8px;padding:2px 6px;border-radius:3px;white-space:nowrap; }
+.fp-save-bar    { display:flex;align-items:center;gap:10px;padding:8px 12px;background:rgba(200,164,60,.1);border:1px solid rgba(200,164,60,.3);border-radius:6px;margin-bottom:10px; }
+
 .mfg-decision-form { background:var(--s1); border:1px solid var(--border); border-radius:8px; padding:16px; }
 .mfg-form-row { display:flex; gap:12px; margin-bottom:12px; }
 .mfg-field { flex:1; display:flex; flex-direction:column; gap:4px; }
@@ -1019,28 +1031,8 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
 
   <!-- FOOTPRINT TAB -->
   <div class="ops-panel active" id="ops-footprint">
-    <div class="mfg-regions">
-      <!-- Region cards -->
-      <div class="region-card" id="region-NA">
-        <div class="region-header"><span class="region-flag">🌎</span><span class="region-name">North America</span><span class="region-cap" id="rcap-NA">0k</span></div>
-        <div class="plant-list" id="plants-NA"></div>
-      </div>
-      <div class="region-card" id="region-SA">
-        <div class="region-header"><span class="region-flag">🌎</span><span class="region-name">South America</span><span class="region-cap" id="rcap-SA">0k</span></div>
-        <div class="plant-list" id="plants-SA"></div>
-      </div>
-      <div class="region-card" id="region-EU">
-        <div class="region-header"><span class="region-flag">🌍</span><span class="region-name">Europe</span><span class="region-cap" id="rcap-EU">0k</span></div>
-        <div class="plant-list" id="plants-EU"></div>
-      </div>
-      <div class="region-card" id="region-MEA">
-        <div class="region-header"><span class="region-flag">🌍</span><span class="region-name">Middle East & Africa</span><span class="region-cap" id="rcap-MEA">0k</span></div>
-        <div class="plant-list" id="plants-MEA"></div>
-      </div>
-      <div class="region-card" id="region-APAC">
-        <div class="region-header"><span class="region-flag">🌏</span><span class="region-name">APAC</span><span class="region-cap" id="rcap-APAC">0k</span></div>
-        <div class="plant-list" id="plants-APAC"></div>
-      </div>
+    <div id="fp-content">
+      <div style="color:var(--muted2);font-family:'DM Mono',monospace;font-size:11px;padding:16px 0;">Loading footprint…</div>
     </div>
   </div>
 
@@ -13643,6 +13635,14 @@ let mfgPipeline  = []; // {id, plant_id, decision, rounds_remaining, cost_m, cap
 let mfgCurrentRound = 1;
 let mfgCountries = {}; // {region: [{country_code, country_name}]}
 
+// Footprint tab state
+var _fpState = {
+  expanded: { reg:{}, plant:{}, veh:{} },
+  allocOverrides: {},  // locKey → mk → vid → overrideCapYr (units/yr)
+  isDirty: false,
+  _debounce: null
+};
+
 const REGIONS = ['NA','SA','EU','MEA','APAC'];
 const REGION_NAMES = {NA:'North America', SA:'South America', EU:'Europe', MEA:'Middle East & Africa', APAC:'APAC'};
 
@@ -13748,6 +13748,24 @@ async function loadMfgFootprint(forceRefresh = false) {
     mfgPlants = [];
     mfgPipeline = [];
   }
+  // Fetch deployed module capacities if not already loaded (normally loaded by Vehicle Proposal wizard)
+  if (!_deployedModules && teamId && sessionId) {
+    try {
+      var _dmr2 = await fetch(API_URL+'/teams/'+teamId+'/deployed-module-capacities?session_id='+sessionId);
+      if (_dmr2.ok) _deployedModules = await _dmr2.json();
+    } catch(e2) { _deployedModules = {}; }
+  }
+  // Restore saved allocation overrides from vehicle configs
+  _fpState.allocOverrides = {};
+  _fpState.isDirty = false;
+  (activeVehicles || []).forEach(function(v) {
+    var ov = (v.operations_plan || {}).footprint_alloc_overrides;
+    if (!ov) return;
+    Object.keys(ov).forEach(function(locKey) {
+      if (!_fpState.allocOverrides[locKey]) _fpState.allocOverrides[locKey] = {};
+      Object.assign(_fpState.allocOverrides[locKey], ov[locKey]);
+    });
+  });
   renderFootprint();
   updateMfgKPIs();
 }
@@ -13773,38 +13791,295 @@ async function saveMfgData() {
   // This function kept for compatibility
 }
 
-function renderFootprint() {
-  REGIONS.forEach(r => {
-    const container = document.getElementById(`plants-${r}`);
-    const capEl     = document.getElementById(`rcap-${r}`);
-    if (!container) return;
-    const regionPlants = mfgPlants.filter(p => p.region === r);
-    const totalCap = regionPlants.filter(p=>p.status==='active').reduce((s,p)=>s+p.capacity_k,0);
-    if (capEl) capEl.textContent = totalCap > 0 ? totalCap+'k' : '0k';
-    if (regionPlants.length === 0) {
-      container.innerHTML = '<div class="plant-empty">No plants</div>';
-      return;
-    }
-    container.innerHTML = regionPlants.map(p => {
-      const typeClass = p.type === 'vehicle' ? 'plant-type-vehicle' : 'plant-type-powertrain';
-      const typeLabel = p.type === 'vehicle' ? '🚗 VEH' : '⚙ PT';
-      const statusClass = `plant-status-${p.status}`;
-      const statusLabel = p.status === 'active'    ? '● Active'      :
-                          p.status === 'building'   ? '⏳ Building'   :
-                          p.status === 'closing'    ? '🔒 Closing'   :
-                          p.status === 'reopening'  ? '🔓 Reopening' :
-                          p.status === 'inactive'   ? '⏸ Inactive'   :
-                          p.status === 'sold'       ? '💰 Sold'      : p.status;
-      return `<div class="plant-item" style="${p.status==='inactive'?'border-color:#334155;':''}${p.status==='sold'?'border-color:#1e293b;background:var(--s3);':''}">
-        <div class="plant-item-header">
-          <span class="plant-type-badge ${typeClass}" style="${p.status==='inactive'||p.status==='sold'?'opacity:.5':''}">  ${typeLabel}</span>
-          <span class="plant-item-name" style="${p.status==='inactive'?'color:#64748b':''}${p.status==='sold'?'color:#334155;text-decoration:line-through':''}">  ${p.name}</span>
-          <span class="plant-status ${statusClass}">${statusLabel}</span>
-        </div>
-        <div class="plant-item-cap" style="${p.status==='inactive'||p.status==='sold'?'color:#475569':''}">${p.capacity_k}k units/yr${p.country_name ? ' · ' + p.country_name : ''}</div>
-      </div>`;
-    }).join('');
+// ── FOOTPRINT TAB: DATA ASSEMBLY ──────────────────────────────────────────────
+function _fpBuildDataModel() {
+  var dm = _deployedModules || {};
+  // Vehicle name lookup from activeVehicles (more current than deployed entries)
+  var vNameMap = {}, vSegMap = {};
+  (activeVehicles || []).forEach(function(v) { vNameMap[v.id] = v.name; vSegMap[v.id] = v.segment_code || ''; });
+
+  var regions = {};
+  REGIONS.forEach(function(r) { regions[r] = { totalCap_k:0, plantCount:0, plants:[] }; });
+
+  mfgPlants.forEach(function(plant) {
+    var r = plant.region;
+    if (!regions[r]) return;
+    var locKey = r + '_' + (plant.country_code || r);
+    var facType = plant.type === 'powertrain' ? 'powertrain_plants' : 'vehicle_plants';
+    var facData = (dm[facType] || {})[locKey] || {};
+
+    // Collect all vehicle entries across all module keys at this location
+    var vehicleMap = {};  // vid → {vid, vname, vseg, modules:{mk:{...}}}
+    Object.keys(facData).forEach(function(mk) {
+      var entries = facData[mk] || [];
+      entries.forEach(function(e) {
+        var vid = e.vehicle_id;
+        if (!vid) return;
+        if (!vehicleMap[vid]) {
+          vehicleMap[vid] = {
+            vid: vid,
+            vname: vNameMap[vid] || e.vehicle_name || vid,
+            vseg: vSegMap[vid] || '',
+            modules: {}
+          };
+        }
+        // Apply allocation override if user has edited it
+        var overrideCap = (_fpState.allocOverrides[locKey] || {})[mk] && (_fpState.allocOverrides[locKey][mk][vid] !== undefined)
+          ? _fpState.allocOverrides[locKey][mk][vid]
+          : null;
+        var capYr   = overrideCap !== null ? overrideCap : (e.capacity_yr || 0);
+        var usedYr  = e.est_volume_yr || 0;
+        var inst_k  = Math.round(capYr / 1000);
+        var used_k  = Math.round(usedYr / 1000);
+        var spare_k = Math.max(0, inst_k - used_k);
+        var pct     = inst_k > 0 ? Math.round(used_k / inst_k * 100) : 0;
+        var mkLabel = mk === 'platform' ? 'Platform' : mk === 'tophat' ? 'TopHat' : mk === 'eands' ? 'E&S'
+                    : mk === 'pwt_assy' ? 'PWT Assy' : mk === 'pwt' ? 'ICE PWT' : mk === 'epwt' ? 'e-PWT'
+                    : mk === 'battery' ? 'Battery' : mk;
+        vehicleMap[vid].modules[mk] = { mk:mk, label:mkLabel, configKey:e.config_key||'', inst_k:inst_k, used_k:used_k, spare_k:spare_k, pct:pct };
+      });
+    });
+
+    // Compute effective capacity per vehicle = min spare across all modules
+    var vehicles = Object.values(vehicleMap).map(function(vd) {
+      var spares = Object.values(vd.modules).map(function(m) { return m.spare_k; });
+      vd.effCap_k = spares.length > 0 ? Math.min.apply(null, spares) : 0;
+      return vd;
+    });
+
+    regions[r].plantCount++;
+    regions[r].totalCap_k += plant.capacity_k || 0;
+    regions[r].plants.push({ plant:plant, locKey:locKey, facType:facType, vehicles:vehicles });
   });
+
+  return { regions: regions };
+}
+
+// ── FOOTPRINT TAB: RENDER ──────────────────────────────────────────────────────
+function renderFootprint() {
+  var el = document.getElementById('fp-content');
+  if (!el) return;
+
+  if (mfgPlants.length === 0) {
+    el.innerHTML = '<div style="color:var(--muted2);font-family:\'DM Mono\',monospace;font-size:11px;padding:24px 0;text-align:center;">No plants configured. Use the Decisions tab to build plants.</div>';
+    return;
+  }
+
+  var model = _fpBuildDataModel();
+  var saveBar = '';
+  if (_fpState.isDirty) {
+    saveBar = '<div class="fp-save-bar"><span style="font-family:\'DM Mono\',monospace;font-size:10px;color:var(--gold);flex:1">⚠ Unsaved allocation changes</span>'
+            + '<button onclick="_fpSaveAllocations()" style="background:var(--gold);color:#000;border:none;border-radius:4px;padding:4px 12px;font-size:10px;font-weight:700;cursor:pointer;">Save Allocations</button>'
+            + '<button onclick="_fpDiscardAllocations()" style="background:transparent;color:var(--muted2);border:1px solid var(--border2);border-radius:4px;padding:4px 10px;font-size:10px;cursor:pointer;margin-left:4px;">Discard</button>'
+            + '</div>';
+  }
+
+  var html = REGIONS.map(function(r) { return _fpRenderRegionBlock(r, model.regions[r]); }).join('');
+  el.innerHTML = saveBar + html;
+}
+
+function _fpRenderRegionBlock(regCode, regData) {
+  var expanded = !!_fpState.expanded.reg[regCode];
+  var arrow = expanded ? '▼' : '▶';
+  var hasPl = regData && regData.plantCount > 0;
+  var summary = hasPl
+    ? '<span class="fp-badge" style="background:var(--s3);color:var(--muted2);">' + regData.plantCount + ' plant' + (regData.plantCount>1?'s':'') + '</span>'
+    + '<span class="fp-badge" style="background:var(--s3);color:var(--muted2);">' + regData.totalCap_k + 'k cap</span>'
+    : '<span style="font-family:\'DM Mono\',monospace;font-size:9px;color:var(--muted2);">no plants</span>';
+
+  var hdr = '<div class="fp-region-hdr" onclick="_fpToggleReg(\''+regCode+'\')">'
+          + '<span style="color:var(--muted2);font-size:9px;width:10px;">'+arrow+'</span>'
+          + '<span style="font-family:\'DM Mono\',monospace;font-size:11px;font-weight:600;flex:1;">'+REGION_NAMES[regCode]+'</span>'
+          + summary
+          + '</div>';
+
+  if (!expanded || !hasPl) return hdr;
+  var plantsHtml = (regData.plants || []).map(_fpRenderPlantBlock).join('');
+  return hdr + '<div style="margin-left:8px;margin-bottom:6px;">' + plantsHtml + '</div>';
+}
+
+function _fpRenderPlantBlock(pd) {
+  var locKey = pd.locKey;
+  var expanded = !!_fpState.expanded.plant[locKey];
+  var arrow = expanded ? '▼' : '▶';
+  var p = pd.plant;
+  var typeLabel = p.type === 'vehicle' ? '🚗 VEH' : '⚙ PT';
+  var typeClass = p.type === 'vehicle' ? 'plant-type-vehicle' : 'plant-type-powertrain';
+  var statusLabel = p.status === 'active' ? '● Active' : p.status === 'building' ? '⏳ Building'
+    : p.status === 'closing' ? '🔒 Closing' : p.status === 'reopening' ? '🔓 Reopening'
+    : p.status === 'inactive' ? '⏸ Inactive' : p.status === 'sold' ? '💰 Sold' : p.status;
+  var statusClass = 'plant-status-' + p.status;
+  var plantName = (p.country_name ? p.country_name + ' — ' : '') + p.name;
+  var vegCount = pd.vehicles.length;
+  var vegBadge = vegCount > 0
+    ? '<span class="fp-badge" style="background:rgba(56,189,212,.1);color:#22d3ee;">' + vegCount + ' vehicle' + (vegCount>1?'s':'') + '</span>'
+    : '<span class="fp-badge" style="background:var(--s3);color:var(--muted2);">empty</span>';
+
+  var hdr = '<div class="fp-plant-hdr" onclick="_fpTogglePlant(\''+locKey+'\')">'
+          + '<span style="color:var(--muted2);font-size:9px;width:10px;">'+arrow+'</span>'
+          + '<span class="plant-type-badge '+typeClass+'" style="font-size:8px;padding:1px 5px;">'+typeLabel+'</span>'
+          + '<span style="font-family:\'DM Mono\',monospace;font-size:10px;flex:1;">'+plantName+'</span>'
+          + vegBadge
+          + '<span class="plant-status '+statusClass+'" style="font-size:8px;">'+statusLabel+'</span>'
+          + '<span style="font-family:\'DM Mono\',monospace;font-size:9px;color:var(--muted2);margin-left:4px;">'+p.capacity_k+'k/yr</span>'
+          + '</div>';
+
+  if (!expanded) return hdr;
+
+  var inner = '';
+  if (pd.vehicles.length === 0) {
+    inner = '<div style="padding:8px 12px 8px 38px;font-family:\'DM Mono\',monospace;font-size:10px;color:var(--muted2);">No module deployments recorded for this plant.</div>';
+  } else {
+    inner = pd.vehicles.map(function(vd) { return _fpRenderVehicleBlock(locKey, vd); }).join('');
+  }
+  return hdr + '<div style="margin-left:8px;border-left:1px solid var(--border2);margin-bottom:4px;">' + inner + '</div>';
+}
+
+function _fpRenderVehicleBlock(locKey, vd) {
+  var key = locKey + '__' + vd.vid;
+  var expanded = !!_fpState.expanded.veh[key];
+  var arrow = expanded ? '▼' : '▶';
+  var segShort = (vd.vseg || '').replace('_segment','').toUpperCase();
+  var effColor = vd.effCap_k > 0 ? 'var(--green)' : 'var(--red)';
+  var effBg = vd.effCap_k > 0 ? 'rgba(16,185,129,.1)' : 'rgba(224,58,82,.1)';
+
+  var hdr = '<div class="fp-veh-hdr" onclick="_fpToggleVeh(\''+key+'\')">'
+          + '<span style="color:var(--muted2);font-size:9px;width:10px;">'+arrow+'</span>'
+          + (segShort ? '<span class="fp-badge" style="background:var(--s3);color:var(--muted2);">'+segShort+'</span>' : '')
+          + '<span style="font-size:11px;font-weight:600;flex:1;">'+vd.vname+'</span>'
+          + '<span id="fp-eff-'+key+'" class="fp-badge" style="background:'+effBg+';color:'+effColor+';">eff.cap: '+vd.effCap_k+'k</span>'
+          + '</div>';
+
+  if (!expanded) return hdr;
+
+  var modKeys = Object.keys(vd.modules);
+  if (modKeys.length === 0) {
+    return hdr + '<div style="padding:6px 12px 6px 54px;font-family:\'DM Mono\',monospace;font-size:9px;color:var(--muted2);">No module data available.</div>';
+  }
+
+  var colHdr = '<div class="fp-mod-hdr-row"><span>Module</span><span>Inst</span><span>Used</span><span>Spare</span><span>Utilisation</span><span>Alloc k</span></div>';
+  var rows = modKeys.map(function(mk) { return _fpRenderModuleRow(locKey, vd.vid, mk, vd.modules[mk]); }).join('');
+  return hdr + colHdr + rows;
+}
+
+function _fpRenderModuleRow(locKey, vid, mk, md) {
+  var barColor = md.pct < 85 ? 'var(--green)' : md.pct < 95 ? 'var(--gold)' : 'var(--red)';
+  var spareColor = md.spare_k > 0 ? 'var(--green)' : 'var(--red)';
+  var spareId = 'fp-spare-' + locKey + '__' + vid + '__' + mk;
+  // Escape locKey and vid for inline onclick (replace special chars)
+  var lkSafe = locKey.replace(/'/g,"\\'");
+  var vidSafe = vid.replace(/'/g,"\\'");
+  var mkSafe = mk.replace(/'/g,"\\'");
+
+  return '<div class="fp-mod-row">'
+    + '<span><span style="font-size:9px;">' + md.label + '</span>'
+    + (md.configKey ? '<br><span style="font-size:7px;color:var(--muted2);">' + md.configKey + '</span>' : '')
+    + '</span>'
+    + '<span style="color:var(--muted2);">' + md.inst_k + 'k</span>'
+    + '<span style="color:' + (md.used_k > 0 ? 'var(--gold)' : 'var(--muted2)') + ';">' + md.used_k + 'k</span>'
+    + '<span id="' + spareId + '" style="color:' + spareColor + ';">' + md.spare_k + 'k</span>'
+    + '<div class="fp-cap-bar"><div class="fp-cap-fill" style="width:' + Math.min(100, md.pct) + '%;background:' + barColor + ';"></div></div>'
+    + '<input class="fp-alloc-input" type="number" min="0" step="5" value="' + md.inst_k + '"'
+    + ' title="Allocated capacity (k units/yr)"'
+    + ' oninput="_fpOnAllocInput(\'' + lkSafe + '\',\'' + vidSafe + '\',\'' + mkSafe + '\',this.value)">'
+    + '</div>';
+}
+
+// ── FOOTPRINT TAB: TOGGLE HANDLERS ────────────────────────────────────────────
+function _fpToggleReg(r)   { _fpState.expanded.reg[r]   = !_fpState.expanded.reg[r];   renderFootprint(); }
+function _fpTogglePlant(k) { _fpState.expanded.plant[k] = !_fpState.expanded.plant[k]; renderFootprint(); }
+function _fpToggleVeh(k)   { _fpState.expanded.veh[k]   = !_fpState.expanded.veh[k];   renderFootprint(); }
+
+// ── FOOTPRINT TAB: ALLOC EDIT & PERSIST ───────────────────────────────────────
+function _fpOnAllocInput(locKey, vid, mk, valK) {
+  var capYr = Math.round(Math.max(0, parseFloat(valK) || 0) * 1000);
+  if (!_fpState.allocOverrides[locKey]) _fpState.allocOverrides[locKey] = {};
+  if (!_fpState.allocOverrides[locKey][mk]) _fpState.allocOverrides[locKey][mk] = {};
+  _fpState.allocOverrides[locKey][mk][vid] = capYr;
+  _fpState.isDirty = true;
+  _fpPatchVehicleEffCap(locKey, vid);
+  // Debounce full re-render to refresh region/plant summary badges + save bar
+  if (_fpState._debounce) clearTimeout(_fpState._debounce);
+  _fpState._debounce = setTimeout(function() { _fpState._debounce = null; renderFootprint(); }, 1500);
+}
+
+function _fpPatchVehicleEffCap(locKey, vid) {
+  // Recompute modules for this vehicle applying current overrides
+  var dm = _deployedModules || {};
+  var spares = [];
+  var modUpdates = {};
+
+  // Find which facility type this locKey belongs to
+  ['vehicle_plants','powertrain_plants'].forEach(function(ft) {
+    var facData = (dm[ft] || {})[locKey] || {};
+    Object.keys(facData).forEach(function(mk) {
+      var entry = (facData[mk] || []).find(function(e) { return e.vehicle_id === vid; });
+      if (!entry) return;
+      var ov = (_fpState.allocOverrides[locKey] || {})[mk];
+      var capYr  = (ov && ov[vid] !== undefined) ? ov[vid] : (entry.capacity_yr || 0);
+      var usedYr = entry.est_volume_yr || 0;
+      var inst_k = Math.round(capYr / 1000);
+      var used_k = Math.round(usedYr / 1000);
+      var spare_k = Math.max(0, inst_k - used_k);
+      spares.push(spare_k);
+      modUpdates[mk] = { spare_k: spare_k, pct: inst_k > 0 ? Math.round(used_k / inst_k * 100) : 0 };
+    });
+  });
+
+  // Patch spare cells
+  Object.keys(modUpdates).forEach(function(mk) {
+    var spareEl = document.getElementById('fp-spare-' + locKey + '__' + vid + '__' + mk);
+    if (spareEl) {
+      spareEl.textContent = modUpdates[mk].spare_k + 'k';
+      spareEl.style.color = modUpdates[mk].spare_k > 0 ? 'var(--green)' : 'var(--red)';
+    }
+  });
+
+  // Patch effCap badge
+  var effCap_k = spares.length > 0 ? Math.min.apply(null, spares) : 0;
+  var effEl = document.getElementById('fp-eff-' + locKey + '__' + vid);
+  if (effEl) {
+    effEl.textContent = 'eff.cap: ' + effCap_k + 'k';
+    effEl.style.color = effCap_k > 0 ? 'var(--green)' : 'var(--red)';
+    effEl.style.background = effCap_k > 0 ? 'rgba(16,185,129,.1)' : 'rgba(224,58,82,.1)';
+  }
+}
+
+async function _fpSaveAllocations() {
+  if (!_fpState.isDirty) return;
+  // Invert structure: locKey→mk→vid  →  vid→{locKey→{mk→capYr}}
+  var byVehicle = {};
+  Object.keys(_fpState.allocOverrides).forEach(function(locKey) {
+    Object.keys(_fpState.allocOverrides[locKey]).forEach(function(mk) {
+      Object.keys(_fpState.allocOverrides[locKey][mk]).forEach(function(vid) {
+        if (!byVehicle[vid]) byVehicle[vid] = {};
+        if (!byVehicle[vid][locKey]) byVehicle[vid][locKey] = {};
+        byVehicle[vid][locKey][mk] = _fpState.allocOverrides[locKey][mk][vid];
+      });
+    });
+  });
+  try {
+    await Promise.all(Object.keys(byVehicle).map(function(vid) {
+      return fetch(API_URL + '/vehicles/' + vid, {
+        method: 'PATCH',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ operations_plan: { footprint_alloc_overrides: byVehicle[vid] } })
+      }).then(function(r) { if (!r.ok) throw new Error('save failed for ' + vid); });
+    }));
+    _fpState.isDirty = false;
+    renderFootprint();
+    if (typeof toast === 'function') toast('Allocation overrides saved');
+  } catch(e) {
+    console.error('_fpSaveAllocations error:', e);
+    if (typeof toast === 'function') toast('Save failed: ' + e.message);
+  }
+}
+
+function _fpDiscardAllocations() {
+  _fpState.allocOverrides = {};
+  _fpState.isDirty = false;
+  if (_fpState._debounce) { clearTimeout(_fpState._debounce); _fpState._debounce = null; }
+  renderFootprint();
 }
 
 function updateMfgKPIs() {
