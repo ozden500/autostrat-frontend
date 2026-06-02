@@ -14588,6 +14588,7 @@ var _propTopHatConfigs  = [];   // loaded by loadVehicleProposal for body-type d
 var _propICEPWTConfigs  = [];   // loaded by loadVehicleProposal for cylinder/hybrid dropdowns
 var _propEPWTConfigs    = [];   // loaded by loadVehicleProposal for perf-class dropdown
 var _deployedModules    = null; // cached deployed-module-capacities response for reuse UI
+var _footprintExpanded  = true;  // Section 7 global footprint panel collapsed state
 
 var _prop = {
   study:       null,   // selected study vehicle object
@@ -17793,6 +17794,99 @@ function renderOpsAggregateSummary(){
   _s('prop-ops-agg-vp','€'+Math.round(tVP)+'M');_s('prop-ops-agg-pwt','€'+Math.round(tPWT)+'M');_s('prop-ops-agg-sp','€'+Math.round(tSP)+'M');_s('prop-ops-agg-cost','€'+avg);
 }
 
+function _toggleFootprint(){
+  _footprintExpanded=!_footprintExpanded;
+  var b=document.getElementById('prop-ops-footprint-body');
+  var t=document.getElementById('prop-ops-footprint-toggle');
+  if(b)b.style.display=_footprintExpanded?'':'none';
+  if(t)t.textContent=_footprintExpanded?'▼':'▶';
+}
+
+function _renderGlobalFootprintPanel(){
+  var dm=_deployedModules||{};
+  var FAC_TYPES=['vehicle_plants','powertrain_plants','supplier_parks'];
+  var FAC_INFO={vehicle_plants:{icon:'🏭',label:'Vehicle Plant',col:'var(--gold)'},powertrain_plants:{icon:'⚙',label:'PWT Plant',col:'var(--orange)'},supplier_parks:{icon:'📦',label:'Supplier Park',col:'var(--cyan)'}};
+  var MOD_LABELS={platform:'Platform',tophat:'TopHat',eands:'E&S',pwt:'ICE PWT',pwt_assy:'PWT Marry',epwt:'e-PWT',battery:'Battery'};
+  var REGION_INFO={NA:{flag:'🌎',label:'NA'},EU:{flag:'🌍',label:'EU'},APAC:{flag:'🌏',label:'APAC'},MEA:{flag:'🌍',label:'MEA'},SA:{flag:'🌎',label:'SA'}};
+  var regionData={NA:{},EU:{},APAC:{},MEA:{},SA:{}};
+  var hasAny=false;
+  FAC_TYPES.forEach(function(ft){
+    var ftData=dm[ft]||{};
+    Object.keys(ftData).forEach(function(locKey){
+      var parts=locKey.split('_');
+      var region=parts[0];
+      var cc=parts.length>1?parts.slice(1).join('_'):null;
+      if(!regionData[region])return;
+      if(!regionData[region][locKey])regionData[region][locKey]={cc:cc,facTypes:{}};
+      var locEntry=regionData[region][locKey];
+      if(!locEntry.facTypes[ft])locEntry.facTypes[ft]={};
+      var modData=ftData[locKey];
+      Object.keys(modData).forEach(function(mk){
+        var entries=modData[mk]||[];
+        if(!entries.length)return;
+        hasAny=true;
+        var instK=0,maxVol=0,vNames=[];
+        entries.forEach(function(e){instK+=Math.round((e.capacity_yr||0)/1000);if((e.est_volume_yr||0)>maxVol)maxVol=e.est_volume_yr||0;if(e.vehicle_name&&vNames.indexOf(e.vehicle_name)<0)vNames.push(e.vehicle_name);});
+        locEntry.facTypes[ft][mk]={installed_k:instK,used_k:Math.round(maxVol/1000),vehicles:vNames};
+      });
+    });
+  });
+  var h='<div style="margin-bottom:18px;border:1px solid var(--border2);border-radius:4px;background:var(--s1);">';
+  h+='<div onclick="_toggleFootprint()" style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;cursor:pointer;user-select:none;">';
+  h+='<div style="font-family:DM Mono,monospace;font-size:10px;font-weight:700;color:var(--muted2);letter-spacing:1px;">🌐 EXISTING INDUSTRIAL FOOTPRINT</div>';
+  h+='<span id="prop-ops-footprint-toggle" style="font-family:DM Mono,monospace;font-size:10px;color:var(--muted2);">'+(_footprintExpanded?'▼':'▶')+'</span>';
+  h+='</div>';
+  h+='<div id="prop-ops-footprint-body" style="'+(!_footprintExpanded?'display:none;':'')+'padding:0 14px 14px 14px;">';
+  if(!hasAny){
+    h+='<div style="padding:10px;text-align:center;color:var(--muted2);font-size:9px;font-family:DM Mono,monospace;border:1px dashed var(--border2);border-radius:3px;">No existing footprint — this is your first vehicle in this session.</div>';
+  } else {
+    h+='<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:6px;">';
+    ['NA','EU','APAC','MEA','SA'].forEach(function(reg){
+      var ri=REGION_INFO[reg]||{flag:'🌐',label:reg};
+      var locMap=regionData[reg]||{};
+      var locKeys=Object.keys(locMap);
+      h+='<div style="min-width:0;">';
+      h+='<div style="font-family:DM Mono,monospace;font-size:8px;font-weight:700;color:var(--muted2);text-transform:uppercase;letter-spacing:0.5px;padding:4px 5px;background:var(--s2);border-radius:3px 3px 0 0;text-align:center;">'+ri.flag+' '+ri.label+'</div>';
+      h+='<div style="border:1px solid var(--border);border-top:none;border-radius:0 0 3px 3px;padding:5px;min-height:36px;">';
+      if(!locKeys.length){
+        h+='<div style="color:var(--border2);font-size:9px;text-align:center;padding:8px 0;font-family:DM Mono,monospace;">—</div>';
+      } else {
+        locKeys.forEach(function(locKey){
+          var le=locMap[locKey];
+          var countryName;
+          if(le.cc){var cl=INDUSTRIAL_COUNTRIES[reg]||[];var found=cl.find(function(c){return c.code===le.cc;});countryName=found?found.name:le.cc;}
+          else{countryName=reg+' (Regional)';}
+          h+='<div style="margin-bottom:7px;">';
+          h+='<div style="font-family:DM Mono,monospace;font-size:8px;font-weight:600;color:var(--text);margin-bottom:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">📍 '+countryName+'</div>';
+          FAC_TYPES.forEach(function(ft){
+            var ftMods=le.facTypes[ft];
+            if(!ftMods||!Object.keys(ftMods).length)return;
+            var fi=FAC_INFO[ft];
+            h+='<div style="margin-bottom:4px;padding:4px 5px;background:var(--s2);border-radius:3px;border-left:2px solid '+fi.col+';">';
+            h+='<div style="font-family:DM Mono,monospace;font-size:7px;font-weight:700;color:'+fi.col+';margin-bottom:3px;">'+fi.icon+' '+fi.label+'</div>';
+            Object.keys(ftMods).forEach(function(mk){
+              var md=ftMods[mk],inst=md.installed_k,used=md.used_k;
+              var pct=inst>0?Math.min(100,Math.round(used/inst*100)):0;
+              var barCol=pct>80?'var(--red)':pct>50?'var(--orange)':'var(--green)';
+              h+='<div style="margin-bottom:3px;">';
+              h+='<div style="display:flex;justify-content:space-between;font-family:DM Mono,monospace;font-size:7px;color:var(--muted2);margin-bottom:1px;"><span>'+(MOD_LABELS[mk]||mk)+'</span><span style="color:'+barCol+';">'+pct+'%</span></div>';
+              h+='<div style="position:relative;height:4px;background:var(--s1);border-radius:2px;overflow:hidden;border:1px solid var(--border);"><div style="position:absolute;left:0;top:0;height:100%;width:'+pct+'%;background:'+barCol+';border-radius:2px;"></div></div>';
+              h+='<div style="font-family:DM Mono,monospace;font-size:6px;color:var(--muted2);margin-top:1px;">'+used+'k / '+inst+'k'+(md.vehicles.length?' · '+md.vehicles.slice(0,2).join(', ')+(md.vehicles.length>2?' +':''):'')+'</div>';
+              h+='</div>';
+            });
+            h+='</div>';
+          });
+          h+='</div>';
+        });
+      }
+      h+='</div></div>';
+    });
+    h+='</div>';
+  }
+  h+='</div></div>';
+  return h;
+}
+
 async function buildOperationsSection() {
   var el = document.getElementById('prop-operations-content');
   if (!el) return;
@@ -17824,7 +17918,7 @@ async function buildOperationsSection() {
   var TH='font-family:DM Mono,monospace;font-size:8px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:8px;display:block;';
   var CB='border-radius:4px;padding:12px;cursor:pointer;border:1px solid var(--border2);background:var(--s2);';
   var CS='border-radius:4px;padding:12px;cursor:pointer;border:1px solid var(--gold);background:var(--s3);';
-  var html = '';
+  var html = _renderGlobalFootprintPanel();
   [{type:'vehicle_plants',label:'🏭 Vehicle Plants',col:'var(--gold)'},
    {type:'powertrain_plants',label:'⚙ Powertrain Plants',col:'var(--orange)'},
    {type:'supplier_parks',label:'📦 Supplier Parks',col:'var(--cyan)'}].forEach(function(sec){
