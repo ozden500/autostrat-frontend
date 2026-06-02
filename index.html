@@ -706,13 +706,16 @@ input[type=text]:focus,input[type=number]:focus{outline:none;border-color:var(--
 .fp-region-hdr  { display:flex;align-items:center;gap:8px;padding:8px 12px;background:var(--s2);cursor:pointer;user-select:none;border-radius:4px;margin-bottom:4px; }
 .fp-plant-hdr   { display:flex;align-items:center;gap:8px;padding:7px 12px 7px 24px;background:var(--s1);border:1px solid var(--border2);border-radius:3px;cursor:pointer;user-select:none;margin-bottom:2px; }
 .fp-veh-hdr     { display:flex;align-items:center;gap:8px;padding:6px 12px 6px 38px;border-top:1px solid rgba(255,255,255,.04);cursor:pointer;user-select:none;background:rgba(255,255,255,.01); }
-.fp-mod-row     { display:grid;grid-template-columns:130px 56px 56px 56px 1fr 60px;gap:6px;align-items:center;padding:4px 12px 4px 54px;border-top:1px solid rgba(255,255,255,.03);font-family:'DM Mono',monospace;font-size:8px; }
-.fp-mod-hdr-row { display:grid;grid-template-columns:130px 56px 56px 56px 1fr 60px;gap:6px;align-items:center;padding:3px 12px 3px 54px;font-family:'DM Mono',monospace;font-size:7px;color:var(--muted2);text-transform:uppercase;letter-spacing:.5px;background:rgba(0,0,0,.08); }
+.fp-mod-row     { display:grid;grid-template-columns:130px 56px 56px 56px 1fr 60px 28px;gap:6px;align-items:center;padding:4px 12px 4px 54px;border-top:1px solid rgba(255,255,255,.03);font-family:'DM Mono',monospace;font-size:8px; }
+.fp-mod-hdr-row { display:grid;grid-template-columns:130px 56px 56px 56px 1fr 60px 28px;gap:6px;align-items:center;padding:3px 12px 3px 54px;font-family:'DM Mono',monospace;font-size:7px;color:var(--muted2);text-transform:uppercase;letter-spacing:.5px;background:rgba(0,0,0,.08); }
 .fp-cap-bar     { height:5px;background:var(--s3);border-radius:3px;overflow:hidden; }
 .fp-cap-fill    { height:100%;border-radius:3px;transition:width .2s; }
 .fp-alloc-input { width:52px;background:var(--s2);border:1px solid var(--border2);color:var(--text);padding:2px 4px;font-family:'DM Mono',monospace;font-size:8px;text-align:right;border-radius:2px; }
 .fp-badge       { font-family:'DM Mono',monospace;font-size:8px;padding:2px 6px;border-radius:3px;white-space:nowrap; }
 .fp-save-bar    { display:flex;align-items:center;gap:10px;padding:8px 12px;background:rgba(200,164,60,.1);border:1px solid rgba(200,164,60,.3);border-radius:6px;margin-bottom:10px; }
+.fp-realloc-btn { background:transparent;border:1px solid var(--border2);color:var(--muted2);border-radius:2px;padding:1px 4px;font-size:9px;cursor:pointer; }
+.fp-realloc-btn:hover { color:var(--gold);border-color:var(--gold); }
+.fp-realloc-panel { margin:0 12px 6px 54px;background:var(--s1);border:1px solid var(--border2);border-radius:4px;padding:10px 12px;font-family:'DM Mono',monospace;font-size:9px; }
 
 .mfg-decision-form { background:var(--s1); border:1px solid var(--border); border-radius:8px; padding:16px; }
 .mfg-form-row { display:flex; gap:12px; margin-bottom:12px; }
@@ -13640,7 +13643,8 @@ var _fpState = {
   expanded: { reg:{}, plant:{}, veh:{} },
   allocOverrides: {},  // locKey → mk → vid → overrideCapYr (units/yr)
   isDirty: false,
-  _debounce: null
+  _debounce: null,
+  reallocOpen: null    // { locKey, mk } | null
 };
 
 const REGIONS = ['NA','SA','EU','MEA','APAC'];
@@ -13792,9 +13796,28 @@ async function saveMfgData() {
 }
 
 // ── FOOTPRINT TAB: DATA ASSEMBLY ──────────────────────────────────────────────
+function _fpMkLabel(mk) {
+  return mk === 'platform' ? 'Platform' : mk === 'tophat' ? 'TopHat' : mk === 'eands' ? 'E&S'
+       : mk === 'pwt_assy' ? 'PWT Assy' : mk === 'pwt' ? 'ICE PWT' : mk === 'epwt' ? 'e-PWT'
+       : mk === 'battery' ? 'Battery' : mk;
+}
+
+function _fpPoolCalc(entries, locKey, mk) {
+  // Pool installed = max(capacity_yr with overrides), pool used = sum(est_volume_yr)
+  var ovMap = (_fpState.allocOverrides[locKey] || {})[mk] || {};
+  var poolInstYr = Math.max.apply(null, entries.map(function(e) {
+    return ovMap[e.vehicle_id] !== undefined ? ovMap[e.vehicle_id] : (e.capacity_yr || 0);
+  }).concat([0]));
+  var poolUsedYr = entries.reduce(function(s,e){ return s + (e.est_volume_yr||0); }, 0);
+  var inst_k  = Math.round(poolInstYr / 1000);
+  var used_k  = Math.round(poolUsedYr / 1000);
+  var spare_k = Math.max(0, inst_k - used_k);
+  var pct     = inst_k > 0 ? Math.round(used_k / inst_k * 100) : 0;
+  return { inst_k, used_k, spare_k, pct };
+}
+
 function _fpBuildDataModel() {
   var dm = _deployedModules || {};
-  // Vehicle name lookup from activeVehicles (more current than deployed entries)
   var vNameMap = {}, vSegMap = {};
   (activeVehicles || []).forEach(function(v) { vNameMap[v.id] = v.name; vSegMap[v.id] = v.segment_code || ''; });
 
@@ -13808,39 +13831,58 @@ function _fpBuildDataModel() {
     var facType = plant.type === 'powertrain' ? 'powertrain_plants' : 'vehicle_plants';
     var facData = (dm[facType] || {})[locKey] || {};
 
-    // Collect all vehicle entries across all module keys at this location
     var vehicleMap = {};  // vid → {vid, vname, vseg, modules:{mk:{...}}}
+
+    // Process each module key at this facility location
     Object.keys(facData).forEach(function(mk) {
       var entries = facData[mk] || [];
+      if (!entries.length) return;
+      var pool = _fpPoolCalc(entries, locKey, mk);
+      var ovMap = (_fpState.allocOverrides[locKey] || {})[mk] || {};
+
       entries.forEach(function(e) {
         var vid = e.vehicle_id;
         if (!vid) return;
         if (!vehicleMap[vid]) {
-          vehicleMap[vid] = {
-            vid: vid,
-            vname: vNameMap[vid] || e.vehicle_name || vid,
-            vseg: vSegMap[vid] || '',
-            modules: {}
-          };
+          vehicleMap[vid] = { vid:vid, vname:vNameMap[vid]||e.vehicle_name||vid, vseg:vSegMap[vid]||'', modules:{} };
         }
-        // Apply allocation override if user has edited it
-        var overrideCap = (_fpState.allocOverrides[locKey] || {})[mk] && (_fpState.allocOverrides[locKey][mk][vid] !== undefined)
-          ? _fpState.allocOverrides[locKey][mk][vid]
-          : null;
-        var capYr   = overrideCap !== null ? overrideCap : (e.capacity_yr || 0);
-        var usedYr  = e.est_volume_yr || 0;
-        var inst_k  = Math.round(capYr / 1000);
-        var used_k  = Math.round(usedYr / 1000);
-        var spare_k = Math.max(0, inst_k - used_k);
-        var pct     = inst_k > 0 ? Math.round(used_k / inst_k * 100) : 0;
-        var mkLabel = mk === 'platform' ? 'Platform' : mk === 'tophat' ? 'TopHat' : mk === 'eands' ? 'E&S'
-                    : mk === 'pwt_assy' ? 'PWT Assy' : mk === 'pwt' ? 'ICE PWT' : mk === 'epwt' ? 'e-PWT'
-                    : mk === 'battery' ? 'Battery' : mk;
-        vehicleMap[vid].modules[mk] = { mk:mk, label:mkLabel, configKey:e.config_key||'', inst_k:inst_k, used_k:used_k, spare_k:spare_k, pct:pct };
+        vehicleMap[vid].modules[mk] = {
+          mk:mk, label:_fpMkLabel(mk), configKey:e.config_key||'',
+          inst_k:pool.inst_k, used_k:pool.used_k, spare_k:pool.spare_k, pct:pool.pct,
+          own_inst_k: Math.round((ovMap[vid]!==undefined ? ovMap[vid] : (e.capacity_yr||0)) / 1000),
+          _poolEntries: entries,
+          _ptLocKey: null   // same facility as vehicle plant
+        };
       });
     });
 
-    // Compute effective capacity per vehicle = min spare across all modules
+    // Cross-reference PWT modules from powertrain_plants for vehicle plant view
+    if (facType === 'vehicle_plants') {
+      var dmPT = dm['powertrain_plants'] || {};
+      Object.keys(dmPT).forEach(function(ptLocKey) {
+        var ptFac = dmPT[ptLocKey];
+        Object.keys(ptFac).forEach(function(mk) {
+          var entries = ptFac[mk] || [];
+          if (!entries.length) return;
+          var pool = _fpPoolCalc(entries, ptLocKey, mk);
+          var ovMap = (_fpState.allocOverrides[ptLocKey] || {})[mk] || {};
+
+          entries.forEach(function(e) {
+            var vid = e.vehicle_id;
+            if (!vehicleMap[vid]) return;  // only vehicles already seen at this vehicle plant
+            vehicleMap[vid].modules[mk] = {
+              mk:mk, label:_fpMkLabel(mk), configKey:e.config_key||'',
+              inst_k:pool.inst_k, used_k:pool.used_k, spare_k:pool.spare_k, pct:pool.pct,
+              own_inst_k: Math.round((ovMap[vid]!==undefined ? ovMap[vid] : (e.capacity_yr||0)) / 1000),
+              _poolEntries: entries,
+              _ptLocKey: ptLocKey  // realloc writes to this locKey
+            };
+          });
+        });
+      });
+    }
+
+    // Effective capacity per vehicle = min pool spare across all modules
     var vehicles = Object.values(vehicleMap).map(function(vd) {
       var spares = Object.values(vd.modules).map(function(m) { return m.spare_k; });
       vd.effCap_k = spares.length > 0 ? Math.min.apply(null, spares) : 0;
@@ -13957,8 +13999,17 @@ function _fpRenderVehicleBlock(locKey, vd) {
     return hdr + '<div style="padding:6px 12px 6px 54px;font-family:\'DM Mono\',monospace;font-size:9px;color:var(--muted2);">No module data available.</div>';
   }
 
-  var colHdr = '<div class="fp-mod-hdr-row"><span>Module</span><span>Inst</span><span>Used</span><span>Spare</span><span>Utilisation</span><span>Alloc k</span></div>';
-  var rows = modKeys.map(function(mk) { return _fpRenderModuleRow(locKey, vd.vid, mk, vd.modules[mk]); }).join('');
+  var colHdr = '<div class="fp-mod-hdr-row"><span>Module</span><span>Pool</span><span>All Used</span><span>Spare</span><span>Utilisation</span><span>My Alloc</span><span></span></div>';
+  var rows = modKeys.map(function(mk) {
+    var mdata = vd.modules[mk];
+    var row = _fpRenderModuleRow(locKey, vd.vid, mk, mdata);
+    var ro = _fpState.reallocOpen;
+    var rlk = mdata._ptLocKey || locKey;
+    if (ro && ro.locKey === rlk && ro.mk === mk) {
+      row += _fpRenderReallocPanel(rlk, mk, mdata._poolEntries || [], mdata.inst_k);
+    }
+    return row;
+  }).join('');
   return hdr + colHdr + rows;
 }
 
@@ -13966,10 +14017,12 @@ function _fpRenderModuleRow(locKey, vid, mk, md) {
   var barColor = md.pct < 85 ? 'var(--green)' : md.pct < 95 ? 'var(--gold)' : 'var(--red)';
   var spareColor = md.spare_k > 0 ? 'var(--green)' : 'var(--red)';
   var spareId = 'fp-spare-' + locKey + '__' + vid + '__' + mk;
-  // Escape locKey and vid for inline onclick (replace special chars)
-  var lkSafe = locKey.replace(/'/g,"\\'");
+  var lkSafe  = locKey.replace(/'/g,"\\'");
   var vidSafe = vid.replace(/'/g,"\\'");
-  var mkSafe = mk.replace(/'/g,"\\'");
+  var mkSafe  = mk.replace(/'/g,"\\'");
+  // Realloc writes to the powertrain plant locKey for PWT modules
+  var rlk = (md._ptLocKey || locKey).replace(/'/g,"\\'");
+  var ownVal = md.own_inst_k !== undefined ? md.own_inst_k : md.inst_k;
 
   return '<div class="fp-mod-row">'
     + '<span><span style="font-size:9px;">' + md.label + '</span>'
@@ -13979,9 +14032,11 @@ function _fpRenderModuleRow(locKey, vid, mk, md) {
     + '<span style="color:' + (md.used_k > 0 ? 'var(--gold)' : 'var(--muted2)') + ';">' + md.used_k + 'k</span>'
     + '<span id="' + spareId + '" style="color:' + spareColor + ';">' + md.spare_k + 'k</span>'
     + '<div class="fp-cap-bar"><div class="fp-cap-fill" style="width:' + Math.min(100, md.pct) + '%;background:' + barColor + ';"></div></div>'
-    + '<input class="fp-alloc-input" type="number" min="0" step="5" value="' + md.inst_k + '"'
-    + ' title="Allocated capacity (k units/yr)"'
-    + ' oninput="_fpOnAllocInput(\'' + lkSafe + '\',\'' + vidSafe + '\',\'' + mkSafe + '\',this.value)">'
+    + '<input class="fp-alloc-input" type="number" min="0" step="5" value="' + ownVal + '"'
+    + ' title="This vehicle\'s allocated capacity (k units/yr)"'
+    + ' oninput="_fpOnAllocInput(\'' + rlk + '\',\'' + vidSafe + '\',\'' + mkSafe + '\',this.value)">'
+    + '<button class="fp-realloc-btn" title="Reallocate between vehicles"'
+    + ' onclick="_fpToggleRealloc(\'' + rlk + '\',\'' + mkSafe + '\')">↕</button>'
     + '</div>';
 }
 
@@ -13989,6 +14044,85 @@ function _fpRenderModuleRow(locKey, vid, mk, md) {
 function _fpToggleReg(r)   { _fpState.expanded.reg[r]   = !_fpState.expanded.reg[r];   renderFootprint(); }
 function _fpTogglePlant(k) { _fpState.expanded.plant[k] = !_fpState.expanded.plant[k]; renderFootprint(); }
 function _fpToggleVeh(k)   { _fpState.expanded.veh[k]   = !_fpState.expanded.veh[k];   renderFootprint(); }
+
+// ── FOOTPRINT TAB: REALLOCATION PANEL ─────────────────────────────────────────
+function _fpGetPoolEntries(locKey, mk) {
+  var dm = _deployedModules || {};
+  for (var i=0, fts=['vehicle_plants','powertrain_plants','supplier_parks']; i<fts.length; i++) {
+    var entries = ((dm[fts[i]] || {})[locKey] || {})[mk];
+    if (entries && entries.length) return entries;
+  }
+  return [];
+}
+
+function _fpToggleRealloc(locKey, mk) {
+  var ro = _fpState.reallocOpen;
+  _fpState.reallocOpen = (ro && ro.locKey === locKey && ro.mk === mk) ? null : { locKey:locKey, mk:mk };
+  renderFootprint();
+}
+
+function _fpRenderReallocPanel(locKey, mk, poolEntries, poolInstK) {
+  var lkSafe = locKey.replace(/'/g,"\\'");
+  var mkSafe = mk.replace(/'/g,"\\'");
+  var ovMap = (_fpState.allocOverrides[locKey] || {})[mk] || {};
+  var rows = poolEntries.map(function(e) {
+    var allocK = Math.round((ovMap[e.vehicle_id]!==undefined ? ovMap[e.vehicle_id] : (e.capacity_yr||0)) / 1000);
+    var usedK  = Math.round((e.est_volume_yr||0) / 1000);
+    var vid = e.vehicle_id;
+    var vname = e.vehicle_name || vid;
+    var inputId = 'fp-ra-' + locKey + '__' + mk + '__' + vid;
+    return '<div style="display:grid;grid-template-columns:1fr 60px 44px 60px;gap:6px;align-items:center;padding:4px 0;border-top:1px solid rgba(255,255,255,.04);">'
+      + '<span style="font-size:9px;color:var(--text);">' + vname + '</span>'
+      + '<span style="color:var(--muted2);">' + usedK + 'k used</span>'
+      + '<span style="color:var(--muted2);text-align:right;">alloc:</span>'
+      + '<input id="' + inputId + '" class="fp-alloc-input" type="number" min="0" step="5" value="' + allocK + '"'
+      + ' oninput="_fpReallocUpdate(\'' + lkSafe + '\',\'' + mkSafe + '\')">'
+      + '</div>';
+  }).join('');
+
+  return '<div class="fp-realloc-panel">'
+    + '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">'
+    + '<span style="font-weight:600;color:var(--gold);">↕ Reallocate ' + _fpMkLabel(mk) + '</span>'
+    + '<span style="color:var(--muted2);font-size:8px;">at ' + locKey + ' · pool ' + poolInstK + 'k</span>'
+    + '</div>'
+    + '<div style="display:grid;grid-template-columns:1fr 60px 44px 60px;gap:6px;padding:2px 0;font-size:7px;color:var(--muted2);text-transform:uppercase;letter-spacing:.5px;">'
+    + '<span>Vehicle</span><span>Volume</span><span></span><span>Alloc k</span></div>'
+    + rows
+    + '<div id="fp-ra-total-' + locKey + '__' + mk + '" style="margin-top:6px;font-size:9px;"></div>'
+    + '<div style="display:flex;gap:6px;margin-top:8px;">'
+    + '<button onclick="_fpApplyRealloc(\'' + lkSafe + '\',\'' + mkSafe + '\')" style="background:var(--gold);color:#000;border:none;border-radius:3px;padding:3px 10px;font-size:9px;font-weight:700;cursor:pointer;">Apply</button>'
+    + '<button onclick="_fpToggleRealloc(\'' + lkSafe + '\',\'' + mkSafe + '\')" style="background:transparent;color:var(--muted2);border:1px solid var(--border2);border-radius:3px;padding:3px 8px;font-size:9px;cursor:pointer;">Cancel</button>'
+    + '</div></div>';
+}
+
+function _fpReallocUpdate(locKey, mk) {
+  var totalEl = document.getElementById('fp-ra-total-' + locKey + '__' + mk);
+  if (!totalEl) return;
+  var prefix = 'fp-ra-' + locKey + '__' + mk + '__';
+  var inputs = document.querySelectorAll('input[id^="' + prefix + '"]');
+  var sum = 0;
+  inputs.forEach(function(inp) { sum += parseFloat(inp.value) || 0; });
+  var poolInstK = Math.round(Math.max.apply(null,
+    _fpGetPoolEntries(locKey, mk).map(function(e){ return (e.capacity_yr||0)/1000; }).concat([0])
+  ));
+  var ok = sum <= poolInstK + 0.1;
+  totalEl.innerHTML = 'Total: <span style="color:' + (ok ? 'var(--green)' : 'var(--red)') + ';font-weight:600;">'
+    + sum + 'k</span> / ' + poolInstK + 'k pool' + (ok ? '' : ' ⚠ over');
+}
+
+function _fpApplyRealloc(locKey, mk) {
+  _fpGetPoolEntries(locKey, mk).forEach(function(e) {
+    var inp = document.getElementById('fp-ra-' + locKey + '__' + mk + '__' + e.vehicle_id);
+    if (!inp) return;
+    var capYr = Math.round(Math.max(0, parseFloat(inp.value) || 0) * 1000);
+    if (!_fpState.allocOverrides[locKey]) _fpState.allocOverrides[locKey] = {};
+    if (!_fpState.allocOverrides[locKey][mk]) _fpState.allocOverrides[locKey][mk] = {};
+    _fpState.allocOverrides[locKey][mk][e.vehicle_id] = capYr;
+  });
+  _fpState.isDirty = true;
+  _fpState.reallocOpen = null;
+  renderFootprint();
+}
 
 // ── FOOTPRINT TAB: ALLOC EDIT & PERSIST ───────────────────────────────────────
 function _fpOnAllocInput(locKey, vid, mk, valK) {
@@ -14004,29 +14138,29 @@ function _fpOnAllocInput(locKey, vid, mk, valK) {
 }
 
 function _fpPatchVehicleEffCap(locKey, vid) {
-  // Recompute modules for this vehicle applying current overrides
+  // Recompute pool-level spare for each module this vehicle participates in
   var dm = _deployedModules || {};
   var spares = [];
   var modUpdates = {};
 
-  // Find which facility type this locKey belongs to
-  ['vehicle_plants','powertrain_plants'].forEach(function(ft) {
-    var facData = (dm[ft] || {})[locKey] || {};
+  // Collect all locKeys to search: the vehicle plant locKey + all powertrain_plant locKeys
+  var searchTargets = [{ ft:'vehicle_plants', lk:locKey }];
+  Object.keys(dm['powertrain_plants'] || {}).forEach(function(ptLk) {
+    searchTargets.push({ ft:'powertrain_plants', lk:ptLk });
+  });
+
+  searchTargets.forEach(function(t) {
+    var facData = (dm[t.ft] || {})[t.lk] || {};
     Object.keys(facData).forEach(function(mk) {
-      var entry = (facData[mk] || []).find(function(e) { return e.vehicle_id === vid; });
-      if (!entry) return;
-      var ov = (_fpState.allocOverrides[locKey] || {})[mk];
-      var capYr  = (ov && ov[vid] !== undefined) ? ov[vid] : (entry.capacity_yr || 0);
-      var usedYr = entry.est_volume_yr || 0;
-      var inst_k = Math.round(capYr / 1000);
-      var used_k = Math.round(usedYr / 1000);
-      var spare_k = Math.max(0, inst_k - used_k);
-      spares.push(spare_k);
-      modUpdates[mk] = { spare_k: spare_k, pct: inst_k > 0 ? Math.round(used_k / inst_k * 100) : 0 };
+      var entries = facData[mk] || [];
+      if (!entries.find(function(e){ return e.vehicle_id === vid; })) return;
+      var pool = _fpPoolCalc(entries, t.lk, mk);
+      spares.push(pool.spare_k);
+      modUpdates[mk] = { spare_k: pool.spare_k };
     });
   });
 
-  // Patch spare cells
+  // Patch spare cells (IDs use vehicle plant locKey regardless of where PWT lives)
   Object.keys(modUpdates).forEach(function(mk) {
     var spareEl = document.getElementById('fp-spare-' + locKey + '__' + vid + '__' + mk);
     if (spareEl) {
@@ -14035,7 +14169,6 @@ function _fpPatchVehicleEffCap(locKey, vid) {
     }
   });
 
-  // Patch effCap badge
   var effCap_k = spares.length > 0 ? Math.min.apply(null, spares) : 0;
   var effEl = document.getElementById('fp-eff-' + locKey + '__' + vid);
   if (effEl) {
