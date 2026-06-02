@@ -13855,11 +13855,15 @@ function _fpBuildDataModel() {
         }
         var ckEntries = byConfigKey[e.config_key || ''] || [e];
         var pool = _fpPoolCalc(ckEntries, locKey, mk);
+        var ownInstK = Math.round((ovMap[vid]!==undefined ? ovMap[vid] : (e.capacity_yr||0)) / 1000);
+        var ownUsedK = Math.round((e.est_volume_yr||0) / 1000);
         vehicleMap[vid].modules[mk] = {
           mk:mk, label:_fpMkLabel(mk), configKey:e.config_key||'',
           inst_k:pool.inst_k, used_k:pool.used_k, spare_k:pool.spare_k, pct:pool.pct,
-          own_inst_k: Math.round((ovMap[vid]!==undefined ? ovMap[vid] : (e.capacity_yr||0)) / 1000),
-          _poolEntries: ckEntries,  // only same-design vehicles share a pool
+          own_inst_k: ownInstK,
+          own_used_k: ownUsedK,
+          _poolSize: ckEntries.length,
+          _poolEntries: ckEntries,
           _ptLocKey: null
         };
       });
@@ -13887,10 +13891,14 @@ function _fpBuildDataModel() {
             if (!vehicleMap[vid]) return;
             var ckEntries = byConfigKey[e.config_key || ''] || [e];
             var pool = _fpPoolCalc(ckEntries, ptLocKey, mk);
+            var ownInstK = Math.round((ovMap[vid]!==undefined ? ovMap[vid] : (e.capacity_yr||0)) / 1000);
+            var ownUsedK = Math.round((e.est_volume_yr||0) / 1000);
             vehicleMap[vid].modules[mk] = {
               mk:mk, label:_fpMkLabel(mk), configKey:e.config_key||'',
               inst_k:pool.inst_k, used_k:pool.used_k, spare_k:pool.spare_k, pct:pool.pct,
-              own_inst_k: Math.round((ovMap[vid]!==undefined ? ovMap[vid] : (e.capacity_yr||0)) / 1000),
+              own_inst_k: ownInstK,
+              own_used_k: ownUsedK,
+              _poolSize: ckEntries.length,
               _poolEntries: ckEntries,
               _ptLocKey: ptLocKey
             };
@@ -14016,7 +14024,7 @@ function _fpRenderVehicleBlock(locKey, vd) {
     return hdr + '<div style="padding:6px 12px 6px 54px;font-family:\'DM Mono\',monospace;font-size:9px;color:var(--muted2);">No module data available.</div>';
   }
 
-  var colHdr = '<div class="fp-mod-hdr-row"><span>Module</span><span>Pool</span><span>All Used</span><span>Spare</span><span>Utilisation</span><span>My Alloc</span><span></span></div>';
+  var colHdr = '<div class="fp-mod-hdr-row"><span>Module</span><span>Pool</span><span>Used</span><span>Reserved</span><span>Utilisation</span><span>My Alloc</span><span></span></div>';
   var rows = modKeys.map(function(mk) {
     var mdata = vd.modules[mk];
     var row = _fpRenderModuleRow(locKey, vd.vid, mk, mdata);
@@ -14031,25 +14039,32 @@ function _fpRenderVehicleBlock(locKey, vd) {
 }
 
 function _fpRenderModuleRow(locKey, vid, mk, md) {
-  var barColor = md.pct < 85 ? 'var(--green)' : md.pct < 95 ? 'var(--gold)' : 'var(--red)';
-  var spareColor = md.spare_k > 0 ? 'var(--green)' : 'var(--red)';
-  var spareId = 'fp-spare-' + locKey + '__' + vid + '__' + mk;
-  var lkSafe  = locKey.replace(/'/g,"\\'");
-  var vidSafe = vid.replace(/'/g,"\\'");
-  var mkSafe  = mk.replace(/'/g,"\\'");
-  var rlk     = (md._ptLocKey || locKey).replace(/'/g,"\\'");
-  var ckSafe  = (md.configKey || '').replace(/'/g,"\\'");
-  var ownVal  = md.own_inst_k !== undefined ? md.own_inst_k : md.inst_k;
+  var ownInst = md.own_inst_k !== undefined ? md.own_inst_k : md.inst_k;
+  var ownUsed = md.own_used_k !== undefined ? md.own_used_k : 0;
+  var reserved = Math.max(0, ownInst - ownUsed);
+  var ownPct   = ownInst > 0 ? Math.round(ownUsed / ownInst * 100) : 0;
+  var barColor = ownPct < 85 ? 'var(--green)' : ownPct < 95 ? 'var(--gold)' : 'var(--red)';
+  var rsvColor = reserved > 0 ? 'var(--green)' : 'var(--muted2)';
+  var rsvId    = 'fp-spare-' + locKey + '__' + vid + '__' + mk;  // keep ID for patch fn
+  var lkSafe   = locKey.replace(/'/g,"\\'");
+  var vidSafe  = vid.replace(/'/g,"\\'");
+  var mkSafe   = mk.replace(/'/g,"\\'");
+  var rlk      = (md._ptLocKey || locKey).replace(/'/g,"\\'");
+  var ckSafe   = (md.configKey || '').replace(/'/g,"\\'");
+  // Pool column: show total only when multiple vehicles share this module design
+  var poolCell = (md._poolSize > 1)
+    ? '<span style="color:var(--muted2);">' + md.inst_k + 'k</span>'
+    : '<span style="color:var(--muted2);">—</span>';
 
   return '<div class="fp-mod-row">'
     + '<span><span style="font-size:9px;">' + md.label + '</span>'
     + (md.configKey ? '<br><span style="font-size:7px;color:var(--muted2);">' + md.configKey + '</span>' : '')
     + '</span>'
-    + '<span style="color:var(--muted2);">' + md.inst_k + 'k</span>'
-    + '<span style="color:' + (md.used_k > 0 ? 'var(--gold)' : 'var(--muted2)') + ';">' + md.used_k + 'k</span>'
-    + '<span id="' + spareId + '" style="color:' + spareColor + ';">' + md.spare_k + 'k</span>'
-    + '<div class="fp-cap-bar"><div class="fp-cap-fill" style="width:' + Math.min(100, md.pct) + '%;background:' + barColor + ';"></div></div>'
-    + '<input class="fp-alloc-input" type="number" min="0" step="5" value="' + ownVal + '"'
+    + poolCell
+    + '<span style="color:' + (ownUsed > 0 ? 'var(--gold)' : 'var(--muted2)') + ';">' + ownUsed + 'k</span>'
+    + '<span id="' + rsvId + '" style="color:' + rsvColor + ';">' + reserved + 'k</span>'
+    + '<div class="fp-cap-bar"><div class="fp-cap-fill" style="width:' + Math.min(100, ownPct) + '%;background:' + barColor + ';"></div></div>'
+    + '<input class="fp-alloc-input" type="number" min="0" step="5" value="' + ownInst + '"'
     + ' title="This vehicle\'s allocated capacity (k units/yr)"'
     + ' oninput="_fpOnAllocInput(\'' + rlk + '\',\'' + vidSafe + '\',\'' + mkSafe + '\',this.value)">'
     + '<button class="fp-realloc-btn" title="Reallocate between vehicles"'
@@ -14087,34 +14102,42 @@ function _fpToggleRealloc(locKey, mk, configKey) {
 function _fpRenderReallocPanel(locKey, mk, poolEntries, poolInstK, configKey) {
   var lkSafe = locKey.replace(/'/g,"\\'");
   var mkSafe = mk.replace(/'/g,"\\'");
-  var ovMap = (_fpState.allocOverrides[locKey] || {})[mk] || {};
+  var ckSafe = (configKey||'').replace(/'/g,"\\'");
+  var ovMap  = (_fpState.allocOverrides[locKey] || {})[mk] || {};
+  var totalUsed = 0;
   var rows = poolEntries.map(function(e) {
     var allocK = Math.round((ovMap[e.vehicle_id]!==undefined ? ovMap[e.vehicle_id] : (e.capacity_yr||0)) / 1000);
     var usedK  = Math.round((e.est_volume_yr||0) / 1000);
-    var vid = e.vehicle_id;
-    var vname = e.vehicle_name || vid;
-    var inputId = 'fp-ra-' + locKey + '__' + mk + '__' + vid;
-    return '<div style="display:grid;grid-template-columns:1fr 60px 44px 60px;gap:6px;align-items:center;padding:4px 0;border-top:1px solid rgba(255,255,255,.04);">'
-      + '<span style="font-size:9px;color:var(--text);">' + vname + '</span>'
-      + '<span style="color:var(--muted2);">' + usedK + 'k used</span>'
+    totalUsed += usedK;
+    var inputId = 'fp-ra-' + locKey + '__' + mk + '__' + e.vehicle_id;
+    return '<div style="display:grid;grid-template-columns:1fr 56px 44px 60px;gap:6px;align-items:center;padding:4px 0;border-top:1px solid rgba(255,255,255,.04);">'
+      + '<span style="font-size:9px;color:var(--text);">' + (e.vehicle_name || e.vehicle_id) + '</span>'
+      + '<span style="color:var(--gold);">' + usedK + 'k</span>'
       + '<span style="color:var(--muted2);text-align:right;">alloc:</span>'
       + '<input id="' + inputId + '" class="fp-alloc-input" type="number" min="0" step="5" value="' + allocK + '"'
       + ' oninput="_fpReallocUpdate(\'' + lkSafe + '\',\'' + mkSafe + '\')">'
       + '</div>';
   }).join('');
 
+  var totalLine = '<div style="display:grid;grid-template-columns:1fr 56px 1fr;gap:6px;padding:5px 0;border-top:1px solid var(--border2);margin-top:4px;">'
+    + '<span style="font-size:8px;color:var(--muted2);font-weight:600;">Total used</span>'
+    + '<span style="color:var(--gold);font-weight:600;">' + totalUsed + 'k</span>'
+    + '<span style="font-size:8px;color:var(--muted2);">/ ' + poolInstK + 'k installed</span>'
+    + '</div>';
+
   return '<div class="fp-realloc-panel">'
     + '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">'
     + '<span style="font-weight:600;color:var(--gold);">↕ Reallocate ' + _fpMkLabel(mk) + '</span>'
-    + '<span style="color:var(--muted2);font-size:8px;">at ' + locKey + ' · pool ' + poolInstK + 'k</span>'
+    + '<span style="color:var(--muted2);font-size:8px;">at ' + locKey + ' · pool ' + poolInstK + 'k installed</span>'
     + '</div>'
-    + '<div style="display:grid;grid-template-columns:1fr 60px 44px 60px;gap:6px;padding:2px 0;font-size:7px;color:var(--muted2);text-transform:uppercase;letter-spacing:.5px;">'
-    + '<span>Vehicle</span><span>Volume</span><span></span><span>Alloc k</span></div>'
+    + '<div style="display:grid;grid-template-columns:1fr 56px 44px 60px;gap:6px;padding:2px 0;font-size:7px;color:var(--muted2);text-transform:uppercase;letter-spacing:.5px;">'
+    + '<span>Vehicle</span><span>Used</span><span></span><span>Alloc k</span></div>'
     + rows
-    + '<div id="fp-ra-total-' + locKey + '__' + mk + '" style="margin-top:6px;font-size:9px;"></div>'
+    + totalLine
+    + '<div id="fp-ra-total-' + locKey + '__' + mk + '" style="font-size:9px;"></div>'
     + '<div style="display:flex;gap:6px;margin-top:8px;">'
     + '<button onclick="_fpApplyRealloc(\'' + lkSafe + '\',\'' + mkSafe + '\')" style="background:var(--gold);color:#000;border:none;border-radius:3px;padding:3px 10px;font-size:9px;font-weight:700;cursor:pointer;">Apply</button>'
-    + '<button onclick="_fpToggleRealloc(\'' + lkSafe + '\',\'' + mkSafe + '\')" style="background:transparent;color:var(--muted2);border:1px solid var(--border2);border-radius:3px;padding:3px 8px;font-size:9px;cursor:pointer;">Cancel</button>'
+    + '<button onclick="_fpToggleRealloc(\'' + lkSafe + '\',\'' + mkSafe + '\',\'' + ckSafe + '\')" style="background:transparent;color:var(--muted2);border:1px solid var(--border2);border-radius:3px;padding:3px 8px;font-size:9px;cursor:pointer;">Cancel</button>'
     + '</div></div>';
 }
 
@@ -14178,19 +14201,24 @@ function _fpPatchVehicleEffCap(locKey, vid) {
     var facData = (dm[t.ft] || {})[t.lk] || {};
     Object.keys(facData).forEach(function(mk) {
       var entries = facData[mk] || [];
-      if (!entries.find(function(e){ return e.vehicle_id === vid; })) return;
+      var entry = entries.find(function(e){ return e.vehicle_id === vid; });
+      if (!entry) return;
       var pool = _fpPoolCalc(entries, t.lk, mk);
       spares.push(pool.spare_k);
-      modUpdates[mk] = { spare_k: pool.spare_k };
+      // Reserved = this vehicle's own_inst - own_used
+      var ovMk = (_fpState.allocOverrides[t.lk] || {})[mk] || {};
+      var ownInst = Math.round((ovMk[vid]!==undefined ? ovMk[vid] : (entry.capacity_yr||0)) / 1000);
+      var ownUsed = Math.round((entry.est_volume_yr||0) / 1000);
+      modUpdates[mk] = { reserved: Math.max(0, ownInst - ownUsed) };
     });
   });
 
-  // Patch spare cells (IDs use vehicle plant locKey regardless of where PWT lives)
+  // Patch reserved cells (DOM IDs still use 'fp-spare-' prefix)
   Object.keys(modUpdates).forEach(function(mk) {
-    var spareEl = document.getElementById('fp-spare-' + locKey + '__' + vid + '__' + mk);
-    if (spareEl) {
-      spareEl.textContent = modUpdates[mk].spare_k + 'k';
-      spareEl.style.color = modUpdates[mk].spare_k > 0 ? 'var(--green)' : 'var(--red)';
+    var rsvEl = document.getElementById('fp-spare-' + locKey + '__' + vid + '__' + mk);
+    if (rsvEl) {
+      rsvEl.textContent = modUpdates[mk].reserved + 'k';
+      rsvEl.style.color = modUpdates[mk].reserved > 0 ? 'var(--green)' : 'var(--muted2)';
     }
   });
 
