@@ -13835,23 +13835,32 @@ function _fpBuildDataModel() {
 
     // Process each module key at this facility location
     Object.keys(facData).forEach(function(mk) {
-      var entries = facData[mk] || [];
-      if (!entries.length) return;
-      var pool = _fpPoolCalc(entries, locKey, mk);
+      var allEntries = facData[mk] || [];
+      if (!allEntries.length) return;
       var ovMap = (_fpState.allocOverrides[locKey] || {})[mk] || {};
 
-      entries.forEach(function(e) {
+      // Group entries by config_key — each unique module design forms its own capacity pool
+      var byConfigKey = {};
+      allEntries.forEach(function(e) {
+        var ck = e.config_key || '';
+        if (!byConfigKey[ck]) byConfigKey[ck] = [];
+        byConfigKey[ck].push(e);
+      });
+
+      allEntries.forEach(function(e) {
         var vid = e.vehicle_id;
         if (!vid) return;
         if (!vehicleMap[vid]) {
           vehicleMap[vid] = { vid:vid, vname:vNameMap[vid]||e.vehicle_name||vid, vseg:vSegMap[vid]||'', modules:{} };
         }
+        var ckEntries = byConfigKey[e.config_key || ''] || [e];
+        var pool = _fpPoolCalc(ckEntries, locKey, mk);
         vehicleMap[vid].modules[mk] = {
           mk:mk, label:_fpMkLabel(mk), configKey:e.config_key||'',
           inst_k:pool.inst_k, used_k:pool.used_k, spare_k:pool.spare_k, pct:pool.pct,
           own_inst_k: Math.round((ovMap[vid]!==undefined ? ovMap[vid] : (e.capacity_yr||0)) / 1000),
-          _poolEntries: entries,
-          _ptLocKey: null   // same facility as vehicle plant
+          _poolEntries: ckEntries,  // only same-design vehicles share a pool
+          _ptLocKey: null
         };
       });
     });
@@ -13862,20 +13871,28 @@ function _fpBuildDataModel() {
       Object.keys(dmPT).forEach(function(ptLocKey) {
         var ptFac = dmPT[ptLocKey];
         Object.keys(ptFac).forEach(function(mk) {
-          var entries = ptFac[mk] || [];
-          if (!entries.length) return;
-          var pool = _fpPoolCalc(entries, ptLocKey, mk);
+          var allEntries = ptFac[mk] || [];
+          if (!allEntries.length) return;
           var ovMap = (_fpState.allocOverrides[ptLocKey] || {})[mk] || {};
 
-          entries.forEach(function(e) {
+          var byConfigKey = {};
+          allEntries.forEach(function(e) {
+            var ck = e.config_key || '';
+            if (!byConfigKey[ck]) byConfigKey[ck] = [];
+            byConfigKey[ck].push(e);
+          });
+
+          allEntries.forEach(function(e) {
             var vid = e.vehicle_id;
-            if (!vehicleMap[vid]) return;  // only vehicles already seen at this vehicle plant
+            if (!vehicleMap[vid]) return;
+            var ckEntries = byConfigKey[e.config_key || ''] || [e];
+            var pool = _fpPoolCalc(ckEntries, ptLocKey, mk);
             vehicleMap[vid].modules[mk] = {
               mk:mk, label:_fpMkLabel(mk), configKey:e.config_key||'',
               inst_k:pool.inst_k, used_k:pool.used_k, spare_k:pool.spare_k, pct:pool.pct,
               own_inst_k: Math.round((ovMap[vid]!==undefined ? ovMap[vid] : (e.capacity_yr||0)) / 1000),
-              _poolEntries: entries,
-              _ptLocKey: ptLocKey  // realloc writes to this locKey
+              _poolEntries: ckEntries,
+              _ptLocKey: ptLocKey
             };
           });
         });
@@ -14005,8 +14022,8 @@ function _fpRenderVehicleBlock(locKey, vd) {
     var row = _fpRenderModuleRow(locKey, vd.vid, mk, mdata);
     var ro = _fpState.reallocOpen;
     var rlk = mdata._ptLocKey || locKey;
-    if (ro && ro.locKey === rlk && ro.mk === mk) {
-      row += _fpRenderReallocPanel(rlk, mk, mdata._poolEntries || [], mdata.inst_k);
+    if (ro && ro.locKey === rlk && ro.mk === mk && ro.configKey === (mdata.configKey||'')) {
+      row += _fpRenderReallocPanel(rlk, mk, mdata._poolEntries || [], mdata.inst_k, mdata.configKey||'');
     }
     return row;
   }).join('');
@@ -14020,9 +14037,9 @@ function _fpRenderModuleRow(locKey, vid, mk, md) {
   var lkSafe  = locKey.replace(/'/g,"\\'");
   var vidSafe = vid.replace(/'/g,"\\'");
   var mkSafe  = mk.replace(/'/g,"\\'");
-  // Realloc writes to the powertrain plant locKey for PWT modules
-  var rlk = (md._ptLocKey || locKey).replace(/'/g,"\\'");
-  var ownVal = md.own_inst_k !== undefined ? md.own_inst_k : md.inst_k;
+  var rlk     = (md._ptLocKey || locKey).replace(/'/g,"\\'");
+  var ckSafe  = (md.configKey || '').replace(/'/g,"\\'");
+  var ownVal  = md.own_inst_k !== undefined ? md.own_inst_k : md.inst_k;
 
   return '<div class="fp-mod-row">'
     + '<span><span style="font-size:9px;">' + md.label + '</span>'
@@ -14036,7 +14053,7 @@ function _fpRenderModuleRow(locKey, vid, mk, md) {
     + ' title="This vehicle\'s allocated capacity (k units/yr)"'
     + ' oninput="_fpOnAllocInput(\'' + rlk + '\',\'' + vidSafe + '\',\'' + mkSafe + '\',this.value)">'
     + '<button class="fp-realloc-btn" title="Reallocate between vehicles"'
-    + ' onclick="_fpToggleRealloc(\'' + rlk + '\',\'' + mkSafe + '\')">↕</button>'
+    + ' onclick="_fpToggleRealloc(\'' + rlk + '\',\'' + mkSafe + '\',\'' + ckSafe + '\')">↕</button>'
     + '</div>';
 }
 
@@ -14046,22 +14063,28 @@ function _fpTogglePlant(k) { _fpState.expanded.plant[k] = !_fpState.expanded.pla
 function _fpToggleVeh(k)   { _fpState.expanded.veh[k]   = !_fpState.expanded.veh[k];   renderFootprint(); }
 
 // ── FOOTPRINT TAB: REALLOCATION PANEL ─────────────────────────────────────────
-function _fpGetPoolEntries(locKey, mk) {
+function _fpGetPoolEntries(locKey, mk, configKey) {
   var dm = _deployedModules || {};
   for (var i=0, fts=['vehicle_plants','powertrain_plants','supplier_parks']; i<fts.length; i++) {
     var entries = ((dm[fts[i]] || {})[locKey] || {})[mk];
-    if (entries && entries.length) return entries;
+    if (entries && entries.length) {
+      // Filter to same config_key pool if specified
+      return (configKey !== undefined && configKey !== null)
+        ? entries.filter(function(e){ return (e.config_key||'') === configKey; })
+        : entries;
+    }
   }
   return [];
 }
 
-function _fpToggleRealloc(locKey, mk) {
+function _fpToggleRealloc(locKey, mk, configKey) {
   var ro = _fpState.reallocOpen;
-  _fpState.reallocOpen = (ro && ro.locKey === locKey && ro.mk === mk) ? null : { locKey:locKey, mk:mk };
+  var same = ro && ro.locKey === locKey && ro.mk === mk && ro.configKey === (configKey||'');
+  _fpState.reallocOpen = same ? null : { locKey:locKey, mk:mk, configKey:configKey||'' };
   renderFootprint();
 }
 
-function _fpRenderReallocPanel(locKey, mk, poolEntries, poolInstK) {
+function _fpRenderReallocPanel(locKey, mk, poolEntries, poolInstK, configKey) {
   var lkSafe = locKey.replace(/'/g,"\\'");
   var mkSafe = mk.replace(/'/g,"\\'");
   var ovMap = (_fpState.allocOverrides[locKey] || {})[mk] || {};
@@ -14102,8 +14125,9 @@ function _fpReallocUpdate(locKey, mk) {
   var inputs = document.querySelectorAll('input[id^="' + prefix + '"]');
   var sum = 0;
   inputs.forEach(function(inp) { sum += parseFloat(inp.value) || 0; });
+  var ro = _fpState.reallocOpen || {};
   var poolInstK = Math.round(Math.max.apply(null,
-    _fpGetPoolEntries(locKey, mk).map(function(e){ return (e.capacity_yr||0)/1000; }).concat([0])
+    _fpGetPoolEntries(locKey, mk, ro.configKey).map(function(e){ return (e.capacity_yr||0)/1000; }).concat([0])
   ));
   var ok = sum <= poolInstK + 0.1;
   totalEl.innerHTML = 'Total: <span style="color:' + (ok ? 'var(--green)' : 'var(--red)') + ';font-weight:600;">'
@@ -14111,7 +14135,8 @@ function _fpReallocUpdate(locKey, mk) {
 }
 
 function _fpApplyRealloc(locKey, mk) {
-  _fpGetPoolEntries(locKey, mk).forEach(function(e) {
+  var ro = _fpState.reallocOpen || {};
+  _fpGetPoolEntries(locKey, mk, ro.configKey).forEach(function(e) {
     var inp = document.getElementById('fp-ra-' + locKey + '__' + mk + '__' + e.vehicle_id);
     if (!inp) return;
     var capYr = Math.round(Math.max(0, parseFloat(inp.value) || 0) * 1000);
