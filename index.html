@@ -13752,12 +13752,20 @@ async function loadMfgFootprint(forceRefresh = false) {
     mfgPlants = [];
     mfgPipeline = [];
   }
-  // Fetch deployed module capacities if not already loaded (normally loaded by Vehicle Proposal wizard)
-  if (!_deployedModules && teamId && sessionId) {
+  // Always re-fetch deployed module capacities (may be stale or from a different team context)
+  if (teamId && sessionId) {
     try {
       var _dmr2 = await fetch(API_URL+'/teams/'+teamId+'/deployed-module-capacities?session_id='+sessionId);
       if (_dmr2.ok) _deployedModules = await _dmr2.json();
+      else _deployedModules = {};
     } catch(e2) { _deployedModules = {}; }
+  }
+  // Re-fetch vehicles so names/specs match the current team context
+  if (teamId) {
+    try {
+      var _avr = await fetch(API_URL+'/teams/'+teamId+'/vehicles');
+      if (_avr.ok) { var _avd = await _avr.json(); activeVehicles = _avd.vehicles || activeVehicles || []; }
+    } catch(e3) {}
   }
   // Restore saved allocation overrides from vehicle configs
   _fpState.allocOverrides = {};
