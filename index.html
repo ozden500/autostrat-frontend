@@ -17804,10 +17804,17 @@ function _toggleFootprint(){
 }
 
 function _getConfiguredModuleKeys(){
+  // Returns module keys that have EXISTING capacity to show in the footprint.
+  // 'reuse' and 'modify' share existing infrastructure; 'new' starts from scratch.
   var pk=_pwtKeyFromProp(),isEv=pk==='bev_only',isHybrid=pk==='ice_and_bev',hasIce=!isEv,hasBev=isEv||isHybrid;
-  var keys=['platform','tophat','eands'];
-  if(hasIce){keys.push('pwt');keys.push('pwt_assy');}
-  if(hasBev){keys.push('epwt');keys.push('battery');}
+  function _reused(m){return m&&(m.mode==='reuse'||m.mode==='modify');}
+  var keys=[];
+  if(_reused(_prop.platform)) keys.push('platform');
+  if(_reused(_prop.tophat))   keys.push('tophat');
+  if(_reused(_prop.eands))    keys.push('eands');
+  if(hasIce && _reused(_prop.pwt)){keys.push('pwt');keys.push('pwt_assy');}
+  if(hasBev && _reused(_prop.epwt))    keys.push('epwt');
+  if(hasBev && _reused(_prop.battery)) keys.push('battery');
   return keys;
 }
 
@@ -17858,7 +17865,7 @@ function _renderGlobalFootprintGrid(){
   if(_footprintFilterCurrent){
     var badges=configuredKeys.map(function(k){return '<span style="font-family:DM Mono,monospace;font-size:7px;padding:1px 5px;border-radius:2px;background:rgba(200,164,60,0.12);border:1px solid rgba(200,164,60,0.35);color:var(--gold);">'+(MOD_LABELS[k]||k)+'</span>';}).join(' ');
     h+='<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:8px;padding:5px 7px;background:rgba(200,164,60,0.06);border:1px solid rgba(200,164,60,0.20);border-radius:3px;">';
-    h+='<span style="font-family:DM Mono,monospace;font-size:7px;color:var(--gold);font-weight:700;white-space:nowrap;">FILTER ACTIVE —</span>'+badges;
+    h+='<span style="font-family:DM Mono,monospace;font-size:7px;color:var(--gold);font-weight:700;white-space:nowrap;">REUSED / MODIFIED MODULES —</span>'+(badges||'<span style="font-family:DM Mono,monospace;font-size:7px;color:var(--muted2);">none (all new)</span>');
     h+='</div>';
   }
   if(!hasAny){
