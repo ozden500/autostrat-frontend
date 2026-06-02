@@ -8255,7 +8255,7 @@ function _buildBizCasePanels(byYear,mktEcon,modTpc,modRd,mktsBC,plants,tpcNum,rd
   // ── PANEL 3: INVESTMENT ───────────────────────────────────────────────────
   html += ph('03 — INVESTMENT · R&D & PLANT CAPEX', 'var(--orange)');
   var maxRd=Math.max.apply(null,modRd.map(function(m){return m.rd;}))||1;
-  var maxCpx=Math.max.apply(null,(plants||[]).filter(function(p){return p._manuf;}).map(function(p){return p._manuf.total_investment_m;}))||1;
+  var maxCpx=Math.max.apply(null,(plants||[]).filter(function(p){return p._manuf;}).map(function(p){return p._manuf.grand_total_inv_m||p._manuf.total_investment_m||0;}))||1;
   html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">';
   // R&D col
   html += '<div>';
@@ -8281,7 +8281,7 @@ function _buildBizCasePanels(byYear,mktEcon,modTpc,modRd,mktsBC,plants,tpcNum,rd
   else {
     plants.forEach(function(p,i){
       if (!p._manuf) return;
-      var inv=p._manuf.total_investment_m;
+      var inv=(p._manuf.grand_total_inv_m||p._manuf.total_investment_m||0);
       html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:5px;">'+
         '<div style="'+TS+'color:var(--muted2);width:100px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+(p.country_name||'Plant '+(i+1))+'</div>'+
         '<div style="flex:1;height:8px;background:var(--border2);border-radius:2px;">'+
@@ -13003,7 +13003,7 @@ function _renderTcModCostTab() {
   var rdTotalVals  = vs.map(function(v){ var mc=_tcModCosts[v.id]; if(!mc||!mc.modules) return NaN; var s=0; bomSlots.forEach(function(sl){ s+=(mc.modules[sl]||{}).total_rd_spend_m||0; }); return s; }).filter(function(x){ return !isNaN(x)&&x>0; });
   var rdTotalRank  = rdTotalVals.length  ? {best:Math.min.apply(null,rdTotalVals), worst:Math.max.apply(null,rdTotalVals)}  : null;
 
-  var capTotalVals = vs.map(function(v){ var pl=((v.operations_plan||{}).plants)||[]; return pl.reduce(function(s,p){ return s+((p._manuf||{}).total_investment_m||0); },0); }).filter(function(x){ return x>0; });
+  var capTotalVals = vs.map(function(v){ var pl=((v.operations_plan||{}).plants)||[]; return pl.reduce(function(s,p){ return s+((p._manuf||{}).grand_total_inv_m||(p._manuf||{}).total_investment_m||0); },0); }).filter(function(x){ return x>0; });
   var capTotalRank = capTotalVals.length ? {best:Math.min.apply(null,capTotalVals),worst:Math.max.apply(null,capTotalVals)} : null;
 
   var h = secHdr('Standard Configuration Cost — BOM &amp; Investment');
@@ -13032,7 +13032,6 @@ function _renderTcModCostTab() {
         var _p0 = plants[0];
         var _a0 = _p0.automation_level != null ? _p0.automation_level : 2;
         if (typeof _a0 === 'string') _a0 = parseInt(_a0.replace(/^L/i,''))||2;
-        var _m0 = _p0.make_pct != null ? (_p0.make_pct>1?_p0.make_pct/100:_p0.make_pct) : 0.15;
         var _s0 = _p0.supplier_automation||'MEDIUM';
         if (typeof _s0 === 'number') _s0 = _s0>=70?'HIGH':_s0>=50?'MEDIUM':'LOW';
         var _r0 = _p0.region||'EU';
@@ -13043,12 +13042,12 @@ function _renderTcModCostTab() {
           segment_code:v.segment_code||'c_segment',
           pwt_type:_pwtToManufKey((v.rolled_up_specs||{}).pwt_type||''),
           jph:_p0.jph||40, automation_level:_a0, platform_shared:_p0.platform_shared||false,
-          make_pct:_m0, supplier_automation:_s0, country:_cO,
-          tpc_buy_eur:(v.total_unit_tpc_eur||0)*(1-_m0)
+          supplier_automation:_s0, country:_cO,
+          tpc_buy_eur:(v.total_unit_tpc_eur||0)*0.85
         });
       } catch(e) {}
     }
-    var capexTotal = plants.reduce(function(s,p){ return s+((p._manuf||{}).total_investment_m||0); },0);
+    var capexTotal = plants.reduce(function(s,p){ return s+((p._manuf||{}).grand_total_inv_m||(p._manuf||{}).total_investment_m||0); },0);
     var wkshp = {assembly:0, body_shop:0, paint_shop:0, powertrain:0};
     plants.forEach(function(p){
       var ws=(p._manuf||{}).workshops||{};
@@ -13120,8 +13119,6 @@ function _renderTcModCostTab() {
     // Normalize automation_level: may be 'L2' string (old sim engine), int 2 (human/new), or absent
     var auto  = plant.automation_level != null ? plant.automation_level : 2;
     if (typeof auto === 'string') auto = parseInt(auto.replace(/^L/i,'')) || 2;
-    // Normalize make_pct: may be 70 (old sim engine integer %), 0.70 (fraction), or absent
-    var mkPct = plant.make_pct != null ? (plant.make_pct > 1 ? plant.make_pct / 100 : plant.make_pct) : 0.15;
     // Normalize supplier_automation: may be numeric (old sim engine) or string key
     var suppAuto = plant.supplier_automation || 'MEDIUM';
     if (typeof suppAuto === 'number') suppAuto = suppAuto >= 70 ? 'HIGH' : suppAuto >= 50 ? 'MEDIUM' : 'LOW';
@@ -13143,10 +13140,9 @@ function _renderTcModCostTab() {
           jph:                 jph,
           automation_level:    auto,
           platform_shared:     plant.platform_shared || false,
-          make_pct:            mkPct,
           supplier_automation: suppAuto,
           country:             _cObj,
-          tpc_buy_eur:         _tpc * (1 - mkPct)
+          tpc_buy_eur:         _tpc * 0.85
         });
       } catch(e) { mfr = {}; }
     }
@@ -14591,6 +14587,7 @@ loadBaseConfigs('platform').catch(()=>{});
 var _propTopHatConfigs  = [];   // loaded by loadVehicleProposal for body-type dropdown
 var _propICEPWTConfigs  = [];   // loaded by loadVehicleProposal for cylinder/hybrid dropdowns
 var _propEPWTConfigs    = [];   // loaded by loadVehicleProposal for perf-class dropdown
+var _deployedModules    = null; // cached deployed-module-capacities response for reuse UI
 
 var _prop = {
   study:       null,   // selected study vehicle object
@@ -17334,8 +17331,7 @@ var SHIFT_STRUCTURES = [
 
 // ── MANUFACTURING ENGINE ────────────────────────────────────────────────────
 var _MANUF_E = (function() {
-  // Work content bases (seconds) at 100% make — scale by make_pct
-  // At default 15% make: medium assy = 144000×0.15 = 21,600s (6h) ✓
+  // Work content bases (seconds) at 100% make — scaled by fixed 15% in-house fraction
   var ASSY_WC = {micro:72000,small:96000,medium:144000,large:192000,frame:168000,performance:216000,commercial:120000};
   var BODY_WC = {micro:9600, small:14400,medium:20000, large:24000, frame:18000, performance:26400, commercial:14400};
   var PWT_WC  = {ice_only:18000, bev_only:26400, ice_and_bev:28800};
@@ -17374,7 +17370,7 @@ var _MANUF_E = (function() {
     var pwt = o.pwt_type         || 'ice_only';
     var al  = o.automation_level || 2;
     var shr = o.platform_shared  === true;
-    var mkp = Math.max(0.05, Math.min(0.60, o.make_pct || 0.15));
+    var mkp = 0.15;
     var sAu = o.supplier_automation || 'MEDIUM';
     var ctr = o.country || {labor_eur_hr:52, elec_eur_kwh:0.18};
     var tBuy= o.tpc_buy_eur || 0;
@@ -17419,7 +17415,7 @@ var _MANUF_E = (function() {
     var sca = tBuy*(SUPPL_COST[sAu]-1.0);
     var vdi = Math.max(-0.10,-0.05*Math.log10(Math.max(1,evk/10)));
     var vad = tBuy*vdi;
-    var mks = tBuy*Math.max(0,mkp-0.15)*0.10;
+    var mks = 0;
     var bca = Math.round(sca+vad-mks);
     return {
       jph:jph, jph_capped:jRaw>jCap, takt:Math.round(takt),
@@ -17451,6 +17447,170 @@ function advanceToCommercialPlan() {
   buildCommercialSection();
 }
 
+function _getModuleConfigKey(mk) {
+  var slot = _prop[mk];
+  return (slot&&slot.module&&slot.module.config_key)||null;
+}
+
+function _calcModuleInvestments(m, plant) {
+  var pwtKey  = _pwtToManufKey((_prop.study&&_prop.study.rolled_up_specs&&_prop.study.rolled_up_specs.pwt_type)||'ice_only');
+  var isEv    = pwtKey==='bev_only', isHybrid = pwtKey==='ice_and_bev';
+  var hasIce  = !isEv, hasBev = isEv||isHybrid;
+  var ia  = m.workshops.assembly.investment_m;
+  var ib  = m.workshops.body_shop.investment_m;
+  var ipt = m.workshops.paint_shop.investment_m;
+  var ipw = m.workshops.powertrain.investment_m;
+
+  // Plant investments per module
+  var platPlant   = ib + ipt;
+  var tophatPlant = Math.round(0.40 * ia);
+  var eandsPlant  = ia - tophatPlant;
+  var pwtPlant    = hasIce ? (isHybrid ? Math.round(ipw*0.5) : ipw) : 0;
+  var epwtPlant   = hasBev ? (isHybrid ? Math.round(ipw*0.5) : ipw) : 0;
+  var targetKwh   = ((_prop.battery&&_prop.battery.module&&_prop.battery.module.specs&&_prop.battery.module.specs.target_kwh)||
+                     (_prop.battery&&_prop.battery.specs&&_prop.battery.specs.target_kwh)) || 60;
+  var batPlant    = hasBev ? Math.round(15 + Math.ceil(targetKwh/20)*1.5) : 0;
+
+  // Supplier investment per module (fraction of plant inv, MAKE vs BUY)
+  var epwtCk  = (_prop.epwt&&_prop.epwt.module&&_prop.epwt.module.config_key)||(_prop.epwt&&_prop.epwt.specs&&_prop.epwt.specs.make_buy==='BUY'?'_BUY':'');
+  var batCk   = (_prop.battery&&_prop.battery.module&&_prop.battery.module.config_key)||(_prop.battery&&_prop.battery.specs&&_prop.battery.specs.make_buy==='BUY'?'_BUY':'');
+  var eandsCk = (_prop.eands&&_prop.eands.module&&_prop.eands.module.config_key)||'';
+  var epwtBuy = epwtCk.toUpperCase().endsWith('_BUY');
+  var batBuy  = batCk.toUpperCase().endsWith('_BUY');
+  var eandsBuy= eandsCk.toUpperCase().endsWith('_BUY');
+
+  var platSuppl   = Math.round(0.18 * ib);
+  var tophatSuppl = Math.round(0.30 * tophatPlant);
+  var pwtSuppl    = hasIce ? Math.round(0.20 * pwtPlant) : 0;
+  var epwtSuppl   = hasBev ? Math.round((epwtBuy?0.50:0.22)*Math.max(1,epwtPlant)) : 0;
+  var batSuppl    = hasBev ? Math.round((batBuy?0.65:0.35)*Math.max(1,batPlant)) : 0;
+  var eandsSuppl  = Math.round((eandsBuy?0.55:0.25)*eandsPlant);
+
+  var mr = plant.module_reuse || {};
+  function applyReuse(pInv, sInv, key) {
+    var r = mr[key]||{};
+    return {
+      plant_inv_m: pInv, supplier_inv_m: sInv,
+      plant_inv_effective:    Math.round(pInv*(1-(r.plant_reuse_pct||0)/100)),
+      supplier_inv_effective: Math.round(sInv*(1-(r.supplier_reuse_pct||0)/100)),
+      plant_reuse_pct:    r.plant_reuse_pct||0,
+      supplier_reuse_pct: r.supplier_reuse_pct||0
+    };
+  }
+  var mods = {
+    platform: applyReuse(platPlant,  platSuppl,   'platform'),
+    tophat:   applyReuse(tophatPlant,tophatSuppl, 'tophat'),
+    pwt:      applyReuse(pwtPlant,   pwtSuppl,    'pwt'),
+    epwt:     applyReuse(epwtPlant,  epwtSuppl,   'epwt'),
+    battery:  applyReuse(batPlant,   batSuppl,    'battery'),
+    eands:    applyReuse(eandsPlant, eandsSuppl,  'eands'),
+  };
+  var tPlant=0, tSuppl=0;
+  Object.keys(mods).forEach(function(k){tPlant+=mods[k].plant_inv_effective;tSuppl+=mods[k].supplier_inv_effective;});
+  return {modules:mods, total_plant_inv_m:tPlant, total_supplier_inv_m:tSuppl, grand_total_inv_m:tPlant+tSuppl};
+}
+
+function _renderModuleInvestTable(pid, plant, mi, effCapYr) {
+  var pwtKey  = _pwtToManufKey((_prop.study&&_prop.study.rolled_up_specs&&_prop.study.rolled_up_specs.pwt_type)||'ice_only');
+  var isEv    = pwtKey==='bev_only', isHybrid = pwtKey==='ice_and_bev';
+  var hasIce  = !isEv, hasBev = isEv||isHybrid;
+  var capK    = Math.round(effCapYr/1000);
+  var curVid  = _prop.study&&_prop.study.id;
+  var plantKey= plant.region+'_'+plant.country_code;
+  var dm      = _deployedModules||{};
+
+  function getPlantMatches(mk) {
+    var ck=_getModuleConfigKey(mk);
+    if(!ck||!dm.by_plant||!dm.by_plant[plantKey]||!dm.by_plant[plantKey][mk]) return [];
+    return (dm.by_plant[plantKey][mk]).filter(function(v){return v.vehicle_id!==curVid&&v.config_key===ck;});
+  }
+  function getRegionMatches(mk) {
+    var ck=_getModuleConfigKey(mk);
+    if(!ck||!dm.by_region||!dm.by_region[plant.region]||!dm.by_region[plant.region][mk]) return [];
+    return (dm.by_region[plant.region][mk]).filter(function(v){return v.vehicle_id!==curVid&&v.config_key===ck;});
+  }
+  function availCap(matches){return matches.reduce(function(s,v){return s+Math.max(0,(v.capacity_yr||0)-(v.est_volume_yr||0));},0);}
+
+  var defs = [
+    {key:'platform',label:'Platform',active:true},
+    {key:'tophat',  label:'TopHat',  active:true},
+    {key:'pwt',     label:'ICE PWT', active:hasIce},
+    {key:'epwt',    label:'e-PWT',   active:hasBev},
+    {key:'battery', label:'Battery', active:hasBev},
+    {key:'eands',   label:'E&S',     active:true},
+  ].filter(function(d){return d.active;});
+
+  var h='';
+
+  // Plant Investment section
+  h+='<div style="font-family:DM Mono,monospace;font-size:8px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:5px;">Plant Investment</div>';
+  h+='<div style="border:1px solid var(--border2);border-radius:3px;overflow:hidden;margin-bottom:10px;">';
+  defs.forEach(function(d,i){
+    var mod=mi.modules[d.key]; if(!mod||mod.plant_inv_m===0) return;
+    var pms=getPlantMatches(d.key), hasPR=pms.length>0;
+    var avCap=availCap(pms), avCapK=Math.round(avCap/1000);
+    var pRPct=mod.plant_reuse_pct, effInv=mod.plant_inv_effective;
+    var inhK=Math.round(avCap*pRPct/100/1000);
+    var vNames=pms.map(function(v){return v.vehicle_name;}).join(', ');
+    h+='<div style="padding:6px 8px;border-bottom:'+(i<defs.length-1?'1px solid var(--border)':'none')+';background:var(--s2);">';
+    h+='<div style="display:flex;align-items:center;justify-content:space-between;">';
+    h+='<span style="font-family:DM Mono,monospace;font-size:9px;color:var(--text);">'+d.label+'</span>';
+    h+='<div style="display:flex;align-items:center;gap:10px;">';
+    if(hasPR)h+='<span style="font-family:DM Mono,monospace;font-size:8px;padding:1px 4px;border-radius:2px;background:rgba(0,180,100,0.12);color:var(--green);">REUSE</span>';
+    h+='<span style="font-family:DM Mono,monospace;font-size:10px;color:var(--orange);" id="prop-ops-plant-'+pid+'-mod-'+d.key+'-pinv">€'+effInv+'M</span>';
+    h+='<span style="font-size:8px;color:var(--muted2);">'+capK+'k/yr cap</span>';
+    h+='</div></div>';
+    if(hasPR){
+      h+='<div style="margin-top:4px;padding:4px 6px;background:rgba(0,180,100,0.06);border-radius:2px;border:1px solid rgba(0,180,100,0.15);">';
+      h+='<div style="font-size:8px;color:var(--muted2);margin-bottom:3px;">'+vNames+' — '+avCapK+'k/yr spare</div>';
+      h+='<div style="display:flex;align-items:center;gap:8px;">';
+      h+='<span style="font-size:8px;color:var(--muted2);">Plant reuse</span>';
+      h+='<input type="range" min="0" max="100" step="10" value="'+pRPct+'" oninput="onPropOpsModulePlantReuse(\''+pid+'\',\''+d.key+'\',+this.value)" style="width:90px;height:3px;-webkit-appearance:none;background:var(--border2);cursor:pointer;">';
+      h+='<span style="font-family:DM Mono,monospace;font-size:9px;color:var(--green);" id="prop-ops-plant-'+pid+'-mod-'+d.key+'-prpct">'+pRPct+'%</span>';
+      h+='<span style="font-size:8px;color:var(--muted2);">→ Pay €'+effInv+'M · +'+inhK+'k/yr</span>';
+      h+='</div></div>';
+    }
+    h+='</div>';
+  });
+  h+='</div>';
+
+  // Supplier Investment section
+  h+='<div style="font-family:DM Mono,monospace;font-size:8px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:5px;">Supplier Investment <span style="color:var(--muted2);font-size:8px;text-transform:none;letter-spacing:0;">(region: '+plant.region+')</span></div>';
+  h+='<div style="border:1px solid var(--border2);border-radius:3px;overflow:hidden;margin-bottom:8px;">';
+  var anyS=false;
+  defs.forEach(function(d,i){
+    var mod=mi.modules[d.key]; if(!mod||mod.supplier_inv_m===0) return;
+    anyS=true;
+    var sms=getRegionMatches(d.key), hasSR=sms.length>0;
+    var sAvCap=availCap(sms), sAvCapK=Math.round(sAvCap/1000);
+    var sRPct=mod.supplier_reuse_pct, sEffInv=mod.supplier_inv_effective;
+    var sInhK=Math.round(sAvCap*sRPct/100/1000);
+    var sVNames=sms.map(function(v){return v.vehicle_name;}).join(', ');
+    h+='<div style="padding:6px 8px;border-bottom:'+(i<defs.length-1?'1px solid var(--border)':'none')+';background:var(--s2);">';
+    h+='<div style="display:flex;align-items:center;justify-content:space-between;">';
+    h+='<span style="font-family:DM Mono,monospace;font-size:9px;color:var(--text);">'+d.label+'</span>';
+    h+='<div style="display:flex;align-items:center;gap:10px;">';
+    if(hasSR)h+='<span style="font-family:DM Mono,monospace;font-size:8px;padding:1px 4px;border-radius:2px;background:rgba(0,180,100,0.12);color:var(--green);">REUSE</span>';
+    h+='<span style="font-family:DM Mono,monospace;font-size:10px;color:var(--cyan);" id="prop-ops-plant-'+pid+'-mod-'+d.key+'-sinv">€'+sEffInv+'M</span>';
+    h+='<span style="font-size:8px;color:var(--muted2);">'+capK+'k/yr</span>';
+    h+='</div></div>';
+    if(hasSR){
+      h+='<div style="margin-top:4px;padding:4px 6px;background:rgba(0,180,100,0.06);border-radius:2px;border:1px solid rgba(0,180,100,0.15);">';
+      h+='<div style="font-size:8px;color:var(--muted2);margin-bottom:3px;">'+sVNames+' — '+sAvCapK+'k/yr spare</div>';
+      h+='<div style="display:flex;align-items:center;gap:8px;">';
+      h+='<span style="font-size:8px;color:var(--muted2);">Supplier reuse</span>';
+      h+='<input type="range" min="0" max="100" step="10" value="'+sRPct+'" oninput="onPropOpsModuleSupplierReuse(\''+pid+'\',\''+d.key+'\',+this.value)" style="width:90px;height:3px;-webkit-appearance:none;background:var(--border2);cursor:pointer;">';
+      h+='<span style="font-family:DM Mono,monospace;font-size:9px;color:var(--green);" id="prop-ops-plant-'+pid+'-mod-'+d.key+'-srpct">'+sRPct+'%</span>';
+      h+='<span style="font-size:8px;color:var(--muted2);">→ Pay €'+sEffInv+'M · +'+sInhK+'k/yr</span>';
+      h+='</div></div>';
+    }
+    h+='</div>';
+  });
+  if(!anyS)h+='<div style="padding:8px;font-size:9px;color:var(--muted2);">None for current modules.</div>';
+  h+='</div>';
+  return h;
+}
+
 async function buildOperationsSection() {
   var el = document.getElementById('prop-operations-content');
   if (!el) return;
@@ -17461,9 +17621,19 @@ async function buildOperationsSection() {
       country_code:_prop.operations.assembly_country_code||'DE',
       country_name:_prop.operations.assembly_country_name||'Germany',
       jph:_prop.operations.jph||40, automation_level:_prop.operations.automation_level||2,
-      make_pct:_prop.operations.make_pct||0.15, supplier_automation:_prop.operations.supplier_automation||'MEDIUM',
-      platform_shared:_prop.operations.platform_shared||false, _manuf:_prop.operations._manuf||null
+      supplier_automation:_prop.operations.supplier_automation||'MEDIUM',
+      platform_shared:_prop.operations.platform_shared||false, _manuf:_prop.operations._manuf||null,
+      module_reuse:{}
     }];
+  }
+  _prop.operations.plants.forEach(function(p){if(!p.module_reuse)p.module_reuse={};});
+  // Fetch deployed module capacities for reuse detection (fresh each time)
+  _deployedModules = null;
+  if (teamId && sessionId) {
+    try {
+      var _dmr = await fetch(API_URL+'/teams/'+teamId+'/deployed-module-capacities?session_id='+sessionId);
+      if (_dmr.ok) _deployedModules = await _dmr.json();
+    } catch(e) { _deployedModules = {}; }
   }
   if (!_prop.operations.quality_tier)    _prop.operations.quality_tier    = 'STANDARD';
   if (!_prop.operations.sourcing_strategy) _prop.operations.sourcing_strategy = 'BALANCED';
@@ -17523,9 +17693,6 @@ function _renderPlantCard(plant,pidx,total,platSz){
   h+='<div><div style="font-size:8px;color:var(--muted2);">Labour</div><div style="font-family:DM Mono,monospace;font-size:10px;" id="prop-ops-plant-'+pid+'-labour">€'+ctry.labor_eur_hr+'/hr</div></div>';
   h+='<div><div style="font-size:8px;color:var(--muted2);">Electricity</div><div style="font-family:DM Mono,monospace;font-size:10px;" id="prop-ops-plant-'+pid+'-elec">€'+ctry.elec_eur_kwh.toFixed(3)+'/kWh</div></div>';
   h+='<div><div style="font-size:8px;color:var(--muted2);">Logistics idx</div><div style="font-family:DM Mono,monospace;font-size:10px;" id="prop-ops-plant-'+pid+'-logidx">'+ctry.logistics_idx.toFixed(2)+'</div></div></div>';
-  h+='<div style="display:flex;align-items:center;gap:12px;margin-bottom:10px;"><span style="font-size:9px;color:var(--muted2);white-space:nowrap;">Make %</span>';
-  h+='<input type="range" min="5" max="60" step="5" value="'+Math.round((plant.make_pct||0.15)*100)+'" oninput="onPropOpsPlantMake(\''+pid+'\',this)" style="width:140px;height:4px;-webkit-appearance:none;background:var(--border2);border-radius:2px;cursor:pointer;">';
-  h+='<span style="font-family:DM Mono,monospace;font-size:12px;color:var(--cyan);" id="prop-ops-plant-'+pid+'-make-pct">'+Math.round((plant.make_pct||0.15)*100)+'%</span></div>';
   h+='<div style="background:var(--s2);border-radius:3px;padding:10px;margin-bottom:10px;">';
   h+='<div style="font-size:9px;color:var(--muted2);margin-bottom:6px;">Jobs Per Hour (JPH)</div>';
   h+='<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:6px;">';
@@ -17558,31 +17725,22 @@ function _renderPlantCard(plant,pidx,total,platSz){
   h+='<label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:10px;padding:6px 8px;background:var(--s2);border-radius:3px;margin-bottom:10px;">';
   h+='<input type="checkbox" onchange="onPropOpsPlantPlatShare(\''+pid+'\',this)"'+(plant.platform_shared?' checked':'')+' style="width:13px;height:13px;">';
   h+='<span>Platform tooling shared (−50% body shop capex)</span></label>';
-  h+='<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:10px;">';
-  [{id:'body',label:'Body Shop',col:'var(--purple)'},{id:'paint',label:'Paint',col:'var(--cyan)'},{id:'assy',label:'Assembly',col:'var(--gold)'},{id:'pwt',label:'Powertrain',col:'var(--orange)'}].forEach(function(ws){
-    h+='<div style="background:var(--s2);border-radius:3px;padding:8px;border:1px solid var(--border)">';
-    h+='<div style="font-family:DM Mono,monospace;font-size:9px;font-weight:600;color:'+ws.col+';margin-bottom:4px;">'+ws.label+'</div>';
-    if(ws.id!=='paint')h+='<div style="font-size:8px;color:var(--muted2);">Sta: <span style="font-family:DM Mono,monospace;" id="prop-ops-plant-'+pid+'-ws-'+ws.id+'-sta">—</span></div>';
-    if(ws.id==='body')h+='<div style="font-size:8px;color:var(--muted2);">Rob: <span style="font-family:DM Mono,monospace;" id="prop-ops-plant-'+pid+'-ws-body-rob">—</span></div>';
-    h+='<div style="font-size:8px;color:var(--muted2);">Inv: <span style="font-family:DM Mono,monospace;color:var(--orange);" id="prop-ops-plant-'+pid+'-ws-'+ws.id+'-inv">—</span></div>';
-    h+='<div style="font-size:8px;color:var(--muted2);">Ops: <span style="font-family:DM Mono,monospace;" id="prop-ops-plant-'+pid+'-ws-'+ws.id+'-ops">—</span></div></div>';
-  });
-  h+='</div>';
+  h+='<div id="prop-ops-plant-'+pid+'-mod-table" style="margin-bottom:10px;"></div>';
   h+='<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;">';
-  [{lbl:'Manuf var/unit',id:'manuf-cost',col:'var(--cyan)'},{lbl:'Plant capex',id:'capex',col:'var(--orange)'},{lbl:'Eff capacity',id:'cap',col:'var(--text)'}].forEach(function(t){
+  [{lbl:'Manuf var/unit',id:'manuf-cost',col:'var(--cyan)'},{lbl:'Plant Capex',id:'plant-inv',col:'var(--orange)'},{lbl:'Supplier NRE',id:'supplier-inv',col:'var(--cyan)'}].forEach(function(t){
     h+='<div style="background:var(--s2);border-radius:3px;padding:6px 8px;"><div style="font-size:8px;color:var(--muted2);">'+t.lbl+'</div><div style="font-family:DM Mono,monospace;font-size:10px;color:'+t.col+';" id="prop-ops-plant-'+pid+'-'+t.id+'">—</div></div>';
   });
   return h+'</div></div>';
 }
 
 function _buildOpsAggHTML(plants){
-  var tc=0,cap=0,wc=0,wv=0;
-  (plants||[]).forEach(function(p){if(!p._manuf)return;tc+=p._manuf.total_investment_m;cap+=Math.round(p._manuf.eff_capacity_yr/1000);wc+=p._manuf.manuf_var_total*p._manuf.eff_capacity_yr;wv+=p._manuf.eff_capacity_yr;});
+  var tPlant=0,tSuppl=0,wc=0,wv=0;
+  (plants||[]).forEach(function(p){if(!p._manuf)return;tPlant+=(p._manuf.total_plant_inv_m||0);tSuppl+=(p._manuf.total_supplier_inv_m||0);wc+=p._manuf.manuf_var_total*p._manuf.eff_capacity_yr;wv+=p._manuf.eff_capacity_yr;});
   var avg=wv>0?Math.round(wc/wv):0;
   function t(l,v,c,id){return '<div style="background:var(--s2);border-radius:3px;padding:8px;border:1px solid var(--border)"><div style="font-size:8px;color:var(--muted2);margin-bottom:2px;">'+l+'</div><div style="font-family:DM Mono,monospace;font-size:11px;color:'+(c||'var(--text)')+'" id="'+id+'">'+v+'</div></div>';}
   return t('Total Plants',(plants||[]).length,'var(--white)','prop-ops-agg-plants')+
-         t('Total Capex','€'+tc+'M','var(--orange)','prop-ops-agg-capex')+
-         t('Total Capacity',cap+'k/yr','var(--cyan)','prop-ops-agg-cap')+
+         t('Plant Capex','€'+tPlant+'M','var(--orange)','prop-ops-agg-capex')+
+         t('Supplier NRE','€'+tSuppl+'M','var(--cyan)','prop-ops-agg-suppl')+
          t('Wtd Manuf/unit','€'+avg,'var(--text)','prop-ops-agg-cost');
 }
 
@@ -17592,7 +17750,7 @@ function onPropOpsAddPlant(){
   var nr=['NA','EU','MEA','SA','APAC'].find(function(r){return used.indexOf(r)<0;})||'NA';
   var cl=INDUSTRIAL_COUNTRIES[nr]||INDUSTRIAL_COUNTRIES['EU'];
   var dc=cl[0]||{code:'US',name:'United States'};
-  pl.push({id:'p'+Date.now(),region:nr,country_code:dc.code,country_name:dc.name,jph:40,automation_level:2,make_pct:0.15,supplier_automation:'MEDIUM',platform_shared:false,_manuf:null});
+  pl.push({id:'p'+Date.now(),region:nr,country_code:dc.code,country_name:dc.name,jph:40,automation_level:2,supplier_automation:'MEDIUM',platform_shared:false,_manuf:null,module_reuse:{}});
   buildOperationsSection();
 }
 function onPropOpsRemovePlant(pid){
@@ -17628,10 +17786,18 @@ function onPropOpsPlantCountry(pid,sel){
   if(c){plant.country_code=c.code;plant.country_name=c.name;}
   _updatePlantRateDisplay(pid); renderPlantCostSummary(pid);
 }
-function onPropOpsPlantMake(pid,input){
+function onPropOpsModulePlantReuse(pid,mk,pct){
   var plant=_getPlant(pid);if(!plant)return;
-  plant.make_pct=parseFloat(input.value)/100;
-  var e=document.getElementById('prop-ops-plant-'+pid+'-make-pct');if(e)e.textContent=Math.round(plant.make_pct*100)+'%';
+  if(!plant.module_reuse)plant.module_reuse={};
+  if(!plant.module_reuse[mk])plant.module_reuse[mk]={};
+  plant.module_reuse[mk].plant_reuse_pct=pct;
+  renderPlantCostSummary(pid);
+}
+function onPropOpsModuleSupplierReuse(pid,mk,pct){
+  var plant=_getPlant(pid);if(!plant)return;
+  if(!plant.module_reuse)plant.module_reuse={};
+  if(!plant.module_reuse[mk])plant.module_reuse[mk]={};
+  plant.module_reuse[mk].supplier_reuse_pct=pct;
   renderPlantCostSummary(pid);
 }
 function onPropOpsPlantJph(pid,input){
@@ -17669,45 +17835,42 @@ function renderPlantCostSummary(pid){
   var plant=_getPlant(pid);if(!plant)return;
   var cl=INDUSTRIAL_COUNTRIES[plant.region]||INDUSTRIAL_COUNTRIES['EU'];
   var c=cl.find(function(x){return x.code===plant.country_code;})||cl[0]||{labor_eur_hr:52,elec_eur_kwh:0.18};
-  var tpcBuy=_computeBaseTpc()*(1-(plant.make_pct||0.15));
+  var tpcBuy=_computeBaseTpc()*0.85;
   var m=_MANUF_E.calc({
     platform_size:_getPlatformSize(), body_type:_getBodyType(),
     segment_code:(_prop.study&&_prop.study.segment_code)||'c_segment',
     pwt_type:_pwtToManufKey((_prop.study&&_prop.study.rolled_up_specs&&_prop.study.rolled_up_specs.pwt_type)||'ice_only'),
     jph:plant.jph||40, automation_level:plant.automation_level||2,
-    platform_shared:plant.platform_shared||false, make_pct:plant.make_pct||0.15,
+    platform_shared:plant.platform_shared||false,
     supplier_automation:plant.supplier_automation||'MEDIUM', country:c, tpc_buy_eur:tpcBuy
   });
+  var mi=_calcModuleInvestments(m, plant);
   plant._manuf=m;
+  plant._manuf.module_investments=mi;
+  plant._manuf.total_plant_inv_m=mi.total_plant_inv_m;
+  plant._manuf.total_supplier_inv_m=mi.total_supplier_inv_m;
+  plant._manuf.grand_total_inv_m=mi.grand_total_inv_m;
+  plant._manuf.total_investment_m=mi.grand_total_inv_m; // keep for biz case compat
+
   function _s(id,v){var e=document.getElementById(id);if(e)e.textContent=String(v);}
-  var w=m.workshops;
-  _s('prop-ops-plant-'+pid+'-ws-body-sta',w.body_shop.stations);
-  _s('prop-ops-plant-'+pid+'-ws-body-rob',w.body_shop.robots);
-  _s('prop-ops-plant-'+pid+'-ws-body-inv','€'+w.body_shop.investment_m+'M');
-  _s('prop-ops-plant-'+pid+'-ws-body-ops',w.body_shop.operators);
-  _s('prop-ops-plant-'+pid+'-ws-paint-sta','—');
-  _s('prop-ops-plant-'+pid+'-ws-paint-inv','€'+w.paint_shop.investment_m+'M');
-  _s('prop-ops-plant-'+pid+'-ws-paint-ops',w.paint_shop.operators);
-  _s('prop-ops-plant-'+pid+'-ws-assy-sta',w.assembly.stations);
-  _s('prop-ops-plant-'+pid+'-ws-assy-inv','€'+w.assembly.investment_m+'M');
-  _s('prop-ops-plant-'+pid+'-ws-assy-ops',w.assembly.operators);
-  _s('prop-ops-plant-'+pid+'-ws-pwt-sta',w.powertrain.stations);
-  _s('prop-ops-plant-'+pid+'-ws-pwt-inv','€'+w.powertrain.investment_m+'M');
-  _s('prop-ops-plant-'+pid+'-ws-pwt-ops',w.powertrain.operators);
   _s('prop-ops-plant-'+pid+'-effcap',Math.round(m.eff_capacity_yr/1000)+'k/yr');
   _s('prop-ops-plant-'+pid+'-manuf-cost','€'+m.manuf_var_total+'/unit');
-  _s('prop-ops-plant-'+pid+'-capex','€'+m.total_investment_m+'M');
-  _s('prop-ops-plant-'+pid+'-cap',Math.round(m.eff_capacity_yr/1000)+'k/yr');
+  _s('prop-ops-plant-'+pid+'-plant-inv','€'+mi.total_plant_inv_m+'M');
+  _s('prop-ops-plant-'+pid+'-supplier-inv','€'+mi.total_supplier_inv_m+'M');
+
+  var modEl=document.getElementById('prop-ops-plant-'+pid+'-mod-table');
+  if(modEl)modEl.innerHTML=_renderModuleInvestTable(pid,plant,mi,m.eff_capacity_yr);
+
   renderOpsAggregateSummary();
 }
 function renderOpsAggregateSummary(){
   var pl=(_prop.operations&&_prop.operations.plants)||[];
-  var tc=0,cap=0,wc=0,wv=0;
-  pl.forEach(function(p){if(!p._manuf)return;tc+=p._manuf.total_investment_m;cap+=Math.round(p._manuf.eff_capacity_yr/1000);wc+=p._manuf.manuf_var_total*p._manuf.eff_capacity_yr;wv+=p._manuf.eff_capacity_yr;});
+  var tPlant=0,tSuppl=0,wc=0,wv=0;
+  pl.forEach(function(p){if(!p._manuf)return;tPlant+=(p._manuf.total_plant_inv_m||0);tSuppl+=(p._manuf.total_supplier_inv_m||0);wc+=p._manuf.manuf_var_total*p._manuf.eff_capacity_yr;wv+=p._manuf.eff_capacity_yr;});
   var avg=wv>0?Math.round(wc/wv):0;
   function _s(id,v){var e=document.getElementById(id);if(e)e.textContent=String(v);}
-  _s('prop-ops-agg-plants',pl.length); _s('prop-ops-agg-capex','€'+tc+'M');
-  _s('prop-ops-agg-cap',cap+'k/yr');   _s('prop-ops-agg-cost','€'+avg);
+  _s('prop-ops-agg-plants',pl.length); _s('prop-ops-agg-capex','€'+tPlant+'M');
+  _s('prop-ops-agg-suppl','€'+tSuppl+'M'); _s('prop-ops-agg-cost','€'+avg);
 }
 function onPropOpsMake(input){}
 function onPropOpsSupplAuto(key){}
@@ -17826,7 +17989,7 @@ function renderPropOpsCostSummary() {
     var p = _prop[k];
     if (p && p.module) tpcNum += parseFloat(p.module.per_unit_tpc_eur||0);
   });
-  var tpcBuy = tpcNum * (1 - (ops.make_pct||0.15));
+  var tpcBuy = tpcNum * 0.85;
 
   var srcKey  = ops.sourcing_strategy || 'BALANCED';
   var srcTier = SOURCING_STRATEGIES.find(function(s){return s.key===srcKey;}) || SOURCING_STRATEGIES[1];
@@ -17843,7 +18006,6 @@ function renderPropOpsCostSummary() {
     jph:                ops.jph || 40,
     automation_level:   ops.automation_level || 2,
     platform_shared:    ops.platform_shared || false,
-    make_pct:           ops.make_pct || 0.15,
     supplier_automation:ops.supplier_automation || 'MEDIUM',
     country:            ctry,
     tpc_buy_eur:        tpcBuy,
@@ -17939,7 +18101,7 @@ function calcPropBizCase() {
     var _r   = (_prop.operations && _prop.operations.assembly_region) || 'EU';
     var _c   = (_prop.operations && _prop.operations.assembly_country_code) || 'DE';
     var _ctr = (INDUSTRIAL_COUNTRIES[_r]||[]).find(function(c){return c.code===_c;}) || {labor_eur_hr:52,elec_eur_kwh:0.18};
-    var _tB  = tpcNum * (1 - ((_prop.operations&&_prop.operations.make_pct)||0.15));
+    var _tB  = tpcNum * 0.85;
     _m = _MANUF_E.calc({
       platform_size:    _getPlatformSize(),
       body_type:        _getBodyType(),
@@ -17948,7 +18110,6 @@ function calcPropBizCase() {
       jph:              (_prop.operations&&_prop.operations.jph)||40,
       automation_level: (_prop.operations&&_prop.operations.automation_level)||2,
       platform_shared:  (_prop.operations&&_prop.operations.platform_shared)||false,
-      make_pct:         (_prop.operations&&_prop.operations.make_pct)||0.15,
       supplier_automation:(_prop.operations&&_prop.operations.supplier_automation)||'MEDIUM',
       country:          _ctr,
       tpc_buy_eur:      _tB,
@@ -17995,8 +18156,8 @@ function calcPropBizCase() {
     var p = _prop[k];
     if (p && p.module) rdM += parseFloat(p.module.total_rd_spend_m||0);
   });
-  var toolingM=((_prop.operations&&_prop.operations.plants)||[]).reduce(function(s,p){return s+(p._manuf?p._manuf.total_investment_m:0);},0);
-  if(toolingM===0&&_m)toolingM=_m.total_investment_m;
+  var toolingM=((_prop.operations&&_prop.operations.plants)||[]).reduce(function(s,p){return s+(p._manuf?(p._manuf.grand_total_inv_m||p._manuf.total_investment_m||0):0);},0);
+  if(toolingM===0&&_m)toolingM=(_m.grand_total_inv_m||_m.total_investment_m||0);
   var totalInvM=rdM+toolingM;
 
   // NPV
