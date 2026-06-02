@@ -14588,7 +14588,8 @@ var _propTopHatConfigs  = [];   // loaded by loadVehicleProposal for body-type d
 var _propICEPWTConfigs  = [];   // loaded by loadVehicleProposal for cylinder/hybrid dropdowns
 var _propEPWTConfigs    = [];   // loaded by loadVehicleProposal for perf-class dropdown
 var _deployedModules    = null; // cached deployed-module-capacities response for reuse UI
-var _footprintExpanded  = true;  // Section 7 global footprint panel collapsed state
+var _footprintExpanded       = true;   // Section 7 global footprint panel collapsed state
+var _footprintFilterCurrent  = false;  // filter to modules configured in current vehicle
 
 var _prop = {
   study:       null,   // selected study vehicle object
@@ -17802,12 +17803,31 @@ function _toggleFootprint(){
   if(t)t.textContent=_footprintExpanded?'▼':'▶';
 }
 
-function _renderGlobalFootprintPanel(){
+function _getConfiguredModuleKeys(){
+  var pk=_pwtKeyFromProp(),isEv=pk==='bev_only',isHybrid=pk==='ice_and_bev',hasIce=!isEv,hasBev=isEv||isHybrid;
+  var keys=['platform','tophat','eands'];
+  if(hasIce){keys.push('pwt');keys.push('pwt_assy');}
+  if(hasBev){keys.push('epwt');keys.push('battery');}
+  return keys;
+}
+
+function _toggleFootprintFilter(){
+  _footprintFilterCurrent=!_footprintFilterCurrent;
+  var b=document.getElementById('prop-ops-footprint-body');
+  if(b)b.innerHTML=_renderGlobalFootprintGrid();
+  var track=document.getElementById('prop-ops-fp-filter-track');
+  var knob=document.getElementById('prop-ops-fp-filter-knob');
+  if(track)track.style.background=_footprintFilterCurrent?'var(--gold)':'var(--border2)';
+  if(knob)knob.style.left=_footprintFilterCurrent?'15px':'2px';
+}
+
+function _renderGlobalFootprintGrid(){
   var dm=_deployedModules||{};
   var FAC_TYPES=['vehicle_plants','powertrain_plants','supplier_parks'];
   var FAC_INFO={vehicle_plants:{icon:'🏭',label:'Vehicle Plant',col:'var(--gold)'},powertrain_plants:{icon:'⚙',label:'PWT Plant',col:'var(--orange)'},supplier_parks:{icon:'📦',label:'Supplier Park',col:'var(--cyan)'}};
   var MOD_LABELS={platform:'Platform',tophat:'TopHat',eands:'E&S',pwt:'ICE PWT',pwt_assy:'PWT Marry',epwt:'e-PWT',battery:'Battery'};
   var REGION_INFO={NA:{flag:'🌎',label:'NA'},EU:{flag:'🌍',label:'EU'},APAC:{flag:'🌏',label:'APAC'},MEA:{flag:'🌍',label:'MEA'},SA:{flag:'🌎',label:'SA'}};
+  var allowedMods=_footprintFilterCurrent?_getConfiguredModuleKeys():null;
   var regionData={NA:{},EU:{},APAC:{},MEA:{},SA:{}};
   var hasAny=false;
   FAC_TYPES.forEach(function(ft){
@@ -17822,6 +17842,7 @@ function _renderGlobalFootprintPanel(){
       if(!locEntry.facTypes[ft])locEntry.facTypes[ft]={};
       var modData=ftData[locKey];
       Object.keys(modData).forEach(function(mk){
+        if(allowedMods&&allowedMods.indexOf(mk)<0)return;
         var entries=modData[mk]||[];
         if(!entries.length)return;
         hasAny=true;
@@ -17831,58 +17852,75 @@ function _renderGlobalFootprintPanel(){
       });
     });
   });
-  var h='<div style="margin-bottom:18px;border:1px solid var(--border2);border-radius:4px;background:var(--s1);">';
-  h+='<div onclick="_toggleFootprint()" style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;cursor:pointer;user-select:none;">';
-  h+='<div style="font-family:DM Mono,monospace;font-size:10px;font-weight:700;color:var(--muted2);letter-spacing:1px;">🌐 EXISTING INDUSTRIAL FOOTPRINT</div>';
-  h+='<span id="prop-ops-footprint-toggle" style="font-family:DM Mono,monospace;font-size:10px;color:var(--muted2);">'+(_footprintExpanded?'▼':'▶')+'</span>';
-  h+='</div>';
-  h+='<div id="prop-ops-footprint-body" style="'+(!_footprintExpanded?'display:none;':'')+'padding:0 14px 14px 14px;">';
   if(!hasAny){
-    h+='<div style="padding:10px;text-align:center;color:var(--muted2);font-size:9px;font-family:DM Mono,monospace;border:1px dashed var(--border2);border-radius:3px;">No existing footprint — this is your first vehicle in this session.</div>';
-  } else {
-    h+='<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:6px;">';
-    ['NA','EU','APAC','MEA','SA'].forEach(function(reg){
-      var ri=REGION_INFO[reg]||{flag:'🌐',label:reg};
-      var locMap=regionData[reg]||{};
-      var locKeys=Object.keys(locMap);
-      h+='<div style="min-width:0;">';
-      h+='<div style="font-family:DM Mono,monospace;font-size:8px;font-weight:700;color:var(--muted2);text-transform:uppercase;letter-spacing:0.5px;padding:4px 5px;background:var(--s2);border-radius:3px 3px 0 0;text-align:center;">'+ri.flag+' '+ri.label+'</div>';
-      h+='<div style="border:1px solid var(--border);border-top:none;border-radius:0 0 3px 3px;padding:5px;min-height:36px;">';
-      if(!locKeys.length){
-        h+='<div style="color:var(--border2);font-size:9px;text-align:center;padding:8px 0;font-family:DM Mono,monospace;">—</div>';
-      } else {
-        locKeys.forEach(function(locKey){
-          var le=locMap[locKey];
-          var countryName;
-          if(le.cc){var cl=INDUSTRIAL_COUNTRIES[reg]||[];var found=cl.find(function(c){return c.code===le.cc;});countryName=found?found.name:le.cc;}
-          else{countryName=reg+' (Regional)';}
-          h+='<div style="margin-bottom:7px;">';
-          h+='<div style="font-family:DM Mono,monospace;font-size:8px;font-weight:600;color:var(--text);margin-bottom:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">📍 '+countryName+'</div>';
-          FAC_TYPES.forEach(function(ft){
-            var ftMods=le.facTypes[ft];
-            if(!ftMods||!Object.keys(ftMods).length)return;
-            var fi=FAC_INFO[ft];
-            h+='<div style="margin-bottom:4px;padding:4px 5px;background:var(--s2);border-radius:3px;border-left:2px solid '+fi.col+';">';
-            h+='<div style="font-family:DM Mono,monospace;font-size:7px;font-weight:700;color:'+fi.col+';margin-bottom:3px;">'+fi.icon+' '+fi.label+'</div>';
-            Object.keys(ftMods).forEach(function(mk){
-              var md=ftMods[mk],inst=md.installed_k,used=md.used_k;
-              var pct=inst>0?Math.min(100,Math.round(used/inst*100)):0;
-              var barCol=pct>80?'var(--red)':pct>50?'var(--orange)':'var(--green)';
-              h+='<div style="margin-bottom:3px;">';
-              h+='<div style="display:flex;justify-content:space-between;font-family:DM Mono,monospace;font-size:7px;color:var(--muted2);margin-bottom:1px;"><span>'+(MOD_LABELS[mk]||mk)+'</span><span style="color:'+barCol+';">'+pct+'%</span></div>';
-              h+='<div style="position:relative;height:4px;background:var(--s1);border-radius:2px;overflow:hidden;border:1px solid var(--border);"><div style="position:absolute;left:0;top:0;height:100%;width:'+pct+'%;background:'+barCol+';border-radius:2px;"></div></div>';
-              h+='<div style="font-family:DM Mono,monospace;font-size:6px;color:var(--muted2);margin-top:1px;">'+used+'k / '+inst+'k'+(md.vehicles.length?' · '+md.vehicles.slice(0,2).join(', ')+(md.vehicles.length>2?' +':''):'')+'</div>';
-              h+='</div>';
-            });
+    var msg=_footprintFilterCurrent
+      ?'No existing capacity for the modules configured in this vehicle.'
+      :'No existing footprint — this is your first vehicle in this session.';
+    return '<div style="padding:10px;text-align:center;color:var(--muted2);font-size:9px;font-family:DM Mono,monospace;border:1px dashed var(--border2);border-radius:3px;">'+msg+'</div>';
+  }
+  var h='<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:6px;">';
+  ['NA','EU','APAC','MEA','SA'].forEach(function(reg){
+    var ri=REGION_INFO[reg]||{flag:'🌐',label:reg};
+    var locMap=regionData[reg]||{};
+    var locKeys=Object.keys(locMap);
+    h+='<div style="min-width:0;">';
+    h+='<div style="font-family:DM Mono,monospace;font-size:8px;font-weight:700;color:var(--muted2);text-transform:uppercase;letter-spacing:0.5px;padding:4px 5px;background:var(--s2);border-radius:3px 3px 0 0;text-align:center;">'+ri.flag+' '+ri.label+'</div>';
+    h+='<div style="border:1px solid var(--border);border-top:none;border-radius:0 0 3px 3px;padding:5px;min-height:36px;">';
+    if(!locKeys.length){
+      h+='<div style="color:var(--border2);font-size:9px;text-align:center;padding:8px 0;font-family:DM Mono,monospace;">—</div>';
+    } else {
+      locKeys.forEach(function(locKey){
+        var le=locMap[locKey];
+        var countryName;
+        if(le.cc){var cl=INDUSTRIAL_COUNTRIES[reg]||[];var found=cl.find(function(c){return c.code===le.cc;});countryName=found?found.name:le.cc;}
+        else{countryName=reg+' (Regional)';}
+        var facEntries=FAC_TYPES.filter(function(ft){var fm=le.facTypes[ft];return fm&&Object.keys(fm).length>0;});
+        if(!facEntries.length)return;
+        h+='<div style="margin-bottom:7px;">';
+        h+='<div style="font-family:DM Mono,monospace;font-size:8px;font-weight:600;color:var(--text);margin-bottom:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">📍 '+countryName+'</div>';
+        facEntries.forEach(function(ft){
+          var ftMods=le.facTypes[ft],fi=FAC_INFO[ft];
+          h+='<div style="margin-bottom:4px;padding:4px 5px;background:var(--s2);border-radius:3px;border-left:2px solid '+fi.col+';">';
+          h+='<div style="font-family:DM Mono,monospace;font-size:7px;font-weight:700;color:'+fi.col+';margin-bottom:3px;">'+fi.icon+' '+fi.label+'</div>';
+          Object.keys(ftMods).forEach(function(mk){
+            var md=ftMods[mk],inst=md.installed_k,used=md.used_k;
+            var pct=inst>0?Math.min(100,Math.round(used/inst*100)):0;
+            var barCol=pct>80?'var(--red)':pct>50?'var(--orange)':'var(--green)';
+            h+='<div style="margin-bottom:3px;">';
+            h+='<div style="display:flex;justify-content:space-between;font-family:DM Mono,monospace;font-size:7px;color:var(--muted2);margin-bottom:1px;"><span>'+(MOD_LABELS[mk]||mk)+'</span><span style="color:'+barCol+';">'+pct+'%</span></div>';
+            h+='<div style="position:relative;height:4px;background:var(--s1);border-radius:2px;overflow:hidden;border:1px solid var(--border);"><div style="position:absolute;left:0;top:0;height:100%;width:'+pct+'%;background:'+barCol+';border-radius:2px;"></div></div>';
+            h+='<div style="font-family:DM Mono,monospace;font-size:6px;color:var(--muted2);margin-top:1px;">'+used+'k / '+inst+'k'+(md.vehicles.length?' · '+md.vehicles.slice(0,2).join(', ')+(md.vehicles.length>2?' +':''):'')+'</div>';
             h+='</div>';
           });
           h+='</div>';
         });
-      }
-      h+='</div></div>';
-    });
-    h+='</div>';
-  }
+        h+='</div>';
+      });
+    }
+    h+='</div></div>';
+  });
+  h+='</div>';
+  return h;
+}
+
+function _renderGlobalFootprintPanel(){
+  var on=_footprintFilterCurrent;
+  var h='<div style="margin-bottom:18px;border:1px solid var(--border2);border-radius:4px;background:var(--s1);">';
+  // Header row — left: title / right: filter toggle + collapse arrow
+  h+='<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;">';
+  h+='<div onclick="_toggleFootprint()" style="display:flex;align-items:center;gap:6px;cursor:pointer;user-select:none;flex:1;">';
+  h+='<span style="font-family:DM Mono,monospace;font-size:10px;font-weight:700;color:var(--muted2);letter-spacing:1px;">🌐 EXISTING INDUSTRIAL FOOTPRINT</span>';
+  h+='<span id="prop-ops-footprint-toggle" style="font-family:DM Mono,monospace;font-size:10px;color:var(--muted2);">'+(_footprintExpanded?'▼':'▶')+'</span>';
+  h+='</div>';
+  // Filter toggle switch — stopPropagation so it doesn't collapse the panel
+  h+='<div onclick="event.stopPropagation();_toggleFootprintFilter()" style="display:flex;align-items:center;gap:6px;cursor:pointer;user-select:none;">';
+  h+='<span style="font-family:DM Mono,monospace;font-size:8px;color:'+(on?'var(--gold)':'var(--muted2)') +';">This vehicle only</span>';
+  h+='<div id="prop-ops-fp-filter-track" style="position:relative;width:28px;height:14px;background:'+(on?'var(--gold)':'var(--border2)')+';border-radius:7px;">';
+  h+='<div id="prop-ops-fp-filter-knob" style="position:absolute;top:2px;left:'+(on?'15px':'2px')+';width:10px;height:10px;background:white;border-radius:50%;transition:left 0.15s;"></div>';
+  h+='</div></div>';
+  h+='</div>';
+  h+='<div id="prop-ops-footprint-body" style="'+(!_footprintExpanded?'display:none;':'')+'padding:0 14px 14px 14px;">';
+  h+=_renderGlobalFootprintGrid();
   h+='</div></div>';
   return h;
 }
