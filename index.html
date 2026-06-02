@@ -14588,7 +14588,6 @@ var _propTopHatConfigs  = [];   // loaded by loadVehicleProposal for body-type d
 var _propICEPWTConfigs  = [];   // loaded by loadVehicleProposal for cylinder/hybrid dropdowns
 var _propEPWTConfigs    = [];   // loaded by loadVehicleProposal for perf-class dropdown
 var _deployedModules    = null; // cached deployed-module-capacities response for reuse UI
-var _footprintFilterCurrent  = false;  // filter to reused/modified modules only
 
 var _prop = {
   study:       null,   // selected study vehicle object
@@ -17794,49 +17793,21 @@ function renderOpsAggregateSummary(){
   _s('prop-ops-agg-vp','€'+Math.round(tVP)+'M');_s('prop-ops-agg-pwt','€'+Math.round(tPWT)+'M');_s('prop-ops-agg-sp','€'+Math.round(tSP)+'M');_s('prop-ops-agg-cost','€'+avg);
 }
 
-function _getConfiguredModuleKeys(){
-  var pk=_pwtKeyFromProp(),isEv=pk==='bev_only',isHybrid=pk==='ice_and_bev',hasIce=!isEv,hasBev=isEv||isHybrid;
-  function _reused(m){return m&&(m.mode==='reuse'||m.mode==='modify');}
-  var keys=[];
-  if(_reused(_prop.platform)) keys.push('platform');
-  if(_reused(_prop.tophat))   keys.push('tophat');
-  if(_reused(_prop.eands))    keys.push('eands');
-  if(hasIce && _reused(_prop.pwt)) keys.push('pwt');
-  if(hasBev && _reused(_prop.epwt))    keys.push('epwt');
-  if(hasBev && _reused(_prop.battery)) keys.push('battery');
-  return keys;
-}
-
 function _getVehicleModuleColumns(){
-  var ALL_COLS=['platform','pwt','epwt','battery','tophat','eands'];
   var pk=_pwtKeyFromProp(),isEv=pk==='bev_only',
       isHybrid=(pk==='ice_and_bev'||pk==='hev'||pk==='reev');
   var hasIce=!isEv,hasBev=isEv||isHybrid;
-  var active=['platform','tophat','eands'];
-  if(hasIce) active.push('pwt');
-  if(hasBev){active.push('epwt');active.push('battery');}
-  return {allCols:ALL_COLS,activeKeys:active};
-}
-
-function _toggleFootprintFilter(){
-  _footprintFilterCurrent=!_footprintFilterCurrent;
-  var track=document.getElementById('prop-ops-fp-filter-track');
-  var knob=document.getElementById('prop-ops-fp-filter-knob');
-  var lbl=document.getElementById('prop-ops-fp-filter-lbl');
-  if(track)track.style.background=_footprintFilterCurrent?'var(--gold)':'var(--border2)';
-  if(knob)knob.style.left=_footprintFilterCurrent?'15px':'2px';
-  if(lbl)lbl.style.color=_footprintFilterCurrent?'var(--gold)':'var(--muted2)';
-  var wrap=document.getElementById('prop-ops-fp-matrix-body');
-  if(wrap)wrap.innerHTML=_renderFootprintMatrixBody();
+  var cols=['platform'];
+  if(hasIce) cols.push('pwt');
+  if(hasBev){cols.push('epwt');cols.push('battery');}
+  cols.push('tophat'); cols.push('eands');
+  return cols;
 }
 
 function _renderFootprintMatrixBody(){
   var MOD_LABELS={platform:'Platform',pwt:'ICE PWT',epwt:'e-PWT',battery:'Battery',tophat:'TopHat',eands:'E&S'};
   var dm=_deployedModules||{};
-  var vc=_getVehicleModuleColumns();
-  var allCols=vc.allCols,activeKeys=vc.activeKeys;
-  var filteredKeys=_footprintFilterCurrent?_getConfiguredModuleKeys():null;
-  var effectiveActive=filteredKeys?activeKeys.filter(function(k){return filteredKeys.indexOf(k)>=0;}):activeKeys;
+  var cols=_getVehicleModuleColumns();
 
   // Column header summaries
   var seg=((_prop.study&&_prop.study.rolled_up_specs&&_prop.study.rolled_up_specs.segment_code)||
@@ -17862,8 +17833,7 @@ function _renderFootprintMatrixBody(){
 
   // --- Block 1: aggregate plant data ---
   var locMap={};
-  allCols.forEach(function(mk){
-    if(effectiveActive.indexOf(mk)<0)return;
+  cols.forEach(function(mk){
     var src=dm[COL_SRC[mk]]||{};
     Object.keys(src).forEach(function(lk){
       var entries=(src[lk][mk])||[];
@@ -17878,8 +17848,7 @@ function _renderFootprintMatrixBody(){
   Object.keys(locMap).forEach(function(lk){
     var reg=locMap[lk].region;
     if(!regTotals[reg])regTotals[reg]={};
-    allCols.forEach(function(mk){
-      if(effectiveActive.indexOf(mk)<0)return;
+    cols.forEach(function(mk){
       if(!regTotals[reg][mk])regTotals[reg][mk]={instK:0,wipK:0};
       var d=locMap[lk].cols[mk]||{instK:0,wipK:0};
       regTotals[reg][mk].instK+=d.instK; regTotals[reg][mk].wipK+=d.wipK;
@@ -17889,8 +17858,7 @@ function _renderFootprintMatrixBody(){
   // --- Block 2: aggregate supplier data ---
   var supMap={},supSrc=dm['supplier_parks']||{};
   Object.keys(supSrc).forEach(function(rk){
-    allCols.forEach(function(mk){
-      if(effectiveActive.indexOf(mk)<0)return;
+    cols.forEach(function(mk){
       var entries=(supSrc[rk][mk])||[];
       if(!entries.length)return;
       if(!supMap[rk])supMap[rk]={};
@@ -17899,17 +17867,15 @@ function _renderFootprintMatrixBody(){
     });
   });
   var supGlobal={};
-  allCols.forEach(function(mk){supGlobal[mk]={instK:0,wipK:0};});
-  Object.keys(supMap).forEach(function(rk){allCols.forEach(function(mk){if(supMap[rk][mk]){supGlobal[mk].instK+=(supMap[rk][mk].instK||0);supGlobal[mk].wipK+=(supMap[rk][mk].wipK||0);}});});
+  cols.forEach(function(mk){supGlobal[mk]={instK:0,wipK:0};});
+  Object.keys(supMap).forEach(function(rk){cols.forEach(function(mk){if(supMap[rk][mk]){supGlobal[mk].instK+=(supMap[rk][mk].instK||0);supGlobal[mk].wipK+=(supMap[rk][mk].wipK||0);}});});
 
   // --- Rendering helpers ---
   var BASE_TD='padding:5px 6px;border:1px solid var(--border2);font-family:DM Mono,monospace;font-size:9px;text-align:center;vertical-align:top;';
-  var BASE_TH='padding:5px 6px;border:1px solid var(--border2);font-family:DM Mono,monospace;font-size:8px;font-weight:700;text-align:center;letter-spacing:0.5px;';
+  var BASE_TH='padding:5px 6px;border:1px solid var(--border2);background:var(--s2);font-family:DM Mono,monospace;font-size:8px;font-weight:700;color:var(--muted2);text-align:center;letter-spacing:0.5px;';
   var TDL='padding:5px 8px;border:1px solid var(--border2);font-family:DM Mono,monospace;font-size:9px;vertical-align:middle;white-space:nowrap;min-width:100px;';
 
-  function dataCell(mk,instK,wipK){
-    var isActive=effectiveActive.indexOf(mk)>=0;
-    if(!isActive)return'<td style="'+BASE_TD+'background:var(--s1);color:var(--border2);">—</td>';
+  function dataCell(instK,wipK){
     if(!instK&&!wipK)return'<td style="'+BASE_TD+'color:var(--muted2);">—</td>';
     var s='<td style="'+BASE_TD+'">';
     if(instK)s+='<div style="color:var(--gold);font-weight:700;">'+instK+'k</div>';
@@ -17918,11 +17884,10 @@ function _renderFootprintMatrixBody(){
   }
 
   function thead(locationLabel){
-    var h='<thead><tr><th style="'+BASE_TH+'background:var(--s2);color:var(--muted2);text-align:left;min-width:100px;">'+locationLabel+'</th>';
-    allCols.forEach(function(mk){
-      var isActive=effectiveActive.indexOf(mk)>=0;
-      var sub=isActive&&COL_SUB[mk]?'<div style="font-size:7px;font-weight:400;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:72px;">'+COL_SUB[mk]+'</div>':'';
-      h+='<th style="'+BASE_TH+(isActive?'background:var(--s2);color:var(--muted2);':'background:var(--s1);color:var(--border2);')+'min-width:65px;">'+MOD_LABELS[mk]+sub+'</th>';
+    var h='<thead><tr><th style="'+BASE_TH+'text-align:left;min-width:100px;">'+locationLabel+'</th>';
+    cols.forEach(function(mk){
+      var sub=COL_SUB[mk]?'<div style="font-size:7px;font-weight:400;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:72px;">'+COL_SUB[mk]+'</div>':'';
+      h+='<th style="'+BASE_TH+'min-width:65px;">'+MOD_LABELS[mk]+sub+'</th>';
     });
     return h+'</tr></thead>';
   }
@@ -17934,22 +17899,22 @@ function _renderFootprintMatrixBody(){
   h+=thead('Location');
   h+='<tbody>';
   if(!locs.length){
-    h+='<tr><td colspan="'+(allCols.length+1)+'" style="'+BASE_TD+'color:var(--muted2);font-style:italic;">No existing plant capacity for configured modules.</td></tr>';
+    h+='<tr><td colspan="'+(cols.length+1)+'" style="'+BASE_TD+'color:var(--muted2);font-style:italic;">No existing plant capacity for configured modules.</td></tr>';
   } else {
     locs.forEach(function(lk){
       var ld=locMap[lk],icon=ld.isVeh?'🏭':'⚙',ccName=ld.cc?(CC_NAMES[ld.cc]||ld.cc):'';
       h+='<tr><td style="'+TDL+'">'+(icon+' '+ld.region+(ccName?' · '+ccName:''))+'</td>';
-      allCols.forEach(function(mk){var d=ld.cols[mk]||{instK:0,wipK:0};h+=dataCell(mk,d.instK,d.wipK);});
+      cols.forEach(function(mk){var d=ld.cols[mk]||{instK:0,wipK:0};h+=dataCell(d.instK,d.wipK);});
       h+='</tr>';
     });
   }
   h+='</tbody>';
   var regs=Object.keys(regTotals);
   if(regs.length){
-    h+='<tfoot><tr><td colspan="'+(allCols.length+1)+'" style="'+BASE_TD+'background:var(--s2);color:var(--muted2);font-weight:700;text-align:left;padding-left:8px;">REGION TOTAL</td></tr>';
+    h+='<tfoot><tr><td colspan="'+(cols.length+1)+'" style="'+BASE_TD+'background:var(--s2);color:var(--muted2);font-weight:700;text-align:left;padding-left:8px;">REGION TOTAL</td></tr>';
     regs.forEach(function(reg){
       h+='<tr style="background:var(--s2);"><td style="'+TDL+'font-weight:700;">'+reg+'</td>';
-      allCols.forEach(function(mk){var d=(regTotals[reg]&&regTotals[reg][mk])||{instK:0,wipK:0};h+=dataCell(mk,d.instK,d.wipK);});
+      cols.forEach(function(mk){var d=(regTotals[reg]&&regTotals[reg][mk])||{instK:0,wipK:0};h+=dataCell(d.instK,d.wipK);});
       h+='</tr>';
     });
     h+='</tfoot>';
@@ -17963,32 +17928,27 @@ function _renderFootprintMatrixBody(){
   h+=thead('Sourcing Region');
   h+='<tbody>';
   if(!sups.length){
-    h+='<tr><td colspan="'+(allCols.length+1)+'" style="'+BASE_TD+'color:var(--muted2);font-style:italic;">No existing supplier capacity for configured modules.</td></tr>';
+    h+='<tr><td colspan="'+(cols.length+1)+'" style="'+BASE_TD+'color:var(--muted2);font-style:italic;">No existing supplier capacity for configured modules.</td></tr>';
   } else {
     sups.forEach(function(rk){
       h+='<tr><td style="'+TDL+'">📦 '+rk+'</td>';
-      allCols.forEach(function(mk){var d=(supMap[rk]&&supMap[rk][mk])||{instK:0,wipK:0};h+=dataCell(mk,d.instK,d.wipK);});
+      cols.forEach(function(mk){var d=(supMap[rk]&&supMap[rk][mk])||{instK:0,wipK:0};h+=dataCell(d.instK,d.wipK);});
       h+='</tr>';
     });
   }
   h+='</tbody>';
   h+='<tfoot><tr style="background:var(--s2);border-top:2px solid var(--border2);"><td style="'+TDL+'font-weight:700;">GLOBAL TOTAL</td>';
-  allCols.forEach(function(mk){var d=supGlobal[mk]||{instK:0,wipK:0};h+=dataCell(mk,d.instK,d.wipK);});
+  cols.forEach(function(mk){var d=supGlobal[mk]||{instK:0,wipK:0};h+=dataCell(d.instK,d.wipK);});
   h+='</tr></tfoot></table></div>';
   return h;
 }
 
 function _renderFootprintMatrix(){
-  var on=_footprintFilterCurrent;
   var h='<div style="margin-bottom:12px;">';
-  h+='<div style="display:flex;align-items:center;justify-content:space-between;padding:6px 2px;margin-bottom:8px;">';
+  h+='<div style="padding:6px 2px;margin-bottom:8px;">';
   h+='<span style="font-family:DM Mono,monospace;font-size:9px;font-weight:700;color:var(--muted2);letter-spacing:1px;">🌐 EXISTING INDUSTRIAL FOOTPRINT</span>';
-  h+='<div onclick="event.stopPropagation();_toggleFootprintFilter()" style="display:flex;align-items:center;gap:5px;cursor:pointer;user-select:none;">';
-  h+='<span id="prop-ops-fp-filter-lbl" style="font-family:DM Mono,monospace;font-size:8px;color:'+(on?'var(--gold)':'var(--muted2)')+';">This vehicle only</span>';
-  h+='<div id="prop-ops-fp-filter-track" style="position:relative;width:28px;height:14px;background:'+(on?'var(--gold)':'var(--border2)')+';border-radius:7px;cursor:pointer;">';
-  h+='<div id="prop-ops-fp-filter-knob" style="position:absolute;top:2px;left:'+(on?'15px':'2px')+';width:10px;height:10px;background:white;border-radius:50%;transition:left 0.15s;"></div>';
-  h+='</div></div></div>';
-  h+='<div id="prop-ops-fp-matrix-body">'+_renderFootprintMatrixBody()+'</div>';
+  h+='</div>';
+  h+=_renderFootprintMatrixBody();
   h+='</div>';
   return h;
 }
