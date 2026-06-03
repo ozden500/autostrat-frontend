@@ -2434,6 +2434,26 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
       <span id="cfg-save-status" style="font-size:12px;color:#22c55e;display:none;">Saved ✓</span>
     </div>
   </div>
+
+  <!-- Industrial Operations Lead Times -->
+  <div style="background:var(--s1);border:1px solid var(--border);border-radius:10px;padding:20px;margin-bottom:16px;max-width:640px;">
+    <div style="font-family:'DM Mono',monospace;font-size:9px;text-transform:uppercase;letter-spacing:1.5px;color:#a78bfa;margin-bottom:16px;">Industrial Operations Lead Times</div>
+    <div style="font-size:10px;color:var(--muted2);margin-bottom:12px;">Lead time (rounds) for plant investment decisions. Leave blank to use defaults.</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:4px;">
+      <div>
+        <label style="font-size:12px;color:#94a3b8;display:block;margin-bottom:6px;">Build new plant <span style="color:var(--muted2)">(rounds)</span></label>
+        <input id="cfg-lt-plant-build" type="number" min="1" max="20" placeholder="4 (default)"
+          style="width:100%;background:var(--s2);border:1px solid var(--border);border-radius:6px;color:#f1f5f9;padding:9px 12px;font-size:14px;font-family:'DM Mono',monospace"/>
+        <div style="font-size:10px;color:var(--muted2);margin-top:4px;">Time from decision to plant becoming operational.</div>
+      </div>
+      <div>
+        <label style="font-size:12px;color:#94a3b8;display:block;margin-bottom:6px;">Expand existing plant <span style="color:var(--muted2)">(rounds)</span></label>
+        <input id="cfg-lt-plant-expand" type="number" min="1" max="20" placeholder="2 (default)"
+          style="width:100%;background:var(--s2);border:1px solid var(--border);border-radius:6px;color:#f1f5f9;padding:9px 12px;font-size:14px;font-family:'DM Mono',monospace"/>
+        <div style="font-size:10px;color:var(--muted2);margin-top:4px;">Time from decision to expanded capacity coming online.</div>
+      </div>
+    </div>
+  </div>
 </div>
 
 </div>
@@ -11658,6 +11678,10 @@ async function loadSettingsPage() {
       const key = `lt_${t.replace('-','_')}_q`;
       if (el) el.value = cfg[key] != null ? cfg[key] : '';
     });
+    const pbEl = document.getElementById('cfg-lt-plant-build');
+    const peEl = document.getElementById('cfg-lt-plant-expand');
+    if (pbEl) pbEl.value = cfg.lt_plant_build_q  != null ? cfg.lt_plant_build_q  : '';
+    if (peEl) peEl.value = cfg.lt_plant_expand_q != null ? cfg.lt_plant_expand_q : '';
   } catch(e) { console.warn('loadSettingsPage:', e); }
 }
 
@@ -11677,6 +11701,10 @@ async function settingsSave() {
     const key = `lt_${t.replace('-','_')}_q`;
     body[key] = val ? parseInt(val) : null;
   });
+  const pbVal = document.getElementById('cfg-lt-plant-build')?.value?.trim();
+  const peVal = document.getElementById('cfg-lt-plant-expand')?.value?.trim();
+  body.lt_plant_build_q  = pbVal ? parseInt(pbVal) : null;
+  body.lt_plant_expand_q = peVal ? parseInt(peVal) : null;
   try {
     const res = await fetch(`${API_URL}/sessions/${sessionId}/config`, {
       method: 'PATCH', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body)
@@ -13636,6 +13664,7 @@ async function saveFootprintSetup() {
 let mfgPlants    = []; // {id, name, type, region, country_code, country_name, capacity_k, status}
 let mfgPipeline  = []; // {id, plant_id, decision, rounds_remaining, cost_m, cap_delta}
 let mfgCurrentRound = 1;
+let _plantLeadTimes = { build: 4, expand: 2 };
 let mfgCountries = {}; // {region: [{country_code, country_name}]}
 
 // Footprint tab state
@@ -13732,8 +13761,11 @@ async function loadMfgFootprint(forceRefresh = false) {
       const data2 = await res2.json();
       mfgPlants = data2.plants || [];
     }
-    // Load pipeline decisions
-    const dRes  = await fetch(`${API_URL}/teams/${teamId}/plant-decisions`);
+    // Load pipeline decisions + session config in parallel
+    const [dRes, cfgRes] = await Promise.all([
+      fetch(`${API_URL}/teams/${teamId}/plant-decisions`),
+      fetch(`${API_URL}/sessions/${sessionId}/config`).catch(() => null),
+    ]);
     const dData = await dRes.json();
     mfgPipeline = (dData.decisions || []).map(d => ({
       id: d.id,
@@ -13747,6 +13779,14 @@ async function loadMfgFootprint(forceRefresh = false) {
       rounds_remaining: d.rounds_remaining,
       rounds_total: d.rounds_total
     }));
+    if (cfgRes && cfgRes.ok) {
+      try {
+        const cfgData = await cfgRes.json();
+        const cfg = cfgData.config || {};
+        if (cfg.lt_plant_build_q  != null) _plantLeadTimes.build  = cfg.lt_plant_build_q;
+        if (cfg.lt_plant_expand_q != null) _plantLeadTimes.expand = cfg.lt_plant_expand_q;
+      } catch(e) {}
+    }
   } catch(e) {
     console.warn('loadMfgFootprint error:', e);
     mfgPlants = [];
@@ -14386,9 +14426,12 @@ function updateDecisionPreview() {
     capDelta = plant ? -plant.capacity_k : 0;
   }
 
-  const roundReady = mfgCurrentRound + params.lead;
+  const lead = type === 'build' ? _plantLeadTimes.build
+             : type === 'expand' ? _plantLeadTimes.expand
+             : params.lead;
+  const roundReady = mfgCurrentRound + lead;
   document.getElementById('prev-cost').textContent  = cost < 0 ? '+€'+Math.abs(Math.round(cost))+'M (recovery)' : '€'+Math.round(cost)+'M';
-  document.getElementById('prev-lead').textContent  = params.lead + ' round' + (params.lead > 1 ? 's' : '');
+  document.getElementById('prev-lead').textContent  = lead + ' round' + (lead > 1 ? 's' : '');
   document.getElementById('prev-cap').textContent   = capDelta > 0 ? '+'+capDelta+'k units/yr' : capDelta < 0 ? capDelta+'k units/yr' : 'No change';
   document.getElementById('prev-ready').textContent = 'Round ' + roundReady;
 }
@@ -14435,7 +14478,7 @@ async function submitPlantDecision() {
         body: JSON.stringify({
           plant_id: plantId, team_id: teamId, round_id: roundId,
           decision_type: type, capacity_delta_k: cap,
-          investment_m: cost, rounds_remaining: params.lead, rounds_total: params.lead
+          investment_m: cost, rounds_remaining: _plantLeadTimes.build, rounds_total: _plantLeadTimes.build
         })
       });
 
@@ -14480,20 +14523,22 @@ async function submitPlantDecision() {
       }
 
       // Create decision record
+      const usedLead = type === 'expand' ? _plantLeadTimes.expand : params.lead;
       await fetch(`${API_URL}/plant-decisions`, {
         method: 'POST', headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({
           plant_id: pid, team_id: teamId, round_id: roundId,
           decision_type: type, capacity_delta_k: capDelta,
-          investment_m: cost, rounds_remaining: params.lead, rounds_total: params.lead
+          investment_m: cost, rounds_remaining: usedLead, rounds_total: usedLead
         })
       });
     }
 
     // Reload footprint from DB
     await loadMfgFootprint();
+    const submittedLead = type === 'build' ? _plantLeadTimes.build : type === 'expand' ? _plantLeadTimes.expand : params.lead;
     msgEl.style.color = 'var(--cyan)';
-    msgEl.textContent = `✓ Decision submitted — ${params.label} queued (${params.lead} round lead time)`;
+    msgEl.textContent = `✓ Decision submitted — ${params.label} queued (${submittedLead} round lead time)`;
     setTimeout(() => msgEl.textContent = '', 4000);
 
   } catch(e) {
