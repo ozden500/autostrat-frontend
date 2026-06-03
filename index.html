@@ -15432,7 +15432,7 @@ function _isPropModuleCompatible(mod, modType) {
 
 function buildModuleOptions(modType, propKey, nextFn) {
   var mods      = _prop.modules.filter(function(m){ return m.module_type === modType; });
-  var completed = mods.filter(function(m){ return m.development_status==='completed'; });
+  var completed = mods.filter(function(m){ return m.development_status==='completed'||m.development_status==='in_development'; });
   var currentSel= _prop[propKey];
   var specDefs  = PROP_SPEC_DEFS[modType] || [];
 
@@ -15442,7 +15442,7 @@ function buildModuleOptions(modType, propKey, nextFn) {
     var icons = {reuse:'♻️', modify:'✏️', 'new':'🆕'};
     var titles= {reuse:'Reuse', modify:'Modify', 'new':'New Development'};
     var descs = {
-      reuse:'Use a completed module · Zero R&D cost · Instant',
+      reuse:'Share an existing module · Zero additional R&D cost · SOP ≥ module ready date',
       modify:'Evolve an existing module · Reduced cost & time',
       'new':'Full R&D from scratch · Configure target specs'
     };
@@ -15462,7 +15462,7 @@ function buildModuleOptions(modType, propKey, nextFn) {
     list = list.filter(function(m){ return _isPropModuleCompatible(m, modType).ok; });
     if (list.length === 0) {
       html += '<div style="color:var(--muted2);font-size:11px;padding:12px;background:var(--s3);border-radius:3px;">' +
-        'No compatible ' + (currentSel.mode==='reuse'?'completed ':'') + 'modules for this segment / PWT type. Switch to New Development.</div>';
+        'No compatible modules for this segment / PWT type. Switch to New Development.</div>';
     } else {
       // Table header
       html += '<div style="overflow-x:auto;margin-top:10px;">';
