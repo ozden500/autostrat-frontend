@@ -18655,7 +18655,10 @@ async function buildOperationsSection() {
   } else if (!_prop.operations.vehicle_plants[0].id) {
     _prop.operations.vehicle_plants[0].id = 'vp1';
   }
-  if (!_prop.operations.powertrain_plants) _prop.operations.powertrain_plants = [];
+  if (!_prop.operations.powertrain_plants||!_prop.operations.powertrain_plants.length) {
+    var _vp0=(_prop.operations.vehicle_plants||[])[0]||{region:'EU',country_code:'DE',country_name:'Germany',automation_level:2};
+    _prop.operations.powertrain_plants=[{id:'pwt1',region:_vp0.region||'EU',country_code:_vp0.country_code||'DE',country_name:_vp0.country_name||'Germany',automation_level:_vp0.automation_level||2,module_capacity:{},_computed:null}];
+  }
   if (!_prop.operations.supplier_parks)    _prop.operations.supplier_parks    = [];
   if (!_prop.operations.quality_tier)      _prop.operations.quality_tier      = 'STANDARD';
   if (!_prop.operations.sourcing_strategy) _prop.operations.sourcing_strategy = 'BALANCED';
@@ -18674,6 +18677,9 @@ async function buildOperationsSection() {
 
   var html = _renderSimplifiedFootprint();
   html += _renderAllocationDecision();
+  html+='<div style="margin-bottom:18px;"><div style="'+TH+'">⚙ POWERTRAIN PLANT</div><div id="prop-ops-pwt-cards">';
+  (ops.powertrain_plants||[]).forEach(function(pp,i){html+=_renderFacilityCard('powertrain_plants',pp,i,(ops.powertrain_plants||[]).length);});
+  html+='</div></div>';
 
   html+='<div style="margin-bottom:18px;"><div style="'+TH+'">Quality Investment Program</div><div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;">';
   QUALITY_TIERS.forEach(function(q){var sel=q.key===ops.quality_tier;
@@ -18733,8 +18739,13 @@ function _buildPlantFromDecision(){
     if(!vp.module_capacity[d.key])vp.module_capacity[d.key]={installed_k:0,used_k:0,incremental_k:0};
     vp.module_capacity[d.key].incremental_k=capK;
   });
-  ops.powertrain_plants=[];ops.supplier_parks=[];
+  if (!ops.powertrain_plants||!ops.powertrain_plants.length) {
+    ops.powertrain_plants=[{id:'pwt1',region:vp.region||'EU',country_code:vp.country_code||'DE',country_name:vp.country_name||'Germany',automation_level:vp.automation_level||2,module_capacity:{},_computed:null}];
+  }
+  if (!ops.supplier_parks) ops.supplier_parks=[];
   renderFacilityCostSummary('vehicle_plants',vp.id);
+  var _pp=ops.powertrain_plants[0];
+  if(_pp){_getModuleDefsForType('powertrain_plants').forEach(function(d){if(!_pp.module_capacity[d.key])_pp.module_capacity[d.key]={installed_k:0,used_k:0,incremental_k:capK};else _pp.module_capacity[d.key].incremental_k=capK;});renderFacilityCostSummary('powertrain_plants',_pp.id);}
 }
 
 function onPropOpsAllocationMode(mode){
