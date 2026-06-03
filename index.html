@@ -13760,6 +13760,21 @@ async function loadMfgFootprint(forceRefresh = false) {
       else _deployedModules = {};
     } catch(e2) { _deployedModules = {}; }
   }
+  // Augment mfgPlants with synthetic entries for any _deployedModules location
+  // not already covered (e.g. France from approved vehicle when mfgPlants only has EU_EU defaults)
+  var _coveredKeys={};
+  (mfgPlants||[]).forEach(function(p){ _coveredKeys[p.region+'_'+(p.country_code||p.region)]=true; });
+  ['vehicle_plants','powertrain_plants'].forEach(function(facType){
+    Object.keys((_deployedModules||{})[facType]||{}).forEach(function(locKey){
+      if(!_coveredKeys[locKey]){
+        var parts=locKey.split('_'),r=parts[0],cc=parts.slice(1).join('_');
+        mfgPlants.push({id:'syn_'+locKey,region:r,country_code:cc,
+          type:facType==='powertrain_plants'?'powertrain':'vehicle',
+          capacity_k:0,status:'active',_synthetic:true});
+        _coveredKeys[locKey]=true;
+      }
+    });
+  });
   // Re-fetch vehicles so names/specs match the current team context
   if (teamId) {
     try {
