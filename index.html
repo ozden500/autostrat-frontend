@@ -19041,7 +19041,7 @@ function onPropOpsPwtSelectPlant(lk){
   if(existingPwt){ops.pwt_capacity_yr=existingPwt.vehicle_capacity_yr;ops._existing_pwt_auto=existingPwt.automation_level||2;}
   var ftEl=document.getElementById('prop-ops-pwt-footprint-area');if(ftEl)ftEl.innerHTML=_renderPwtFootprint();
   var aEl=document.getElementById('prop-ops-pwt-alloc-area');
-  if(aEl){var tmp=document.createElement('div');tmp.innerHTML=_renderPwtAllocationPanel(lk);aEl.replaceWith(tmp.firstChild);}
+  if(aEl)aEl.innerHTML=_renderPwtAllocationPanel(lk);
   _buildPwtPlantFromDecision(lk);
 }
 function onPropOpsPwtCapYr(k){
