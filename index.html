@@ -18467,6 +18467,31 @@ function _renderPlantSelector(facType){
     return {lk:lk,score:score};
   }).sort(function(a,b){return b.score-a.score;});
 
+  // Augment with mfgPlants not yet represented in _deployedModules
+  var _coveredLks={};
+  scored.forEach(function(s){_coveredLks[s.lk]=true;});
+  var _typeMatch=isVeh?'vehicle':'powertrain';
+  var _sopQabs=(_prop.study&&_prop.study.start_year)
+    ?(_prop.study.start_year-2025)*4+((_prop.study.start_quarter||1)-1):null;
+  var _curQabs=(currentRoundYear-2025)*4+(currentRoundQuarter-1);
+  (mfgPlants||[]).forEach(function(p){
+    if(p.type!==_typeMatch||!p.country_code)return;
+    var lk=p.region+'_'+p.country_code;
+    if(_coveredLks[lk])return;
+    if(p.status==='active'){
+      scored.push({lk:lk,score:0,_plant:p,_pStatus:'active'});
+      _coveredLks[lk]=true;
+    } else if(p.status==='building'){
+      var pip=(mfgPipeline||[]).find(function(pp){return pp.plant_id===p.id&&pp.decision==='build';});
+      var rr=pip?pip.rounds_remaining:_plantLeadTimes.build;
+      var readyQabs=_curQabs+rr;
+      if(_sopQabs!==null&&_sopQabs>=readyQabs){
+        scored.push({lk:lk,score:0,_plant:p,_pStatus:'building',_readyQabs:readyQabs,_roundsLeft:rr});
+        _coveredLks[lk]=true;
+      }
+    }
+  });
+
   var h='<div id="'+panelId+'" style="margin-bottom:18px;">';
   h+='<div style="'+TH+'">'+label+'</div>';
 
@@ -18484,13 +18509,21 @@ function _renderPlantSelector(facType){
     var parts=lk.split('_'),reg=parts[0],cc=parts.slice(1).join('_');
     var ccName='';
     (INDUSTRIAL_COUNTRIES[reg]||[]).forEach(function(c){if(c.code===cc)ccName=c.name;});
+    if(!ccName&&item._plant)ccName=item._plant.country_name||'';
     var locLabel=reg+(ccName?' · '+ccName:'');
-    var matchBadge=item.score>0
-      ?'<div style="font-size:8px;color:var(--green);margin-top:3px;">✓ '+item.score+' matching module'+(item.score>1?'s':'')+'</div>'
-      :'<div style="font-size:8px;color:var(--muted2);margin-top:3px;">No shared modules</div>';
+    var matchBadge;
+    if(item._pStatus==='building'){
+      var _ry=2025+Math.floor(item._readyQabs/4),_rq=(item._readyQabs%4)+1;
+      matchBadge='<div style="font-size:8px;color:var(--orange);margin-top:3px;">🚧 Under construction · ready Y'+(_ry-2024)+'Q'+_rq+'</div>';
+    } else if(item.score>0){
+      matchBadge='<div style="font-size:8px;color:var(--green);margin-top:3px;">✓ '+item.score+' matching module'+(item.score>1?'s':'')+'</div>';
+    } else {
+      matchBadge='<div style="font-size:8px;color:var(--muted2);margin-top:3px;">No shared modules</div>';
+    }
     var modList=facCols.filter(function(mk){return facData[lk][mk]&&facData[lk][mk].length;})
       .map(function(mk){return MOD_LABELS[mk];}).join(', ');
-    h+='<div onclick="onPropOpsSelectPlant(\''+facType+'\',\''+lk+'\')" style="cursor:pointer;border-radius:4px;padding:10px 11px;border:1px solid '+(sel?'var(--gold)':'var(--border2)')+';background:'+(sel?'var(--s3)':'var(--s2)')+';transition:border 0.1s;">';
+    var _cardBorder=sel?'var(--gold)':(item._pStatus==='building'?'rgba(220,140,30,0.4)':'var(--border2)');
+    h+='<div onclick="onPropOpsSelectPlant(\''+facType+'\',\''+lk+'\')" style="cursor:pointer;border-radius:4px;padding:10px 11px;border:1px solid '+_cardBorder+';background:'+(sel?'var(--s3)':'var(--s2)')+';transition:border 0.1s;">';
     h+='<div style="font-family:DM Mono,monospace;font-size:10px;font-weight:700;color:var(--white);">'+locLabel+'</div>';
     h+=matchBadge;
     if(modList)h+='<div style="font-size:7px;color:var(--muted2);margin-top:2px;">'+modList+'</div>';
@@ -18863,6 +18896,23 @@ async function buildOperationsSection() {
       var _dmr = await fetch(API_URL+'/teams/'+teamId+'/deployed-module-capacities?session_id='+sessionId);
       if (_dmr.ok) _deployedModules = await _dmr.json();
     } catch(e) { _deployedModules = {}; }
+  }
+  // Refresh plant data so building plants appear in selector
+  if (teamId) {
+    try {
+      var _pprRes = await Promise.all([
+        fetch(API_URL+'/teams/'+teamId+'/plants'),
+        fetch(API_URL+'/teams/'+teamId+'/plant-decisions')
+      ]);
+      var _pRes2=_pprRes[0],_dRes2=_pprRes[1];
+      if (_pRes2.ok) { var _pd2=await _pRes2.json(); mfgPlants=_pd2.plants||[]; }
+      if (_dRes2.ok) { var _dd2=await _dRes2.json();
+        mfgPipeline=(_dd2.decisions||[]).map(function(d){
+          return {id:d.id,plant_id:d.plant_id,decision:d.decision_type,
+                  rounds_remaining:d.rounds_remaining,rounds_total:d.rounds_total};
+        });
+      }
+    } catch(e2) {}
   }
   var ops = _prop.operations;
   var TH='font-family:DM Mono,monospace;font-size:8px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:8px;display:block;';
