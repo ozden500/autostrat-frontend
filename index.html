@@ -18860,12 +18860,13 @@ function _renderPwtFootprint(){
     h+='<div style="border:1px solid var(--border2);border-radius:4px;padding:12px 14px;'+MN+'font-size:9px;color:var(--muted2);font-style:italic;">No powertrain plants on record.</div></div>';
     return h;
   }
-  var COLS='1fr 80px'+pwtDefs.map(function(){return ' 70px';}).join('');
+  var COLS='1fr 70px'+pwtDefs.map(function(){return ' 60px';}).join('')+' 90px';
   var HD='padding:5px 10px;'+MN+'font-size:8px;color:var(--muted2);font-weight:700;';
   h+='<div style="border:1px solid var(--border2);border-radius:4px;overflow:hidden;">';
   h+='<div style="display:grid;grid-template-columns:'+COLS+';background:var(--s2);border-bottom:1px solid var(--border2);">';
   h+='<div style="'+HD+'">Location</div><div style="'+HD+'text-align:right;">Capacity</div>';
   pwtDefs.forEach(function(d){h+='<div style="'+HD+'text-align:center;">'+(MOD_NAMES[d.key]||d.label)+'</div>';});
+  h+='<div style="'+HD+'text-align:center;">Allocated</div>';
   h+='</div>';
   pwtRows.forEach(function(p,i){
     var lk=p.region+'_'+p.country_code,ccName=p.country_name||'';
@@ -18879,12 +18880,16 @@ function _renderPwtFootprint(){
     var leftBorder=isSelected?'3px solid var(--cyan)':isConfirmed?'3px solid rgba(0,180,220,0.4)':'3px solid transparent';
     var CD='padding:7px 10px;'+MN+'font-size:9px;';
     var locLabel=(isBuilding?'🚧 ':'⚙ ')+p.region+(ccName?' · '+ccName:'');
-    var allocBadge=isConfirmed&&!isSelected?' <span style="font-size:8px;color:var(--green);margin-left:4px;">✓ '+_pwtAlloc.vehicle_capacity_yr+'k</span>':'';
     h+='<div onclick="onPropOpsPwtSelectPlant(\''+lk+'\')" style="cursor:pointer;display:grid;grid-template-columns:'+COLS+';background:'+bg+';'+bdr+';border-left:'+leftBorder+';">';
-    h+='<div style="'+CD+'color:'+(isSelected?'var(--cyan)':'var(--text)')+';">'+locLabel+allocBadge+'</div>';
+    h+='<div style="'+CD+'color:'+(isSelected?'var(--cyan)':'var(--text)')+';">'+locLabel+'</div>';
     h+='<div style="'+CD+'text-align:right;color:var(--gold);">'+(isBuilding?'—':(p.capacity_k||0)+'k/yr')+'</div>';
     var dm=((_deployedModules||{}).powertrain_plants||{})[lk]||{};
     pwtDefs.forEach(function(d){var has=(dm[d.key]&&dm[d.key].length)>0;h+='<div style="'+CD+'text-align:center;color:'+(has?'var(--green)':'var(--muted2)')+';">'+(has?'✓':'—')+'</div>';});
+    h+='<div style="'+CD+'text-align:center;" onclick="event.stopPropagation();">';
+    if(isConfirmed)h+='<span style="'+MN+'font-size:9px;color:var(--cyan);">✓ '+_pwtAlloc.vehicle_capacity_yr+'k</span> <button onclick="onPropOpsRemovePwtAllocation(\'pwt_'+lk+'\')" style="'+MN+'font-size:8px;padding:2px 5px;border-radius:2px;border:1px solid rgba(220,60,60,.3);background:transparent;color:var(--red);cursor:pointer;margin-left:3px;">✕</button>';
+    else if(isSelected)h+='<span style="'+MN+'font-size:8px;color:var(--cyan);opacity:0.6;">editing…</span>';
+    else h+='<span style="'+MN+'font-size:9px;color:var(--muted2);">—</span>';
+    h+='</div>';
     h+='</div>';
   });
   h+='</div></div>';return h;
@@ -18960,33 +18965,6 @@ function _renderPwtAllocationPanel(lk){
   h+='</div>';
   h+='</div>';return h;
 }
-function _renderConfirmedPwtSummary(){
-  var ops=_prop.operations||{};
-  var confirmed=(ops.powertrain_plants||[]).filter(function(p){return p.vehicle_capacity_yr;});
-  var MN='font-family:DM Mono,monospace;';
-  var h='<div style="margin-bottom:18px;">';
-  if(!confirmed.length){
-    h+='<div style="'+MN+'font-size:9px;color:var(--muted2);padding:10px 0;font-style:italic;">No PWT plants allocated yet — click a plant row above to allocate.</div>';
-  } else {
-    var totalK=confirmed.reduce(function(s,p){return s+(p.vehicle_capacity_yr||0);},0);
-    h+='<div style="'+MN+'font-size:8px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:8px;">✓ ALLOCATED PWT PLANTS</div>';
-    h+='<div style="border:1px solid var(--border2);border-radius:4px;overflow:hidden;margin-bottom:8px;">';
-    confirmed.forEach(function(p,i){
-      var lk=p.region+'_'+p.country_code;
-      var bdr=i<confirmed.length-1?'border-bottom:1px solid var(--border2);':'';
-      h+='<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 12px;background:'+(i%2===0?'var(--s3)':'var(--s2)')+';'+bdr+'">';
-      h+='<div style="'+MN+'font-size:9px;color:var(--text);">⚙ '+p.region+' · '+p.country_name+'</div>';
-      h+='<div style="display:flex;align-items:center;gap:8px;">';
-      h+='<span style="'+MN+'font-size:9px;color:var(--cyan);">'+p.vehicle_capacity_yr+'k/yr</span>';
-      h+='<button onclick="onPropOpsPwtSelectPlant(\''+lk+'\')" style="'+MN+'font-size:8px;padding:3px 8px;border-radius:2px;border:1px solid var(--border2);background:var(--s2);color:var(--muted2);cursor:pointer;">Edit</button>';
-      h+='<button onclick="onPropOpsRemovePwtAllocation(\''+p.id+'\')" style="'+MN+'font-size:8px;padding:3px 8px;border-radius:2px;border:1px solid rgba(220,60,60,.3);background:transparent;color:var(--red);cursor:pointer;">✕</button>';
-      h+='</div></div>';
-    });
-    h+='</div>';
-    h+='<div style="'+MN+'font-size:9px;color:var(--muted2);">Total: <span style="color:var(--cyan);">'+totalK+'k/yr</span></div>';
-  }
-  h+='</div>';return h;
-}
 function _buildPwtPlantFromDecision(lk){
   if(!lk||!_prop.operations)return;
   var ops=_prop.operations,pid='pwt_'+lk;
@@ -19039,7 +19017,7 @@ function onPropOpsConfirmPwtAllocation(lk){
   if(pp)pp.vehicle_capacity_yr=ops.pwt_capacity_yr||_getTotalConfirmedVehicleCapK()||_suggestedVolK()||50;
   ops.selected_pwt_plant_key=null;ops._existing_pwt_auto=null;ops.pwt_capacity_yr=null;
   var ftEl=document.getElementById('prop-ops-pwt-footprint-area');if(ftEl)ftEl.innerHTML=_renderPwtFootprint();
-  var aEl=document.getElementById('prop-ops-pwt-alloc-area');if(aEl)aEl.innerHTML=_renderConfirmedPwtSummary();
+  var aEl=document.getElementById('prop-ops-pwt-alloc-area');if(aEl)aEl.innerHTML='<div style="font-family:DM Mono,monospace;font-size:9px;color:var(--muted2);padding:8px 0;font-style:italic;">← Select a PWT plant row above to configure allocation.</div>';
   renderOpsAggregateSummary();
 }
 function onPropOpsCancelPwtAllocation(){
@@ -19051,14 +19029,14 @@ function onPropOpsCancelPwtAllocation(){
   }
   ops.selected_pwt_plant_key=null;ops._existing_pwt_auto=null;ops.pwt_capacity_yr=null;
   var ftEl=document.getElementById('prop-ops-pwt-footprint-area');if(ftEl)ftEl.innerHTML=_renderPwtFootprint();
-  var aEl=document.getElementById('prop-ops-pwt-alloc-area');if(aEl)aEl.innerHTML=_renderConfirmedPwtSummary();
+  var aEl=document.getElementById('prop-ops-pwt-alloc-area');if(aEl)aEl.innerHTML='<div style="font-family:DM Mono,monospace;font-size:9px;color:var(--muted2);padding:8px 0;font-style:italic;">← Select a PWT plant row above to configure allocation.</div>';
 }
 function onPropOpsRemovePwtAllocation(pid){
   var ops=_prop.operations||{};
   if(!ops.powertrain_plants)return;
   ops.powertrain_plants=ops.powertrain_plants.filter(function(p){return p.id!==pid;});
   var ftEl=document.getElementById('prop-ops-pwt-footprint-area');if(ftEl)ftEl.innerHTML=_renderPwtFootprint();
-  var aEl=document.getElementById('prop-ops-pwt-alloc-area');if(aEl)aEl.innerHTML=_renderConfirmedPwtSummary();
+  var aEl=document.getElementById('prop-ops-pwt-alloc-area');if(aEl)aEl.innerHTML='<div style="font-family:DM Mono,monospace;font-size:9px;color:var(--muted2);padding:8px 0;font-style:italic;">← Select a PWT plant row above to configure allocation.</div>';
   renderOpsAggregateSummary();
 }
 function onPropOpsPlatAutoLevel(level){
@@ -19441,7 +19419,7 @@ async function buildOperationsSection() {
   html+='<div id="prop-ops-pwt-footprint-area">'+_renderPwtFootprint()+'</div>';
   html+='<div id="prop-ops-pwt-alloc-area">';
   var _pwtSelLk2=(ops&&ops.selected_pwt_plant_key)||null;
-  if(_pwtSelLk2){html+=_renderPwtAllocationPanel(_pwtSelLk2);}else{html+=_renderConfirmedPwtSummary();}
+  if(_pwtSelLk2){html+=_renderPwtAllocationPanel(_pwtSelLk2);}else{html+='<div style="font-family:DM Mono,monospace;font-size:9px;color:var(--muted2);padding:8px 0;font-style:italic;">← Select a PWT plant row above to configure allocation.</div>';}
   html+='</div>';
 
   html+='<div style="margin-bottom:18px;"><div style="'+TH+'">Quality Investment Program</div><div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;">';
