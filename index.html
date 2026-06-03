@@ -18477,12 +18477,15 @@ function _renderSimplifiedFootprint(){
     var hasPl=_hasModule(lk,'platform',_propPlatKey);
     var hasTh=_hasModule(lk,'tophat',_propTopKey);
     var isSelected=_selMode==='existing'&&_selKey===lk;
-    var bg=isSelected?'rgba(220,180,0,0.07)':(i%2===0?'var(--s3)':'var(--s2)');
+    var _vpAlloc=((_ops.vehicle_plants)||[]).find(function(p){return p.id==='vp_'+lk&&p.vehicle_capacity_yr;});
+    var isConfirmed=!!_vpAlloc;
+    var bg=isSelected?'rgba(220,180,0,0.07)':isConfirmed?'rgba(200,164,60,0.04)':(i%2===0?'var(--s3)':'var(--s2)');
     var bdr=i<rows.length-1?'border-bottom:1px solid var(--border2);':'';
-    var leftBorder=isSelected?'3px solid var(--gold)':'3px solid transparent';
+    var leftBorder=isSelected?'3px solid var(--gold)':isConfirmed?'3px solid rgba(200,164,60,0.4)':'3px solid transparent';
     var CD='padding:7px 10px;font-family:DM Mono,monospace;font-size:9px;';
     h+='<div onclick="onPropOpsSelectPlant(\'vehicle_plants\',\''+lk+'\')" style="cursor:pointer;display:grid;grid-template-columns:'+COLS+';background:'+bg+';'+bdr+';border-left:'+leftBorder+';">';
-    h+='<div style="'+CD+'color:'+(isSelected?'var(--gold)':'var(--text)')+';">'+locLabel+'</div>';
+    var allocBadge=isConfirmed&&!isSelected?' <span style="font-size:8px;color:var(--green);margin-left:4px;">✓ '+_vpAlloc.vehicle_capacity_yr+'k</span>':'';
+    h+='<div style="'+CD+'color:'+(isSelected?'var(--gold)':'var(--text)')+';">'+locLabel+allocBadge+'</div>';
     h+='<div style="'+CD+'text-align:right;color:var(--gold);">'+(isBuilding?'—':totalCapK+'k/yr')+'</div>';
     h+='<div style="'+CD+'text-align:right;color:var(--cyan);">'+(reservedK>0?reservedK+'k/yr':'—')+'</div>';
     h+='<div style="'+CD+'text-align:right;color:var(--text);">'+(lastRnd!=null?Math.round(lastRnd/100)/10+'k':'—')+'</div>';
@@ -18497,6 +18500,16 @@ function _renderSimplifiedFootprint(){
 
 function _renderPlantAllocationPanel(lk){
   var ops=_prop.operations||{};
+  // Pre-fill pending state from existing confirmed entry (only once per open)
+  var _existingVp=(ops.vehicle_plants||[]).find(function(p){return p.id==='vp_'+lk&&p.vehicle_capacity_yr;});
+  if(_existingVp&&!ops._panelPreloaded){
+    ops._panelPreloaded=true;
+    if(_existingVp.vehicle_capacity_yr)ops.vehicle_capacity_yr=_existingVp.vehicle_capacity_yr;
+    if(_existingVp.jph)ops._existing_jph=_existingVp.jph;
+    if(_existingVp.automation_level)ops._existing_auto=_existingVp.automation_level;
+    if(_existingVp.platform_auto_level)ops.platform_auto_level=_existingVp.platform_auto_level;
+    if(_existingVp.tophat_auto_level)ops.tophat_auto_level=_existingVp.tophat_auto_level;
+  }
   var parts=lk.split('_'),reg=parts[0],cc=parts.slice(1).join('_'),ccName='';
   (INDUSTRIAL_COUNTRIES[reg]||[]).forEach(function(c){if(c.code===cc)ccName=c.name;});
   var vpLk=((_deployedModules||{}).vehicle_plants||{})[lk]||{};
@@ -18606,12 +18619,18 @@ function _renderPlantAllocationPanel(lk){
   h+='Platform shared <span style="color:var(--muted2);">(−50% body shop)</span></label></div>';
   h+='</div>';
 
-  // ── Section D: KPI strip ──
+  // ── Section D: Confirm/Cancel + KPI strip ──
+  var pid='vp_'+lk;
+  var isAlreadyConfirmed=!!(ops.vehicle_plants||[]).find(function(p){return p.id===pid&&p.vehicle_capacity_yr;});
+  h+='<div style="display:flex;gap:8px;margin-bottom:10px;margin-top:4px;">';
+  h+='<button onclick="onPropOpsConfirmAllocation(\''+lk+'\')" style="'+MN+'flex:1;font-size:10px;padding:8px;border-radius:3px;border:1px solid rgba(200,164,60,.5);background:var(--goldl);color:var(--gold);cursor:pointer;">'+(isAlreadyConfirmed?'✓ Update Allocation':'✓ Confirm Allocation')+'</button>';
+  h+='<button onclick="onPropOpsCancelAllocation()" style="'+MN+'font-size:10px;padding:8px 14px;border-radius:3px;border:1px solid var(--border2);background:var(--s2);color:var(--muted2);cursor:pointer;">✕ Cancel</button>';
+  h+='</div>';
   function kpiP(l,v,c,id){return '<div style="background:var(--s2);border-radius:3px;padding:8px;border:1px solid var(--border)"><div style="font-size:8px;color:var(--muted2);margin-bottom:2px;">'+l+'</div><div style="'+MN+'font-size:11px;color:'+c+'" id="'+id+'">'+v+'</div></div>';}
   h+='<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;">';
-  h+=kpiP('Plant Capex','—','var(--gold)','prop-ops-fac-vp1-inv');
-  h+=kpiP('Manuf / unit','—','var(--text)','prop-ops-fac-vp1-manuf');
-  h+=kpiP('Capacity / yr','—','var(--cyan)','prop-ops-fac-vp1-effcap');
+  h+=kpiP('Plant Capex','—','var(--gold)','prop-ops-fac-'+pid+'-inv');
+  h+=kpiP('Manuf / unit','—','var(--text)','prop-ops-fac-'+pid+'-manuf');
+  h+=kpiP('Capacity / yr','—','var(--cyan)','prop-ops-fac-'+pid+'-effcap');
   h+='</div>';
   h+='</div>';
   return h;
@@ -18755,6 +18774,7 @@ function onPropOpsSelectPlant(facType,locKey){
     _prop.operations.selected_plant_key=locKey;
     _prop.operations._existing_jph=ld.jph||40;
     _prop.operations._existing_auto=ld.automation_level||2;
+    _prop.operations._panelPreloaded=false;
     // Seed per-module automation from deployed data (only if not already set by user)
     var _vpLkD=((_deployedModules||{}).vehicle_plants||{})[locKey]||{};
     var _propPlatCK2=(_prop.platform&&_prop.platform.module)?_prop.platform.module.config_key:null;
@@ -18779,11 +18799,291 @@ function onPropOpsSelectPlant(facType,locKey){
   _buildPlantFromDecision();
 }
 
+function _getTotalConfirmedVehicleCapK(){
+  return((_prop.operations&&_prop.operations.vehicle_plants)||[]).filter(function(p){return p.vehicle_capacity_yr;}).reduce(function(s,p){return s+(p.vehicle_capacity_yr||0);},0);
+}
 function onPropOpsVehicleCapYr(k){
   if(!_prop.operations)return;
   _prop.operations.vehicle_capacity_yr=Math.max(1,k||1);
   _prop.operations.capacity_target_k=_prop.operations.vehicle_capacity_yr;
   _buildPlantFromDecision();
+}
+function onPropOpsConfirmAllocation(lk){
+  var ops=_prop.operations||{};
+  var pid='vp_'+lk;
+  var vp=(ops.vehicle_plants||[]).find(function(p){return p.id===pid;});
+  if(vp){
+    vp.vehicle_capacity_yr=ops.vehicle_capacity_yr||ops.capacity_target_k||_suggestedVolK()||50;
+    vp.platform_auto_level=ops.platform_auto_level||vp.platform_auto_level||2;
+    vp.tophat_auto_level=ops.tophat_auto_level||vp.tophat_auto_level||2;
+  }
+  ops.selected_plant_key=null;ops.platform_auto_level=null;ops.tophat_auto_level=null;ops._panelPreloaded=false;
+  var ftEl=document.getElementById('prop-ops-footprint-area');if(ftEl)ftEl.innerHTML=_renderSimplifiedFootprint();
+  var aEl=document.getElementById('prop-ops-alloc-area');if(aEl)aEl.innerHTML=_renderConfirmedPlantsSummary();
+  renderOpsAggregateSummary();
+}
+function onPropOpsCancelAllocation(){
+  var ops=_prop.operations||{};
+  if(ops.selected_plant_key){
+    var pid='vp_'+ops.selected_plant_key;
+    var idx=(ops.vehicle_plants||[]).findIndex(function(p){return p.id===pid&&!p.vehicle_capacity_yr;});
+    if(idx>=0)ops.vehicle_plants.splice(idx,1);
+  }
+  ops.selected_plant_key=null;ops.platform_auto_level=null;ops.tophat_auto_level=null;ops._panelPreloaded=false;
+  var ftEl=document.getElementById('prop-ops-footprint-area');if(ftEl)ftEl.innerHTML=_renderSimplifiedFootprint();
+  var aEl=document.getElementById('prop-ops-alloc-area');if(aEl)aEl.innerHTML=_renderConfirmedPlantsSummary();
+}
+function onPropOpsRemovePlantAllocation(pid){
+  var ops=_prop.operations||{};
+  if(!ops.vehicle_plants)return;
+  ops.vehicle_plants=ops.vehicle_plants.filter(function(p){return p.id!==pid;});
+  var ftEl=document.getElementById('prop-ops-footprint-area');if(ftEl)ftEl.innerHTML=_renderSimplifiedFootprint();
+  var aEl=document.getElementById('prop-ops-alloc-area');if(aEl)aEl.innerHTML=_renderConfirmedPlantsSummary();
+  renderOpsAggregateSummary();
+}
+function _renderConfirmedPlantsSummary(){
+  var ops=_prop.operations||{};
+  var confirmed=(ops.vehicle_plants||[]).filter(function(p){return p.vehicle_capacity_yr;});
+  var totalK=confirmed.reduce(function(s,p){return s+(p.vehicle_capacity_yr||0);},0);
+  var MN='font-family:DM Mono,monospace;';
+  var h='<div style="margin-bottom:18px;">';
+  if(!confirmed.length){
+    h+='<div style="'+MN+'font-size:9px;color:var(--muted2);padding:10px 0;font-style:italic;">No vehicle plants allocated yet — click a plant row above to allocate.</div>';
+  } else {
+    h+='<div style="'+MN+'font-size:8px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:8px;">✓ ALLOCATED VEHICLE PLANTS</div>';
+    h+='<div style="border:1px solid var(--border2);border-radius:4px;overflow:hidden;margin-bottom:8px;">';
+    confirmed.forEach(function(p,i){
+      var lk=p.region+'_'+p.country_code;
+      var bdr=i<confirmed.length-1?'border-bottom:1px solid var(--border2);':'';
+      h+='<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 12px;background:'+(i%2===0?'var(--s3)':'var(--s2)')+';'+bdr+'">';
+      h+='<div style="'+MN+'font-size:9px;color:var(--text);">🏭 '+p.region+' · '+p.country_name+'</div>';
+      h+='<div style="display:flex;align-items:center;gap:8px;">';
+      h+='<span style="'+MN+'font-size:9px;color:var(--gold);">'+p.vehicle_capacity_yr+'k/yr</span>';
+      h+='<button onclick="onPropOpsSelectPlant(\'vehicle_plants\',\''+lk+'\')" style="'+MN+'font-size:8px;padding:3px 8px;border-radius:2px;border:1px solid var(--border2);background:var(--s2);color:var(--muted2);cursor:pointer;">Edit</button>';
+      h+='<button onclick="onPropOpsRemovePlantAllocation(\''+p.id+'\')" style="'+MN+'font-size:8px;padding:3px 8px;border-radius:2px;border:1px solid rgba(220,60,60,.3);background:transparent;color:var(--red);cursor:pointer;">✕</button>';
+      h+='</div></div>';
+    });
+    h+='</div>';
+    h+='<div style="'+MN+'font-size:9px;color:var(--muted2);">Total: <span style="color:var(--gold);">'+totalK+'k/yr</span> · Click another plant row to add more capacity.</div>';
+  }
+  h+='</div>';return h;
+}
+// ── PWT plant panel system ─────────────────────────────────────────────────
+function _renderPwtFootprint(){
+  var ops=_prop.operations||{};
+  var pwtRows=(mfgPlants||[]).filter(function(p){return p.type==='powertrain'&&p.country_code&&(p.status==='active'||p.status==='building');});
+  var pwtDefs=_getModuleDefsForType('powertrain_plants');
+  var _selPwtLk=ops.selected_pwt_plant_key||null;
+  var MN='font-family:DM Mono,monospace;';
+  var MOD_NAMES={pwt:'ICE PWT',epwt:'e-PWT',battery:'Battery'};
+  var h='<div style="margin-bottom:14px;">';
+  h+='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">';
+  h+='<div style="'+MN+'font-size:8px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);">⚙ POWERTRAIN PLANTS <span style="color:var(--muted2);font-size:7px;letter-spacing:0.5px;">— click to allocate</span></div>';
+  h+='</div>';
+  if(!pwtRows.length){
+    h+='<div style="border:1px solid var(--border2);border-radius:4px;padding:12px 14px;'+MN+'font-size:9px;color:var(--muted2);font-style:italic;">No powertrain plants on record.</div></div>';
+    return h;
+  }
+  var COLS='1fr 80px'+pwtDefs.map(function(){return ' 70px';}).join('');
+  var HD='padding:5px 10px;'+MN+'font-size:8px;color:var(--muted2);font-weight:700;';
+  h+='<div style="border:1px solid var(--border2);border-radius:4px;overflow:hidden;">';
+  h+='<div style="display:grid;grid-template-columns:'+COLS+';background:var(--s2);border-bottom:1px solid var(--border2);">';
+  h+='<div style="'+HD+'">Location</div><div style="'+HD+'text-align:right;">Capacity</div>';
+  pwtDefs.forEach(function(d){h+='<div style="'+HD+'text-align:center;">'+(MOD_NAMES[d.key]||d.label)+'</div>';});
+  h+='</div>';
+  pwtRows.forEach(function(p,i){
+    var lk=p.region+'_'+p.country_code,ccName=p.country_name||'';
+    if(!ccName)(INDUSTRIAL_COUNTRIES[p.region]||[]).forEach(function(c){if(c.code===p.country_code)ccName=c.name;});
+    var isBuilding=p.status==='building';
+    var isSelected=_selPwtLk===lk;
+    var _pwtAlloc=(ops.powertrain_plants||[]).find(function(pp){return pp.id==='pwt_'+lk&&pp.vehicle_capacity_yr;});
+    var isConfirmed=!!_pwtAlloc;
+    var bg=isSelected?'rgba(80,160,220,0.07)':isConfirmed?'rgba(0,180,220,0.04)':(i%2===0?'var(--s3)':'var(--s2)');
+    var bdr=i<pwtRows.length-1?'border-bottom:1px solid var(--border2);':'';
+    var leftBorder=isSelected?'3px solid var(--cyan)':isConfirmed?'3px solid rgba(0,180,220,0.4)':'3px solid transparent';
+    var CD='padding:7px 10px;'+MN+'font-size:9px;';
+    var locLabel=(isBuilding?'🚧 ':'⚙ ')+p.region+(ccName?' · '+ccName:'');
+    var allocBadge=isConfirmed&&!isSelected?' <span style="font-size:8px;color:var(--green);margin-left:4px;">✓ '+_pwtAlloc.vehicle_capacity_yr+'k</span>':'';
+    h+='<div onclick="onPropOpsPwtSelectPlant(\''+lk+'\')" style="cursor:pointer;display:grid;grid-template-columns:'+COLS+';background:'+bg+';'+bdr+';border-left:'+leftBorder+';">';
+    h+='<div style="'+CD+'color:'+(isSelected?'var(--cyan)':'var(--text)')+';">'+locLabel+allocBadge+'</div>';
+    h+='<div style="'+CD+'text-align:right;color:var(--gold);">'+(isBuilding?'—':(p.capacity_k||0)+'k/yr')+'</div>';
+    var dm=((_deployedModules||{}).powertrain_plants||{})[lk]||{};
+    pwtDefs.forEach(function(d){var has=(dm[d.key]&&dm[d.key].length)>0;h+='<div style="'+CD+'text-align:center;color:'+(has?'var(--green)':'var(--muted2)')+';">'+(has?'✓':'—')+'</div>';});
+    h+='</div>';
+  });
+  h+='</div></div>';return h;
+}
+function _renderPwtAllocationPanel(lk){
+  var ops=_prop.operations||{};
+  var parts=lk.split('_'),reg=parts[0],cc=parts.slice(1).join('_'),ccName='';
+  (INDUSTRIAL_COUNTRIES[reg]||[]).forEach(function(c){if(c.code===cc)ccName=c.name;});
+  var vpLk=((_deployedModules||{}).powertrain_plants||{})[lk]||{};
+  var pwtDefs=_getModuleDefsForType('powertrain_plants');
+  var AUTO_LABELS={1:'Manual',2:'Standard',3:'Advanced',4:'Highly Auto'};
+  var MOD_NAMES={pwt:'ICE PWT',epwt:'e-PWT',battery:'Battery'};
+  var MN='font-family:DM Mono,monospace;';
+  var curAuto=ops._existing_pwt_auto||2;
+  var totalVehCapK=_getTotalConfirmedVehicleCapK()||_suggestedVolK()||50;
+  var pwtCapK=ops.pwt_capacity_yr||totalVehCapK;
+  var pid='pwt_'+lk;
+  var h='<div style="margin-bottom:18px;">';
+  h+='<div style="'+MN+'font-size:9px;font-weight:700;color:var(--cyan);margin-bottom:12px;padding-bottom:6px;border-bottom:1px solid var(--border2);">⚙ PWT ALLOCATION — '+reg+(ccName?' · '+ccName:'')+'</div>';
+  // Module tooling
+  h+='<div style="'+MN+'font-size:8px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:8px;">PWT Module Tooling</div>';
+  h+='<div style="display:grid;grid-template-columns:repeat('+Math.min(pwtDefs.length,3)+',1fr);gap:10px;margin-bottom:14px;">';
+  var PWT_CFG={pwt:(_prop.pwt&&_prop.pwt.module)?_prop.pwt.module.config_key:null,
+               epwt:(_prop.epwt&&_prop.epwt.module)?_prop.epwt.module.config_key:null,
+               battery:(_prop.battery&&_prop.battery.module)?_prop.battery.module.config_key:null};
+  pwtDefs.forEach(function(d){
+    var av=_getAvailableCap('powertrain_plants',lk,d.key);
+    var cfgKey=PWT_CFG[d.key];
+    var isInstalled=cfgKey&&av.installed_k>0;
+    var existingAuto=2;
+    ((vpLk[d.key]||[])).forEach(function(e){if(e.config_key===cfgKey&&e.automation_level)existingAuto=e.automation_level;});
+    var statusBadge=isInstalled
+      ?'<div style="display:inline-block;'+MN+'font-size:8px;color:var(--green);padding:2px 6px;border-radius:2px;background:rgba(50,180,100,0.10);margin-bottom:6px;">✓ Already installed</div>'
+      :(cfgKey?'<div style="display:inline-block;'+MN+'font-size:8px;color:var(--orange);padding:2px 6px;border-radius:2px;background:rgba(220,120,30,0.10);margin-bottom:6px;">⚠ New at this plant</div>'
+              :'<div style="display:inline-block;'+MN+'font-size:8px;color:var(--muted2);padding:2px 6px;border-radius:2px;background:var(--s2);margin-bottom:6px;">— New build</div>');
+    h+='<div style="border:1px solid var(--border2);border-radius:4px;padding:10px 11px;background:var(--s3);">';
+    h+='<div style="'+MN+'font-size:8px;font-weight:700;color:var(--muted2);margin-bottom:6px;">'+(MOD_NAMES[d.key]||d.label)+'</div>';
+    h+=statusBadge;
+    if(isInstalled){
+      h+='<div style="'+MN+'font-size:9px;color:var(--muted2);line-height:1.6;">';
+      h+='<span style="color:var(--gold);">'+av.installed_k+'k</span> installed<br>';
+      h+='<span style="color:var(--cyan);">'+av.used_k+'k</span> reserved<br>';
+      h+=(av.spare_k>0?'<span style="color:var(--green);">'+av.spare_k+'k FREE</span>':'<span style="color:var(--orange);">0k free</span>');
+      h+='</div>';
+    } else {h+='<div style="'+MN+'font-size:9px;color:var(--muted2);">New tooling required</div>';}
+    h+='</div>';
+  });
+  h+='</div>';
+  // Volume + Automation
+  h+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px;">';
+  h+='<div><div style="'+MN+'font-size:8px;color:var(--muted2);margin-bottom:4px;">Production Volume (k/yr)</div>';
+  h+='<div style="display:flex;align-items:center;gap:6px;">';
+  h+='<input type="number" min="1" max="500" value="'+pwtCapK+'" onchange="onPropOpsPwtCapYr(parseInt(this.value)||50)" style="'+MN+'font-size:10px;padding:6px 8px;border-radius:3px;border:1px solid var(--border2);background:var(--s2);color:var(--text);width:80px;">';
+  h+='<span style="'+MN+'font-size:8px;color:var(--muted2);">k/yr</span></div>';
+  if(totalVehCapK)h+='<div style="'+MN+'font-size:8px;color:var(--muted2);margin-top:3px;">vehicle plants total: '+totalVehCapK+'k</div>';
+  h+='</div>';
+  h+='<div><div style="'+MN+'font-size:8px;color:var(--muted2);margin-bottom:4px;">Automation Level</div>';
+  h+='<select onchange="onPropOpsPwtAutoLevel(parseInt(this.value))" style="'+MN+'font-size:10px;padding:6px 8px;border-radius:3px;border:1px solid var(--border2);background:var(--s2);color:var(--text);width:100%;">';
+  [1,2,3,4].forEach(function(l){h+='<option value="'+l+'"'+(curAuto===l?' selected':'')+'>L'+l+' – '+AUTO_LABELS[l]+'</option>';});
+  h+='</select></div>';
+  h+='</div>';
+  // Confirm/Cancel + KPI strip
+  var isAlreadyConfirmedPwt=!!(ops.powertrain_plants||[]).find(function(p){return p.id===pid&&p.vehicle_capacity_yr;});
+  h+='<div style="display:flex;gap:8px;margin-bottom:10px;">';
+  h+='<button onclick="onPropOpsConfirmPwtAllocation(\''+lk+'\')" style="'+MN+'flex:1;font-size:10px;padding:8px;border-radius:3px;border:1px solid rgba(0,180,220,0.4);background:rgba(0,180,220,0.06);color:var(--cyan);cursor:pointer;">'+(isAlreadyConfirmedPwt?'✓ Update PWT Allocation':'✓ Confirm PWT Allocation')+'</button>';
+  h+='<button onclick="onPropOpsCancelPwtAllocation()" style="'+MN+'font-size:10px;padding:8px 14px;border-radius:3px;border:1px solid var(--border2);background:var(--s2);color:var(--muted2);cursor:pointer;">✕ Cancel</button>';
+  h+='</div>';
+  function kpiQ(l,v,c,id){return '<div style="background:var(--s2);border-radius:3px;padding:8px;border:1px solid var(--border)"><div style="font-size:8px;color:var(--muted2);margin-bottom:2px;">'+l+'</div><div style="'+MN+'font-size:11px;color:'+c+'" id="'+id+'">'+v+'</div></div>';}
+  h+='<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;">';
+  h+=kpiQ('PWT Capex','—','var(--orange)',pid+'-inv');
+  h+=kpiQ('PWT Cost/unit','—','var(--text)',pid+'-manuf');
+  h+=kpiQ('Capacity/yr','—','var(--cyan)',pid+'-effcap');
+  h+='</div>';
+  h+='</div>';return h;
+}
+function _renderConfirmedPwtSummary(){
+  var ops=_prop.operations||{};
+  var confirmed=(ops.powertrain_plants||[]).filter(function(p){return p.vehicle_capacity_yr;});
+  var MN='font-family:DM Mono,monospace;';
+  var h='<div style="margin-bottom:18px;">';
+  if(!confirmed.length){
+    h+='<div style="'+MN+'font-size:9px;color:var(--muted2);padding:10px 0;font-style:italic;">No PWT plants allocated yet — click a plant row above to allocate.</div>';
+  } else {
+    var totalK=confirmed.reduce(function(s,p){return s+(p.vehicle_capacity_yr||0);},0);
+    h+='<div style="'+MN+'font-size:8px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:8px;">✓ ALLOCATED PWT PLANTS</div>';
+    h+='<div style="border:1px solid var(--border2);border-radius:4px;overflow:hidden;margin-bottom:8px;">';
+    confirmed.forEach(function(p,i){
+      var lk=p.region+'_'+p.country_code;
+      var bdr=i<confirmed.length-1?'border-bottom:1px solid var(--border2);':'';
+      h+='<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 12px;background:'+(i%2===0?'var(--s3)':'var(--s2)')+';'+bdr+'">';
+      h+='<div style="'+MN+'font-size:9px;color:var(--text);">⚙ '+p.region+' · '+p.country_name+'</div>';
+      h+='<div style="display:flex;align-items:center;gap:8px;">';
+      h+='<span style="'+MN+'font-size:9px;color:var(--cyan);">'+p.vehicle_capacity_yr+'k/yr</span>';
+      h+='<button onclick="onPropOpsPwtSelectPlant(\''+lk+'\')" style="'+MN+'font-size:8px;padding:3px 8px;border-radius:2px;border:1px solid var(--border2);background:var(--s2);color:var(--muted2);cursor:pointer;">Edit</button>';
+      h+='<button onclick="onPropOpsRemovePwtAllocation(\''+p.id+'\')" style="'+MN+'font-size:8px;padding:3px 8px;border-radius:2px;border:1px solid rgba(220,60,60,.3);background:transparent;color:var(--red);cursor:pointer;">✕</button>';
+      h+='</div></div>';
+    });
+    h+='</div>';
+    h+='<div style="'+MN+'font-size:9px;color:var(--muted2);">Total: <span style="color:var(--cyan);">'+totalK+'k/yr</span></div>';
+  }
+  h+='</div>';return h;
+}
+function _buildPwtPlantFromDecision(lk){
+  if(!lk||!_prop.operations)return;
+  var ops=_prop.operations,pid='pwt_'+lk;
+  var parts=lk.split('_'),reg=parts[0],cc=parts.slice(1).join('_');
+  var cl=INDUSTRIAL_COUNTRIES[reg]||INDUSTRIAL_COUNTRIES['EU'];
+  var ct=cl.find(function(c){return c.code===cc;})||cl[0]||{name:cc,code:cc};
+  if(!ops.powertrain_plants)ops.powertrain_plants=[];
+  var pp=ops.powertrain_plants.find(function(p){return p.id===pid;})||null;
+  if(!pp){pp={id:pid,region:reg,country_code:cc,country_name:ct.name||cc,automation_level:2,module_capacity:{},_computed:null};ops.powertrain_plants.push(pp);}
+  if(ops._existing_pwt_auto)pp.automation_level=ops._existing_pwt_auto;
+  var capK=ops.pwt_capacity_yr||_getTotalConfirmedVehicleCapK()||_suggestedVolK()||50;
+  _getModuleDefsForType('powertrain_plants').forEach(function(d){
+    if(!pp.module_capacity[d.key])pp.module_capacity[d.key]={installed_k:0,used_k:0,incremental_k:0};
+    pp.module_capacity[d.key].incremental_k=capK;
+  });
+  renderFacilityCostSummary('powertrain_plants',pid);
+}
+function onPropOpsPwtSelectPlant(lk){
+  var ops=_prop.operations||{};
+  if(!ops)return;
+  ops.selected_pwt_plant_key=lk;
+  var _pwtLkD=((_deployedModules||{}).powertrain_plants||{})[lk]||{};
+  var _pAL2=2;
+  Object.values(_pwtLkD).forEach(function(arr){(arr||[]).forEach(function(e){if(e.automation_level)_pAL2=e.automation_level;});});
+  if(!ops._existing_pwt_auto)ops._existing_pwt_auto=_pAL2;
+  // Pre-fill from existing confirmed entry
+  var existingPwt=(ops.powertrain_plants||[]).find(function(p){return p.id==='pwt_'+lk&&p.vehicle_capacity_yr;});
+  if(existingPwt){ops.pwt_capacity_yr=existingPwt.vehicle_capacity_yr;ops._existing_pwt_auto=existingPwt.automation_level||2;}
+  var ftEl=document.getElementById('prop-ops-pwt-footprint-area');if(ftEl)ftEl.innerHTML=_renderPwtFootprint();
+  var aEl=document.getElementById('prop-ops-pwt-alloc-area');
+  if(aEl){var tmp=document.createElement('div');tmp.innerHTML=_renderPwtAllocationPanel(lk);aEl.replaceWith(tmp.firstChild);}
+  _buildPwtPlantFromDecision(lk);
+}
+function onPropOpsPwtCapYr(k){
+  if(!_prop.operations)return;
+  _prop.operations.pwt_capacity_yr=Math.max(1,k||1);
+  _buildPwtPlantFromDecision(_prop.operations.selected_pwt_plant_key);
+}
+function onPropOpsPwtAutoLevel(level){
+  if(!_prop.operations)return;
+  _prop.operations._existing_pwt_auto=level;
+  var lk=_prop.operations.selected_pwt_plant_key;
+  if(lk){var pp=(_prop.operations.powertrain_plants||[]).find(function(p){return p.id==='pwt_'+lk;});if(pp)pp.automation_level=level;}
+  _buildPwtPlantFromDecision(lk);
+}
+function onPropOpsConfirmPwtAllocation(lk){
+  var ops=_prop.operations||{};
+  var pid='pwt_'+lk;
+  var pp=(ops.powertrain_plants||[]).find(function(p){return p.id===pid;});
+  if(pp)pp.vehicle_capacity_yr=ops.pwt_capacity_yr||_getTotalConfirmedVehicleCapK()||_suggestedVolK()||50;
+  ops.selected_pwt_plant_key=null;ops._existing_pwt_auto=null;ops.pwt_capacity_yr=null;
+  var ftEl=document.getElementById('prop-ops-pwt-footprint-area');if(ftEl)ftEl.innerHTML=_renderPwtFootprint();
+  var aEl=document.getElementById('prop-ops-pwt-alloc-area');if(aEl)aEl.innerHTML=_renderConfirmedPwtSummary();
+  renderOpsAggregateSummary();
+}
+function onPropOpsCancelPwtAllocation(){
+  var ops=_prop.operations||{};
+  if(ops.selected_pwt_plant_key){
+    var pid='pwt_'+ops.selected_pwt_plant_key;
+    var idx=(ops.powertrain_plants||[]).findIndex(function(p){return p.id===pid&&!p.vehicle_capacity_yr;});
+    if(idx>=0)ops.powertrain_plants.splice(idx,1);
+  }
+  ops.selected_pwt_plant_key=null;ops._existing_pwt_auto=null;ops.pwt_capacity_yr=null;
+  var ftEl=document.getElementById('prop-ops-pwt-footprint-area');if(ftEl)ftEl.innerHTML=_renderPwtFootprint();
+  var aEl=document.getElementById('prop-ops-pwt-alloc-area');if(aEl)aEl.innerHTML=_renderConfirmedPwtSummary();
+}
+function onPropOpsRemovePwtAllocation(pid){
+  var ops=_prop.operations||{};
+  if(!ops.powertrain_plants)return;
+  ops.powertrain_plants=ops.powertrain_plants.filter(function(p){return p.id!==pid;});
+  var ftEl=document.getElementById('prop-ops-pwt-footprint-area');if(ftEl)ftEl.innerHTML=_renderPwtFootprint();
+  var aEl=document.getElementById('prop-ops-pwt-alloc-area');if(aEl)aEl.innerHTML=_renderConfirmedPwtSummary();
+  renderOpsAggregateSummary();
 }
 function onPropOpsPlatAutoLevel(level){
   if(!_prop.operations)return;
@@ -19161,7 +19461,11 @@ async function buildOperationsSection() {
   if(_allocMode2==='existing'&&_selLk2){html+=_renderPlantAllocationPanel(_selLk2);}
   else{html+=_renderAllocationDecision();}
   html+='</div>';
-  html += _renderPlantSelector('powertrain_plants');
+  html+='<div id="prop-ops-pwt-footprint-area">'+_renderPwtFootprint()+'</div>';
+  html+='<div id="prop-ops-pwt-alloc-area">';
+  var _pwtSelLk2=(ops&&ops.selected_pwt_plant_key)||null;
+  if(_pwtSelLk2){html+=_renderPwtAllocationPanel(_pwtSelLk2);}else{html+=_renderConfirmedPwtSummary();}
+  html+='</div>';
 
   html+='<div style="margin-bottom:18px;"><div style="'+TH+'">Quality Investment Program</div><div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;">';
   QUALITY_TIERS.forEach(function(q){var sel=q.key===ops.quality_tier;
@@ -19210,11 +19514,14 @@ function _buildPlantFromDecision(){
     if(_pKeys.length){ops.selected_pwt_plant_key=_pKeys[0];}
   }
 
-  // ── Vehicle plant ──────────────────────────────────────────────────────────
-  if(!ops.vehicle_plants||!ops.vehicle_plants.length)
-    ops.vehicle_plants=[{id:'vp1',region:'EU',country_code:'DE',country_name:'Germany',jph:40,automation_level:2,platform_shared:true,module_capacity:{},_computed:null}];
-  var vp=ops.vehicle_plants[0];
-  if(!vp.id)vp.id='vp1';
+  // ── Vehicle plant — find-or-create by locKey id ────────────────────────────
+  if(!ops.vehicle_plants)ops.vehicle_plants=[];
+  var targetId=ops.selected_plant_key?'vp_'+ops.selected_plant_key:'vp1';
+  var vp=ops.vehicle_plants.find(function(p){return p.id===targetId;})||null;
+  if(!vp){
+    vp={id:targetId,region:'EU',country_code:'DE',country_name:'Germany',jph:40,automation_level:2,platform_shared:true,module_capacity:{},_computed:null};
+    ops.vehicle_plants.push(vp);
+  }
   if(ops.selected_plant_key){
     var _vpts=ops.selected_plant_key.split('_');
     vp.region=_vpts[0];vp.country_code=_vpts.slice(1).join('_');
@@ -19251,8 +19558,8 @@ function _buildPlantFromDecision(){
   });
 
   if (!ops.supplier_parks) ops.supplier_parks=[];
-  renderFacilityCostSummary('vehicle_plants',vp.id);
-  renderFacilityCostSummary('powertrain_plants',_pp.id);
+  if(ops.selected_plant_key)renderFacilityCostSummary('vehicle_plants',vp.id);
+  if(!ops.selected_pwt_plant_key)renderFacilityCostSummary('powertrain_plants',_pp.id);
 }
 
 function onPropOpsAllocationMode(mode){
@@ -19262,6 +19569,7 @@ function onPropOpsAllocationMode(mode){
     _prop.operations.selected_plant_key=null;
     _prop.operations.platform_auto_level=null;
     _prop.operations.tophat_auto_level=null;
+    _prop.operations._panelPreloaded=false;
   } else if(mode==='existing'&&!_prop.operations.selected_plant_key){
     var res=_buildFootprintLocMap(),locs=Object.keys(res.locMap);
     if(locs.length){
@@ -19277,7 +19585,7 @@ function onPropOpsAllocationMode(mode){
   if(_aEl2){
     var _tmp3=document.createElement('div');
     var _lk3=_prop.operations.selected_plant_key;
-    _tmp3.innerHTML=(mode==='existing'&&_lk3)?_renderPlantAllocationPanel(_lk3):_renderAllocationDecision();
+    _tmp3.innerHTML=(mode==='existing'&&_lk3)?_renderPlantAllocationPanel(_lk3):(mode==='new'?_renderAllocationDecision():_renderConfirmedPlantsSummary());
     _aEl2.replaceWith(_tmp3.firstChild);
   }
   _buildPlantFromDecision();
