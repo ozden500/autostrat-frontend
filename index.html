@@ -13664,6 +13664,7 @@ async function saveFootprintSetup() {
 let mfgPlants    = []; // {id, name, type, region, country_code, country_name, capacity_k, status}
 let mfgPipeline  = []; // {id, plant_id, decision, rounds_remaining, cost_m, cap_delta}
 let mfgCurrentRound = 1;
+let _propVoByPlant = {}; // locKey → units_sold last round (populated by buildOperationsSection)
 let _plantLeadTimes = { build: 4, expand: 2 };
 let mfgCountries = {}; // {region: [{country_code, country_name}]}
 
@@ -18415,31 +18416,72 @@ function _buildFootprintLocMap(){
 }
 
 function _renderSimplifiedFootprint(){
-  var res=_buildFootprintLocMap(),locMap=res.locMap,cols=res.cols,MOD_LABELS=res.MOD_LABELS;
-  var locs=Object.keys(locMap);
-  var h='<div style="margin-bottom:18px;border:1px solid var(--border2);border-radius:4px;overflow:hidden;">';
-  h+='<div style="padding:8px 12px;background:var(--s2);border-bottom:1px solid var(--border2);font-family:DM Mono,monospace;font-size:9px;font-weight:700;color:var(--muted2);letter-spacing:1px;">🌐 EXISTING FOOTPRINT — WHERE YOUR MODULES ARE ALREADY INSTALLED</div>';
-  if(!locs.length){
-    h+='<div style="padding:12px 14px;font-family:DM Mono,monospace;font-size:9px;color:var(--muted2);font-style:italic;">No existing capacity for configured modules — any plant will be a greenfield investment.</div>';
-  } else {
-    var colW='1fr '+cols.map(function(){return '80px';}).join(' ');
-    h+='<div style="display:grid;grid-template-columns:'+colW+';border-bottom:1px solid var(--border2);background:var(--s2);">';
-    h+='<div style="padding:5px 12px;font-family:DM Mono,monospace;font-size:8px;color:var(--muted2);font-weight:700;">LOCATION</div>';
-    cols.forEach(function(mk){h+='<div style="padding:5px 6px;font-family:DM Mono,monospace;font-size:8px;color:var(--muted2);font-weight:700;text-align:center;">'+MOD_LABELS[mk]+'</div>';});
-    h+='</div>';
-    locs.forEach(function(lk,i){
-      var ld=locMap[lk],bg=i%2===0?'var(--s3)':'var(--s2)',bdr=i<locs.length-1?'border-bottom:1px solid var(--border2);':'';
-      h+='<div style="display:grid;grid-template-columns:'+colW+';background:'+bg+';'+bdr+'">';
-      h+='<div style="padding:7px 12px;font-family:DM Mono,monospace;font-size:9px;color:var(--text);">🏭 '+ld.region+(ld.ccName?' · '+ld.ccName:'')+'</div>';
-      cols.forEach(function(mk){
-        var d=ld.mods[mk];
-        if(d&&d.instK>0)h+='<div style="padding:7px 6px;text-align:center;font-family:DM Mono,monospace;font-size:9px;color:var(--green);">✓ <span style="color:var(--gold);">'+d.instK+'k</span></div>';
-        else h+='<div style="padding:7px 6px;text-align:center;font-family:DM Mono,monospace;font-size:9px;color:var(--muted2);">—</div>';
+  var dm=_deployedModules||{},vpData=dm.vehicle_plants||{};
+  // Build reserved capacity per locKey (deduplicate by vehicle_id)
+  var _reservedByLoc={};
+  Object.keys(vpData).forEach(function(lk){
+    var seen={};
+    Object.values(vpData[lk]).forEach(function(arr){
+      (arr||[]).forEach(function(e){
+        if(e.vehicle_id&&!seen[e.vehicle_id]){seen[e.vehicle_id]=true;_reservedByLoc[lk]=(_reservedByLoc[lk]||0)+(e.est_volume_yr||0);}
       });
-      h+='</div>';
     });
+  });
+  // Platform / tophat match against current proposal
+  var _propPlatKey=(_prop.platform&&_prop.platform.mode!=='new')?_prop.platform.config_key:null;
+  var _propTopKey=(_prop.tophat&&_prop.tophat.mode!=='new')?_prop.tophat.config_key:null;
+  function _hasModule(lk,slot,cfgKey){
+    if(!cfgKey)return false;
+    return ((vpData[lk]||{})[slot]||[]).some(function(e){return e.config_key===cfgKey;});
   }
+  // Rows: all active/building vehicle plants
+  var rows=(mfgPlants||[]).filter(function(p){return p.type==='vehicle'&&p.country_code&&(p.status==='active'||p.status==='building');});
+  var TH_S='font-family:DM Mono,monospace;font-size:8px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:8px;display:block;';
+  var h='<div style="margin-bottom:18px;">';
+  h+='<div style="'+TH_S+'">🌐 EXISTING VEHICLE PLANTS</div>';
+  if(!rows.length){
+    h+='<div style="border:1px solid var(--border2);border-radius:4px;padding:12px 14px;font-family:DM Mono,monospace;font-size:9px;color:var(--muted2);font-style:italic;">No vehicle plants on record.</div>';
+    h+='</div>';return h;
+  }
+  h+='<div style="border:1px solid var(--border2);border-radius:4px;overflow:hidden;">';
+  var COLS='1fr 80px 80px 80px 60px 60px 60px';
+  var HD='padding:5px 10px;font-family:DM Mono,monospace;font-size:8px;color:var(--muted2);font-weight:700;';
+  h+='<div style="display:grid;grid-template-columns:'+COLS+';background:var(--s2);border-bottom:1px solid var(--border2);">';
+  h+='<div style="'+HD+'">Location</div>';
+  h+='<div style="'+HD+'text-align:right;">Total Cap</div>';
+  h+='<div style="'+HD+'text-align:right;">Reserved</div>';
+  h+='<div style="'+HD+'text-align:right;">Last Rnd</div>';
+  h+='<div style="'+HD+'text-align:center;">Load%</div>';
+  h+='<div style="'+HD+'text-align:center;">Platform</div>';
+  h+='<div style="'+HD+'text-align:center;">TopHat</div>';
   h+='</div>';
+  rows.forEach(function(p,i){
+    var lk=p.region+'_'+p.country_code;
+    var ccName=p.country_name||'';
+    if(!ccName)(INDUSTRIAL_COUNTRIES[p.region]||[]).forEach(function(c){if(c.code===p.country_code)ccName=c.name;});
+    var isBuilding=p.status==='building';
+    var locLabel=(isBuilding?'🚧 ':'🏭 ')+p.region+(ccName?' · '+ccName:'');
+    var totalCapK=p.capacity_k||0;
+    var reservedK=Math.round((_reservedByLoc[lk]||0)/1000);
+    var lastRnd=_propVoByPlant[lk];
+    var loadPct=totalCapK>0?Math.round(reservedK/totalCapK*100):null;
+    var loadColor=loadPct===null?'var(--muted2)':loadPct>85?'var(--red)':loadPct>60?'var(--orange)':'var(--green)';
+    var hasPl=_hasModule(lk,'platform',_propPlatKey);
+    var hasTh=_hasModule(lk,'tophat',_propTopKey);
+    var bg=i%2===0?'var(--s3)':'var(--s2)';
+    var bdr=i<rows.length-1?'border-bottom:1px solid var(--border2);':'';
+    var CD='padding:7px 10px;font-family:DM Mono,monospace;font-size:9px;';
+    h+='<div style="display:grid;grid-template-columns:'+COLS+';background:'+bg+';'+bdr+'">';
+    h+='<div style="'+CD+'color:var(--text);">'+locLabel+'</div>';
+    h+='<div style="'+CD+'text-align:right;color:var(--gold);">'+(isBuilding?'—':totalCapK+'k/yr')+'</div>';
+    h+='<div style="'+CD+'text-align:right;color:var(--cyan);">'+(reservedK>0?reservedK+'k/yr':'—')+'</div>';
+    h+='<div style="'+CD+'text-align:right;color:var(--text);">'+(lastRnd!=null?Math.round(lastRnd/100)/10+'k':'—')+'</div>';
+    h+='<div style="'+CD+'text-align:center;color:'+loadColor+';">'+(loadPct!==null&&!isBuilding?loadPct+'%':'—')+'</div>';
+    h+='<div style="'+CD+'text-align:center;color:'+(hasPl?'var(--green)':'var(--muted2)')+';">'+(hasPl?'✓':'—')+'</div>';
+    h+='<div style="'+CD+'text-align:center;color:'+(hasTh?'var(--green)':'var(--muted2)')+';">'+(hasTh?'✓':'—')+'</div>';
+    h+='</div>';
+  });
+  h+='</div></div>';
   return h;
 }
 
@@ -18914,6 +18956,30 @@ async function buildOperationsSection() {
         });
       }
     } catch(e2) {}
+  }
+  // Fetch last-round units_sold per vehicle for "Last Rnd" column
+  _propVoByPlant={};
+  if(teamId&&sessionId){
+    try{
+      var _vor=await fetch(API_URL+'/sessions/'+sessionId+'/vehicle-outcomes');
+      if(_vor.ok){
+        var _vod=await _vor.json();
+        var _vos=_vod.vehicle_outcomes||_vod||[];
+        var _latestRound={};
+        _vos.forEach(function(o){if(!_latestRound[o.vehicle_id]||o.round_id>_latestRound[o.vehicle_id])_latestRound[o.vehicle_id]=o.round_id;});
+        var _vidToLoc={};
+        Object.keys((_deployedModules||{}).vehicle_plants||{}).forEach(function(lk){
+          Object.values((_deployedModules.vehicle_plants[lk]||{})).forEach(function(arr){
+            (arr||[]).forEach(function(e){if(e.vehicle_id)_vidToLoc[e.vehicle_id]=lk;});
+          });
+        });
+        _vos.forEach(function(o){
+          if(o.round_id!==_latestRound[o.vehicle_id])return;
+          var lk=_vidToLoc[o.vehicle_id];if(!lk)return;
+          _propVoByPlant[lk]=(_propVoByPlant[lk]||0)+(parseInt(o.units_sold)||0);
+        });
+      }
+    }catch(e3){}
   }
   var ops = _prop.operations;
   var TH='font-family:DM Mono,monospace;font-size:8px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:8px;display:block;';
