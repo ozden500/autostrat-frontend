@@ -18520,7 +18520,8 @@ function _renderPlantSelector(facType){
     } else {
       matchBadge='<div style="font-size:8px;color:var(--muted2);margin-top:3px;">No shared modules</div>';
     }
-    var modList=facCols.filter(function(mk){return facData[lk][mk]&&facData[lk][mk].length;})
+    var _facLoc=facData[lk]||{};
+    var modList=facCols.filter(function(mk){return _facLoc[mk]&&_facLoc[mk].length;})
       .map(function(mk){return MOD_LABELS[mk];}).join(', ');
     var _cardBorder=sel?'var(--gold)':(item._pStatus==='building'?'rgba(220,140,30,0.4)':'var(--border2)');
     h+='<div onclick="onPropOpsSelectPlant(\''+facType+'\',\''+lk+'\')" style="cursor:pointer;border-radius:4px;padding:10px 11px;border:1px solid '+_cardBorder+';background:'+(sel?'var(--s3)':'var(--s2)')+';transition:border 0.1s;">';
