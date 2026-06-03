@@ -18514,8 +18514,7 @@ function _renderFootprintMatrixBody(){
   // --- Block 1: aggregate plant data ---
   var locMap={};
   cols.forEach(function(mk){
-    if(_slotMode(mk)==='new')return; // new development — zero existing footprint
-    var cfgKey=_slotCfg(mk);
+    var cfgKey=_slotMode(mk)!=='new'?_slotCfg(mk):null;
     var src=dm[COL_SRC[mk]]||{};
     Object.keys(src).forEach(function(lk){
       var entries=((src[lk][mk])||[]).filter(function(e){return !cfgKey||e.config_key===cfgKey;});
@@ -18541,8 +18540,7 @@ function _renderFootprintMatrixBody(){
   var supMap={},supSrc=dm['supplier_parks']||{};
   Object.keys(supSrc).forEach(function(rk){
     cols.forEach(function(mk){
-      if(_slotMode(mk)==='new')return;
-      var cfgKey=_slotCfg(mk);
+      var cfgKey=_slotMode(mk)!=='new'?_slotCfg(mk):null;
       var entries=((supSrc[rk][mk])||[]).filter(function(e){return !cfgKey||e.config_key===cfgKey;});
       if(!entries.length)return;
       if(!supMap[rk])supMap[rk]={};
