@@ -13733,7 +13733,17 @@ function opsTab(tab, el) {
   el.classList.add('active');
   var panelEl = document.getElementById('ops-' + tab);
   if (panelEl) panelEl.classList.add('active');
-  if (tab === 'decisions')     updateDecisionForm();
+  if (tab === 'decisions') {
+    updateDecisionForm();
+    if (sessionId) {
+      fetch(`${API_URL}/sessions/${sessionId}/config`).then(r => r.json()).then(d => {
+        const cfg = d.config || {};
+        if (cfg.lt_plant_build_q  != null) _plantLeadTimes.build  = cfg.lt_plant_build_q;
+        if (cfg.lt_plant_expand_q != null) _plantLeadTimes.expand = cfg.lt_plant_expand_q;
+        updateDecisionPreview();
+      }).catch(() => {});
+    }
+  }
   if (tab === 'pipeline')      renderPipeline();
   if (tab === 'manufacturing') loadMfgPlanTab();
   if (tab === 'sc-round')      loadScRoundTab();
