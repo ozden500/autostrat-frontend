@@ -13664,7 +13664,8 @@ async function saveFootprintSetup() {
 let mfgPlants    = []; // {id, name, type, region, country_code, country_name, capacity_k, status}
 let mfgPipeline  = []; // {id, plant_id, decision, rounds_remaining, cost_m, cap_delta}
 let mfgCurrentRound = 1;
-let _propVoByPlant = {}; // locKey → units_sold last round (populated by buildOperationsSection)
+let _propVoByPlant = {};    // locKey → units_sold last round (populated by buildOperationsSection)
+let _propVoPerVehicle = {}; // vehicle_id → units_sold last round
 let _plantLeadTimes = { build: 4, expand: 2 };
 let mfgCountries = {}; // {region: [{country_code, country_name}]}
 
@@ -18437,9 +18438,15 @@ function _renderSimplifiedFootprint(){
   }
   // Rows: all active/building vehicle plants
   var rows=(mfgPlants||[]).filter(function(p){return p.type==='vehicle'&&p.country_code&&(p.status==='active'||p.status==='building');});
-  var TH_S='font-family:DM Mono,monospace;font-size:8px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:8px;display:block;';
-  var h='<div style="margin-bottom:18px;">';
-  h+='<div style="'+TH_S+'">🌐 EXISTING VEHICLE PLANTS</div>';
+  var _ops=_prop.operations||{};
+  var _selMode=_ops.allocation_mode||'new',_selKey=_ops.selected_plant_key||null;
+  var TH_S='font-family:DM Mono,monospace;font-size:8px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);display:block;';
+  var h='<div style="margin-bottom:14px;">';
+  // Header row with "Build New Plant" button
+  h+='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">';
+  h+='<div style="'+TH_S+'">🌐 EXISTING VEHICLE PLANTS <span style="color:var(--muted2);font-size:7px;letter-spacing:0.5px;">— click to allocate</span></div>';
+  h+='<button onclick="onPropOpsAllocationMode(\'new\')" style="font-family:DM Mono,monospace;font-size:8px;padding:4px 10px;border-radius:3px;border:1px solid var(--border2);background:var(--s2);color:var(--muted2);cursor:pointer;white-space:nowrap;">＋ Build New Plant</button>';
+  h+='</div>';
   if(!rows.length){
     h+='<div style="border:1px solid var(--border2);border-radius:4px;padding:12px 14px;font-family:DM Mono,monospace;font-size:9px;color:var(--muted2);font-style:italic;">No vehicle plants on record.</div>';
     h+='</div>';return h;
@@ -18469,11 +18476,13 @@ function _renderSimplifiedFootprint(){
     var loadColor=loadPct===null?'var(--muted2)':loadPct>85?'var(--red)':loadPct>60?'var(--orange)':'var(--green)';
     var hasPl=_hasModule(lk,'platform',_propPlatKey);
     var hasTh=_hasModule(lk,'tophat',_propTopKey);
-    var bg=i%2===0?'var(--s3)':'var(--s2)';
+    var isSelected=_selMode==='existing'&&_selKey===lk;
+    var bg=isSelected?'rgba(220,180,0,0.07)':(i%2===0?'var(--s3)':'var(--s2)');
     var bdr=i<rows.length-1?'border-bottom:1px solid var(--border2);':'';
+    var leftBorder=isSelected?'3px solid var(--gold)':'3px solid transparent';
     var CD='padding:7px 10px;font-family:DM Mono,monospace;font-size:9px;';
-    h+='<div style="display:grid;grid-template-columns:'+COLS+';background:'+bg+';'+bdr+'">';
-    h+='<div style="'+CD+'color:var(--text);">'+locLabel+'</div>';
+    h+='<div onclick="onPropOpsSelectPlant(\'vehicle_plants\',\''+lk+'\')" style="cursor:pointer;display:grid;grid-template-columns:'+COLS+';background:'+bg+';'+bdr+';border-left:'+leftBorder+';">';
+    h+='<div style="'+CD+'color:'+(isSelected?'var(--gold)':'var(--text)')+';">'+locLabel+'</div>';
     h+='<div style="'+CD+'text-align:right;color:var(--gold);">'+(isBuilding?'—':totalCapK+'k/yr')+'</div>';
     h+='<div style="'+CD+'text-align:right;color:var(--cyan);">'+(reservedK>0?reservedK+'k/yr':'—')+'</div>';
     h+='<div style="'+CD+'text-align:right;color:var(--text);">'+(lastRnd!=null?Math.round(lastRnd/100)/10+'k':'—')+'</div>';
@@ -18483,6 +18492,128 @@ function _renderSimplifiedFootprint(){
     h+='</div>';
   });
   h+='</div></div>';
+  return h;
+}
+
+function _renderPlantAllocationPanel(lk){
+  var ops=_prop.operations||{};
+  var parts=lk.split('_'),reg=parts[0],cc=parts.slice(1).join('_'),ccName='';
+  (INDUSTRIAL_COUNTRIES[reg]||[]).forEach(function(c){if(c.code===cc)ccName=c.name;});
+  var vpLk=((_deployedModules||{}).vehicle_plants||{})[lk]||{};
+  var AUTO_LABELS={1:'Manual',2:'Standard',3:'Advanced',4:'Highly Auto'};
+  var MN='font-family:DM Mono,monospace;';
+  var h='<div style="margin-bottom:18px;">';
+  // ── Header ──
+  h+='<div style="'+MN+'font-size:9px;font-weight:700;color:var(--gold);margin-bottom:12px;padding-bottom:6px;border-bottom:1px solid var(--border2);">🏭 ALLOCATION — '+reg+(ccName?' · '+ccName:'')+'</div>';
+
+  // ── Section A: Vehicles at this plant ──
+  var _vehMap={};
+  Object.values(vpLk).forEach(function(arr){
+    (arr||[]).forEach(function(e){
+      if(!e.vehicle_id)return;
+      if(!_vehMap[e.vehicle_id])_vehMap[e.vehicle_id]={name:e.vehicle_name||e.vehicle_id,reserved_yr:0};
+      _vehMap[e.vehicle_id].reserved_yr=Math.max(_vehMap[e.vehicle_id].reserved_yr,e.est_volume_yr||0);
+    });
+  });
+  var vehRows=Object.keys(_vehMap).map(function(vid){
+    return {vid:vid,name:_vehMap[vid].name,
+            reservedK:Math.round(_vehMap[vid].reserved_yr/1000),
+            lastRndK:_propVoPerVehicle[vid]!=null?Math.round(_propVoPerVehicle[vid]/1000):null};
+  });
+  var capK=ops.vehicle_capacity_yr||ops.capacity_target_k||_suggestedVolK()||50;
+  var newVehName=(_prop.study&&_prop.study.name)||'New Vehicle';
+  var sugK=_suggestedVolK();
+  var VH='font-size:8px;font-weight:700;color:var(--muted2);padding:5px 10px;';
+  h+='<div style="'+MN+'font-size:8px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:8px;">Vehicle Allocations</div>';
+  h+='<div style="border:1px solid var(--border2);border-radius:4px;overflow:hidden;margin-bottom:14px;">';
+  h+='<div style="display:grid;grid-template-columns:1fr 90px 80px;background:var(--s2);border-bottom:1px solid var(--border2);">';
+  h+='<div style="'+MN+VH+'">Vehicle</div><div style="'+MN+VH+'text-align:right;">Reserved</div><div style="'+MN+VH+'text-align:right;">Last Rnd</div></div>';
+  vehRows.forEach(function(v,i){
+    var bdr=i<vehRows.length-1||true?'border-bottom:1px solid var(--border2);':'';
+    h+='<div style="display:grid;grid-template-columns:1fr 90px 80px;background:var(--s3);'+bdr+'">';
+    h+='<div style="'+MN+'font-size:9px;padding:7px 10px;color:var(--text);">'+v.name+'</div>';
+    h+='<div style="'+MN+'font-size:9px;padding:7px 10px;text-align:right;color:var(--cyan);">'+v.reservedK+'k/yr</div>';
+    h+='<div style="'+MN+'font-size:9px;padding:7px 10px;text-align:right;color:var(--muted2);">'+(v.lastRndK!=null?v.lastRndK+'k':'—')+'</div>';
+    h+='</div>';
+  });
+  // New vehicle input row
+  h+='<div style="display:grid;grid-template-columns:1fr auto;background:rgba(220,180,0,0.05);border-top:1px solid rgba(220,180,0,0.3);padding:8px 10px;align-items:center;">';
+  h+='<div style="'+MN+'font-size:9px;color:var(--gold);">► '+newVehName+' (new)</div>';
+  h+='<div style="display:flex;align-items:center;gap:6px;">';
+  h+='<input type="number" min="1" max="500" value="'+capK+'" onchange="onPropOpsVehicleCapYr(parseInt(this.value)||50)" style="'+MN+'font-size:10px;padding:5px 8px;border-radius:3px;border:1px solid rgba(220,180,0,0.4);background:var(--s2);color:var(--gold);width:70px;text-align:right;">';
+  h+='<span style="'+MN+'font-size:9px;color:var(--muted2);">k/yr</span>';
+  if(sugK)h+='<span style="'+MN+'font-size:8px;color:var(--muted2);margin-left:4px;">(plan: '+sugK+'k)</span>';
+  h+='</div></div>';
+  h+='</div>';
+
+  // ── Section B: Module Tooling ──
+  var _propPlatCK=(_prop.platform&&_prop.platform.module)?_prop.platform.module.config_key:null;
+  var _propThCK=(_prop.tophat&&_prop.tophat.module)?_prop.tophat.module.config_key:null;
+  h+='<div style="'+MN+'font-size:8px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:8px;">Module Tooling</div>';
+  h+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px;">';
+  [{slot:'platform',label:'PLATFORM',cfgKey:_propPlatCK,handlerFn:'onPropOpsPlatAutoLevel',stateKey:'platform_auto_level'},
+   {slot:'tophat',  label:'TOPHAT',  cfgKey:_propThCK,  handlerFn:'onPropOpsTophatAutoLevel',stateKey:'tophat_auto_level'}
+  ].forEach(function(mod){
+    var av=_getAvailableCap('vehicle_plants',lk,mod.slot);
+    var isInstalled=mod.cfgKey&&av.installed_k>0;
+    var existingAuto=2;
+    ((vpLk[mod.slot]||[])).forEach(function(e){if(e.config_key===mod.cfgKey&&e.automation_level)existingAuto=e.automation_level;});
+    var storedAuto=ops[mod.stateKey]||existingAuto;
+    var statusBadge=isInstalled
+      ?'<div style="display:inline-block;'+MN+'font-size:8px;color:var(--green);padding:2px 6px;border-radius:2px;background:rgba(50,180,100,0.10);margin-bottom:6px;">✓ Already installed</div>'
+      :(mod.cfgKey
+        ?'<div style="display:inline-block;'+MN+'font-size:8px;color:var(--orange);padding:2px 6px;border-radius:2px;background:rgba(220,120,30,0.10);margin-bottom:6px;">⚠ New at this plant</div>'
+        :'<div style="display:inline-block;'+MN+'font-size:8px;color:var(--muted2);padding:2px 6px;border-radius:2px;background:var(--s2);margin-bottom:6px;">— New build</div>');
+    var cfgLabel=mod.cfgKey?(' — '+(mod.cfgKey.length>12?mod.cfgKey.substring(0,12)+'…':mod.cfgKey)):'';
+    h+='<div style="border:1px solid var(--border2);border-radius:4px;padding:10px 11px;background:var(--s3);">';
+    h+='<div style="'+MN+'font-size:8px;font-weight:700;color:var(--muted2);margin-bottom:6px;">'+mod.label+cfgLabel+'</div>';
+    h+=statusBadge;
+    if(isInstalled){
+      h+='<div style="'+MN+'font-size:9px;color:var(--muted2);line-height:1.6;">';
+      h+='<span style="color:var(--gold);">'+av.installed_k+'k</span> installed<br>';
+      h+='<span style="color:var(--cyan);">'+av.used_k+'k</span> reserved<br>';
+      if(av.spare_k>0)h+='<span style="color:var(--green);">'+av.spare_k+'k FREE</span> ← reusable';
+      else h+='<span style="color:var(--orange);">0k free</span>';
+      h+='</div>';
+    } else {
+      h+='<div style="'+MN+'font-size:9px;color:var(--muted2);">New tooling required</div>';
+    }
+    h+='<div style="margin-top:8px;">';
+    h+='<div style="'+MN+'font-size:8px;color:var(--muted2);margin-bottom:4px;">Automation Level'+(isInstalled?' (installed: L'+existingAuto+')':'')+'</div>';
+    h+='<select onchange="'+mod.handlerFn+'(parseInt(this.value))" style="'+MN+'font-size:10px;padding:5px 8px;border-radius:3px;border:1px solid var(--border2);background:var(--s2);color:var(--text);width:100%;">';
+    [1,2,3,4].forEach(function(l){h+='<option value="'+l+'"'+(storedAuto===l?' selected':'')+'>L'+l+' – '+AUTO_LABELS[l]+'</option>';});
+    h+='</select></div>';
+    h+='</div>';
+  });
+  h+='</div>';
+
+  // ── Section C: Manufacturing config ──
+  var vp0=(ops.vehicle_plants||[])[0]||{};
+  var curJph=ops._existing_jph||vp0.jph||40;
+  var curAuto=ops._existing_auto||vp0.automation_level||2;
+  var jphMax=_MANUF_E.JPH_MAX[_getPlatformSize()]||65;
+  var platShared=vp0.platform_shared||false;
+  h+='<div style="'+MN+'font-size:8px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:8px;">Manufacturing</div>';
+  h+='<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:14px;">';
+  h+='<div><div style="'+MN+'font-size:8px;color:var(--muted2);margin-bottom:4px;">Automation Level</div>';
+  h+='<select onchange="onPropOpsAutoLevel(parseInt(this.value))" style="'+MN+'font-size:10px;padding:6px 8px;border-radius:3px;border:1px solid var(--border2);background:var(--s2);color:var(--text);width:100%;">';
+  [1,2,3,4].forEach(function(l){h+='<option value="'+l+'"'+(curAuto===l?' selected':'')+'>L'+l+' – '+AUTO_LABELS[l]+'</option>';});
+  h+='</select></div>';
+  h+='<div><div style="'+MN+'font-size:8px;color:var(--muted2);margin-bottom:4px;">Jobs Per Hour (JPH)</div>';
+  h+='<input type="number" min="15" max="'+jphMax+'" value="'+curJph+'" onchange="onPropOpsJphInput(parseInt(this.value)||40)" style="'+MN+'font-size:10px;padding:6px 8px;border-radius:3px;border:1px solid var(--border2);background:var(--s2);color:var(--text);width:100%;box-sizing:border-box;"></div>';
+  h+='<div style="display:flex;flex-direction:column;justify-content:flex-end;"><label style="display:flex;align-items:center;gap:6px;cursor:pointer;'+MN+'font-size:9px;color:var(--muted2);">';
+  h+='<input type="checkbox" '+(platShared?'checked':'')+' onchange="onPropOpsPlatShareToggle(this.checked)" style="accent-color:var(--gold);">';
+  h+='Platform shared <span style="color:var(--muted2);">(−50% body shop)</span></label></div>';
+  h+='</div>';
+
+  // ── Section D: KPI strip ──
+  function kpiP(l,v,c,id){return '<div style="background:var(--s2);border-radius:3px;padding:8px;border:1px solid var(--border)"><div style="font-size:8px;color:var(--muted2);margin-bottom:2px;">'+l+'</div><div style="'+MN+'font-size:11px;color:'+c+'" id="'+id+'">'+v+'</div></div>';}
+  h+='<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;">';
+  h+=kpiP('Plant Capex','—','var(--gold)','prop-ops-fac-vp1-inv');
+  h+=kpiP('Manuf / unit','—','var(--text)','prop-ops-fac-vp1-manuf');
+  h+=kpiP('Capacity / yr','—','var(--cyan)','prop-ops-fac-vp1-effcap');
+  h+='</div>';
+  h+='</div>';
   return h;
 }
 
@@ -18620,20 +18751,56 @@ function onPropOpsSelectPlant(facType,locKey){
   var isVeh=facType==='vehicle_plants';
   var res=_buildFootprintLocMap(),ld=res.locMap[locKey]||{};
   if(isVeh){
+    _prop.operations.allocation_mode='existing';
     _prop.operations.selected_plant_key=locKey;
     _prop.operations._existing_jph=ld.jph||40;
     _prop.operations._existing_auto=ld.automation_level||2;
+    // Seed per-module automation from deployed data (only if not already set by user)
+    var _vpLkD=((_deployedModules||{}).vehicle_plants||{})[locKey]||{};
+    var _propPlatCK2=(_prop.platform&&_prop.platform.module)?_prop.platform.module.config_key:null;
+    var _propThCK2=(_prop.tophat&&_prop.tophat.module)?_prop.tophat.module.config_key:null;
+    var _pAL=2,_tAL=2;
+    (_vpLkD.platform||[]).forEach(function(e){if(e.config_key===_propPlatCK2&&e.automation_level)_pAL=e.automation_level;});
+    (_vpLkD.tophat||[]).forEach(function(e){if(e.config_key===_propThCK2&&e.automation_level)_tAL=e.automation_level;});
+    if(!_prop.operations.platform_auto_level)_prop.operations.platform_auto_level=_pAL;
+    if(!_prop.operations.tophat_auto_level)_prop.operations.tophat_auto_level=_tAL;
+    // Re-render allocation area + footprint selection highlight
+    var _ftEl=document.getElementById('prop-ops-footprint-area');
+    if(_ftEl)_ftEl.innerHTML=_renderSimplifiedFootprint();
+    var _aEl=document.getElementById('prop-ops-alloc-area');
+    if(_aEl){var _tmp=document.createElement('div');_tmp.innerHTML=_renderPlantAllocationPanel(locKey);_aEl.replaceWith(_tmp.firstChild);}
   } else {
     _prop.operations.selected_pwt_plant_key=locKey;
     _prop.operations._existing_pwt_auto=ld.automation_level||2;
+    var _panelId='prop-ops-pwt-selector';
+    var _panel=document.getElementById(_panelId);
+    if(_panel){var _tmp2=document.createElement('div');_tmp2.innerHTML=_renderPlantSelector(facType);_panel.replaceWith(_tmp2.firstChild);}
   }
-  // Re-render the right selector panel in-place
-  var panelId=isVeh?'prop-ops-decision-panel':'prop-ops-pwt-selector';
-  var panel=document.getElementById(panelId);
-  if(panel){var tmp=document.createElement('div');tmp.innerHTML=_renderPlantSelector(facType);panel.replaceWith(tmp.firstChild);}
   _buildPlantFromDecision();
 }
 
+function onPropOpsVehicleCapYr(k){
+  if(!_prop.operations)return;
+  _prop.operations.vehicle_capacity_yr=Math.max(1,k||1);
+  _prop.operations.capacity_target_k=_prop.operations.vehicle_capacity_yr;
+  _buildPlantFromDecision();
+}
+function onPropOpsPlatAutoLevel(level){
+  if(!_prop.operations)return;
+  _prop.operations.platform_auto_level=level;
+  _buildPlantFromDecision();
+}
+function onPropOpsTophatAutoLevel(level){
+  if(!_prop.operations)return;
+  _prop.operations.tophat_auto_level=level;
+  _buildPlantFromDecision();
+}
+function onPropOpsPlatShareToggle(checked){
+  if(!_prop.operations)return;
+  var vp=(_prop.operations.vehicle_plants||[])[0];
+  if(vp)vp.platform_shared=checked;
+  _buildPlantFromDecision();
+}
 function onPropOpsPlantAuto(facType,level){
   if(!_prop.operations)return;
   var isVeh=facType==='vehicle_plants';
@@ -18959,7 +19126,7 @@ async function buildOperationsSection() {
     } catch(e2) {}
   }
   // Fetch last-round units_sold per vehicle for "Last Rnd" column
-  _propVoByPlant={};
+  _propVoByPlant={};_propVoPerVehicle={};
   if(teamId&&sessionId){
     try{
       var _vor=await fetch(API_URL+'/sessions/'+sessionId+'/vehicle-outcomes');
@@ -18976,6 +19143,7 @@ async function buildOperationsSection() {
         });
         _vos.forEach(function(o){
           if(o.round_id!==_latestRound[o.vehicle_id])return;
+          _propVoPerVehicle[o.vehicle_id]=(parseInt(o.units_sold)||0);
           var lk=_vidToLoc[o.vehicle_id];if(!lk)return;
           _propVoByPlant[lk]=(_propVoByPlant[lk]||0)+(parseInt(o.units_sold)||0);
         });
@@ -18987,8 +19155,12 @@ async function buildOperationsSection() {
   var CB='border-radius:4px;padding:12px;cursor:pointer;border:1px solid var(--border2);background:var(--s2);';
   var CS='border-radius:4px;padding:12px;cursor:pointer;border:1px solid var(--gold);background:var(--s3);';
 
-  var html = _renderSimplifiedFootprint();
-  html += _renderPlantSelector('vehicle_plants');
+  var _allocMode2=(ops&&ops.allocation_mode)||'new',_selLk2=(ops&&ops.selected_plant_key)||null;
+  var html='<div id="prop-ops-footprint-area">'+_renderSimplifiedFootprint()+'</div>';
+  html+='<div id="prop-ops-alloc-area">';
+  if(_allocMode2==='existing'&&_selLk2){html+=_renderPlantAllocationPanel(_selLk2);}
+  else{html+=_renderAllocationDecision();}
+  html+='</div>';
   html += _renderPlantSelector('powertrain_plants');
 
   html+='<div style="margin-bottom:18px;"><div style="'+TH+'">Quality Investment Program</div><div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;">';
@@ -19027,8 +19199,8 @@ function _buildPlantFromDecision(){
   var capK=ops.capacity_target_k||_suggestedVolK()||50;
   var dm=_deployedModules||{};
 
-  // Auto-select best vehicle plant if none selected yet
-  if(!ops.selected_plant_key){
+  // Auto-select best vehicle plant if none selected yet (only in existing mode)
+  if(!ops.selected_plant_key&&ops.allocation_mode!=='new'){
     var _vKeys=Object.keys(dm.vehicle_plants||{});
     if(_vKeys.length){ops.selected_plant_key=_vKeys[0];}
   }
@@ -19086,7 +19258,11 @@ function _buildPlantFromDecision(){
 function onPropOpsAllocationMode(mode){
   if(!_prop.operations)return;
   _prop.operations.allocation_mode=mode;
-  if(mode==='existing'&&!_prop.operations.selected_plant_key){
+  if(mode==='new'){
+    _prop.operations.selected_plant_key=null;
+    _prop.operations.platform_auto_level=null;
+    _prop.operations.tophat_auto_level=null;
+  } else if(mode==='existing'&&!_prop.operations.selected_plant_key){
     var res=_buildFootprintLocMap(),locs=Object.keys(res.locMap);
     if(locs.length){
       _prop.operations.selected_plant_key=locs[0];
@@ -19095,8 +19271,16 @@ function onPropOpsAllocationMode(mode){
       _prop.operations._existing_auto=ld.automation_level||2;
     }
   }
-  var panel=document.getElementById('prop-ops-decision-panel');
-  if(panel){panel.outerHTML=_renderAllocationDecision();_buildPlantFromDecision();}
+  var _ftEl2=document.getElementById('prop-ops-footprint-area');
+  if(_ftEl2)_ftEl2.innerHTML=_renderSimplifiedFootprint();
+  var _aEl2=document.getElementById('prop-ops-alloc-area');
+  if(_aEl2){
+    var _tmp3=document.createElement('div');
+    var _lk3=_prop.operations.selected_plant_key;
+    _tmp3.innerHTML=(mode==='existing'&&_lk3)?_renderPlantAllocationPanel(_lk3):_renderAllocationDecision();
+    _aEl2.replaceWith(_tmp3.firstChild);
+  }
+  _buildPlantFromDecision();
 }
 
 function onPropOpsSelectExistingPlant(locKey){
