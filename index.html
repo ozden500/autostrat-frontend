@@ -18788,7 +18788,7 @@ function onPropOpsSelectPlant(facType,locKey){
     var _ftEl=document.getElementById('prop-ops-footprint-area');
     if(_ftEl)_ftEl.innerHTML=_renderSimplifiedFootprint();
     var _aEl=document.getElementById('prop-ops-alloc-area');
-    if(_aEl){var _tmp=document.createElement('div');_tmp.innerHTML=_renderPlantAllocationPanel(locKey);_aEl.replaceWith(_tmp.firstChild);}
+    if(_aEl)_aEl.innerHTML=_renderPlantAllocationPanel(locKey);
   } else {
     _prop.operations.selected_pwt_plant_key=locKey;
     _prop.operations._existing_pwt_auto=ld.automation_level||2;
@@ -19583,10 +19583,8 @@ function onPropOpsAllocationMode(mode){
   if(_ftEl2)_ftEl2.innerHTML=_renderSimplifiedFootprint();
   var _aEl2=document.getElementById('prop-ops-alloc-area');
   if(_aEl2){
-    var _tmp3=document.createElement('div');
     var _lk3=_prop.operations.selected_plant_key;
-    _tmp3.innerHTML=(mode==='existing'&&_lk3)?_renderPlantAllocationPanel(_lk3):(mode==='new'?_renderAllocationDecision():_renderConfirmedPlantsSummary());
-    _aEl2.replaceWith(_tmp3.firstChild);
+    _aEl2.innerHTML=(mode==='existing'&&_lk3)?_renderPlantAllocationPanel(_lk3):(mode==='new'?_renderAllocationDecision():_renderConfirmedPlantsSummary());
   }
   _buildPlantFromDecision();
 }
