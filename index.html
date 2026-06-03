@@ -19316,7 +19316,7 @@ async function confirmProposal() {
         {reliability:(ps.reliability||50)/100, comfort:(ps.comfort||50)/100,
          safety:(ps.safety||50)/100, roominess:ps.roominess||2.5,
          premiumness:ps.premiumness||0.3, cost_opt:0, weight_opt:0},
-        _nextModName('tophat', 'TH-'+((ps.config_key||'Body').split('_').slice(1).join('-')||'Body')));
+        _nextModName('tophat', 'TH-'+((ps.config_key||'Body').replace(/_/g,'-')||'Body')));
     }
     if (_prop.eands && _prop.eands.mode === 'new') {
       var ps = _prop.eands.specs || {};
