@@ -18428,8 +18428,9 @@ function _renderSimplifiedFootprint(){
     });
   });
   // Platform / tophat match against current proposal
-  var _propPlatKey=(_prop.platform&&_prop.platform.mode!=='new')?_prop.platform.config_key:null;
-  var _propTopKey=(_prop.tophat&&_prop.tophat.mode!=='new')?_prop.tophat.config_key:null;
+  // config_key lives on .module for reuse/modify; .config_key is only set on new mode at confirmProposal time
+  var _propPlatKey=(_prop.platform&&_prop.platform.mode!=='new'&&_prop.platform.module)?_prop.platform.module.config_key:null;
+  var _propTopKey=(_prop.tophat&&_prop.tophat.mode!=='new'&&_prop.tophat.module)?_prop.tophat.module.config_key:null;
   function _hasModule(lk,slot,cfgKey){
     if(!cfgKey)return false;
     return ((vpData[lk]||{})[slot]||[]).some(function(e){return e.config_key===cfgKey;});
