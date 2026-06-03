@@ -19265,9 +19265,12 @@ async function confirmProposal() {
 
   try {
     // \u2500\u2500 Create 'new development' modules that aren't in DB yet \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
-    var studyName  = (_prop.study.name || 'Vehicle').substring(0, 30);
     var _sizeAbbr  = {micro:'MICRO',small:'SMALL',medium:'MEDIUM',large:'LARGE',frame:'FRAME',performance:'PERF',commercial:'COMMERCIAL'};
     var _pwtAbbr   = {'ice_only':'ICE','bev_only':'BEV','ice_and_bev':'MULTI'};
+    var _sizeLabel = {micro:'Micro',small:'Small',medium:'Medium',large:'Large',frame:'Frame',performance:'Perf',commercial:'Commercial'};
+    var _modCounts = {};
+    (teamModuleLibrary||[]).forEach(function(m){ _modCounts[m.module_type]=(_modCounts[m.module_type]||0)+1; });
+    function _nextModName(type,base){ _modCounts[type]=(_modCounts[type]||0)+1; return base+'-'+String(_modCounts[type]).padStart(3,'0'); }
 
     async function _savePropNew(slot, modType, ck, specs, autoName) {
       if (!slot || slot.mode !== 'new' || !ck) return;
@@ -19291,21 +19294,21 @@ async function confirmProposal() {
       await _savePropNew(_prop.platform, 'platform', ck,
         {reliability:(ps.reliability||50)/100, comfort:(ps.comfort||50)/100,
          safety:(ps.safety||50)/100, cost_opt:(ps.cost_opt||0)/100, weight_opt:(ps.weight_opt||0)/100},
-        studyName+' Platform '+(_sizeAbbr[ps.size]||ps.size||'')+'-'+(ps.pwt||''));
+        _nextModName('platform', _sizeLabel[ps.size]||'Platform'));
     }
     if (_prop.pwt && _prop.pwt.mode === 'new') {
       var ps = _prop.pwt.specs || {};
       await _savePropNew(_prop.pwt, 'ice_pwt', ps.config_key||null,
         {reliability:(ps.reliability||50)/100, emission_tech:(ps.emission_tech||10)/100,
          power:ps.power||100, cost_opt:(ps.cost_opt||0)/100, weight_opt:(ps.weight_opt||0)/100},
-        studyName+' ICE '+(ps.config_key||''));
+        _nextModName('ice_pwt', (ps.config_key||'ICE').replace(/_ICE$/,'').replace(/_/g,'-')));
     }
     if (_prop.epwt && _prop.epwt.mode === 'new') {
       var ps = _prop.epwt.specs || {};
       await _savePropNew(_prop.epwt, 'epwt', ps.config_key||null,
         {reliability:(ps.reliability||50)/100, efficiency:ps.efficiency||0.7,
          power_kw:ps.power_kw||150, cost_opt:(ps.cost_opt||0)/100, weight_opt:(ps.weight_opt||0)/100},
-        studyName+' ePWT '+(ps.epwt_class||''));
+        _nextModName('epwt', (ps.epwt_class||'ePWT').replace(/_/g,'-')));
     }
     if (_prop.tophat && _prop.tophat.mode === 'new') {
       var ps = _prop.tophat.specs || {};
@@ -19313,7 +19316,7 @@ async function confirmProposal() {
         {reliability:(ps.reliability||50)/100, comfort:(ps.comfort||50)/100,
          safety:(ps.safety||50)/100, roominess:ps.roominess||2.5,
          premiumness:ps.premiumness||0.3, cost_opt:0, weight_opt:0},
-        studyName+' TopHat '+(ps.config_key||''));
+        _nextModName('tophat', (ps.config_key||'Body').split('_').slice(1).join('-')||'Body'));
     }
     if (_prop.eands && _prop.eands.mode === 'new') {
       var ps = _prop.eands.specs || {};
@@ -19321,7 +19324,7 @@ async function confirmProposal() {
         {adas_level:ps.adas_level||1, sensor_suite:(ps.sensor_suite||30)/100,
          connectivity:(ps.connectivity||30)/100, infotainment:(ps.infotainment||30)/100,
          cybersecurity:(ps.cybersecurity||20)/100},
-        studyName+' E&S L'+(ps.adas_level||1)+' '+(ps.ee_arch||''));
+        _nextModName('eands', 'L'+(ps.adas_level||1)));
     }
 
     // \u2500\u2500 Collect module IDs (new ones now in slot.module.id) \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
