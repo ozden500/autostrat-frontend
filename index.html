@@ -18321,8 +18321,8 @@ function _buildFootprintLocMap(){
   var PROP_SLOT={platform:_prop.platform,pwt:_prop.pwt,epwt:_prop.epwt,battery:_prop.battery,tophat:_prop.tophat,eands:_prop.eands};
   var locMap={};
   cols.forEach(function(mk){
-    var s=PROP_SLOT[mk]; if(s&&s.mode==='new')return;
-    var cfgKey=s?s.config_key:null;
+    var s=PROP_SLOT[mk];
+    var cfgKey=(s&&s.mode!=='new')?s.config_key:null;
     var src=dm[COL_SRC[mk]]||{};
     Object.keys(src).forEach(function(lk){
       var entries=((src[lk][mk])||[]).filter(function(e){return !cfgKey||e.config_key===cfgKey;});
