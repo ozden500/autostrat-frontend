@@ -18075,6 +18075,13 @@ function _getAvailableCap(type,locKey,mk){
   });
   return {installed_k:instK,used_k:usedK,spare_k:Math.max(0,instK-usedK),vehicles:vehicles};
 }
+function _getEffectiveCap(type,locKey,mk){
+  var av=_getAvailableCap(type,locKey,mk);
+  var ovr=(((_prop.operations||{})._moduleReservations||{})[locKey]||{})[mk]||{};
+  if(!Object.keys(ovr).length)return av;
+  var usedK=av.vehicles.reduce(function(s,v){return s+(ovr[v.vehicle_id]!=null?ovr[v.vehicle_id]:Math.round((v.est_volume_yr||0)/1000));},0);
+  return {installed_k:av.installed_k,used_k:usedK,spare_k:Math.max(0,av.installed_k-usedK),vehicles:av.vehicles};
+}
 
 function _getRefManuf(){
   if(_refManufResult)return _refManufResult;
@@ -18582,7 +18589,7 @@ function _renderPlantAllocationPanel(lk){
   [{slot:'platform',label:'PLATFORM',cfgKey:_propPlatCK,handlerFn:'onPropOpsPlatAutoLevel',stateKey:'platform_auto_level'},
    {slot:'tophat',  label:'TOPHAT',  cfgKey:_propThCK,  handlerFn:'onPropOpsTophatAutoLevel',stateKey:'tophat_auto_level'}
   ].forEach(function(mod,ri){
-    var av=_getAvailableCap('vehicle_plants',lk,mod.slot);
+    var av=_getEffectiveCap('vehicle_plants',lk,mod.slot);
     var isInstalled=av.installed_k>0;
     var toBuild=Math.max(0,capK-av.spare_k);
     if(isInstalled&&toBuild>0)_hasBrownfield=true;
@@ -18598,8 +18605,13 @@ function _renderPlantAllocationPanel(lk){
     var tbTxt=toBuild>0?('▲ '+toBuild+'k'):(isInstalled?'✓ 0k':'—');
     var rowBg=ri%2===0?'var(--s3)':'var(--s2)';
     h+='<div style="display:grid;grid-template-columns:'+MCOLS+';background:'+rowBg+';border-bottom:1px solid var(--border2);">';
-    h+='<div style="'+MN+'font-size:9px;padding:5px 8px;display:flex;align-items:center;gap:5px;">';
-    h+='<span style="color:var(--text);font-weight:600;">'+mod.label+'</span>'+sBdg+'</div>';
+    h+='<div style="'+MN+'font-size:9px;padding:5px 8px;">';
+    h+='<div style="display:flex;align-items:center;gap:5px;"><span style="color:var(--text);font-weight:600;">'+mod.label+'</span>'+sBdg+'</div>';
+    if(mod.cfgKey&&isInstalled){
+      var _dispCK=mod.cfgKey.length>20?mod.cfgKey.substring(0,19)+'…':mod.cfgKey;
+      h+='<div style="font-size:7px;color:var(--cyan);margin-top:2px;cursor:pointer;text-decoration:underline dotted;" onclick="openModCapModal(\'vehicle_plants\',\''+lk+'\',\''+mod.slot+'\')">'+_dispCK+'</div>';
+    }
+    h+='</div>';
     h+='<div style="padding:3px 6px;display:flex;align-items:center;">';
     h+='<select onchange="'+mod.handlerFn+'(parseInt(this.value))" style="'+MN+'font-size:9px;padding:2px 3px;border-radius:2px;border:1px solid var(--border2);background:var(--s1);color:var(--text);width:100%;">';
     [1,2,3,4].forEach(function(l){h+='<option value="'+l+'"'+(storedAuto===l?' selected':'')+'>L'+l+'</option>';});
@@ -18921,7 +18933,7 @@ function _renderPwtAllocationPanel(lk){
   h+='</div>';
   var _pwtBrownfield=false;
   pwtDefs.forEach(function(d,ri){
-    var av=_getAvailableCap('powertrain_plants',lk,d.key);
+    var av=_getEffectiveCap('powertrain_plants',lk,d.key);
     var isInstalled=av.installed_k>0;
     var toBuild=Math.max(0,pwtCapK-av.spare_k);
     if(isInstalled&&toBuild>0)_pwtBrownfield=true;
@@ -18933,9 +18945,15 @@ function _renderPwtAllocationPanel(lk){
     var tbCol=toBuild>0?'var(--orange)':(isInstalled?'var(--green)':'var(--muted2)');
     var tbTxt=toBuild>0?('▲ '+toBuild+'k'):(isInstalled?'✓ 0k':'—');
     var rowBg=ri%2===0?'var(--s3)':'var(--s2)';
+    var _pwtCfgKey=PWT_CFG[d.key]||(av.vehicles.length?av.vehicles[0].config_key:'');
     h+='<div style="display:grid;grid-template-columns:'+PCOLS+';background:'+rowBg+';border-bottom:1px solid var(--border2);">';
-    h+='<div style="'+MN+'font-size:9px;padding:5px 8px;display:flex;align-items:center;gap:5px;">';
-    h+='<span style="color:var(--text);font-weight:600;">'+(MOD_NAMES[d.key]||d.label)+'</span>'+sBdg+'</div>';
+    h+='<div style="'+MN+'font-size:9px;padding:5px 8px;">';
+    h+='<div style="display:flex;align-items:center;gap:5px;"><span style="color:var(--text);font-weight:600;">'+(MOD_NAMES[d.key]||d.label)+'</span>'+sBdg+'</div>';
+    if(_pwtCfgKey&&isInstalled){
+      var _pwtDispCK=_pwtCfgKey.length>20?_pwtCfgKey.substring(0,19)+'…':_pwtCfgKey;
+      h+='<div style="font-size:7px;color:var(--cyan);margin-top:2px;cursor:pointer;text-decoration:underline dotted;" onclick="openModCapModal(\'powertrain_plants\',\''+lk+'\',\''+d.key+'\')">'+_pwtDispCK+'</div>';
+    }
+    h+='</div>';
     h+='<div style="'+MN+PCD+'color:'+(isInstalled?'var(--gold)':'var(--muted2)')+';">'+(isInstalled?av.installed_k+'k':'—')+'</div>';
     h+='<div style="'+MN+PCD+'color:'+(isInstalled&&av.used_k>0?'var(--cyan)':'var(--muted2)')+';">'+(isInstalled?av.used_k+'k':'—')+'</div>';
     var fCol=isInstalled?(av.spare_k>0?'var(--green)':'var(--orange)'):'var(--muted2)';
@@ -19046,6 +19064,82 @@ function onPropOpsRemovePwtAllocation(pid){
   var ftEl=document.getElementById('prop-ops-pwt-footprint-area');if(ftEl)ftEl.innerHTML=_renderPwtFootprint();
   var aEl=document.getElementById('prop-ops-pwt-alloc-area');if(aEl)aEl.innerHTML='<div style="font-family:DM Mono,monospace;font-size:9px;color:var(--muted2);padding:8px 0;font-style:italic;">← Select a PWT plant row above to configure allocation.</div>';
   renderOpsAggregateSummary();
+}
+function closeModCapModal(){var m=document.getElementById('modCapModal');if(m)m.remove();}
+function _modCapUpdateTotals(el,installedK){
+  var sum=0;
+  el.querySelectorAll('input[data-vid]').forEach(function(i){sum+=parseInt(i.value)||0;});
+  var fEl=el.querySelector('#modcap-total-free'),rEl=el.querySelector('#modcap-total-res');
+  if(rEl)rEl.textContent=sum+'k';
+  if(fEl){var f=installedK-sum;fEl.textContent=f+'k';fEl.style.color=f>=0?'var(--green)':'var(--red)';}
+}
+function applyModCapModal(type,locKey,slot){
+  var m=document.getElementById('modCapModal');if(!m)return;
+  if(!_prop.operations._moduleReservations)_prop.operations._moduleReservations={};
+  if(!_prop.operations._moduleReservations[locKey])_prop.operations._moduleReservations[locKey]={};
+  var slotOvr={};
+  m.querySelectorAll('input[data-vid]').forEach(function(inp){slotOvr[inp.dataset.vid]=parseInt(inp.value)||0;});
+  _prop.operations._moduleReservations[locKey][slot]=slotOvr;
+  closeModCapModal();
+  if(type==='vehicle_plants'){
+    var aEl=document.getElementById('prop-ops-alloc-area');
+    if(aEl&&locKey)aEl.innerHTML=_renderPlantAllocationPanel(locKey);
+    _buildPlantFromDecision();
+  } else {
+    var aEl2=document.getElementById('prop-ops-pwt-alloc-area');
+    if(aEl2&&locKey)aEl2.innerHTML=_renderPwtAllocationPanel(locKey);
+    _buildPwtPlantFromDecision(locKey);
+  }
+}
+function openModCapModal(type,locKey,slot){
+  closeModCapModal();
+  var av=_getAvailableCap(type,locKey,slot);
+  var ovr=(((_prop.operations||{})._moduleReservations||{})[locKey]||{})[slot]||{};
+  var MN2='font-family:DM Mono,monospace;';
+  var cfgKey=av.vehicles.length?av.vehicles[0].config_key:'';
+  var parts=locKey.split('_'),reg=parts[0],cc=parts.slice(1).join('_'),ccName='';
+  (INDUSTRIAL_COUNTRIES[reg]||[]).forEach(function(c){if(c.code===cc)ccName=c.name;});
+  var typeLabel=slot==='platform'?'PLATFORM':slot==='tophat'?'TOPHAT':slot==='pwt'?'ICE PWT':slot==='epwt'?'e-PWT':slot==='battery'?'BATTERY':'MODULE';
+  var COLS='1fr 58px 88px 68px';
+  var HD='font-size:7px;font-weight:700;color:var(--muted2);padding:4px 8px;text-align:right;';
+  var CD='font-size:9px;padding:6px 8px;text-align:right;';
+  var rows='<div style="display:grid;grid-template-columns:'+COLS+';background:var(--s2);border-bottom:1px solid var(--border2);">';
+  rows+='<div style="'+MN2+HD+'text-align:left;">Vehicle</div><div style="'+MN2+HD+'">Inst.</div><div style="'+MN2+HD+'">Reserved</div><div style="'+MN2+HD+'">Last Rnd</div></div>';
+  av.vehicles.forEach(function(v){
+    var instK=Math.round((v.capacity_yr||0)/1000);
+    var curResK=ovr[v.vehicle_id]!=null?ovr[v.vehicle_id]:Math.round((v.est_volume_yr||0)/1000);
+    var lastK=_propVoPerVehicle[v.vehicle_id]!=null?Math.round(_propVoPerVehicle[v.vehicle_id]/1000):null;
+    rows+='<div style="display:grid;grid-template-columns:'+COLS+';border-bottom:1px solid var(--border2);background:var(--s3);">';
+    rows+='<div style="'+MN2+'font-size:9px;padding:6px 8px;color:var(--text);">'+v.vehicle_name+'</div>';
+    rows+='<div style="'+MN2+CD+'color:var(--gold);">'+instK+'k</div>';
+    rows+='<div style="padding:4px 6px;display:flex;align-items:center;gap:3px;justify-content:flex-end;">';
+    rows+='<input type="number" min="0" max="'+instK+'" value="'+curResK+'" data-vid="'+v.vehicle_id+'" style="'+MN2+'font-size:9px;padding:3px 5px;border-radius:2px;border:1px solid var(--border2);background:var(--s1);color:var(--cyan);width:52px;text-align:right;">';
+    rows+='<span style="'+MN2+'font-size:8px;color:var(--muted2);">k</span></div>';
+    rows+='<div style="'+MN2+CD+'color:var(--muted2);">'+(lastK!=null?lastK+'k':'—')+'</div>';
+    rows+='</div>';
+  });
+  rows+='<div style="'+MN2+'font-size:8px;color:var(--muted2);padding:6px 8px;background:var(--s2);border-top:1px solid var(--border2);">Installed: <span style="color:var(--gold);">'+av.installed_k+'k</span> · Reserved: <span id="modcap-total-res" style="color:var(--cyan);">'+av.used_k+'k</span> · Free: <span id="modcap-total-free" style="color:var(--green);">'+av.spare_k+'k</span></div>';
+  if(!av.vehicles.length)rows='<div style="'+MN2+'font-size:9px;color:var(--muted2);padding:14px;">No other vehicles share this module at this plant.</div>';
+  var el=document.createElement('div');
+  el.id='modCapModal';
+  el.style.cssText='position:fixed;inset:0;z-index:2000;background:rgba(0,0,0,0.72);display:flex;align-items:center;justify-content:center;';
+  el.innerHTML='<div style="'+MN2+'background:var(--s2);border:1px solid var(--border2);border-radius:6px;width:500px;max-width:94vw;box-shadow:0 8px 32px rgba(0,0,0,0.6);">'
+    +'<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 14px;border-bottom:1px solid var(--border2);">'
+    +'<div><span style="font-size:10px;font-weight:700;color:var(--gold);">'+typeLabel+'</span>'+(cfgKey?'<span style="'+MN2+'font-size:8px;color:var(--cyan);margin-left:6px;">'+cfgKey+'</span>':'')+'</div>'
+    +'<div style="'+MN2+'font-size:8px;color:var(--muted2);">'+reg+(ccName?' · '+ccName:'')+'</div>'
+    +'<button onclick="closeModCapModal()" style="'+MN2+'font-size:12px;color:var(--muted2);background:none;border:none;cursor:pointer;padding:2px 6px;">✕</button></div>'
+    +'<div style="border:1px solid var(--border2);border-radius:4px;overflow:hidden;margin:12px 14px 0;">'+rows+'</div>'
+    +(av.vehicles.length?'<div style="'+MN2+'font-size:8px;color:var(--muted2);padding:6px 14px 0;">Adjust reserved amounts. Reducing other vehicles\' reservations increases free capacity for this new vehicle.</div>':'')
+    +'<div style="display:flex;justify-content:flex-end;gap:8px;padding:10px 14px;">'
+    +(av.vehicles.length?'<button onclick="applyModCapModal(\''+type+'\',\''+locKey+'\',\''+slot+'\')" style="'+MN2+'font-size:10px;padding:7px 18px;border-radius:3px;border:1px solid rgba(200,164,60,.5);background:var(--goldl);color:var(--gold);cursor:pointer;">✓ Apply</button>':'')
+    +'<button onclick="closeModCapModal()" style="'+MN2+'font-size:10px;padding:7px 14px;border-radius:3px;border:1px solid var(--border2);background:var(--s1);color:var(--muted2);cursor:pointer;">Close</button>'
+    +'</div></div>';
+  document.body.appendChild(el);
+  setTimeout(function(){
+    el.querySelectorAll('input[data-vid]').forEach(function(inp){
+      inp.addEventListener('input',function(){_modCapUpdateTotals(el,av.installed_k);});
+    });
+  },0);
 }
 function onPropOpsPlatAutoLevel(level){
   if(!_prop.operations)return;
@@ -19498,9 +19592,11 @@ function _buildPlantFromDecision(){
   }
   var defs=_getModuleDefsForType('vehicle_plants');
   if(!vp.module_capacity)vp.module_capacity={};
+  var _vpLk2=ops.selected_plant_key||null;
   defs.forEach(function(d){
     if(!vp.module_capacity[d.key])vp.module_capacity[d.key]={installed_k:0,used_k:0,incremental_k:0};
     vp.module_capacity[d.key].incremental_k=capK;
+    if(_vpLk2){var _ec=_getEffectiveCap('vehicle_plants',_vpLk2,d.key);vp.module_capacity[d.key].installed_k=_ec.installed_k;vp.module_capacity[d.key].used_k=_ec.used_k;}
   });
 
   // ── PWT plant ──────────────────────────────────────────────────────────────
@@ -19516,9 +19612,11 @@ function _buildPlantFromDecision(){
     _pp.country_name=_pct.name||_pp.country_code;
     if(ops._existing_pwt_auto)_pp.automation_level=ops._existing_pwt_auto;
   }
+  var _pwtLk2=ops.selected_pwt_plant_key||null;
   _getModuleDefsForType('powertrain_plants').forEach(function(d){
     if(!_pp.module_capacity[d.key])_pp.module_capacity[d.key]={installed_k:0,used_k:0,incremental_k:capK};
     else _pp.module_capacity[d.key].incremental_k=capK;
+    if(_pwtLk2){var _ec2=_getEffectiveCap('powertrain_plants',_pwtLk2,d.key);_pp.module_capacity[d.key].installed_k=_ec2.installed_k;_pp.module_capacity[d.key].used_k=_ec2.used_k;}
   });
 
   if (!ops.supplier_parks) ops.supplier_parks=[];
