@@ -18564,41 +18564,55 @@ function _renderPlantAllocationPanel(lk){
   var _propPlatCK=(_prop.platform&&_prop.platform.module)?_prop.platform.module.config_key:null;
   var _propThCK=(_prop.tophat&&_prop.tophat.module)?_prop.tophat.module.config_key:null;
   h+='<div style="'+MN+'font-size:8px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:8px;">Module Tooling</div>';
-  h+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px;">';
+  var MCOLS='1.8fr 68px 50px 50px 50px 50px 62px';
+  var MHD='font-size:7px;font-weight:700;color:var(--muted2);padding:4px 8px;text-align:right;';
+  var MCD='font-size:9px;padding:5px 8px;text-align:right;';
+  h+='<div style="border:1px solid var(--border2);border-radius:4px;overflow:hidden;margin-bottom:10px;">';
+  h+='<div style="display:grid;grid-template-columns:'+MCOLS+';background:var(--s2);border-bottom:1px solid var(--border2);">';
+  h+='<div style="'+MN+MHD+'text-align:left;">Module</div>';
+  h+='<div style="'+MN+MHD+'text-align:center;">Auto</div>';
+  h+='<div style="'+MN+MHD+'">Inst.</div>';
+  h+='<div style="'+MN+MHD+'">Resvd</div>';
+  h+='<div style="'+MN+MHD+'">Free</div>';
+  h+='<div style="'+MN+MHD+'">Target</div>';
+  h+='<div style="'+MN+MHD+'">To Build</div>';
+  h+='</div>';
+  var _vpEnt=(ops.vehicle_plants||[]).find(function(p){return p.id==='vp_'+lk;})||{};
+  var _hasBrownfield=false;
   [{slot:'platform',label:'PLATFORM',cfgKey:_propPlatCK,handlerFn:'onPropOpsPlatAutoLevel',stateKey:'platform_auto_level'},
    {slot:'tophat',  label:'TOPHAT',  cfgKey:_propThCK,  handlerFn:'onPropOpsTophatAutoLevel',stateKey:'tophat_auto_level'}
-  ].forEach(function(mod){
+  ].forEach(function(mod,ri){
     var av=_getAvailableCap('vehicle_plants',lk,mod.slot);
-    var isInstalled=mod.cfgKey&&av.installed_k>0;
+    var isInstalled=av.installed_k>0;
+    var toBuild=Math.max(0,capK-av.spare_k);
+    if(isInstalled&&toBuild>0)_hasBrownfield=true;
     var existingAuto=2;
-    ((vpLk[mod.slot]||[])).forEach(function(e){if(e.config_key===mod.cfgKey&&e.automation_level)existingAuto=e.automation_level;});
+    ((vpLk[mod.slot]||[])).forEach(function(e){if(e.automation_level)existingAuto=e.automation_level;});
     var storedAuto=ops[mod.stateKey]||existingAuto;
-    var statusBadge=isInstalled
-      ?'<div style="display:inline-block;'+MN+'font-size:8px;color:var(--green);padding:2px 6px;border-radius:2px;background:rgba(50,180,100,0.10);margin-bottom:6px;">✓ Already installed</div>'
+    var sBdg=isInstalled
+      ?'<span style="'+MN+'font-size:7px;color:var(--green);padding:1px 4px;border-radius:2px;background:rgba(50,180,100,0.12);white-space:nowrap;">✓ here</span>'
       :(mod.cfgKey
-        ?'<div style="display:inline-block;'+MN+'font-size:8px;color:var(--orange);padding:2px 6px;border-radius:2px;background:rgba(220,120,30,0.10);margin-bottom:6px;">⚠ New at this plant</div>'
-        :'<div style="display:inline-block;'+MN+'font-size:8px;color:var(--muted2);padding:2px 6px;border-radius:2px;background:var(--s2);margin-bottom:6px;">— New build</div>');
-    var cfgLabel=mod.cfgKey?(' — '+(mod.cfgKey.length>12?mod.cfgKey.substring(0,12)+'…':mod.cfgKey)):'';
-    h+='<div style="border:1px solid var(--border2);border-radius:4px;padding:10px 11px;background:var(--s3);">';
-    h+='<div style="'+MN+'font-size:8px;font-weight:700;color:var(--muted2);margin-bottom:6px;">'+mod.label+cfgLabel+'</div>';
-    h+=statusBadge;
-    if(isInstalled){
-      h+='<div style="'+MN+'font-size:9px;color:var(--muted2);line-height:1.6;">';
-      h+='<span style="color:var(--gold);">'+av.installed_k+'k</span> installed<br>';
-      h+='<span style="color:var(--cyan);">'+av.used_k+'k</span> reserved<br>';
-      if(av.spare_k>0)h+='<span style="color:var(--green);">'+av.spare_k+'k FREE</span> ← reusable';
-      else h+='<span style="color:var(--orange);">0k free</span>';
-      h+='</div>';
-    } else {
-      h+='<div style="'+MN+'font-size:9px;color:var(--muted2);">New tooling required</div>';
-    }
-    h+='<div style="margin-top:8px;">';
-    h+='<div style="'+MN+'font-size:8px;color:var(--muted2);margin-bottom:4px;">Automation Level'+(isInstalled?' (installed: L'+existingAuto+')':'')+'</div>';
-    h+='<select onchange="'+mod.handlerFn+'(parseInt(this.value))" style="'+MN+'font-size:10px;padding:5px 8px;border-radius:3px;border:1px solid var(--border2);background:var(--s2);color:var(--text);width:100%;">';
-    [1,2,3,4].forEach(function(l){h+='<option value="'+l+'"'+(storedAuto===l?' selected':'')+'>L'+l+' – '+AUTO_LABELS[l]+'</option>';});
+        ?'<span style="'+MN+'font-size:7px;color:var(--orange);padding:1px 4px;border-radius:2px;background:rgba(220,120,30,0.10);white-space:nowrap;">⊕ new</span>'
+        :'<span style="'+MN+'font-size:7px;color:var(--muted2);padding:1px 4px;border-radius:2px;background:var(--s1);white-space:nowrap;">— new</span>');
+    var tbCol=toBuild>0?'var(--orange)':(isInstalled?'var(--green)':'var(--muted2)');
+    var tbTxt=toBuild>0?('▲ '+toBuild+'k'):(isInstalled?'✓ 0k':'—');
+    var rowBg=ri%2===0?'var(--s3)':'var(--s2)';
+    h+='<div style="display:grid;grid-template-columns:'+MCOLS+';background:'+rowBg+';border-bottom:1px solid var(--border2);">';
+    h+='<div style="'+MN+'font-size:9px;padding:5px 8px;display:flex;align-items:center;gap:5px;">';
+    h+='<span style="color:var(--text);font-weight:600;">'+mod.label+'</span>'+sBdg+'</div>';
+    h+='<div style="padding:3px 6px;display:flex;align-items:center;">';
+    h+='<select onchange="'+mod.handlerFn+'(parseInt(this.value))" style="'+MN+'font-size:9px;padding:2px 3px;border-radius:2px;border:1px solid var(--border2);background:var(--s1);color:var(--text);width:100%;">';
+    [1,2,3,4].forEach(function(l){h+='<option value="'+l+'"'+(storedAuto===l?' selected':'')+'>L'+l+'</option>';});
     h+='</select></div>';
+    h+='<div style="'+MN+MCD+'color:'+(isInstalled?'var(--gold)':'var(--muted2)')+';">'+(isInstalled?av.installed_k+'k':'—')+'</div>';
+    h+='<div style="'+MN+MCD+'color:'+(isInstalled&&av.used_k>0?'var(--cyan)':'var(--muted2)')+';">'+(isInstalled?av.used_k+'k':'—')+'</div>';
+    var fCol=isInstalled?(av.spare_k>0?'var(--green)':'var(--orange)'):'var(--muted2)';
+    h+='<div style="'+MN+MCD+'color:'+fCol+';">'+(isInstalled?av.spare_k+'k':'—')+'</div>';
+    h+='<div style="'+MN+MCD+'color:var(--gold);">'+capK+'k</div>';
+    h+='<div style="'+MN+MCD+'font-weight:600;color:'+tbCol+';">'+tbTxt+'</div>';
     h+='</div>';
   });
+  if(_hasBrownfield)h+='<div style="'+MN+'font-size:7px;color:var(--muted2);padding:4px 8px;background:var(--s2);">⚑ Brownfield rate (0.65×) applied to expansion capacity</div>';
   h+='</div>';
 
   // ── Section D: Confirm/Cancel + KPI strip ──
@@ -18888,34 +18902,49 @@ function _renderPwtAllocationPanel(lk){
   var pid='pwt_'+lk;
   var h='<div style="margin-bottom:18px;">';
   h+='<div style="'+MN+'font-size:9px;font-weight:700;color:var(--cyan);margin-bottom:12px;padding-bottom:6px;border-bottom:1px solid var(--border2);">⚙ PWT ALLOCATION — '+reg+(ccName?' · '+ccName:'')+'</div>';
-  // Module tooling
+  // Module tooling — compact matrix
   h+='<div style="'+MN+'font-size:8px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:8px;">PWT Module Tooling</div>';
-  h+='<div style="display:grid;grid-template-columns:repeat('+Math.min(pwtDefs.length,3)+',1fr);gap:10px;margin-bottom:14px;">';
   var PWT_CFG={pwt:(_prop.pwt&&_prop.pwt.module)?_prop.pwt.module.config_key:null,
                epwt:(_prop.epwt&&_prop.epwt.module)?_prop.epwt.module.config_key:null,
                battery:(_prop.battery&&_prop.battery.module)?_prop.battery.module.config_key:null};
-  pwtDefs.forEach(function(d){
+  var PCOLS='1.8fr 50px 50px 50px 50px 62px';
+  var PHD='font-size:7px;font-weight:700;color:var(--muted2);padding:4px 8px;text-align:right;';
+  var PCD='font-size:9px;padding:5px 8px;text-align:right;';
+  h+='<div style="border:1px solid var(--border2);border-radius:4px;overflow:hidden;margin-bottom:14px;">';
+  h+='<div style="display:grid;grid-template-columns:'+PCOLS+';background:var(--s2);border-bottom:1px solid var(--border2);">';
+  h+='<div style="'+MN+PHD+'text-align:left;">Module</div>';
+  h+='<div style="'+MN+PHD+'">Inst.</div>';
+  h+='<div style="'+MN+PHD+'">Resvd</div>';
+  h+='<div style="'+MN+PHD+'">Free</div>';
+  h+='<div style="'+MN+PHD+'">Target</div>';
+  h+='<div style="'+MN+PHD+'">To Build</div>';
+  h+='</div>';
+  var _pwtBrownfield=false;
+  pwtDefs.forEach(function(d,ri){
     var av=_getAvailableCap('powertrain_plants',lk,d.key);
-    var cfgKey=PWT_CFG[d.key];
-    var isInstalled=cfgKey&&av.installed_k>0;
-    var existingAuto=2;
-    ((vpLk[d.key]||[])).forEach(function(e){if(e.config_key===cfgKey&&e.automation_level)existingAuto=e.automation_level;});
-    var statusBadge=isInstalled
-      ?'<div style="display:inline-block;'+MN+'font-size:8px;color:var(--green);padding:2px 6px;border-radius:2px;background:rgba(50,180,100,0.10);margin-bottom:6px;">✓ Already installed</div>'
-      :(cfgKey?'<div style="display:inline-block;'+MN+'font-size:8px;color:var(--orange);padding:2px 6px;border-radius:2px;background:rgba(220,120,30,0.10);margin-bottom:6px;">⚠ New at this plant</div>'
-              :'<div style="display:inline-block;'+MN+'font-size:8px;color:var(--muted2);padding:2px 6px;border-radius:2px;background:var(--s2);margin-bottom:6px;">— New build</div>');
-    h+='<div style="border:1px solid var(--border2);border-radius:4px;padding:10px 11px;background:var(--s3);">';
-    h+='<div style="'+MN+'font-size:8px;font-weight:700;color:var(--muted2);margin-bottom:6px;">'+(MOD_NAMES[d.key]||d.label)+'</div>';
-    h+=statusBadge;
-    if(isInstalled){
-      h+='<div style="'+MN+'font-size:9px;color:var(--muted2);line-height:1.6;">';
-      h+='<span style="color:var(--gold);">'+av.installed_k+'k</span> installed<br>';
-      h+='<span style="color:var(--cyan);">'+av.used_k+'k</span> reserved<br>';
-      h+=(av.spare_k>0?'<span style="color:var(--green);">'+av.spare_k+'k FREE</span>':'<span style="color:var(--orange);">0k free</span>');
-      h+='</div>';
-    } else {h+='<div style="'+MN+'font-size:9px;color:var(--muted2);">New tooling required</div>';}
+    var isInstalled=av.installed_k>0;
+    var toBuild=Math.max(0,pwtCapK-av.spare_k);
+    if(isInstalled&&toBuild>0)_pwtBrownfield=true;
+    var sBdg=isInstalled
+      ?'<span style="'+MN+'font-size:7px;color:var(--green);padding:1px 4px;border-radius:2px;background:rgba(50,180,100,0.12);white-space:nowrap;">✓ here</span>'
+      :(PWT_CFG[d.key]
+        ?'<span style="'+MN+'font-size:7px;color:var(--orange);padding:1px 4px;border-radius:2px;background:rgba(220,120,30,0.10);white-space:nowrap;">⊕ new</span>'
+        :'<span style="'+MN+'font-size:7px;color:var(--muted2);padding:1px 4px;border-radius:2px;background:var(--s1);white-space:nowrap;">— new</span>');
+    var tbCol=toBuild>0?'var(--orange)':(isInstalled?'var(--green)':'var(--muted2)');
+    var tbTxt=toBuild>0?('▲ '+toBuild+'k'):(isInstalled?'✓ 0k':'—');
+    var rowBg=ri%2===0?'var(--s3)':'var(--s2)';
+    h+='<div style="display:grid;grid-template-columns:'+PCOLS+';background:'+rowBg+';border-bottom:1px solid var(--border2);">';
+    h+='<div style="'+MN+'font-size:9px;padding:5px 8px;display:flex;align-items:center;gap:5px;">';
+    h+='<span style="color:var(--text);font-weight:600;">'+(MOD_NAMES[d.key]||d.label)+'</span>'+sBdg+'</div>';
+    h+='<div style="'+MN+PCD+'color:'+(isInstalled?'var(--gold)':'var(--muted2)')+';">'+(isInstalled?av.installed_k+'k':'—')+'</div>';
+    h+='<div style="'+MN+PCD+'color:'+(isInstalled&&av.used_k>0?'var(--cyan)':'var(--muted2)')+';">'+(isInstalled?av.used_k+'k':'—')+'</div>';
+    var fCol=isInstalled?(av.spare_k>0?'var(--green)':'var(--orange)'):'var(--muted2)';
+    h+='<div style="'+MN+PCD+'color:'+fCol+';">'+(isInstalled?av.spare_k+'k':'—')+'</div>';
+    h+='<div style="'+MN+PCD+'color:var(--gold);">'+pwtCapK+'k</div>';
+    h+='<div style="'+MN+PCD+'font-weight:600;color:'+tbCol+';">'+tbTxt+'</div>';
     h+='</div>';
   });
+  if(_pwtBrownfield)h+='<div style="'+MN+'font-size:7px;color:var(--muted2);padding:4px 8px;background:var(--s2);">⚑ Brownfield rate (0.65×) applied to expansion capacity</div>';
   h+='</div>';
   // Volume + Automation
   h+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px;">';
