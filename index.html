@@ -17905,29 +17905,33 @@ var QUALITY_TIERS = [
 ];
 
 // ── Supply Plan lookup tables (Section 7 — Parts Supply Plan block) ─────────
-var SP_MODULES = {
-  body_structure: {label:'Body & Structure',  icon:'🔩', labor_intensity:0.40, buy_fraction:0.80},
-  powertrain:     {label:'Powertrain',         icon:'⚙️', labor_intensity:0.30, buy_fraction:0.60},
-  battery:        {label:'Battery Pack',       icon:'🔋', labor_intensity:0.15, buy_fraction:0.90},
-  interior_trim:  {label:'Interior & Trim',    icon:'🪑', labor_intensity:0.65, buy_fraction:0.75},
-  electronics:    {label:'Electronics & ADAS', icon:'📡', labor_intensity:0.15, buy_fraction:0.85},
+// Keyed by actual prop slot (platform/pwt/epwt/battery/tophat/eands)
+var SP_MODULE_TYPES = {
+  platform: {buy_fraction:0.80, labor_intensity:0.40},
+  pwt:      {buy_fraction:0.60, labor_intensity:0.30},
+  epwt:     {buy_fraction:0.70, labor_intensity:0.35},
+  battery:  {buy_fraction:0.90, labor_intensity:0.15},
+  tophat:   {buy_fraction:0.75, labor_intensity:0.65},
+  eands:    {buy_fraction:0.88, labor_intensity:0.15},
 };
-var SP_SOURCE_LOCATIONS = [
-  {key:'DOMESTIC',  label:'Domestic',   desc:'Same country as plant',   price_adj:+0.14, logistics_adj:0.00, risk:0.15, nre_factor:0.8},
-  {key:'REGIONAL',  label:'Regional',   desc:'Same region (baseline)',   price_adj: 0.00, logistics_adj:0.00, risk:0.25, nre_factor:1.0},
-  {key:'NEARSHORE', label:'Near-shore', desc:'Adjacent region',          price_adj:-0.09, logistics_adj:0.03, risk:0.35, nre_factor:1.2},
-  {key:'OFFSHORE',  label:'Offshore',   desc:'Low-cost global sourcing', price_adj:-0.18, logistics_adj:0.06, risk:0.55, nre_factor:1.5},
+// Five economic zones: geographic proximity + import duty regime
+var SP_ZONES = [
+  {key:'EU',    label:'EU / EEA',     flag:'🇪🇺', desc:'European single market — zero internal tariff', labor_index:1.00, risk:0.12,
+   logistics:{EU:60, NA:400,APAC:620,SA:500,MEA:320}, duty:{EU:0,  NA:2.5,APAC:8, SA:6, MEA:4}},
+  {key:'USMCA', label:'USMCA',         flag:'🌎', desc:'N. America free-trade zone',                      labor_index:0.70, risk:0.18,
+   logistics:{EU:400,NA:60, APAC:520,SA:180,MEA:440}, duty:{EU:2.5,NA:0,  APAC:6, SA:4, MEA:5}},
+  {key:'CHINA', label:'China',         flag:'🇨🇳', desc:'Lowest labor cost — high tariff & geo risk',     labor_index:0.28, risk:0.58,
+   logistics:{EU:620,NA:540,APAC:100,SA:650,MEA:460}, duty:{EU:10, NA:25, APAC:4, SA:10,MEA:7}},
+  {key:'ASEAN', label:'ASEAN / India', flag:'🌏', desc:'SE Asia + India — very low labor, mod tariffs',   labor_index:0.22, risk:0.42,
+   logistics:{EU:650,NA:560,APAC:140,SA:690,MEA:500}, duty:{EU:10, NA:8,  APAC:3, SA:11,MEA:8}},
+  {key:'EMRG',  label:'Emerging',      flag:'🌍', desc:'LATAM & MEA — best logistics for SA/MEA plants',  labor_index:0.32, risk:0.45,
+   logistics:{EU:480,NA:380,APAC:540,SA:100,MEA:180}, duty:{EU:8,  NA:6,  APAC:10,SA:2, MEA:2}},
 ];
-var SP_SOURCING_MODES = [
-  {key:'SOLE',  label:'Sole',  desc:'Single supplier — best price, highest risk', price_adj:-0.05, risk_mult:1.50, nre_mult:0.8},
-  {key:'DUAL',  label:'Dual',  desc:'Two suppliers — balanced',                   price_adj: 0.00, risk_mult:1.00, nre_mult:1.0},
-  {key:'MULTI', label:'Multi', desc:'Multiple suppliers — resilient, costlier',   price_adj:+0.04, risk_mult:0.60, nre_mult:1.4},
-];
-var SP_AUTO_TIERS = [
-  {key:'LEAN',      label:'Lean / Manual',   invest_factor:0.012, auto_adj_mult:+1.0},
-  {key:'STANDARD',  label:'Standard',         invest_factor:0.022, auto_adj_mult: 0.0},
-  {key:'ADVANCED',  label:'Advanced Auto',    invest_factor:0.042, auto_adj_mult:-0.6},
-  {key:'FULL_AUTO', label:'Lights-Out',        invest_factor:0.068, auto_adj_mult:-1.0},
+var SP_AUTO_LEVELS = [
+  {key:1, label:'Manual',    labor_factor:1.30, nre_factor:0.004},
+  {key:2, label:'Semi-auto', labor_factor:1.00, nre_factor:0.015},
+  {key:3, label:'High-auto', labor_factor:0.70, nre_factor:0.040},
+  {key:4, label:'Lights-out',labor_factor:0.45, nre_factor:0.080},
 ];
 
 var SHIFT_STRUCTURES = [
@@ -18616,79 +18620,82 @@ function _renderPlantAllocationPanel(lk){
   var _vpForJph=(ops.vehicle_plants||[]).find(function(p){return p.id==='vp_'+lk;})||{};
   var _jphNote=_vpForJph.jph||'—';
   h+='<div style="padding:3px 10px 8px;'+MN+'font-size:8px;color:var(--muted2);">Line speed: ~<span style="color:var(--text);">'+_jphNote+' JPH</span> (auto-calculated from '+capK+'k target)</div>';
-  h+='</div>';
-
-  // ── Section B: Module Tooling ──
+  // ── Module Tooling collapse toggle ──
   var _propPlatCK=(_prop.platform&&_prop.platform.module)?_prop.platform.module.config_key:null;
   var _propThCK=(_prop.tophat&&_prop.tophat.module)?_prop.tophat.module.config_key:null;
-  h+='<div style="'+MN+'font-size:8px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:8px;">Module Tooling</div>';
-  var MCOLS='1fr 1.1fr 56px 42px 42px 42px 42px 56px 54px 48px';
-  var MHD='font-size:7px;font-weight:700;color:var(--muted2);padding:4px 6px;text-align:right;';
-  var MCD='font-size:9px;padding:5px 6px;text-align:right;';
-  h+='<div style="border:1px solid var(--border2);border-radius:4px;overflow:hidden;margin-bottom:10px;">';
-  h+='<div style="display:grid;grid-template-columns:'+MCOLS+';background:var(--s2);border-bottom:1px solid var(--border2);">';
-  h+='<div style="'+MN+MHD+'text-align:left;">Module</div>';
-  h+='<div style="'+MN+MHD+'text-align:left;">Config Key</div>';
-  h+='<div style="'+MN+MHD+'text-align:center;">Auto</div>';
-  h+='<div style="'+MN+MHD+'">Inst.</div>';
-  h+='<div style="'+MN+MHD+'">Resvd</div>';
-  h+='<div style="'+MN+MHD+'">Free</div>';
-  h+='<div style="'+MN+MHD+'">Target</div>';
-  h+='<div style="'+MN+MHD+'">To Build</div>';
-  h+='<div style="'+MN+MHD+'">Invest.</div>';
-  h+='<div style="'+MN+MHD+'">Labor</div>';
+  var _toolExp=!!_opsToolingExpanded[lk];
+  h+='<div onclick="_toggleOpsTooling(\''+lk+'\')" style="'+MN+'cursor:pointer;border-top:1px solid var(--border2);padding:6px 10px;display:flex;justify-content:space-between;align-items:center;background:var(--s2);user-select:none;">';
+  h+='<span style="'+MN+'font-size:8px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);">Module Tooling</span>';
+  h+='<span style="'+MN+'font-size:9px;color:var(--muted2);">'+(_toolExp?'▼':'▶')+'</span>';
   h+='</div>';
-  var _vpEnt=(ops.vehicle_plants||[]).find(function(p){return p.id==='vp_'+lk;})||{};
-  var _hasBrownfield=false;
-  [{slot:'platform',label:'PLATFORM',cfgKey:_propPlatCK,handlerFn:'onPropOpsPlatAutoLevel',stateKey:'platform_auto_level'},
-   {slot:'tophat',  label:'TOPHAT',  cfgKey:_propThCK,  handlerFn:'onPropOpsTophatAutoLevel',stateKey:'tophat_auto_level'}
-  ].forEach(function(mod,ri){
-    var av=_getEffectiveCap('vehicle_plants',lk,mod.slot);
-    var isInstalled=av.installed_k>0;
-    var toBuild=Math.max(0,capK-av.spare_k);
-    if(isInstalled&&toBuild>0)_hasBrownfield=true;
-    var existingAuto=2;
-    ((vpLk[mod.slot]||[])).forEach(function(e){if(e.automation_level)existingAuto=e.automation_level;});
-    var storedAuto=ops[mod.stateKey]||existingAuto;
-    var sBdg=isInstalled
-      ?'<span style="'+MN+'font-size:7px;color:var(--green);padding:1px 4px;border-radius:2px;background:rgba(50,180,100,0.12);white-space:nowrap;">✓ here</span>'
-      :(mod.cfgKey
-        ?'<span style="'+MN+'font-size:7px;color:var(--orange);padding:1px 4px;border-radius:2px;background:rgba(220,120,30,0.10);white-space:nowrap;">⊕ new</span>'
-        :'<span style="'+MN+'font-size:7px;color:var(--muted2);padding:1px 4px;border-radius:2px;background:var(--s1);white-space:nowrap;">— new</span>');
-    var tbCol=toBuild>0?'var(--orange)':(isInstalled?'var(--green)':'var(--muted2)');
-    var tbTxt=toBuild>0?('▲ '+toBuild+'k'):(isInstalled?'✓ 0k':'—');
-    var rowBg=ri%2===0?'var(--s3)':'var(--s2)';
-    var _ckDisp=mod.cfgKey?(mod.cfgKey.length>16?mod.cfgKey.substring(0,15)+'…':mod.cfgKey):'—';
-    h+='<div style="display:grid;grid-template-columns:'+MCOLS+';background:'+rowBg+';border-bottom:1px solid var(--border2);">';
-    // Col 1: Module label + badge
-    h+='<div style="'+MN+'font-size:9px;padding:5px 6px;display:flex;align-items:center;gap:4px;">';
-    h+='<span style="color:var(--text);font-weight:600;">'+mod.label+'</span>'+sBdg+'</div>';
-    // Col 2: Config Key (clickable if installed)
-    if(isInstalled&&mod.cfgKey){
-      h+='<div style="'+MN+'font-size:7px;padding:5px 6px;color:var(--cyan);cursor:pointer;text-decoration:underline dotted;display:flex;align-items:center;" onclick="openModCapModal(\'vehicle_plants\',\''+lk+'\',\''+mod.slot+'\')">'+_ckDisp+'</div>';
-    } else {
-      h+='<div style="'+MN+'font-size:7px;padding:5px 6px;color:var(--muted2);display:flex;align-items:center;">'+_ckDisp+'</div>';
-    }
-    // Col 3: Auto select
-    h+='<div style="padding:3px 4px;display:flex;align-items:center;">';
-    h+='<select onchange="'+mod.handlerFn+'(parseInt(this.value))" style="'+MN+'font-size:8px;padding:2px 2px;border-radius:2px;border:1px solid var(--border2);background:var(--s1);color:var(--text);width:100%;">';
-    [1,2,3,4].forEach(function(l){h+='<option value="'+l+'"'+(storedAuto===l?' selected':'')+'>L'+l+'</option>';});
-    h+='</select></div>';
-    // Cols 4-8: capacity data
-    h+='<div style="'+MN+MCD+'color:'+(isInstalled?'var(--gold)':'var(--muted2)')+';">'+(isInstalled?av.installed_k+'k':'—')+'</div>';
-    h+='<div style="'+MN+MCD+'color:'+(isInstalled&&av.used_k>0?'var(--cyan)':'var(--muted2)')+';">'+(isInstalled?av.used_k+'k':'—')+'</div>';
-    var fCol=isInstalled?(av.spare_k>0?'var(--green)':'var(--orange)'):'var(--muted2)';
-    h+='<div style="'+MN+MCD+'color:'+fCol+';">'+(isInstalled?av.spare_k+'k':'—')+'</div>';
-    h+='<div style="'+MN+MCD+'color:var(--gold);">'+capK+'k</div>';
-    h+='<div style="'+MN+MCD+'font-weight:600;color:'+tbCol+';">'+tbTxt+'</div>';
-    // Col 9: Investment (populated by renderFacilityCostSummary)
-    h+='<div style="'+MN+MCD+'color:var(--gold);" id="alloc-mod-inv-'+mod.slot+'">—</div>';
-    // Col 10: Labor (populated by renderFacilityCostSummary)
-    h+='<div style="'+MN+MCD+'color:var(--text);" id="alloc-mod-lbr-'+mod.slot+'">—</div>';
+  if(_toolExp){
+    var MCOLS='1fr 1.1fr 56px 42px 42px 42px 42px 56px 54px 48px';
+    var MHD='font-size:7px;font-weight:700;color:var(--muted2);padding:4px 6px;text-align:right;';
+    var MCD='font-size:9px;padding:5px 6px;text-align:right;';
+    h+='<div style="display:grid;grid-template-columns:'+MCOLS+';background:var(--s2);border-bottom:1px solid var(--border2);">';
+    h+='<div style="'+MN+MHD+'text-align:left;">Module</div>';
+    h+='<div style="'+MN+MHD+'text-align:left;">Config Key</div>';
+    h+='<div style="'+MN+MHD+'text-align:center;">Auto</div>';
+    h+='<div style="'+MN+MHD+'">Inst.</div>';
+    h+='<div style="'+MN+MHD+'">Resvd</div>';
+    h+='<div style="'+MN+MHD+'">Free</div>';
+    h+='<div style="'+MN+MHD+'">Target</div>';
+    h+='<div style="'+MN+MHD+'">To Build</div>';
+    h+='<div style="'+MN+MHD+'">Invest.</div>';
+    h+='<div style="'+MN+MHD+'">Labor</div>';
     h+='</div>';
-  });
-  if(_hasBrownfield)h+='<div style="'+MN+'font-size:7px;color:var(--muted2);padding:4px 8px;background:var(--s2);">⚑ Brownfield rate (0.65×) applied to expansion · Labor shown at 3 shifts</div>';
-  else h+='<div style="'+MN+'font-size:7px;color:var(--muted2);padding:3px 8px;background:var(--s2);">Labor shown at 3-shift equivalent</div>';
+    var _vpEnt=(ops.vehicle_plants||[]).find(function(p){return p.id==='vp_'+lk;})||{};
+    var _hasBrownfield=false;
+    [{slot:'platform',label:'PLATFORM',cfgKey:_propPlatCK,handlerFn:'onPropOpsPlatAutoLevel',stateKey:'platform_auto_level'},
+     {slot:'tophat',  label:'TOPHAT',  cfgKey:_propThCK,  handlerFn:'onPropOpsTophatAutoLevel',stateKey:'tophat_auto_level'}
+    ].forEach(function(mod,ri){
+      var av=_getEffectiveCap('vehicle_plants',lk,mod.slot);
+      var isInstalled=av.installed_k>0;
+      var toBuild=Math.max(0,capK-av.spare_k);
+      if(isInstalled&&toBuild>0)_hasBrownfield=true;
+      var existingAuto=2;
+      ((vpLk[mod.slot]||[])).forEach(function(e){if(e.automation_level)existingAuto=e.automation_level;});
+      var storedAuto=ops[mod.stateKey]||existingAuto;
+      var sBdg=isInstalled
+        ?'<span style="'+MN+'font-size:7px;color:var(--green);padding:1px 4px;border-radius:2px;background:rgba(50,180,100,0.12);white-space:nowrap;">✓ here</span>'
+        :(mod.cfgKey
+          ?'<span style="'+MN+'font-size:7px;color:var(--orange);padding:1px 4px;border-radius:2px;background:rgba(220,120,30,0.10);white-space:nowrap;">⊕ new</span>'
+          :'<span style="'+MN+'font-size:7px;color:var(--muted2);padding:1px 4px;border-radius:2px;background:var(--s1);white-space:nowrap;">— new</span>');
+      var tbCol=toBuild>0?'var(--orange)':(isInstalled?'var(--green)':'var(--muted2)');
+      var tbTxt=toBuild>0?('▲ '+toBuild+'k'):(isInstalled?'✓ 0k':'—');
+      var rowBg=ri%2===0?'var(--s3)':'var(--s2)';
+      var _ckDisp=mod.cfgKey?(mod.cfgKey.length>16?mod.cfgKey.substring(0,15)+'…':mod.cfgKey):'—';
+      h+='<div style="display:grid;grid-template-columns:'+MCOLS+';background:'+rowBg+';border-bottom:1px solid var(--border2);">';
+      // Col 1: Module label + badge
+      h+='<div style="'+MN+'font-size:9px;padding:5px 6px;display:flex;align-items:center;gap:4px;">';
+      h+='<span style="color:var(--text);font-weight:600;">'+mod.label+'</span>'+sBdg+'</div>';
+      // Col 2: Config Key (clickable if installed)
+      if(isInstalled&&mod.cfgKey){
+        h+='<div style="'+MN+'font-size:7px;padding:5px 6px;color:var(--cyan);cursor:pointer;text-decoration:underline dotted;display:flex;align-items:center;" onclick="openModCapModal(\'vehicle_plants\',\''+lk+'\',\''+mod.slot+'\')">'+_ckDisp+'</div>';
+      } else {
+        h+='<div style="'+MN+'font-size:7px;padding:5px 6px;color:var(--muted2);display:flex;align-items:center;">'+_ckDisp+'</div>';
+      }
+      // Col 3: Auto select
+      h+='<div style="padding:3px 4px;display:flex;align-items:center;">';
+      h+='<select onchange="'+mod.handlerFn+'(parseInt(this.value))" style="'+MN+'font-size:8px;padding:2px 2px;border-radius:2px;border:1px solid var(--border2);background:var(--s1);color:var(--text);width:100%;">';
+      [1,2,3,4].forEach(function(l){h+='<option value="'+l+'"'+(storedAuto===l?' selected':'')+'>L'+l+'</option>';});
+      h+='</select></div>';
+      // Cols 4-8: capacity data
+      h+='<div style="'+MN+MCD+'color:'+(isInstalled?'var(--gold)':'var(--muted2)')+';">'+(isInstalled?av.installed_k+'k':'—')+'</div>';
+      h+='<div style="'+MN+MCD+'color:'+(isInstalled&&av.used_k>0?'var(--cyan)':'var(--muted2)')+';">'+(isInstalled?av.used_k+'k':'—')+'</div>';
+      var fCol=isInstalled?(av.spare_k>0?'var(--green)':'var(--orange)'):'var(--muted2)';
+      h+='<div style="'+MN+MCD+'color:'+fCol+';">'+(isInstalled?av.spare_k+'k':'—')+'</div>';
+      h+='<div style="'+MN+MCD+'color:var(--gold);">'+capK+'k</div>';
+      h+='<div style="'+MN+MCD+'font-weight:600;color:'+tbCol+';">'+tbTxt+'</div>';
+      // Col 9: Investment (populated by renderFacilityCostSummary)
+      h+='<div style="'+MN+MCD+'color:var(--gold);" id="alloc-mod-inv-'+mod.slot+'">—</div>';
+      // Col 10: Labor (populated by renderFacilityCostSummary)
+      h+='<div style="'+MN+MCD+'color:var(--text);" id="alloc-mod-lbr-'+mod.slot+'">—</div>';
+      h+='</div>';
+    });
+    if(_hasBrownfield)h+='<div style="'+MN+'font-size:7px;color:var(--muted2);padding:4px 8px;background:var(--s2);">⚑ Brownfield rate (0.65×) applied to expansion · Labor shown at 3 shifts</div>';
+    else h+='<div style="'+MN+'font-size:7px;color:var(--muted2);padding:3px 8px;background:var(--s2);">Labor shown at 3-shift equivalent</div>';
+  }
   h+='</div>';
 
   // ── Section D: Confirm/Cancel + KPI strip ──
@@ -18706,6 +18713,12 @@ function _renderPlantAllocationPanel(lk){
   h+='</div>';
   h+='</div>';
   return h;
+}
+
+function _toggleOpsTooling(lk){
+  _opsToolingExpanded[lk]=!_opsToolingExpanded[lk];
+  var aEl=document.getElementById('prop-ops-alloc-area');
+  if(aEl){aEl.innerHTML=_renderPlantAllocationPanel(lk);renderFacilityCostSummary('vehicle_plants','vp_'+lk);}
 }
 
 function _renderPlantSelector(facType){
@@ -19526,16 +19539,13 @@ async function buildOperationsSection() {
   if (!_prop.operations.supplier_parks)    _prop.operations.supplier_parks    = [];
   if (!_prop.operations.quality_tier)      _prop.operations.quality_tier      = 'STANDARD';
   if (!_prop.operations.sourcing_strategy) _prop.operations.sourcing_strategy = 'BALANCED';
-  if (!_prop.operations.supply_plan) _prop.operations.supply_plan = {
-    supplier_auto_tier:'STANDARD',
-    modules:{
-      body_structure:  {source_location:'REGIONAL',  sourcing_mode:'DUAL'},
-      powertrain:      {source_location:'REGIONAL',  sourcing_mode:'DUAL'},
-      battery:         {source_location:'OFFSHORE',  sourcing_mode:'DUAL'},
-      interior_trim:   {source_location:'NEARSHORE', sourcing_mode:'DUAL'},
-      electronics:     {source_location:'OFFSHORE',  sourcing_mode:'DUAL'},
-    }
-  };
+  // Re-init supply_plan if missing or has old v1 shape (v1 used supplier_auto_tier + modules keys)
+  var _spExist=_prop.operations.supply_plan;
+  if(!_spExist||_spExist.supplier_auto_tier!==undefined||!_spExist.plants){
+    _prop.operations.supply_plan=_spInitFromPlants();
+  } else {
+    _spSyncPlanWithPlants();
+  }
   _refManufResult = null;
   _deployedModules = null;
   if (teamId && sessionId) {
@@ -19625,148 +19635,186 @@ function _getPlant(pid){return _getFacility('vehicle_plants',pid)||((_prop.opera
 
 // ── Section 7 new decision handlers ──────────────────────────────────────────
 
-// ── Supply Plan helpers ───────────────────────────────────────────────────────
+// ── Supply Plan v2 helpers ────────────────────────────────────────────────────
 
-function _spActiveModules(){
+function _spDefaultZoneForRegion(region){
+  return ({EU:'EU',NA:'USMCA',APAC:'ASEAN',SA:'EMRG',MEA:'EMRG'})[region]||'EU';
+}
+
+function _spGetActivePropSlots(){
   var pk=_pwtKeyFromProp();
   var isEv=pk==='bev_only',isHybrid=(pk==='ice_and_bev'||pk==='hev'||pk==='reev');
-  var mods=['body_structure','powertrain'];
-  if(isEv||isHybrid)mods.push('battery');
-  mods.push('interior_trim','electronics');
-  return mods;
+  var slots=[];
+  function _ok(k){var p=_prop[k];return !!(p&&(p.mode||p.module));}
+  if(_ok('platform'))slots.push('platform');
+  if(!isEv&&_ok('pwt'))slots.push('pwt');
+  if((isEv||isHybrid)&&_ok('epwt'))slots.push('epwt');
+  if((isEv||isHybrid)&&_ok('battery'))slots.push('battery');
+  if(_ok('tophat'))slots.push('tophat');
+  if(_ok('eands'))slots.push('eands');
+  if(!slots.length)slots=['platform','tophat','eands'];
+  return slots;
 }
 
-function _spModuleBuyCost(mk){
-  var spMod=SP_MODULES[mk];if(!spMod)return 0;
-  var tpc=0;
-  if(mk==='body_structure'){var p=_prop.platform;tpc=(p&&p.module)?parseFloat(p.module.per_unit_tpc_eur||0):0;}
-  else if(mk==='powertrain'){var pw=_prop.pwt,ep=_prop.epwt;tpc+=(pw&&pw.module)?parseFloat(pw.module.per_unit_tpc_eur||0):0;tpc+=(ep&&ep.module)?parseFloat(ep.module.per_unit_tpc_eur||0):0;}
-  else if(mk==='battery'){var bt=_prop.battery;tpc=(bt&&bt.module)?parseFloat(bt.module.per_unit_tpc_eur||0):0;}
-  else if(mk==='interior_trim'){var th=_prop.tophat;tpc=(th&&th.module)?parseFloat(th.module.per_unit_tpc_eur||0):0;}
-  else if(mk==='electronics'){var es=_prop.eands;tpc=(es&&es.module)?parseFloat(es.module.per_unit_tpc_eur||0):0;}
-  return tpc*spMod.buy_fraction;
+function _spSlotLabel(sk){
+  var p=_prop[sk];
+  var name=p&&p.module&&p.module.name;
+  var ck=p&&((p.module&&p.module.config_key)||(p.specs&&(p.specs.config_key||p.specs.size)));
+  return ((name||ck||{platform:'Platform',pwt:'ICE PWT',epwt:'e-PWT',battery:'Battery',tophat:'TopHat',eands:'E&S'}[sk]||sk)).replace(/_/g,' ');
 }
 
-function _spPoolingAdj(mk){
-  var propKey=mk==='body_structure'?'platform':mk==='powertrain'?(_pwtKeyFromProp()==='bev_only'?'epwt':'pwt'):mk==='battery'?'battery':mk==='interior_trim'?'tophat':'eands';
-  var m=_prop[propKey];if(!m)return 0;
-  return m.mode==='reuse'?-0.05:m.mode==='modify'?-0.02:0;
+function _spSlotBuyCost(sk){
+  var mt=SP_MODULE_TYPES[sk];if(!mt)return 0;
+  var p=_prop[sk];
+  var tpc=(p&&p.module)?parseFloat(p.module.per_unit_tpc_eur||0):0;
+  return tpc*mt.buy_fraction;
 }
 
-function _calcModuleSupplyAdj(mk,plan,tier_key){
-  var spMod=SP_MODULES[mk];
-  var loc=SP_SOURCE_LOCATIONS.find(function(l){return l.key===plan.source_location;})||SP_SOURCE_LOCATIONS[1];
-  var mode=SP_SOURCING_MODES.find(function(m){return m.key===plan.sourcing_mode;})||SP_SOURCING_MODES[1];
-  var auto=SP_AUTO_TIERS.find(function(t){return t.key===tier_key;})||SP_AUTO_TIERS[1];
-  var baseBuy=_spModuleBuyCost(mk);
-  var netAdj=(loc.price_adj+loc.logistics_adj)+mode.price_adj+(spMod.labor_intensity*auto.auto_adj_mult*0.10)+_spPoolingAdj(mk);
-  return Math.round(baseBuy*netAdj);
+function _spInitFromPlants(){
+  var slots=_spGetActivePropSlots(),plants={};
+  ((_prop.operations&&_prop.operations.vehicle_plants)||[]).forEach(function(vp){
+    var dz=_spDefaultZoneForRegion(vp.region),mods={};
+    slots.forEach(function(sk){mods[sk]={zone:dz,automation:2};});
+    plants[vp.id]={modules:mods};
+  });
+  if(!Object.keys(plants).length){
+    var vp0=((_prop.operations&&_prop.operations.vehicle_plants)||[])[0]||{id:'vp1',region:'EU'};
+    var mods2={};slots.forEach(function(sk){mods2[sk]={zone:_spDefaultZoneForRegion(vp0.region),automation:2};});
+    plants[vp0.id||'vp1']={modules:mods2};
+  }
+  return {plants:plants};
 }
 
-function _calcModuleSupplyNRE(mk,plan,tier_key){
-  var auto=SP_AUTO_TIERS.find(function(t){return t.key===tier_key;})||SP_AUTO_TIERS[1];
-  var loc=SP_SOURCE_LOCATIONS.find(function(l){return l.key===plan.source_location;})||SP_SOURCE_LOCATIONS[1];
-  var mode=SP_SOURCING_MODES.find(function(m){return m.key===plan.sourcing_mode;})||SP_SOURCING_MODES[1];
-  var baseBuyAnnual=_spModuleBuyCost(mk)*(_suggestedVolK()||50)*1000;
-  return (baseBuyAnnual*auto.invest_factor*loc.nre_factor*mode.nre_mult)/1e6;
+function _spSyncPlanWithPlants(){
+  var sp=_prop.operations&&_prop.operations.supply_plan;
+  if(!sp||!sp.plants)return;
+  var slots=_spGetActivePropSlots();
+  ((_prop.operations.vehicle_plants)||[]).forEach(function(vp){
+    if(sp.plants[vp.id])return;
+    var dz=_spDefaultZoneForRegion(vp.region),mods={};
+    slots.forEach(function(sk){mods[sk]={zone:dz,automation:2};});
+    sp.plants[vp.id]={modules:mods};
+  });
+}
+
+function _calcModuleSupplyMetrics(sk,zoneKey,autoLevel,plantRegion){
+  var mt=SP_MODULE_TYPES[sk];if(!mt)return {piece_adj:0,nre_m:0,risk:0.25,base_buy:0};
+  var zone=SP_ZONES.find(function(z){return z.key===zoneKey;})||SP_ZONES[0];
+  var auto=SP_AUTO_LEVELS.find(function(a){return a.key===autoLevel;})||SP_AUTO_LEVELS[1];
+  var buyCost=_spSlotBuyCost(sk);
+  var laborAdj=buyCost*mt.labor_intensity*(zone.labor_index*auto.labor_factor-1.0);
+  var logistics=(zone.logistics[plantRegion]||300)-200;
+  var duty=buyCost*(zone.duty[plantRegion]||0)/100;
+  var pieceAdj=Math.round(laborAdj+logistics+duty);
+  var nreM=(buyCost*(_suggestedVolK()||50)*1000*auto.nre_factor)/1e6;
+  var risk=zone.risk*(1-mt.labor_intensity*0.20);
+  return {piece_adj:pieceAdj,nre_m:nreM,risk:risk,base_buy:buyCost};
 }
 
 function _calcSupplyPlanTotals(){
   var sp=(_prop.operations&&_prop.operations.supply_plan)||{};
-  var tier=sp.supplier_auto_tier||'STANDARD',mods=sp.modules||{};
+  var plants=sp.plants||{},vPlants=(_prop.operations&&_prop.operations.vehicle_plants)||[];
   var totalAdj=0,totalNRE=0,totalRisk=0,totalW=0;
-  _spActiveModules().forEach(function(mk){
-    var plan=mods[mk]||{source_location:'REGIONAL',sourcing_mode:'DUAL'};
-    totalAdj+=_calcModuleSupplyAdj(mk,plan,tier);
-    totalNRE+=_calcModuleSupplyNRE(mk,plan,tier);
-    var loc=SP_SOURCE_LOCATIONS.find(function(l){return l.key===plan.source_location;})||SP_SOURCE_LOCATIONS[1];
-    var mode=SP_SOURCING_MODES.find(function(m){return m.key===plan.sourcing_mode;})||SP_SOURCING_MODES[1];
-    var li=SP_MODULES[mk].labor_intensity;
-    totalRisk+=loc.risk*mode.risk_mult*(0.5+li);totalW+=(0.5+li);
+  var nPlants=Math.max(1,Object.keys(plants).length);
+  Object.keys(plants).forEach(function(pid){
+    var vp=vPlants.find(function(p){return p.id===pid;})||{region:'EU'};
+    var pMods=plants[pid].modules||{};
+    _spGetActivePropSlots().forEach(function(sk){
+      var dec=pMods[sk]||{zone:_spDefaultZoneForRegion(vp.region),automation:2};
+      var m=_calcModuleSupplyMetrics(sk,dec.zone,dec.automation,vp.region);
+      totalAdj+=m.piece_adj;totalNRE+=m.nre_m;
+      var li=(SP_MODULE_TYPES[sk]||{labor_intensity:0.3}).labor_intensity;
+      totalRisk+=m.risk*(0.5+li);totalW+=(0.5+li);
+    });
   });
+  if(!Object.keys(plants).length){
+    _spGetActivePropSlots().forEach(function(sk){
+      var m=_calcModuleSupplyMetrics(sk,'EU',2,'EU');
+      var li=(SP_MODULE_TYPES[sk]||{labor_intensity:0.3}).labor_intensity;
+      totalAdj+=m.piece_adj;totalNRE+=m.nre_m;totalRisk+=m.risk*(0.5+li);totalW+=(0.5+li);
+    });
+  }
   var riskScore=totalW>0?Math.min(1,totalRisk/totalW):0.25;
-  sp._total_piece_adj_eur=totalAdj;
+  sp._total_piece_adj_eur=Math.round(totalAdj/nPlants);
   sp._total_nre_m=Math.round(totalNRE*10)/10;
   sp._risk_score=Math.round(riskScore*100)/100;
-  return {totalAdj:totalAdj,totalNRE:sp._total_nre_m,riskScore:sp._risk_score};
+  return {totalAdj:sp._total_piece_adj_eur,totalNRE:sp._total_nre_m,riskScore:sp._risk_score};
 }
 
-function _renderSupplyModuleCard(mk,sp){
-  var spMod=SP_MODULES[mk];
-  var tier=sp.supplier_auto_tier||'STANDARD';
-  var plan=(sp.modules&&sp.modules[mk])||{source_location:'REGIONAL',sourcing_mode:'DUAL'};
-  var poolAdj=_spPoolingAdj(mk);
-  var poolLabel=poolAdj<=-0.04?'REUSE ✓':poolAdj<0?'MODIFY ✓':'—',poolCol=poolAdj<0?'var(--green)':'var(--muted2)';
-  var adj=_calcModuleSupplyAdj(mk,plan,tier),nre=_calcModuleSupplyNRE(mk,plan,tier);
-  var adjCol=adj<=0?'var(--green)':'var(--orange)';
-  var adjStr=adj>0?'+€'+adj:adj<0?'−€'+Math.abs(adj):'±€0';
-  var baseBuy=_spModuleBuyCost(mk);
-  var h='<div style="border:1px solid var(--border);border-radius:4px;padding:10px;margin-bottom:8px;background:var(--s2);">';
-  h+='<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">';
-  h+='<div style="font-family:DM Mono,monospace;font-size:9px;font-weight:600;color:var(--white);">'+spMod.icon+' '+spMod.label+'</div>';
-  h+='<div style="display:flex;gap:12px;align-items:center;">';
-  if(baseBuy>0)h+='<div style="font-family:DM Mono,monospace;font-size:8px;color:var(--muted2);">~€'+Math.round(baseBuy)+'/unit buy</div>';
-  h+='<div style="font-family:DM Mono,monospace;font-size:8px;color:'+poolCol+';">Pool: '+poolLabel+'</div>';
+function _renderPlantSupplyCard(vp,sp){
+  var plantMods=(sp.plants&&sp.plants[vp.id]&&sp.plants[vp.id].modules)||{};
+  var slots=_spGetActivePropSlots();
+  var _cl=INDUSTRIAL_COUNTRIES[vp.region]||[],_ct=_cl.find(function(c){return c.code===vp.country_code;})||{};
+  var h='<div style="border:1px solid var(--border2);border-radius:4px;margin-bottom:12px;overflow:hidden;">';
+  h+='<div style="background:var(--s3);padding:8px 10px;border-bottom:1px solid var(--border2);">';
+  h+='<div style="font-family:DM Mono,monospace;font-size:9px;font-weight:600;color:var(--gold);">🏭 '+(_ct.flag||'')+' '+(vp.country_name||vp.country_code||vp.region)+' &nbsp;·&nbsp; <span style="color:var(--muted2);">'+vp.region+'</span></div>';
+  h+='</div>';
+  h+='<div style="padding:10px;">';
+  var plantTotalAdj=0,plantTotalNRE=0;
+  slots.forEach(function(sk){
+    var dec=plantMods[sk]||{zone:_spDefaultZoneForRegion(vp.region),automation:2};
+    var m=_calcModuleSupplyMetrics(sk,dec.zone,dec.automation,vp.region);
+    plantTotalAdj+=m.piece_adj;plantTotalNRE+=m.nre_m;
+    var adjCol=m.piece_adj<=0?'var(--green)':'var(--orange)';
+    var adjStr=m.piece_adj>0?'+€'+m.piece_adj:m.piece_adj<0?'−€'+Math.abs(m.piece_adj):'±€0';
+    h+='<div style="margin-bottom:10px;padding-bottom:10px;border-bottom:1px solid var(--border2);">';
+    h+='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px;">';
+    h+='<div style="font-family:DM Mono,monospace;font-size:8.5px;font-weight:600;color:var(--white);">'+_spSlotLabel(sk)+'</div>';
+    h+='<div style="display:flex;gap:10px;">';
+    if(m.base_buy>0)h+='<span style="font-family:DM Mono,monospace;font-size:7.5px;color:var(--muted2);">~€'+Math.round(m.base_buy)+'/unit</span>';
+    h+='<span style="font-family:DM Mono,monospace;font-size:7.5px;color:'+adjCol+';">'+adjStr+'/unit</span>';
+    h+='<span style="font-family:DM Mono,monospace;font-size:7.5px;color:var(--muted2);">NRE €'+m.nre_m.toFixed(1)+'M</span>';
+    h+='</div></div>';
+    h+='<div style="display:flex;gap:4px;margin-bottom:4px;">';
+    SP_ZONES.forEach(function(zone){
+      var sel=dec.zone===zone.key;
+      h+='<div style="flex:1;padding:4px 2px;border-radius:3px;cursor:pointer;text-align:center;border:1px solid '+(sel?'var(--cyan)':'var(--border2)')+';background:'+(sel?'rgba(34,211,238,.10)':'var(--s1)')+'" onclick="onSpZone(\''+vp.id+'\',\''+sk+'\',\''+zone.key+'\')" title="'+zone.desc+'">';
+      h+='<div style="font-size:10px;line-height:1.4;">'+zone.flag+'</div>';
+      h+='<div style="font-family:DM Mono,monospace;font-size:6.5px;color:'+(sel?'var(--cyan)':'var(--muted)')+';white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:'+(sel?600:400)+';">'+zone.label+'</div>';
+      h+='</div>';
+    });
+    h+='</div>';
+    h+='<div style="display:flex;gap:4px;">';
+    SP_AUTO_LEVELS.forEach(function(al){
+      var sel=dec.automation===al.key;
+      var lfPct=Math.round((al.labor_factor-1)*100);
+      var lfStr=lfPct>0?'+'+lfPct+'%':lfPct<0?lfPct+'%':'0%';
+      var lfCol=lfPct<0?'var(--green)':lfPct>0?'var(--orange)':'var(--muted2)';
+      h+='<div style="flex:1;padding:4px 2px;border-radius:3px;cursor:pointer;text-align:center;border:1px solid '+(sel?'var(--gold)':'var(--border2)')+';background:'+(sel?'rgba(200,164,60,.10)':'var(--s1)')+'" onclick="onSpAuto(\''+vp.id+'\',\''+sk+'\','+al.key+')">';
+      h+='<div style="font-family:DM Mono,monospace;font-size:7.5px;color:'+(sel?'var(--gold)':'var(--muted)')+';font-weight:'+(sel?600:400)+';">'+al.label+'</div>';
+      h+='<div style="font-family:DM Mono,monospace;font-size:7px;color:'+lfCol+';">'+lfStr+' labor</div>';
+      h+='</div>';
+    });
+    h+='</div>';
+    h+='</div>';
+  });
+  var ptCol=plantTotalAdj<=0?'var(--green)':'var(--orange)';
+  var ptStr=plantTotalAdj>0?'+€'+plantTotalAdj:plantTotalAdj<0?'−€'+Math.abs(plantTotalAdj):'±€0';
+  h+='<div style="display:flex;gap:16px;padding:6px 0 2px 0;">';
+  h+='<span style="font-family:DM Mono,monospace;font-size:8px;color:var(--muted2);">Plant total</span>';
+  h+='<span style="font-family:DM Mono,monospace;font-size:8px;color:'+ptCol+';">'+ptStr+'/unit</span>';
+  h+='<span style="font-family:DM Mono,monospace;font-size:8px;color:var(--muted2);">NRE €'+plantTotalNRE.toFixed(1)+'M</span>';
+  h+='</div>';
   h+='</div></div>';
-  h+='<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:5px;margin-bottom:6px;">';
-  SP_SOURCE_LOCATIONS.forEach(function(loc){
-    var sel=loc.key===plan.source_location;
-    var netPct=Math.round((loc.price_adj+loc.logistics_adj)*100);
-    var netStr=netPct>0?'+'+netPct+'%':netPct<0?netPct+'%':'0%';
-    var netCol=netPct<0?'var(--green)':netPct>0?'var(--orange)':'var(--muted2)';
-    h+='<div style="padding:5px 3px;border-radius:3px;cursor:pointer;text-align:center;border:1px solid '+(sel?'var(--cyan)':'var(--border2)')+';background:'+(sel?'rgba(34,211,238,.10)':'var(--s1)')+'" onclick="onSupplyPlanLocation(\''+mk+'\',\''+loc.key+'\')" title="'+loc.desc+'">';
-    h+='<div style="font-family:DM Mono,monospace;font-size:8px;color:'+(sel?'var(--cyan)':'var(--muted)')+';font-weight:'+(sel?600:400)+';">'+loc.label+'</div>';
-    h+='<div style="font-family:DM Mono,monospace;font-size:7px;color:'+netCol+';">'+netStr+'</div>';
-    h+='</div>';
-  });
-  h+='</div>';
-  h+='<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:5px;margin-bottom:8px;">';
-  SP_SOURCING_MODES.forEach(function(mode){
-    var sel=mode.key===plan.sourcing_mode;
-    var mPct=Math.round(mode.price_adj*100);
-    var mStr=mPct>0?'+'+mPct+'%':mPct<0?mPct+'%':'0%';
-    var mCol=mPct<0?'var(--green)':mPct>0?'var(--orange)':'var(--muted2)';
-    h+='<div style="padding:5px 3px;border-radius:3px;cursor:pointer;text-align:center;border:1px solid '+(sel?'var(--gold)':'var(--border2)')+';background:'+(sel?'rgba(200,164,60,.10)':'var(--s1)')+'" onclick="onSupplyPlanMode(\''+mk+'\',\''+mode.key+'\')" title="'+mode.desc+'">';
-    h+='<div style="font-family:DM Mono,monospace;font-size:8px;color:'+(sel?'var(--gold)':'var(--muted)')+';font-weight:'+(sel?600:400)+';">'+mode.label+'</div>';
-    h+='<div style="font-family:DM Mono,monospace;font-size:7px;color:'+mCol+';">'+mStr+'</div>';
-    h+='</div>';
-  });
-  h+='</div>';
-  h+='<div style="display:flex;gap:12px;">';
-  h+='<div style="font-family:DM Mono,monospace;font-size:8px;"><span style="color:var(--muted2);">Cost: </span><span style="color:'+adjCol+';">'+adjStr+'/unit</span></div>';
-  h+='<div style="font-family:DM Mono,monospace;font-size:8px;"><span style="color:var(--muted2);">NRE: </span><span style="color:var(--text);">€'+nre.toFixed(1)+'M</span></div>';
-  h+='</div>';
-  h+='</div>';
   return h;
 }
 
 function _renderSupplyPlanSection(){
-  var sp=(_prop.operations&&_prop.operations.supply_plan)||{supplier_auto_tier:'STANDARD',modules:{}};
-  var tier=sp.supplier_auto_tier||'STANDARD';
+  var sp=(_prop.operations&&_prop.operations.supply_plan)||{};
+  var vPlants=(_prop.operations&&_prop.operations.vehicle_plants)||[];
   var TH='font-family:DM Mono,monospace;font-size:8px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:8px;display:block;';
   var h='<div style="margin-bottom:18px;">';
   h+='<div style="'+TH+'">📦 Parts Supply Plan</div>';
-  h+='<div style="margin-bottom:12px;">';
-  h+='<div style="font-family:DM Mono,monospace;font-size:7.5px;text-transform:uppercase;letter-spacing:1px;color:var(--muted2);margin-bottom:6px;">Supplier Automation Programme</div>';
-  h+='<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;">';
-  SP_AUTO_TIERS.forEach(function(t){
-    var sel=t.key===tier;
-    var adjLbl=t.auto_adj_mult>0?'+'+Math.round(t.auto_adj_mult*10)+'% labor↑':t.auto_adj_mult<0?Math.round(t.auto_adj_mult*10)+'% labor↓':'baseline';
-    var adjCol=t.auto_adj_mult>0?'var(--orange)':t.auto_adj_mult<0?'var(--green)':'var(--muted2)';
-    h+='<div style="'+(sel?'border-radius:4px;padding:10px;cursor:pointer;border:1px solid var(--gold);background:var(--s3);':'border-radius:4px;padding:10px;cursor:pointer;border:1px solid var(--border2);background:var(--s2);')+'" onclick="onSupplyPlanAutoTier(\''+t.key+'\')">';
-    h+='<div style="font-family:DM Mono,monospace;font-size:9px;font-weight:600;color:var(--white);margin-bottom:3px;">'+t.label+'</div>';
-    h+='<div style="font-family:DM Mono,monospace;font-size:8px;color:'+adjCol+';margin-bottom:2px;">'+adjLbl+'</div>';
-    h+='<div style="font-family:DM Mono,monospace;font-size:8px;color:var(--muted2);">NRE ×'+Math.round(t.invest_factor*1000)+'‰</div>';
-    h+='</div>';
-  });
-  h+='</div></div>';
-  h+='<div style="font-family:DM Mono,monospace;font-size:7.5px;text-transform:uppercase;letter-spacing:1px;color:var(--muted2);margin-bottom:6px;">Sourcing by Module</div>';
-  _spActiveModules().forEach(function(mk){h+=_renderSupplyModuleCard(mk,sp);});
+  if(!vPlants.length){
+    h+='<div style="font-family:DM Mono,monospace;font-size:9px;color:var(--muted2);padding:12px 0;">← Select a vehicle plant above to configure supply sourcing.</div>';
+  } else {
+    vPlants.forEach(function(vp){h+=_renderPlantSupplyCard(vp,sp);});
+  }
   var totals=_calcSupplyPlanTotals();
   var rPct=Math.round(totals.riskScore*100);
   var rCol=rPct<30?'var(--green)':rPct<55?'var(--gold)':'var(--red)';
   var rLabel=rPct<30?'LOW':rPct<55?'MEDIUM':'HIGH';
-  h+='<div style="background:var(--s2);border:1px solid var(--border);border-radius:4px;padding:10px;margin-top:6px;display:flex;align-items:center;gap:12px;">';
+  h+='<div style="background:var(--s2);border:1px solid var(--border);border-radius:4px;padding:10px;margin-top:4px;display:flex;align-items:center;gap:12px;">';
   h+='<div style="font-family:DM Mono,monospace;font-size:8px;color:var(--muted2);white-space:nowrap;">Supply Risk</div>';
   h+='<div style="flex:1;background:var(--border);border-radius:2px;height:6px;overflow:hidden;"><div style="width:'+rPct+'%;height:100%;background:'+rCol+';border-radius:2px;"></div></div>';
   h+='<div style="font-family:DM Mono,monospace;font-size:8px;color:'+rCol+';white-space:nowrap;min-width:72px;">'+rLabel+' ('+rPct+'%)</div>';
@@ -19776,25 +19824,21 @@ function _renderSupplyPlanSection(){
   return h;
 }
 
-function onSupplyPlanAutoTier(tier){
-  if(!_prop.operations||!_prop.operations.supply_plan)return;
-  _prop.operations.supply_plan.supplier_auto_tier=tier;
+function onSpZone(pid,sk,zk){
+  var sp=_prop.operations&&_prop.operations.supply_plan;
+  if(!sp||!sp.plants)return;
+  if(!sp.plants[pid])sp.plants[pid]={modules:{}};
+  if(!sp.plants[pid].modules[sk])sp.plants[pid].modules[sk]={zone:'EU',automation:2};
+  sp.plants[pid].modules[sk].zone=zk;
   _refreshSupplyPlanArea();renderOpsAggregateSummary();
 }
 
-function onSupplyPlanLocation(mk,loc){
-  if(!_prop.operations||!_prop.operations.supply_plan)return;
-  var mods=_prop.operations.supply_plan.modules;
-  if(!mods[mk])mods[mk]={source_location:'REGIONAL',sourcing_mode:'DUAL'};
-  mods[mk].source_location=loc;
-  _refreshSupplyPlanArea();renderOpsAggregateSummary();
-}
-
-function onSupplyPlanMode(mk,mode){
-  if(!_prop.operations||!_prop.operations.supply_plan)return;
-  var mods=_prop.operations.supply_plan.modules;
-  if(!mods[mk])mods[mk]={source_location:'REGIONAL',sourcing_mode:'DUAL'};
-  mods[mk].sourcing_mode=mode;
+function onSpAuto(pid,sk,level){
+  var sp=_prop.operations&&_prop.operations.supply_plan;
+  if(!sp||!sp.plants)return;
+  if(!sp.plants[pid])sp.plants[pid]={modules:{}};
+  if(!sp.plants[pid].modules[sk])sp.plants[pid].modules[sk]={zone:'EU',automation:2};
+  sp.plants[pid].modules[sk].automation=level;
   _refreshSupplyPlanArea();renderOpsAggregateSummary();
 }
 
@@ -20992,6 +21036,7 @@ var _salesPlanState = {
 };
 // true = expanded (default: all collapsed)
 var _spExpanded = { veh: {}, reg: {} };
+var _opsToolingExpanded = {};
 
 async function loadSalesPlanTab() {
   if (!sessionId || !roundId || !teamId) return;
