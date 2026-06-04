@@ -17904,6 +17904,32 @@ var QUALITY_TIERS = [
   {key:'WORLD_CLASS',label:'World-Class (TPS)',warranty_pct:0.007, pp100: 40, unit_add_eur:500, desc:'0.7% warranty · 40 PP100 · Toyota Production System'},
 ];
 
+// ── Supply Plan lookup tables (Section 7 — Parts Supply Plan block) ─────────
+var SP_MODULES = {
+  body_structure: {label:'Body & Structure',  icon:'🔩', labor_intensity:0.40, buy_fraction:0.80},
+  powertrain:     {label:'Powertrain',         icon:'⚙️', labor_intensity:0.30, buy_fraction:0.60},
+  battery:        {label:'Battery Pack',       icon:'🔋', labor_intensity:0.15, buy_fraction:0.90},
+  interior_trim:  {label:'Interior & Trim',    icon:'🪑', labor_intensity:0.65, buy_fraction:0.75},
+  electronics:    {label:'Electronics & ADAS', icon:'📡', labor_intensity:0.15, buy_fraction:0.85},
+};
+var SP_SOURCE_LOCATIONS = [
+  {key:'DOMESTIC',  label:'Domestic',   desc:'Same country as plant',   price_adj:+0.14, logistics_adj:0.00, risk:0.15, nre_factor:0.8},
+  {key:'REGIONAL',  label:'Regional',   desc:'Same region (baseline)',   price_adj: 0.00, logistics_adj:0.00, risk:0.25, nre_factor:1.0},
+  {key:'NEARSHORE', label:'Near-shore', desc:'Adjacent region',          price_adj:-0.09, logistics_adj:0.03, risk:0.35, nre_factor:1.2},
+  {key:'OFFSHORE',  label:'Offshore',   desc:'Low-cost global sourcing', price_adj:-0.18, logistics_adj:0.06, risk:0.55, nre_factor:1.5},
+];
+var SP_SOURCING_MODES = [
+  {key:'SOLE',  label:'Sole',  desc:'Single supplier — best price, highest risk', price_adj:-0.05, risk_mult:1.50, nre_mult:0.8},
+  {key:'DUAL',  label:'Dual',  desc:'Two suppliers — balanced',                   price_adj: 0.00, risk_mult:1.00, nre_mult:1.0},
+  {key:'MULTI', label:'Multi', desc:'Multiple suppliers — resilient, costlier',   price_adj:+0.04, risk_mult:0.60, nre_mult:1.4},
+];
+var SP_AUTO_TIERS = [
+  {key:'LEAN',      label:'Lean / Manual',   invest_factor:0.012, auto_adj_mult:+1.0},
+  {key:'STANDARD',  label:'Standard',         invest_factor:0.022, auto_adj_mult: 0.0},
+  {key:'ADVANCED',  label:'Advanced Auto',    invest_factor:0.042, auto_adj_mult:-0.6},
+  {key:'FULL_AUTO', label:'Lights-Out',        invest_factor:0.068, auto_adj_mult:-1.0},
+];
+
 var SHIFT_STRUCTURES = [
   {key:'SINGLE',      label:'Single Shift', desc:'8h / 5 days',  cap_factor:1.00},
   {key:'DOUBLE',      label:'Double Shift', desc:'16h / 6 days', cap_factor:1.80},
@@ -18388,10 +18414,12 @@ function onPropOpsRemoveFacility(type,fid){
 }
 
 function renderOpsAggregateSummary(){
+  _calcSupplyPlanTotals();
   var ops=_prop.operations||{},tVP=0,tPWT=0,tSP=0,wc=0,wv=0;
   (ops.vehicle_plants||[]).forEach(function(f){if(!f._computed)return;tVP+=f._computed.total_inv_m||0;wc+=(f._computed.manuf_var_total||0)*(f._computed.eff_capacity_yr||0);wv+=f._computed.eff_capacity_yr||0;});
   (ops.powertrain_plants||[]).forEach(function(f){if(!f._computed)return;tPWT+=f._computed.total_inv_m||0;});
   (ops.supplier_parks||[]).forEach(function(f){if(!f._computed)return;tSP+=f._computed.total_inv_m||0;});
+  if(ops.supply_plan&&ops.supply_plan._total_nre_m)tSP+=ops.supply_plan._total_nre_m;
   var avg=wv>0?Math.round(wc/wv):0;
   function _s(id,v){var e=document.getElementById(id);if(e)e.textContent=String(v);}
   _s('prop-ops-agg-vp','€'+Math.round(tVP)+'M');_s('prop-ops-agg-pwt','€'+Math.round(tPWT)+'M');_s('prop-ops-agg-sp','€'+Math.round(tSP)+'M');_s('prop-ops-agg-cost','€'+avg);
@@ -19498,6 +19526,16 @@ async function buildOperationsSection() {
   if (!_prop.operations.supplier_parks)    _prop.operations.supplier_parks    = [];
   if (!_prop.operations.quality_tier)      _prop.operations.quality_tier      = 'STANDARD';
   if (!_prop.operations.sourcing_strategy) _prop.operations.sourcing_strategy = 'BALANCED';
+  if (!_prop.operations.supply_plan) _prop.operations.supply_plan = {
+    supplier_auto_tier:'STANDARD',
+    modules:{
+      body_structure:  {source_location:'REGIONAL',  sourcing_mode:'DUAL'},
+      powertrain:      {source_location:'REGIONAL',  sourcing_mode:'DUAL'},
+      battery:         {source_location:'OFFSHORE',  sourcing_mode:'DUAL'},
+      interior_trim:   {source_location:'NEARSHORE', sourcing_mode:'DUAL'},
+      electronics:     {source_location:'OFFSHORE',  sourcing_mode:'DUAL'},
+    }
+  };
   _refManufResult = null;
   _deployedModules = null;
   if (teamId && sessionId) {
@@ -19566,12 +19604,7 @@ async function buildOperationsSection() {
   if(_pwtSelLk2){html+=_renderPwtAllocationPanel(_pwtSelLk2);}else{html+='<div style="font-family:DM Mono,monospace;font-size:9px;color:var(--muted2);padding:8px 0;font-style:italic;">← Select a PWT plant row above to configure allocation.</div>';}
   html+='</div>';
 
-  html+='<div style="margin-bottom:18px;"><div style="'+TH+'">Sourcing Geography</div><div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;">';
-  SOURCING_STRATEGIES.forEach(function(s){var sel=s.key===ops.sourcing_strategy;
-    var b=s.mat_adj>0?'+'+Math.round(s.mat_adj*100)+'% mat':s.mat_adj<0?Math.round(s.mat_adj*100)+'% mat':'baseline',bc=s.mat_adj>0?'var(--orange)':s.mat_adj<0?'var(--green)':'var(--muted2)';
-    html+='<div style="'+(sel?CS:CB)+'" data-action="prop-ops-sourcing" data-key="'+s.key+'"><div style="font-family:DM Mono,monospace;font-size:10px;font-weight:600;color:var(--white);margin-bottom:4px;">'+s.label+'</div><div style="font-size:11px;color:var(--cyan);margin-bottom:5px;">'+s.resilience+' resilience</div><div style="font-family:DM Mono,monospace;font-size:9px;color:'+bc+';margin-bottom:5px;">'+b+'</div><div style="font-size:9px;color:var(--muted2);">'+s.desc+'</div></div>';
-  });
-  html+='</div></div>';
+  html+='<div id="prop-ops-supply-plan-area">'+_renderSupplyPlanSection()+'</div>';
   html+='<div id="prop-ops-agg" style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:18px;">';
   function aT(l,v,c,id){return '<div style="background:var(--s2);border-radius:3px;padding:8px;border:1px solid var(--border)"><div style="font-size:8px;color:var(--muted2);margin-bottom:2px;">'+l+'</div><div style="font-family:DM Mono,monospace;font-size:11px;color:'+c+'" id="'+id+'">'+v+'</div></div>';}
   html+=aT('Vehicle Plant Capex','—','var(--gold)','prop-ops-agg-vp');
@@ -19591,6 +19624,184 @@ function renderPlantCostSummary(pid){var ops=_prop.operations;if(ops&&ops.vehicl
 function _getPlant(pid){return _getFacility('vehicle_plants',pid)||((_prop.operations&&_prop.operations.plants)||[]).find(function(p){return p.id===pid;})||null;}
 
 // ── Section 7 new decision handlers ──────────────────────────────────────────
+
+// ── Supply Plan helpers ───────────────────────────────────────────────────────
+
+function _spActiveModules(){
+  var pk=_pwtKeyFromProp();
+  var isEv=pk==='bev_only',isHybrid=(pk==='ice_and_bev'||pk==='hev'||pk==='reev');
+  var mods=['body_structure','powertrain'];
+  if(isEv||isHybrid)mods.push('battery');
+  mods.push('interior_trim','electronics');
+  return mods;
+}
+
+function _spModuleBuyCost(mk){
+  var spMod=SP_MODULES[mk];if(!spMod)return 0;
+  var tpc=0;
+  if(mk==='body_structure'){var p=_prop.platform;tpc=(p&&p.module)?parseFloat(p.module.per_unit_tpc_eur||0):0;}
+  else if(mk==='powertrain'){var pw=_prop.pwt,ep=_prop.epwt;tpc+=(pw&&pw.module)?parseFloat(pw.module.per_unit_tpc_eur||0):0;tpc+=(ep&&ep.module)?parseFloat(ep.module.per_unit_tpc_eur||0):0;}
+  else if(mk==='battery'){var bt=_prop.battery;tpc=(bt&&bt.module)?parseFloat(bt.module.per_unit_tpc_eur||0):0;}
+  else if(mk==='interior_trim'){var th=_prop.tophat;tpc=(th&&th.module)?parseFloat(th.module.per_unit_tpc_eur||0):0;}
+  else if(mk==='electronics'){var es=_prop.eands;tpc=(es&&es.module)?parseFloat(es.module.per_unit_tpc_eur||0):0;}
+  return tpc*spMod.buy_fraction;
+}
+
+function _spPoolingAdj(mk){
+  var propKey=mk==='body_structure'?'platform':mk==='powertrain'?(_pwtKeyFromProp()==='bev_only'?'epwt':'pwt'):mk==='battery'?'battery':mk==='interior_trim'?'tophat':'eands';
+  var m=_prop[propKey];if(!m)return 0;
+  return m.mode==='reuse'?-0.05:m.mode==='modify'?-0.02:0;
+}
+
+function _calcModuleSupplyAdj(mk,plan,tier_key){
+  var spMod=SP_MODULES[mk];
+  var loc=SP_SOURCE_LOCATIONS.find(function(l){return l.key===plan.source_location;})||SP_SOURCE_LOCATIONS[1];
+  var mode=SP_SOURCING_MODES.find(function(m){return m.key===plan.sourcing_mode;})||SP_SOURCING_MODES[1];
+  var auto=SP_AUTO_TIERS.find(function(t){return t.key===tier_key;})||SP_AUTO_TIERS[1];
+  var baseBuy=_spModuleBuyCost(mk);
+  var netAdj=(loc.price_adj+loc.logistics_adj)+mode.price_adj+(spMod.labor_intensity*auto.auto_adj_mult*0.10)+_spPoolingAdj(mk);
+  return Math.round(baseBuy*netAdj);
+}
+
+function _calcModuleSupplyNRE(mk,plan,tier_key){
+  var auto=SP_AUTO_TIERS.find(function(t){return t.key===tier_key;})||SP_AUTO_TIERS[1];
+  var loc=SP_SOURCE_LOCATIONS.find(function(l){return l.key===plan.source_location;})||SP_SOURCE_LOCATIONS[1];
+  var mode=SP_SOURCING_MODES.find(function(m){return m.key===plan.sourcing_mode;})||SP_SOURCING_MODES[1];
+  var baseBuyAnnual=_spModuleBuyCost(mk)*(_suggestedVolK()||50)*1000;
+  return (baseBuyAnnual*auto.invest_factor*loc.nre_factor*mode.nre_mult)/1e6;
+}
+
+function _calcSupplyPlanTotals(){
+  var sp=(_prop.operations&&_prop.operations.supply_plan)||{};
+  var tier=sp.supplier_auto_tier||'STANDARD',mods=sp.modules||{};
+  var totalAdj=0,totalNRE=0,totalRisk=0,totalW=0;
+  _spActiveModules().forEach(function(mk){
+    var plan=mods[mk]||{source_location:'REGIONAL',sourcing_mode:'DUAL'};
+    totalAdj+=_calcModuleSupplyAdj(mk,plan,tier);
+    totalNRE+=_calcModuleSupplyNRE(mk,plan,tier);
+    var loc=SP_SOURCE_LOCATIONS.find(function(l){return l.key===plan.source_location;})||SP_SOURCE_LOCATIONS[1];
+    var mode=SP_SOURCING_MODES.find(function(m){return m.key===plan.sourcing_mode;})||SP_SOURCING_MODES[1];
+    var li=SP_MODULES[mk].labor_intensity;
+    totalRisk+=loc.risk*mode.risk_mult*(0.5+li);totalW+=(0.5+li);
+  });
+  var riskScore=totalW>0?Math.min(1,totalRisk/totalW):0.25;
+  sp._total_piece_adj_eur=totalAdj;
+  sp._total_nre_m=Math.round(totalNRE*10)/10;
+  sp._risk_score=Math.round(riskScore*100)/100;
+  return {totalAdj:totalAdj,totalNRE:sp._total_nre_m,riskScore:sp._risk_score};
+}
+
+function _renderSupplyModuleCard(mk,sp){
+  var spMod=SP_MODULES[mk];
+  var tier=sp.supplier_auto_tier||'STANDARD';
+  var plan=(sp.modules&&sp.modules[mk])||{source_location:'REGIONAL',sourcing_mode:'DUAL'};
+  var poolAdj=_spPoolingAdj(mk);
+  var poolLabel=poolAdj<=-0.04?'REUSE ✓':poolAdj<0?'MODIFY ✓':'—',poolCol=poolAdj<0?'var(--green)':'var(--muted2)';
+  var adj=_calcModuleSupplyAdj(mk,plan,tier),nre=_calcModuleSupplyNRE(mk,plan,tier);
+  var adjCol=adj<=0?'var(--green)':'var(--orange)';
+  var adjStr=adj>0?'+€'+adj:adj<0?'−€'+Math.abs(adj):'±€0';
+  var baseBuy=_spModuleBuyCost(mk);
+  var h='<div style="border:1px solid var(--border);border-radius:4px;padding:10px;margin-bottom:8px;background:var(--s2);">';
+  h+='<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">';
+  h+='<div style="font-family:DM Mono,monospace;font-size:9px;font-weight:600;color:var(--white);">'+spMod.icon+' '+spMod.label+'</div>';
+  h+='<div style="display:flex;gap:12px;align-items:center;">';
+  if(baseBuy>0)h+='<div style="font-family:DM Mono,monospace;font-size:8px;color:var(--muted2);">~€'+Math.round(baseBuy)+'/unit buy</div>';
+  h+='<div style="font-family:DM Mono,monospace;font-size:8px;color:'+poolCol+';">Pool: '+poolLabel+'</div>';
+  h+='</div></div>';
+  h+='<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:5px;margin-bottom:6px;">';
+  SP_SOURCE_LOCATIONS.forEach(function(loc){
+    var sel=loc.key===plan.source_location;
+    var netPct=Math.round((loc.price_adj+loc.logistics_adj)*100);
+    var netStr=netPct>0?'+'+netPct+'%':netPct<0?netPct+'%':'0%';
+    var netCol=netPct<0?'var(--green)':netPct>0?'var(--orange)':'var(--muted2)';
+    h+='<div style="padding:5px 3px;border-radius:3px;cursor:pointer;text-align:center;border:1px solid '+(sel?'var(--cyan)':'var(--border2)')+';background:'+(sel?'rgba(34,211,238,.10)':'var(--s1)')+'" onclick="onSupplyPlanLocation(\''+mk+'\',\''+loc.key+'\')" title="'+loc.desc+'">';
+    h+='<div style="font-family:DM Mono,monospace;font-size:8px;color:'+(sel?'var(--cyan)':'var(--muted)')+';font-weight:'+(sel?600:400)+';">'+loc.label+'</div>';
+    h+='<div style="font-family:DM Mono,monospace;font-size:7px;color:'+netCol+';">'+netStr+'</div>';
+    h+='</div>';
+  });
+  h+='</div>';
+  h+='<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:5px;margin-bottom:8px;">';
+  SP_SOURCING_MODES.forEach(function(mode){
+    var sel=mode.key===plan.sourcing_mode;
+    var mPct=Math.round(mode.price_adj*100);
+    var mStr=mPct>0?'+'+mPct+'%':mPct<0?mPct+'%':'0%';
+    var mCol=mPct<0?'var(--green)':mPct>0?'var(--orange)':'var(--muted2)';
+    h+='<div style="padding:5px 3px;border-radius:3px;cursor:pointer;text-align:center;border:1px solid '+(sel?'var(--gold)':'var(--border2)')+';background:'+(sel?'rgba(200,164,60,.10)':'var(--s1)')+'" onclick="onSupplyPlanMode(\''+mk+'\',\''+mode.key+'\')" title="'+mode.desc+'">';
+    h+='<div style="font-family:DM Mono,monospace;font-size:8px;color:'+(sel?'var(--gold)':'var(--muted)')+';font-weight:'+(sel?600:400)+';">'+mode.label+'</div>';
+    h+='<div style="font-family:DM Mono,monospace;font-size:7px;color:'+mCol+';">'+mStr+'</div>';
+    h+='</div>';
+  });
+  h+='</div>';
+  h+='<div style="display:flex;gap:12px;">';
+  h+='<div style="font-family:DM Mono,monospace;font-size:8px;"><span style="color:var(--muted2);">Cost: </span><span style="color:'+adjCol+';">'+adjStr+'/unit</span></div>';
+  h+='<div style="font-family:DM Mono,monospace;font-size:8px;"><span style="color:var(--muted2);">NRE: </span><span style="color:var(--text);">€'+nre.toFixed(1)+'M</span></div>';
+  h+='</div>';
+  h+='</div>';
+  return h;
+}
+
+function _renderSupplyPlanSection(){
+  var sp=(_prop.operations&&_prop.operations.supply_plan)||{supplier_auto_tier:'STANDARD',modules:{}};
+  var tier=sp.supplier_auto_tier||'STANDARD';
+  var TH='font-family:DM Mono,monospace;font-size:8px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:8px;display:block;';
+  var h='<div style="margin-bottom:18px;">';
+  h+='<div style="'+TH+'">📦 Parts Supply Plan</div>';
+  h+='<div style="margin-bottom:12px;">';
+  h+='<div style="font-family:DM Mono,monospace;font-size:7.5px;text-transform:uppercase;letter-spacing:1px;color:var(--muted2);margin-bottom:6px;">Supplier Automation Programme</div>';
+  h+='<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;">';
+  SP_AUTO_TIERS.forEach(function(t){
+    var sel=t.key===tier;
+    var adjLbl=t.auto_adj_mult>0?'+'+Math.round(t.auto_adj_mult*10)+'% labor↑':t.auto_adj_mult<0?Math.round(t.auto_adj_mult*10)+'% labor↓':'baseline';
+    var adjCol=t.auto_adj_mult>0?'var(--orange)':t.auto_adj_mult<0?'var(--green)':'var(--muted2)';
+    h+='<div style="'+(sel?'border-radius:4px;padding:10px;cursor:pointer;border:1px solid var(--gold);background:var(--s3);':'border-radius:4px;padding:10px;cursor:pointer;border:1px solid var(--border2);background:var(--s2);')+'" onclick="onSupplyPlanAutoTier(\''+t.key+'\')">';
+    h+='<div style="font-family:DM Mono,monospace;font-size:9px;font-weight:600;color:var(--white);margin-bottom:3px;">'+t.label+'</div>';
+    h+='<div style="font-family:DM Mono,monospace;font-size:8px;color:'+adjCol+';margin-bottom:2px;">'+adjLbl+'</div>';
+    h+='<div style="font-family:DM Mono,monospace;font-size:8px;color:var(--muted2);">NRE ×'+Math.round(t.invest_factor*1000)+'‰</div>';
+    h+='</div>';
+  });
+  h+='</div></div>';
+  h+='<div style="font-family:DM Mono,monospace;font-size:7.5px;text-transform:uppercase;letter-spacing:1px;color:var(--muted2);margin-bottom:6px;">Sourcing by Module</div>';
+  _spActiveModules().forEach(function(mk){h+=_renderSupplyModuleCard(mk,sp);});
+  var totals=_calcSupplyPlanTotals();
+  var rPct=Math.round(totals.riskScore*100);
+  var rCol=rPct<30?'var(--green)':rPct<55?'var(--gold)':'var(--red)';
+  var rLabel=rPct<30?'LOW':rPct<55?'MEDIUM':'HIGH';
+  h+='<div style="background:var(--s2);border:1px solid var(--border);border-radius:4px;padding:10px;margin-top:6px;display:flex;align-items:center;gap:12px;">';
+  h+='<div style="font-family:DM Mono,monospace;font-size:8px;color:var(--muted2);white-space:nowrap;">Supply Risk</div>';
+  h+='<div style="flex:1;background:var(--border);border-radius:2px;height:6px;overflow:hidden;"><div style="width:'+rPct+'%;height:100%;background:'+rCol+';border-radius:2px;"></div></div>';
+  h+='<div style="font-family:DM Mono,monospace;font-size:8px;color:'+rCol+';white-space:nowrap;min-width:72px;">'+rLabel+' ('+rPct+'%)</div>';
+  h+='<div style="font-family:DM Mono,monospace;font-size:8px;color:var(--muted2);">→ Reliability</div>';
+  h+='</div>';
+  h+='</div>';
+  return h;
+}
+
+function onSupplyPlanAutoTier(tier){
+  if(!_prop.operations||!_prop.operations.supply_plan)return;
+  _prop.operations.supply_plan.supplier_auto_tier=tier;
+  _refreshSupplyPlanArea();renderOpsAggregateSummary();
+}
+
+function onSupplyPlanLocation(mk,loc){
+  if(!_prop.operations||!_prop.operations.supply_plan)return;
+  var mods=_prop.operations.supply_plan.modules;
+  if(!mods[mk])mods[mk]={source_location:'REGIONAL',sourcing_mode:'DUAL'};
+  mods[mk].source_location=loc;
+  _refreshSupplyPlanArea();renderOpsAggregateSummary();
+}
+
+function onSupplyPlanMode(mk,mode){
+  if(!_prop.operations||!_prop.operations.supply_plan)return;
+  var mods=_prop.operations.supply_plan.modules;
+  if(!mods[mk])mods[mk]={source_location:'REGIONAL',sourcing_mode:'DUAL'};
+  mods[mk].sourcing_mode=mode;
+  _refreshSupplyPlanArea();renderOpsAggregateSummary();
+}
+
+function _refreshSupplyPlanArea(){
+  var el=document.getElementById('prop-ops-supply-plan-area');
+  if(el)el.innerHTML=_renderSupplyPlanSection();
+}
 
 function _buildPlantFromDecision(){
   var ops=_prop.operations||{};
@@ -19848,7 +20059,8 @@ function renderPropOpsCostSummary() {
   var qualKey = ops.quality_tier || 'STANDARD';
   var qualTier= QUALITY_TIERS.find(function(q){return q.key===qualKey;}) || QUALITY_TIERS[1];
   var labAdj  = tpcNum * 0.20 * (ctry.labor_eur_hr/52 - 1);
-  var srcAdj  = tpcNum * 0.50 * srcTier.mat_adj;
+  var _spObj  = ops.supply_plan;
+  var srcAdj  = (_spObj&&typeof _spObj._total_piece_adj_eur==='number') ? _spObj._total_piece_adj_eur : tpcNum*0.50*srcTier.mat_adj;
 
   var m = _MANUF_E.calc({
     platform_size:      _getPlatformSize(),
@@ -20013,6 +20225,7 @@ function calcPropBizCase() {
   ['vehicle_plants','powertrain_plants','supplier_parks'].forEach(function(t){(_ops[t]||[]).forEach(function(f){toolingM+=f._computed?f._computed.total_inv_m||0:0;});});
   if(toolingM===0)(_ops.plants||[]).forEach(function(p){toolingM+=p._manuf?(p._manuf.grand_total_inv_m||p._manuf.total_investment_m||0):0;});
   if(toolingM===0&&_m)toolingM=(_m.grand_total_inv_m||_m.total_investment_m||0);
+  if(_ops.supply_plan&&_ops.supply_plan._total_nre_m)toolingM+=_ops.supply_plan._total_nre_m;
   var totalInvM=rdM+toolingM;
 
   // NPV
@@ -20301,6 +20514,8 @@ async function confirmProposal() {
     if (_cons && _cons.bev) { _rolledSpecs.bev_kwh_100km=_cons.bev.kwh_100km; _rolledSpecs.bev_range_km=_cons.bev.range_km; }
     if (_cons) _rolledSpecs.kerb_mass_kg=_cons.kerb_mass_kg;
     if (_perf) { _rolledSpecs.t_0_100_s=_perf.t_0_100_s; _rolledSpecs.top_speed_kmh=_perf.top_speed_kmh; _rolledSpecs.perf_class=_perf.perf_class; }
+    var _spPlan=_prop.operations&&_prop.operations.supply_plan;
+    if(_spPlan){_calcSupplyPlanTotals();_rolledSpecs.supply_risk_score=_spPlan._risk_score||0.25;}
 
     var _comPlan = _prop.commercial || null;
     // Extract primary MSRP: EU market from new multi-market format, or first-year price from old format
@@ -20329,7 +20544,8 @@ async function confirmProposal() {
         _buyAdj   += p._manuf.buy_cost_adj * w;
       });
     }
-    var _enrichedTpc = _baseTpc + _manufVar + _buyAdj;
+    var _spAdjTpc=(_prop.operations&&_prop.operations.supply_plan&&_prop.operations.supply_plan._total_piece_adj_eur)||0;
+    var _enrichedTpc = _baseTpc + _manufVar + _buyAdj + _spAdjTpc;
 
     var patch = {
       status:             'plan',
