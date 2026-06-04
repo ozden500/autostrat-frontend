@@ -18601,17 +18601,6 @@ function _renderPlantAllocationPanel(lk){
   });
   h+='</div>';
 
-  // ── Line Automation + Platform Shared ──
-  var _lkVp=(ops.vehicle_plants||[]).find(function(p){return p.id==='vp_'+lk;})||{};
-  var curAuto=_lkVp.automation_level||ops._existing_auto||2;
-  var platShared=_lkVp.platform_shared||false;
-  h+='<div style="margin-bottom:14px;">';
-  h+='<div style="'+MN+'font-size:8px;color:var(--muted2);margin-bottom:4px;">Line Automation</div>';
-  h+='<select onchange="onPropOpsAutoLevel(parseInt(this.value))" style="'+MN+'font-size:10px;padding:6px 8px;border-radius:3px;border:1px solid var(--border2);background:var(--s2);color:var(--text);width:100%;">';
-  [1,2,3,4].forEach(function(l){h+='<option value="'+l+'"'+(curAuto===l?' selected':'')+'>L'+l+' – '+AUTO_LABELS[l]+'</option>';});
-  h+='</select>';
-  h+='</div>';
-
   // ── Section D: Confirm/Cancel + KPI strip ──
   var pid='vp_'+lk;
   var isAlreadyConfirmed=!!(ops.vehicle_plants||[]).find(function(p){return p.id===pid&&p.vehicle_capacity_yr;});
@@ -19471,10 +19460,13 @@ function _buildPlantFromDecision(){
     var _propPlatCK2=(_prop.platform&&_prop.platform.mode!=='new'&&_prop.platform.module)?_prop.platform.module.config_key:null;
     var _dpLk=((_deployedModules||{}).vehicle_plants||{})[ops.selected_plant_key]||{};
     vp.platform_shared=_propPlatCK2?(_dpLk.platform||[]).some(function(e){return e.config_key===_propPlatCK2;}):false;
-    if(ops._existing_auto)vp.automation_level=ops._existing_auto;
+    // Derive line automation from module-level choices (platform→body shop, tophat→assembly)
+    var _platAuto=ops.platform_auto_level||2;
+    var _thAuto=ops.tophat_auto_level||2;
+    vp.automation_level=Math.round((_platAuto+_thAuto)/2);
     // Auto-derive JPH from target volume and line automation level
     var _oeeMap={1:0.75,2:0.80,3:0.85,4:0.88};
-    var _al=vp.automation_level||2;
+    var _al=vp.automation_level;
     var _oee=_oeeMap[_al]||0.80;
     var _rawJph=Math.ceil(capK*1000/(_oee*24*365));
     var _jphMax2=Math.min(_MANUF_E.JPH_MAX[_getPlatformSize()]||65,_MANUF_E.AUTO_JPH[_al]||55);
@@ -19576,14 +19568,6 @@ function onPropOpsJphInput(v){
   _buildPlantFromDecision();
 }
 
-function onPropOpsAutoLevel(l){
-  if(!_prop.operations)return;
-  var _selLk=_prop.operations.selected_plant_key;
-  var vp=(_selLk?((_prop.operations.vehicle_plants||[]).find(function(p){return p.id==='vp_'+_selLk;})):null)||(_prop.operations.vehicle_plants||[])[0];
-  if(vp)vp.automation_level=l;
-  if(_prop.operations.allocation_mode==='existing')_prop.operations._existing_auto=l;
-  _buildPlantFromDecision();
-}
 
 function _getPlatformSize() {
   if (_prop.platform && _prop.platform.module) {
