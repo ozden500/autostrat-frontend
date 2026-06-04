@@ -18272,7 +18272,7 @@ function renderFacilityCostSummary(type,fid){
   if(!fac.module_capacity)fac.module_capacity={};
   defs.forEach(function(d){
     if(!fac.module_capacity[d.key])fac.module_capacity[d.key]={installed_k:0,used_k:0,incremental_k:0};
-    var cap=_getAvailableCap(type,locKey,d.key);
+    var cap=_getEffectiveCap(type,locKey,d.key);
     fac.module_capacity[d.key].installed_k=cap.installed_k;
     fac.module_capacity[d.key].used_k=cap.used_k;
   });
@@ -18288,6 +18288,29 @@ function renderFacilityCostSummary(type,fid){
   _s('prop-ops-fac-'+fid+'-inv','€'+comp.total_inv_m+'M');
   if(comp.manuf_var_total)_s('prop-ops-fac-'+fid+'-manuf','€'+comp.manuf_var_total+'/unit');
   if(comp.eff_capacity_yr){var capK=Math.round(comp.eff_capacity_yr/1000);_s('prop-ops-fac-'+fid+'-cap',capK+'k/yr');_s('prop-ops-fac-'+fid+'-effcap',capK+'k/yr');}
+  // Per-module investment + labor cells in allocation panel
+  if(comp.module_investments&&type==='vehicle_plants'&&comp.manuf_result){
+    var _mr=comp.manuf_result;
+    var _shm=_mr.jph<30?1.5:_mr.jph<50?2.0:3.0;
+    var _wsMap={platform:_mr.workshops.body_shop,tophat:_mr.workshops.assembly};
+    ['platform','tophat'].forEach(function(sl){
+      var mi=comp.module_investments[sl];
+      var ws=_wsMap[sl];
+      _s('alloc-mod-inv-'+sl,mi&&mi.incremental_inv_m>0?'€'+mi.incremental_inv_m+'M':'—');
+      _s('alloc-mod-lbr-'+sl,ws?Math.round(ws.operators*3/_shm):'—');
+    });
+  }
+  if(comp.module_investments&&type==='powertrain_plants'){
+    var _pCapK2=(comp.eff_capacity_yr||0)/1000;
+    var _pAl2=fac.automation_level||2;
+    var _PWT_LBR={pwt:[16,12,6,3],epwt:[8,6,3,1.5],battery:[12,9,5,2.5]};
+    ['pwt','epwt','battery'].forEach(function(sl){
+      var mi=comp.module_investments[sl];if(!mi)return;
+      var rate=(_PWT_LBR[sl]||[0,0,0,0])[_pAl2-1]||0;
+      _s('alloc-pwt-inv-'+sl,mi.incremental_inv_m>0?'€'+mi.incremental_inv_m+'M':'—');
+      _s('alloc-pwt-lbr-'+sl,Math.round(_pCapK2*rate)||'—');
+    });
+  }
   var modEl=document.getElementById('prop-ops-fac-'+fid+'-modtable');
   if(modEl)modEl.innerHTML=_renderFacilityModTable(type,fac);
   renderOpsAggregateSummary();
@@ -18571,18 +18594,21 @@ function _renderPlantAllocationPanel(lk){
   var _propPlatCK=(_prop.platform&&_prop.platform.module)?_prop.platform.module.config_key:null;
   var _propThCK=(_prop.tophat&&_prop.tophat.module)?_prop.tophat.module.config_key:null;
   h+='<div style="'+MN+'font-size:8px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:8px;">Module Tooling</div>';
-  var MCOLS='1.8fr 68px 50px 50px 50px 50px 62px';
-  var MHD='font-size:7px;font-weight:700;color:var(--muted2);padding:4px 8px;text-align:right;';
-  var MCD='font-size:9px;padding:5px 8px;text-align:right;';
+  var MCOLS='1fr 1.1fr 56px 42px 42px 42px 42px 56px 54px 48px';
+  var MHD='font-size:7px;font-weight:700;color:var(--muted2);padding:4px 6px;text-align:right;';
+  var MCD='font-size:9px;padding:5px 6px;text-align:right;';
   h+='<div style="border:1px solid var(--border2);border-radius:4px;overflow:hidden;margin-bottom:10px;">';
   h+='<div style="display:grid;grid-template-columns:'+MCOLS+';background:var(--s2);border-bottom:1px solid var(--border2);">';
   h+='<div style="'+MN+MHD+'text-align:left;">Module</div>';
+  h+='<div style="'+MN+MHD+'text-align:left;">Config Key</div>';
   h+='<div style="'+MN+MHD+'text-align:center;">Auto</div>';
   h+='<div style="'+MN+MHD+'">Inst.</div>';
   h+='<div style="'+MN+MHD+'">Resvd</div>';
   h+='<div style="'+MN+MHD+'">Free</div>';
   h+='<div style="'+MN+MHD+'">Target</div>';
   h+='<div style="'+MN+MHD+'">To Build</div>';
+  h+='<div style="'+MN+MHD+'">Invest.</div>';
+  h+='<div style="'+MN+MHD+'">Labor</div>';
   h+='</div>';
   var _vpEnt=(ops.vehicle_plants||[]).find(function(p){return p.id==='vp_'+lk;})||{};
   var _hasBrownfield=false;
@@ -18604,27 +18630,37 @@ function _renderPlantAllocationPanel(lk){
     var tbCol=toBuild>0?'var(--orange)':(isInstalled?'var(--green)':'var(--muted2)');
     var tbTxt=toBuild>0?('▲ '+toBuild+'k'):(isInstalled?'✓ 0k':'—');
     var rowBg=ri%2===0?'var(--s3)':'var(--s2)';
+    var _ckDisp=mod.cfgKey?(mod.cfgKey.length>16?mod.cfgKey.substring(0,15)+'…':mod.cfgKey):'—';
     h+='<div style="display:grid;grid-template-columns:'+MCOLS+';background:'+rowBg+';border-bottom:1px solid var(--border2);">';
-    h+='<div style="'+MN+'font-size:9px;padding:5px 8px;">';
-    h+='<div style="display:flex;align-items:center;gap:5px;"><span style="color:var(--text);font-weight:600;">'+mod.label+'</span>'+sBdg+'</div>';
-    if(mod.cfgKey&&isInstalled){
-      var _dispCK=mod.cfgKey.length>20?mod.cfgKey.substring(0,19)+'…':mod.cfgKey;
-      h+='<div style="font-size:7px;color:var(--cyan);margin-top:2px;cursor:pointer;text-decoration:underline dotted;" onclick="openModCapModal(\'vehicle_plants\',\''+lk+'\',\''+mod.slot+'\')">'+_dispCK+'</div>';
+    // Col 1: Module label + badge
+    h+='<div style="'+MN+'font-size:9px;padding:5px 6px;display:flex;align-items:center;gap:4px;">';
+    h+='<span style="color:var(--text);font-weight:600;">'+mod.label+'</span>'+sBdg+'</div>';
+    // Col 2: Config Key (clickable if installed)
+    if(isInstalled&&mod.cfgKey){
+      h+='<div style="'+MN+'font-size:7px;padding:5px 6px;color:var(--cyan);cursor:pointer;text-decoration:underline dotted;display:flex;align-items:center;" onclick="openModCapModal(\'vehicle_plants\',\''+lk+'\',\''+mod.slot+'\')">'+_ckDisp+'</div>';
+    } else {
+      h+='<div style="'+MN+'font-size:7px;padding:5px 6px;color:var(--muted2);display:flex;align-items:center;">'+_ckDisp+'</div>';
     }
-    h+='</div>';
-    h+='<div style="padding:3px 6px;display:flex;align-items:center;">';
-    h+='<select onchange="'+mod.handlerFn+'(parseInt(this.value))" style="'+MN+'font-size:9px;padding:2px 3px;border-radius:2px;border:1px solid var(--border2);background:var(--s1);color:var(--text);width:100%;">';
+    // Col 3: Auto select
+    h+='<div style="padding:3px 4px;display:flex;align-items:center;">';
+    h+='<select onchange="'+mod.handlerFn+'(parseInt(this.value))" style="'+MN+'font-size:8px;padding:2px 2px;border-radius:2px;border:1px solid var(--border2);background:var(--s1);color:var(--text);width:100%;">';
     [1,2,3,4].forEach(function(l){h+='<option value="'+l+'"'+(storedAuto===l?' selected':'')+'>L'+l+'</option>';});
     h+='</select></div>';
+    // Cols 4-8: capacity data
     h+='<div style="'+MN+MCD+'color:'+(isInstalled?'var(--gold)':'var(--muted2)')+';">'+(isInstalled?av.installed_k+'k':'—')+'</div>';
     h+='<div style="'+MN+MCD+'color:'+(isInstalled&&av.used_k>0?'var(--cyan)':'var(--muted2)')+';">'+(isInstalled?av.used_k+'k':'—')+'</div>';
     var fCol=isInstalled?(av.spare_k>0?'var(--green)':'var(--orange)'):'var(--muted2)';
     h+='<div style="'+MN+MCD+'color:'+fCol+';">'+(isInstalled?av.spare_k+'k':'—')+'</div>';
     h+='<div style="'+MN+MCD+'color:var(--gold);">'+capK+'k</div>';
     h+='<div style="'+MN+MCD+'font-weight:600;color:'+tbCol+';">'+tbTxt+'</div>';
+    // Col 9: Investment (populated by renderFacilityCostSummary)
+    h+='<div style="'+MN+MCD+'color:var(--gold);" id="alloc-mod-inv-'+mod.slot+'">—</div>';
+    // Col 10: Labor (populated by renderFacilityCostSummary)
+    h+='<div style="'+MN+MCD+'color:var(--text);" id="alloc-mod-lbr-'+mod.slot+'">—</div>';
     h+='</div>';
   });
-  if(_hasBrownfield)h+='<div style="'+MN+'font-size:7px;color:var(--muted2);padding:4px 8px;background:var(--s2);">⚑ Brownfield rate (0.65×) applied to expansion capacity</div>';
+  if(_hasBrownfield)h+='<div style="'+MN+'font-size:7px;color:var(--muted2);padding:4px 8px;background:var(--s2);">⚑ Brownfield rate (0.65×) applied to expansion · Labor shown at 3 shifts</div>';
+  else h+='<div style="'+MN+'font-size:7px;color:var(--muted2);padding:3px 8px;background:var(--s2);">Labor shown at 3-shift equivalent</div>';
   h+='</div>';
 
   // ── Section D: Confirm/Cancel + KPI strip ──
@@ -18919,17 +18955,20 @@ function _renderPwtAllocationPanel(lk){
   var PWT_CFG={pwt:(_prop.pwt&&_prop.pwt.module)?_prop.pwt.module.config_key:null,
                epwt:(_prop.epwt&&_prop.epwt.module)?_prop.epwt.module.config_key:null,
                battery:(_prop.battery&&_prop.battery.module)?_prop.battery.module.config_key:null};
-  var PCOLS='1.8fr 50px 50px 50px 50px 62px';
-  var PHD='font-size:7px;font-weight:700;color:var(--muted2);padding:4px 8px;text-align:right;';
-  var PCD='font-size:9px;padding:5px 8px;text-align:right;';
+  var PCOLS='1fr 1.1fr 42px 42px 42px 42px 56px 54px 48px';
+  var PHD='font-size:7px;font-weight:700;color:var(--muted2);padding:4px 6px;text-align:right;';
+  var PCD='font-size:9px;padding:5px 6px;text-align:right;';
   h+='<div style="border:1px solid var(--border2);border-radius:4px;overflow:hidden;margin-bottom:14px;">';
   h+='<div style="display:grid;grid-template-columns:'+PCOLS+';background:var(--s2);border-bottom:1px solid var(--border2);">';
   h+='<div style="'+MN+PHD+'text-align:left;">Module</div>';
+  h+='<div style="'+MN+PHD+'text-align:left;">Config Key</div>';
   h+='<div style="'+MN+PHD+'">Inst.</div>';
   h+='<div style="'+MN+PHD+'">Resvd</div>';
   h+='<div style="'+MN+PHD+'">Free</div>';
   h+='<div style="'+MN+PHD+'">Target</div>';
   h+='<div style="'+MN+PHD+'">To Build</div>';
+  h+='<div style="'+MN+PHD+'">Invest.</div>';
+  h+='<div style="'+MN+PHD+'">Labor</div>';
   h+='</div>';
   var _pwtBrownfield=false;
   pwtDefs.forEach(function(d,ri){
@@ -18946,23 +18985,32 @@ function _renderPwtAllocationPanel(lk){
     var tbTxt=toBuild>0?('▲ '+toBuild+'k'):(isInstalled?'✓ 0k':'—');
     var rowBg=ri%2===0?'var(--s3)':'var(--s2)';
     var _pwtCfgKey=PWT_CFG[d.key]||(av.vehicles.length?av.vehicles[0].config_key:'');
+    var _pwtCkDisp=_pwtCfgKey?(_pwtCfgKey.length>16?_pwtCfgKey.substring(0,15)+'…':_pwtCfgKey):'—';
     h+='<div style="display:grid;grid-template-columns:'+PCOLS+';background:'+rowBg+';border-bottom:1px solid var(--border2);">';
-    h+='<div style="'+MN+'font-size:9px;padding:5px 8px;">';
-    h+='<div style="display:flex;align-items:center;gap:5px;"><span style="color:var(--text);font-weight:600;">'+(MOD_NAMES[d.key]||d.label)+'</span>'+sBdg+'</div>';
-    if(_pwtCfgKey&&isInstalled){
-      var _pwtDispCK=_pwtCfgKey.length>20?_pwtCfgKey.substring(0,19)+'…':_pwtCfgKey;
-      h+='<div style="font-size:7px;color:var(--cyan);margin-top:2px;cursor:pointer;text-decoration:underline dotted;" onclick="openModCapModal(\'powertrain_plants\',\''+lk+'\',\''+d.key+'\')">'+_pwtDispCK+'</div>';
+    // Col 1: Module label + badge
+    h+='<div style="'+MN+'font-size:9px;padding:5px 6px;display:flex;align-items:center;gap:4px;">';
+    h+='<span style="color:var(--text);font-weight:600;">'+(MOD_NAMES[d.key]||d.label)+'</span>'+sBdg+'</div>';
+    // Col 2: Config Key
+    if(isInstalled&&_pwtCfgKey){
+      h+='<div style="'+MN+'font-size:7px;padding:5px 6px;color:var(--cyan);cursor:pointer;text-decoration:underline dotted;display:flex;align-items:center;" onclick="openModCapModal(\'powertrain_plants\',\''+lk+'\',\''+d.key+'\')">'+_pwtCkDisp+'</div>';
+    } else {
+      h+='<div style="'+MN+'font-size:7px;padding:5px 6px;color:var(--muted2);display:flex;align-items:center;">'+_pwtCkDisp+'</div>';
     }
-    h+='</div>';
+    // Cols 3-7: capacity data
     h+='<div style="'+MN+PCD+'color:'+(isInstalled?'var(--gold)':'var(--muted2)')+';">'+(isInstalled?av.installed_k+'k':'—')+'</div>';
     h+='<div style="'+MN+PCD+'color:'+(isInstalled&&av.used_k>0?'var(--cyan)':'var(--muted2)')+';">'+(isInstalled?av.used_k+'k':'—')+'</div>';
     var fCol=isInstalled?(av.spare_k>0?'var(--green)':'var(--orange)'):'var(--muted2)';
     h+='<div style="'+MN+PCD+'color:'+fCol+';">'+(isInstalled?av.spare_k+'k':'—')+'</div>';
     h+='<div style="'+MN+PCD+'color:var(--gold);">'+pwtCapK+'k</div>';
     h+='<div style="'+MN+PCD+'font-weight:600;color:'+tbCol+';">'+tbTxt+'</div>';
+    // Col 8: Investment (populated by renderFacilityCostSummary)
+    h+='<div style="'+MN+PCD+'color:var(--gold);" id="alloc-pwt-inv-'+d.key+'">—</div>';
+    // Col 9: Labor (populated by renderFacilityCostSummary)
+    h+='<div style="'+MN+PCD+'color:var(--text);" id="alloc-pwt-lbr-'+d.key+'">—</div>';
     h+='</div>';
   });
-  if(_pwtBrownfield)h+='<div style="'+MN+'font-size:7px;color:var(--muted2);padding:4px 8px;background:var(--s2);">⚑ Brownfield rate (0.65×) applied to expansion capacity</div>';
+  if(_pwtBrownfield)h+='<div style="'+MN+'font-size:7px;color:var(--muted2);padding:4px 8px;background:var(--s2);">⚑ Brownfield rate (0.65×) applied to expansion · Labor at 3 shifts (est.)</div>';
+  else h+='<div style="'+MN+'font-size:7px;color:var(--muted2);padding:3px 8px;background:var(--s2);">Labor shown at 3-shift equivalent (est.)</div>';
   h+='</div>';
   // Volume + Automation
   h+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px;">';
