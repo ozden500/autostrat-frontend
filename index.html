@@ -19395,11 +19395,6 @@ async function buildOperationsSection() {
   if(_pwtSelLk2){html+=_renderPwtAllocationPanel(_pwtSelLk2);}else{html+='<div style="font-family:DM Mono,monospace;font-size:9px;color:var(--muted2);padding:8px 0;font-style:italic;">← Select a PWT plant row above to configure allocation.</div>';}
   html+='</div>';
 
-  html+='<div style="margin-bottom:18px;"><div style="'+TH+'">Quality Investment Program</div><div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;">';
-  QUALITY_TIERS.forEach(function(q){var sel=q.key===ops.quality_tier;
-    html+='<div style="'+(sel?CS:CB)+'" data-action="prop-ops-quality" data-key="'+q.key+'"><div style="font-family:DM Mono,monospace;font-size:10px;font-weight:600;color:var(--white);margin-bottom:4px;">'+q.label+'</div><div style="font-family:DM Mono,monospace;font-size:9px;color:var(--orange);">'+(q.warranty_pct*100).toFixed(1)+'% warranty</div><div style="font-family:DM Mono,monospace;font-size:9px;color:var(--gold);">+€'+q.unit_add_eur+'/unit</div></div>';
-  });
-  html+='</div></div>';
   html+='<div style="margin-bottom:18px;"><div style="'+TH+'">Sourcing Geography</div><div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;">';
   SOURCING_STRATEGIES.forEach(function(s){var sel=s.key===ops.sourcing_strategy;
     var b=s.mat_adj>0?'+'+Math.round(s.mat_adj*100)+'% mat':s.mat_adj<0?Math.round(s.mat_adj*100)+'% mat':'baseline',bc=s.mat_adj>0?'var(--orange)':s.mat_adj<0?'var(--green)':'var(--muted2)';
@@ -19659,13 +19654,6 @@ function onPropOpsSourcingSelect(key) {
   renderPropOpsCostSummary();
 }
 
-function onPropOpsQualitySelect(key) {
-  _prop.operations.quality_tier = key;
-  document.querySelectorAll('[data-action="prop-ops-quality"]').forEach(function(el) {
-    el.classList.toggle('selected', el.getAttribute('data-key') === key);
-  });
-  renderPropOpsCostSummary();
-}
 
 function renderPropOpsCostSummary() {
   var ops    = _prop.operations || {};
