@@ -19746,22 +19746,20 @@ function _renderPlantSupplyCard(vp,sp){
   var slots=_spGetActivePropSlots();
   var _cl=INDUSTRIAL_COUNTRIES[vp.region]||[],_ct=_cl.find(function(c){return c.code===vp.country_code;})||{};
   var MO='font-family:DM Mono,monospace;';
-  // compact one-line plant header
+  var SEL=MO+'font-size:8px;background:var(--panel2);color:var(--white);border:1px solid var(--border2);border-radius:3px;padding:1px 2px;width:100%;cursor:pointer;';
   var h='<div style="margin-bottom:10px;">';
   h+='<div style="'+MO+'font-size:8px;font-weight:600;color:var(--gold);padding:2px 0 5px 0;">'
     +'🏭 '+(_ct.flag||'')+' '+(vp.country_name||vp.country_code||vp.region)
     +' &nbsp;·&nbsp; <span style="color:var(--muted2);">'+vp.region+'</span></div>';
-  // grid: label | 5 zones | 6px gap | 4 auto | 52px cost | 52px nre
-  var G='display:grid;grid-template-columns:1fr repeat(5,20px) 6px repeat(4,20px) 52px 52px;gap:2px;align-items:center;';
+  var G='display:grid;grid-template-columns:1fr 130px 90px 54px 50px;gap:4px;align-items:center;';
   h+='<div style="'+G+'">';
-  // column header row
+  // header row
   h+='<div></div>';
-  SP_ZONES.forEach(function(z){h+='<div title="'+z.label+' — '+z.desc+'" style="text-align:center;font-size:10px;line-height:1;cursor:default;">'+z.flag+'</div>';});
-  h+='<div></div>';
-  SP_AUTO_LEVELS.forEach(function(al){h+='<div style="text-align:center;'+MO+'font-size:7px;color:var(--muted2);">'+al.key+'</div>';});
+  h+='<div style="'+MO+'font-size:7px;color:var(--muted2);">Zone</div>';
+  h+='<div style="'+MO+'font-size:7px;color:var(--muted2);">Automation</div>';
   h+='<div style="'+MO+'font-size:7px;color:var(--muted2);text-align:right;">ΔCost</div>';
   h+='<div style="'+MO+'font-size:7px;color:var(--muted2);text-align:right;">NRE</div>';
-  // module rows (one per active slot)
+  // module rows
   var plantTotalAdj=0,plantTotalNRE=0;
   slots.forEach(function(sk){
     var dec=plantMods[sk]||{zone:_spDefaultZoneForRegion(vp.region),automation:2};
@@ -19771,20 +19769,12 @@ function _renderPlantSupplyCard(vp,sp){
     var adjStr=m.piece_adj>0?'+€'+m.piece_adj:m.piece_adj<0?'−€'+Math.abs(m.piece_adj):'±€0';
     var lbl=_spSlotLabel(sk);
     h+='<div style="'+MO+'font-size:8px;color:var(--white);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="'+lbl+'">'+lbl+'</div>';
-    SP_ZONES.forEach(function(zone){
-      var sel=dec.zone===zone.key;
-      h+='<div title="'+zone.label+'" style="text-align:center;cursor:pointer;font-size:10px;line-height:1.7;border-radius:2px;'
-        +(sel?'background:rgba(34,211,238,.18);border:1px solid var(--cyan);':'border:1px solid transparent;opacity:0.4;')
-        +'" onclick="onSpZone(\''+vp.id+'\',\''+sk+'\',\''+zone.key+'\')">'+zone.flag+'</div>';
-    });
-    h+='<div></div>';
-    SP_AUTO_LEVELS.forEach(function(al){
-      var sel=dec.automation===al.key;
-      h+='<div style="text-align:center;cursor:pointer;'+MO+'font-size:8px;border-radius:2px;padding:1px 0;'
-        +(sel?'background:rgba(200,164,60,.18);border:1px solid var(--gold);color:var(--gold);font-weight:600;'
-             :'border:1px solid transparent;color:var(--muted2);')
-        +'" onclick="onSpAuto(\''+vp.id+'\',\''+sk+'\','+al.key+')">'+al.key+'</div>';
-    });
+    h+='<select style="'+SEL+'" onchange="onSpZone(\''+vp.id+'\',\''+sk+'\',this.value)">';
+    SP_ZONES.forEach(function(z){h+='<option value="'+z.key+'"'+(dec.zone===z.key?' selected':'')+'>'+z.flag+' '+z.label+'</option>';});
+    h+='</select>';
+    h+='<select style="'+SEL+'" onchange="onSpAuto(\''+vp.id+'\',\''+sk+'\',parseInt(this.value))">';
+    SP_AUTO_LEVELS.forEach(function(al){h+='<option value="'+al.key+'"'+(dec.automation===al.key?' selected':'')+'>'+al.key+' — '+al.label+'</option>';});
+    h+='</select>';
     h+='<div style="'+MO+'font-size:8px;color:'+adjCol+';text-align:right;">'+adjStr+'</div>';
     h+='<div style="'+MO+'font-size:8px;color:var(--muted2);text-align:right;">€'+m.nre_m.toFixed(1)+'M</div>';
   });
