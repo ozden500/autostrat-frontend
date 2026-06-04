@@ -19745,11 +19745,23 @@ function _renderPlantSupplyCard(vp,sp){
   var plantMods=(sp.plants&&sp.plants[vp.id]&&sp.plants[vp.id].modules)||{};
   var slots=_spGetActivePropSlots();
   var _cl=INDUSTRIAL_COUNTRIES[vp.region]||[],_ct=_cl.find(function(c){return c.code===vp.country_code;})||{};
-  var h='<div style="border:1px solid var(--border2);border-radius:4px;margin-bottom:12px;overflow:hidden;">';
-  h+='<div style="background:var(--s3);padding:8px 10px;border-bottom:1px solid var(--border2);">';
-  h+='<div style="font-family:DM Mono,monospace;font-size:9px;font-weight:600;color:var(--gold);">🏭 '+(_ct.flag||'')+' '+(vp.country_name||vp.country_code||vp.region)+' &nbsp;·&nbsp; <span style="color:var(--muted2);">'+vp.region+'</span></div>';
-  h+='</div>';
-  h+='<div style="padding:10px;">';
+  var MO='font-family:DM Mono,monospace;';
+  // compact one-line plant header
+  var h='<div style="margin-bottom:10px;">';
+  h+='<div style="'+MO+'font-size:8px;font-weight:600;color:var(--gold);padding:2px 0 5px 0;">'
+    +'🏭 '+(_ct.flag||'')+' '+(vp.country_name||vp.country_code||vp.region)
+    +' &nbsp;·&nbsp; <span style="color:var(--muted2);">'+vp.region+'</span></div>';
+  // grid: label | 5 zones | 6px gap | 4 auto | 52px cost | 52px nre
+  var G='display:grid;grid-template-columns:1fr repeat(5,20px) 6px repeat(4,20px) 52px 52px;gap:2px;align-items:center;';
+  h+='<div style="'+G+'">';
+  // column header row
+  h+='<div></div>';
+  SP_ZONES.forEach(function(z){h+='<div title="'+z.label+' — '+z.desc+'" style="text-align:center;font-size:10px;line-height:1;cursor:default;">'+z.flag+'</div>';});
+  h+='<div></div>';
+  SP_AUTO_LEVELS.forEach(function(al){h+='<div style="text-align:center;'+MO+'font-size:7px;color:var(--muted2);">'+al.key+'</div>';});
+  h+='<div style="'+MO+'font-size:7px;color:var(--muted2);text-align:right;">ΔCost</div>';
+  h+='<div style="'+MO+'font-size:7px;color:var(--muted2);text-align:right;">NRE</div>';
+  // module rows (one per active slot)
   var plantTotalAdj=0,plantTotalNRE=0;
   slots.forEach(function(sk){
     var dec=plantMods[sk]||{zone:_spDefaultZoneForRegion(vp.region),automation:2};
@@ -19757,45 +19769,34 @@ function _renderPlantSupplyCard(vp,sp){
     plantTotalAdj+=m.piece_adj;plantTotalNRE+=m.nre_m;
     var adjCol=m.piece_adj<=0?'var(--green)':'var(--orange)';
     var adjStr=m.piece_adj>0?'+€'+m.piece_adj:m.piece_adj<0?'−€'+Math.abs(m.piece_adj):'±€0';
-    h+='<div style="margin-bottom:10px;padding-bottom:10px;border-bottom:1px solid var(--border2);">';
-    h+='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px;">';
-    h+='<div style="font-family:DM Mono,monospace;font-size:8.5px;font-weight:600;color:var(--white);">'+_spSlotLabel(sk)+'</div>';
-    h+='<div style="display:flex;gap:10px;">';
-    if(m.base_buy>0)h+='<span style="font-family:DM Mono,monospace;font-size:7.5px;color:var(--muted2);">~€'+Math.round(m.base_buy)+'/unit</span>';
-    h+='<span style="font-family:DM Mono,monospace;font-size:7.5px;color:'+adjCol+';">'+adjStr+'/unit</span>';
-    h+='<span style="font-family:DM Mono,monospace;font-size:7.5px;color:var(--muted2);">NRE €'+m.nre_m.toFixed(1)+'M</span>';
-    h+='</div></div>';
-    h+='<div style="display:flex;gap:4px;margin-bottom:4px;">';
+    var lbl=_spSlotLabel(sk);
+    h+='<div style="'+MO+'font-size:8px;color:var(--white);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="'+lbl+'">'+lbl+'</div>';
     SP_ZONES.forEach(function(zone){
       var sel=dec.zone===zone.key;
-      h+='<div style="flex:1;padding:4px 2px;border-radius:3px;cursor:pointer;text-align:center;border:1px solid '+(sel?'var(--cyan)':'var(--border2)')+';background:'+(sel?'rgba(34,211,238,.10)':'var(--s1)')+'" onclick="onSpZone(\''+vp.id+'\',\''+sk+'\',\''+zone.key+'\')" title="'+zone.desc+'">';
-      h+='<div style="font-size:10px;line-height:1.4;">'+zone.flag+'</div>';
-      h+='<div style="font-family:DM Mono,monospace;font-size:6.5px;color:'+(sel?'var(--cyan)':'var(--muted)')+';white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:'+(sel?600:400)+';">'+zone.label+'</div>';
-      h+='</div>';
+      h+='<div title="'+zone.label+'" style="text-align:center;cursor:pointer;font-size:10px;line-height:1.7;border-radius:2px;'
+        +(sel?'background:rgba(34,211,238,.18);border:1px solid var(--cyan);':'border:1px solid transparent;opacity:0.4;')
+        +'" onclick="onSpZone(\''+vp.id+'\',\''+sk+'\',\''+zone.key+'\')">'+zone.flag+'</div>';
     });
-    h+='</div>';
-    h+='<div style="display:flex;gap:4px;">';
+    h+='<div></div>';
     SP_AUTO_LEVELS.forEach(function(al){
       var sel=dec.automation===al.key;
-      var lfPct=Math.round((al.labor_factor-1)*100);
-      var lfStr=lfPct>0?'+'+lfPct+'%':lfPct<0?lfPct+'%':'0%';
-      var lfCol=lfPct<0?'var(--green)':lfPct>0?'var(--orange)':'var(--muted2)';
-      h+='<div style="flex:1;padding:4px 2px;border-radius:3px;cursor:pointer;text-align:center;border:1px solid '+(sel?'var(--gold)':'var(--border2)')+';background:'+(sel?'rgba(200,164,60,.10)':'var(--s1)')+'" onclick="onSpAuto(\''+vp.id+'\',\''+sk+'\','+al.key+')">';
-      h+='<div style="font-family:DM Mono,monospace;font-size:7.5px;color:'+(sel?'var(--gold)':'var(--muted)')+';font-weight:'+(sel?600:400)+';">'+al.label+'</div>';
-      h+='<div style="font-family:DM Mono,monospace;font-size:7px;color:'+lfCol+';">'+lfStr+' labor</div>';
-      h+='</div>';
+      h+='<div style="text-align:center;cursor:pointer;'+MO+'font-size:8px;border-radius:2px;padding:1px 0;'
+        +(sel?'background:rgba(200,164,60,.18);border:1px solid var(--gold);color:var(--gold);font-weight:600;'
+             :'border:1px solid transparent;color:var(--muted2);')
+        +'" onclick="onSpAuto(\''+vp.id+'\',\''+sk+'\','+al.key+')">'+al.key+'</div>';
     });
-    h+='</div>';
-    h+='</div>';
+    h+='<div style="'+MO+'font-size:8px;color:'+adjCol+';text-align:right;">'+adjStr+'</div>';
+    h+='<div style="'+MO+'font-size:8px;color:var(--muted2);text-align:right;">€'+m.nre_m.toFixed(1)+'M</div>';
   });
+  h+='</div>';
+  // plant total
   var ptCol=plantTotalAdj<=0?'var(--green)':'var(--orange)';
   var ptStr=plantTotalAdj>0?'+€'+plantTotalAdj:plantTotalAdj<0?'−€'+Math.abs(plantTotalAdj):'±€0';
-  h+='<div style="display:flex;gap:16px;padding:6px 0 2px 0;">';
-  h+='<span style="font-family:DM Mono,monospace;font-size:8px;color:var(--muted2);">Plant total</span>';
-  h+='<span style="font-family:DM Mono,monospace;font-size:8px;color:'+ptCol+';">'+ptStr+'/unit</span>';
-  h+='<span style="font-family:DM Mono,monospace;font-size:8px;color:var(--muted2);">NRE €'+plantTotalNRE.toFixed(1)+'M</span>';
+  h+='<div style="'+MO+'font-size:7.5px;border-top:1px solid var(--border2);padding-top:4px;margin-top:3px;'
+    +'display:flex;gap:12px;color:var(--muted2);">Total &nbsp;'
+    +'<span style="color:'+ptCol+';">'+ptStr+'/unit</span>'
+    +'&nbsp;&nbsp;NRE €'+plantTotalNRE.toFixed(1)+'M</div>';
   h+='</div>';
-  h+='</div></div>';
   return h;
 }
 
@@ -19803,22 +19804,18 @@ function _renderSupplyPlanSection(){
   var sp=(_prop.operations&&_prop.operations.supply_plan)||{};
   var vPlants=(_prop.operations&&_prop.operations.vehicle_plants)||[];
   var TH='font-family:DM Mono,monospace;font-size:8px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:8px;display:block;';
-  var h='<div style="margin-bottom:18px;">';
+  var h='<div style="margin-bottom:14px;">';
   h+='<div style="'+TH+'">📦 Parts Supply Plan</div>';
-  if(!vPlants.length){
-    h+='<div style="font-family:DM Mono,monospace;font-size:9px;color:var(--muted2);padding:12px 0;">← Select a vehicle plant above to configure supply sourcing.</div>';
-  } else {
-    vPlants.forEach(function(vp){h+=_renderPlantSupplyCard(vp,sp);});
-  }
+  vPlants.forEach(function(vp){h+=_renderPlantSupplyCard(vp,sp);});
   var totals=_calcSupplyPlanTotals();
   var rPct=Math.round(totals.riskScore*100);
   var rCol=rPct<30?'var(--green)':rPct<55?'var(--gold)':'var(--red)';
   var rLabel=rPct<30?'LOW':rPct<55?'MEDIUM':'HIGH';
-  h+='<div style="background:var(--s2);border:1px solid var(--border);border-radius:4px;padding:10px;margin-top:4px;display:flex;align-items:center;gap:12px;">';
-  h+='<div style="font-family:DM Mono,monospace;font-size:8px;color:var(--muted2);white-space:nowrap;">Supply Risk</div>';
-  h+='<div style="flex:1;background:var(--border);border-radius:2px;height:6px;overflow:hidden;"><div style="width:'+rPct+'%;height:100%;background:'+rCol+';border-radius:2px;"></div></div>';
-  h+='<div style="font-family:DM Mono,monospace;font-size:8px;color:'+rCol+';white-space:nowrap;min-width:72px;">'+rLabel+' ('+rPct+'%)</div>';
-  h+='<div style="font-family:DM Mono,monospace;font-size:8px;color:var(--muted2);">→ Reliability</div>';
+  h+='<div style="display:flex;align-items:center;gap:10px;margin-top:2px;">';
+  h+='<div style="font-family:DM Mono,monospace;font-size:7.5px;color:var(--muted2);white-space:nowrap;">Supply Risk</div>';
+  h+='<div style="flex:1;background:var(--border);border-radius:2px;height:5px;overflow:hidden;"><div style="width:'+rPct+'%;height:100%;background:'+rCol+';border-radius:2px;"></div></div>';
+  h+='<div style="font-family:DM Mono,monospace;font-size:7.5px;color:'+rCol+';white-space:nowrap;">'+rLabel+' ('+rPct+'%)</div>';
+  h+='<div style="font-family:DM Mono,monospace;font-size:7.5px;color:var(--muted2);">→ Reliability</div>';
   h+='</div>';
   h+='</div>';
   return h;
