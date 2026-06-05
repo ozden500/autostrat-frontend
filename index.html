@@ -2630,6 +2630,22 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
   </div>
 </div>
 
+<!-- ████ MODULE DETAIL MODAL ████ -->
+<div class="bc-modal-overlay" id="modDetailModal">
+  <div class="bc-modal-panel" style="width:660px;">
+    <div class="bc-modal-header">
+      <div style="flex:1;">
+        <div class="bc-modal-title" id="mdm-title">MODULE DETAILS</div>
+        <div style="font-family:'DM Mono',monospace;font-size:9px;color:var(--muted2);margin-top:2px;" id="mdm-sub">—</div>
+      </div>
+      <div id="mdm-status" style="margin-right:8px;"></div>
+      <button onclick="closeModDetailModal()" style="background:var(--s3);border:1px solid var(--border2);
+        color:var(--muted2);border-radius:4px;padding:6px 12px;cursor:pointer;font-size:13px;">✕ Close</button>
+    </div>
+    <div class="bc-modal-body" id="mdm-body"></div>
+  </div>
+</div>
+
 <!-- ████ ENGINEERING CENTER MODAL ████ -->
 <div class="bc-modal-overlay" id="engCenterModal">
   <div class="bc-modal-panel" style="width:500px;max-width:96vw;">
@@ -8638,6 +8654,131 @@ function closeBCModal() {
   _bcVehicle = null;
 }
 
+function openModDetailModal(moduleId) {
+  var mod = (_prop.modules || []).find(function(m){ return m.id === moduleId; });
+  if (!mod) { toast('⚠ Module not found'); return; }
+
+  var modTypeLabels = {
+    platform:'Platform', ice_pwt:'ICE Powertrain', epwt:'e-Motor / ePWT',
+    battery:'Battery Pack', tophat:'Top Hat', eands:'Electronics & Software'
+  };
+  var stCol = mod.development_status === 'completed' ? 'var(--green)' : 'var(--gold)';
+  var stLbl = mod.development_status === 'completed' ? '✓ Completed' : '⏳ In Development';
+
+  document.getElementById('mdm-title').textContent = mod.name;
+  document.getElementById('mdm-sub').textContent =
+    (modTypeLabels[mod.module_type] || mod.module_type) + ' · ' + mod.config_key;
+  document.getElementById('mdm-status').innerHTML =
+    '<span style="font-family:DM Mono,monospace;font-size:9px;padding:3px 8px;border-radius:2px;' +
+    'background:' + stCol + '22;color:' + stCol + ';">' + stLbl + '</span>';
+
+  var specDefs = PROP_SPEC_DEFS[mod.module_type] || [];
+  var html = '';
+
+  // § Development Timeline
+  html += '<div class="bc-section"><div class="bc-section-title">Development Timeline</div>';
+  html += '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;">';
+  var subQ = (mod.submitted_quarter && mod.submitted_year) ? 'Q'+mod.submitted_quarter+' '+mod.submitted_year : '—';
+  var rdyQ = (mod.ready_quarter && mod.ready_year) ? 'Q'+mod.ready_quarter+' '+mod.ready_year : '—';
+  var ltQ  = mod.lead_time_quarters != null ? mod.lead_time_quarters + ' qtr' + (mod.lead_time_quarters !== 1 ? 's' : '') : '—';
+  var devTypeLabel = {reuse:'Reuse', modify:'Modify', 'new':'New Dev'}[mod.development_type] || (mod.development_type || '—');
+  [['Submitted', subQ], ['Ready', rdyQ], ['Lead Time', ltQ], ['Dev Type', devTypeLabel]].forEach(function(pair) {
+    html += '<div style="background:var(--s2);border:1px solid var(--border);border-radius:4px;padding:10px 12px;">' +
+      '<div style="font-family:DM Mono,monospace;font-size:7px;text-transform:uppercase;letter-spacing:1px;' +
+        'color:var(--muted);margin-bottom:5px;">' + pair[0] + '</div>' +
+      '<div style="font-size:13px;font-weight:600;color:var(--white);">' + pair[1] + '</div></div>';
+  });
+  html += '</div></div>';
+
+  // § Specifications
+  if (specDefs.length > 0) {
+    var cols = Math.min(specDefs.length, 3);
+    html += '<div class="bc-section"><div class="bc-section-title">Specifications</div>';
+    html += '<div style="display:grid;grid-template-columns:repeat('+cols+',1fr);gap:8px;">';
+    specDefs.forEach(function(s) {
+      var val  = (mod.specs || {})[s.key];
+      var disp = propFmtSpec(s.key, val, s.fmt);
+      var raw  = parseFloat(val);
+      var pct  = 0;
+      if (val != null && s.max > 0) {
+        pct = (s.fmt === 'pct' && raw <= 1) ? Math.round(raw * 100) : Math.round(raw / s.max * 100);
+      }
+      pct = Math.max(0, Math.min(100, pct));
+      var barCol = pct > 70 ? 'var(--green)' : pct > 40 ? 'var(--gold)' : 'var(--blue)';
+      html += '<div style="background:var(--s2);border:1px solid var(--border);border-radius:4px;padding:10px 12px;">' +
+        '<div style="font-family:DM Mono,monospace;font-size:7px;text-transform:uppercase;letter-spacing:1px;' +
+          'color:var(--muted);margin-bottom:5px;">' + s.label + (s.unit ? ' ('+s.unit+')' : '') + '</div>' +
+        '<div style="font-size:14px;font-weight:700;color:var(--white);margin-bottom:6px;">' + disp + '</div>' +
+        '<div style="height:3px;background:var(--border2);border-radius:2px;overflow:hidden;">' +
+          '<div style="height:100%;width:'+pct+'%;background:'+barCol+';border-radius:2px;"></div>' +
+        '</div></div>';
+    });
+    html += '</div></div>';
+  }
+
+  // § Cost Summary
+  html += '<div class="bc-section"><div class="bc-section-title">Cost Summary</div>';
+  html += '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;">';
+  var tpcStr  = mod.per_unit_tpc_eur   ? '€' + Math.round(mod.per_unit_tpc_eur).toLocaleString()           : '—';
+  var rdStr   = mod.total_rd_spend_m   != null ? '€' + parseFloat(mod.total_rd_spend_m).toFixed(1) + 'M'   : '—';
+  var fteStr  = mod.total_rd_fte       ? Math.round(mod.total_rd_fte) + ' FTE-mo'                               : '—';
+  [['Unit TPC', tpcStr, 'var(--gold)'], ['Total R&D', rdStr, 'var(--cyan)'], ['R&D FTEs', fteStr, 'var(--blue)']].forEach(function(t) {
+    html += '<div style="background:var(--s2);border:1px solid var(--border);border-radius:4px;padding:10px 12px;">' +
+      '<div style="font-family:DM Mono,monospace;font-size:7px;text-transform:uppercase;letter-spacing:1px;' +
+        'color:var(--muted);margin-bottom:5px;">' + t[0] + '</div>' +
+      '<div style="font-size:15px;font-weight:700;color:'+t[2]+';">' + t[1] + '</div></div>';
+  });
+  html += '</div>';
+  if (mod.total_weight_kg) {
+    html += '<div style="margin-top:6px;font-family:DM Mono,monospace;font-size:9px;color:var(--muted2);">' +
+      'Module weight: ' + Math.round(mod.total_weight_kg) + ' kg</div>';
+  }
+  html += '</div>';
+
+  // § Vehicles using this module (loaded async)
+  html += '<div class="bc-section"><div class="bc-section-title">Vehicles Using This Module</div>' +
+    '<div id="mdm-vehicles-body" style="font-family:DM Mono,monospace;font-size:10px;color:var(--muted2);">' +
+    'Loading…</div></div>';
+
+  document.getElementById('mdm-body').innerHTML = html;
+  document.getElementById('modDetailModal').classList.add('open');
+
+  // Async fetch vehicle usage
+  if (teamId) {
+    fetch(API_URL + '/teams/' + teamId + '/modules/' + moduleId + '/usage')
+      .then(function(r){ return r.json(); })
+      .then(function(data) {
+        var el = document.getElementById('mdm-vehicles-body');
+        if (!el) return;
+        var vehicles = data.vehicles || [];
+        if (vehicles.length === 0) {
+          el.innerHTML = '<span style="color:var(--muted2);">No vehicles reference this module yet.</span>';
+          return;
+        }
+        var statusColors = {approved:'var(--green)', plan:'var(--gold)', study:'var(--blue)'};
+        el.innerHTML = vehicles.map(function(v) {
+          var sc = statusColors[v.status] || 'var(--muted2)';
+          return '<div style="display:flex;align-items:center;gap:10px;padding:6px 0;border-bottom:1px solid var(--border);">' +
+            '<span style="font-weight:600;color:var(--text);font-size:11px;">' + (v.name || '—') + '</span>' +
+            '<span style="font-family:DM Mono,monospace;font-size:8px;padding:2px 6px;border-radius:2px;' +
+              'background:'+sc+'22;color:'+sc+';">' + (v.status || '') + '</span>' +
+            '</div>';
+        }).join('');
+      })
+      .catch(function() {
+        var el = document.getElementById('mdm-vehicles-body');
+        if (el) el.innerHTML = '<span style="color:var(--muted2);">Could not load vehicle data.</span>';
+      });
+  } else {
+    document.getElementById('mdm-vehicles-body').innerHTML =
+      '<span style="color:var(--muted2);">Team context unavailable.</span>';
+  }
+}
+
+function closeModDetailModal() {
+  document.getElementById('modDetailModal').classList.remove('open');
+}
+
 async function approveBCVehicle() {
   if (!_bcVehicle) return;
   var vid  = _bcVehicle.id;
@@ -9562,6 +9703,10 @@ document.addEventListener('click', function(e) {
     var mid  = btn.getAttribute('data-modid');
     var nf2  = btn.getAttribute('data-nextfn');
     selectPropModule(pk2, mid, nf2);
+  }
+  if (action === 'prop-mod-detail') {
+    e.stopPropagation();
+    openModDetailModal(btn.getAttribute('data-modid'));
   }
   if (action === 'prop-continue') {
     var nf3 = btn.getAttribute('data-nextfn');
@@ -15639,6 +15784,7 @@ function buildModuleOptions(modType, propKey, nextFn) {
       html += '<th style="font-family:DM Mono,monospace;font-size:8px;text-transform:uppercase;letter-spacing:1px;' +
         'color:var(--muted);padding:7px 10px;text-align:center;background:var(--s2);border-bottom:1px solid var(--border);">Status</th>';
       html += '<th style="background:var(--s2);border-bottom:1px solid var(--border);padding:7px 10px;"></th>';
+      html += '<th style="background:var(--s2);border-bottom:1px solid var(--border);padding:7px 10px;"></th>';
       html += '</tr></thead><tbody>';
 
       // Find max spec values for bar colouring
@@ -15679,6 +15825,11 @@ function buildModuleOptions(modType, propKey, nextFn) {
         html += '<td style="padding:8px 10px;text-align:center;">' +
           (isSel ? '<span style="color:var(--gold);font-size:14px;">\u2713</span>' :
             '<span style="color:var(--muted2);font-size:10px;">Select</span>') + '</td>';
+        html += '<td style="padding:8px 10px;text-align:center;" onclick="event.stopPropagation()">' +
+          '<button data-action="prop-mod-detail" data-modid="' + m.id + '" ' +
+          'style="font-family:DM Mono,monospace;font-size:8px;padding:3px 8px;border-radius:2px;' +
+          'border:1px solid var(--border2);background:var(--s3);color:var(--muted2);cursor:pointer;">' +
+          '\u2139 Details</button></td>';
         html += '</tr>';
       });
 
