@@ -19698,23 +19698,34 @@ function _spSyncPlanWithPlants(){
 }
 
 function _calcModuleSupplyMetrics(sk,zoneKey,autoLevel,plantRegion){
-  var mt=SP_MODULE_TYPES[sk];if(!mt)return {piece_adj:0,nre_m:0,risk:0.25,base_buy:0};
+  var mt=SP_MODULE_TYPES[sk];
+  if(!mt)return {piece_adj:0,nre_m:0,risk:0.25,base_buy:0,base_tpc:0,buy_pct:0,labor_adj:0,logistics_eur:0,duty_eur:0,landed_eur:0,vol_k:0,nre_per_unit_eur:0};
   var zone=SP_ZONES.find(function(z){return z.key===zoneKey;})||SP_ZONES[0];
   var auto=SP_AUTO_LEVELS.find(function(a){return a.key===autoLevel;})||SP_AUTO_LEVELS[1];
-  var buyCost=_spSlotBuyCost(sk);
+  var p=_prop[sk];
+  var tpcRaw=p&&p.module?parseFloat(p.module.per_unit_tpc_eur||0):0;
+  var buyCost=tpcRaw*mt.buy_fraction;
   var laborAdj=buyCost*mt.labor_intensity*(zone.labor_index*auto.labor_factor-1.0);
-  var logistics=(zone.logistics[plantRegion]||300)-200;
-  var duty=buyCost*(zone.duty[plantRegion]||0)/100;
-  var pieceAdj=Math.round(laborAdj+logistics+duty);
-  var nreM=(buyCost*(_suggestedVolK()||50)*1000*auto.nre_factor)/1e6;
+  var freightEur=zone.logistics[plantRegion]||300;
+  var dutyEur=buyCost*(zone.duty[plantRegion]||0)/100;
+  var pieceAdj=Math.round(laborAdj+(freightEur-200)+dutyEur);
+  var landedEur=Math.round(buyCost+laborAdj+freightEur+dutyEur);
+  var volK=_suggestedVolK()||50;
+  var nreM=(buyCost*volK*1000*auto.nre_factor)/1e6;
+  var nrePu=volK>0?Math.round(nreM*1e6/(volK*1000)*10)/10:0;
   var risk=zone.risk*(1-mt.labor_intensity*0.20);
-  return {piece_adj:pieceAdj,nre_m:nreM,risk:risk,base_buy:buyCost};
+  return {
+    piece_adj:pieceAdj,nre_m:nreM,risk:risk,base_buy:Math.round(buyCost),
+    base_tpc:Math.round(tpcRaw),buy_pct:Math.round(mt.buy_fraction*100),
+    labor_adj:Math.round(laborAdj),logistics_eur:freightEur,duty_eur:Math.round(dutyEur),
+    landed_eur:landedEur,vol_k:volK,nre_per_unit_eur:nrePu
+  };
 }
 
 function _calcSupplyPlanTotals(){
   var sp=(_prop.operations&&_prop.operations.supply_plan)||{};
   var plants=sp.plants||{},vPlants=(_prop.operations&&_prop.operations.vehicle_plants)||[];
-  var totalAdj=0,totalNRE=0,totalRisk=0,totalW=0;
+  var totalAdj=0,totalNRE=0,totalRisk=0,totalW=0,totalLanded=0;
   var nPlants=Math.max(1,Object.keys(plants).length);
   Object.keys(plants).forEach(function(pid){
     var vp=vPlants.find(function(p){return p.id===pid;})||{region:'EU'};
@@ -19722,7 +19733,7 @@ function _calcSupplyPlanTotals(){
     _spGetActivePropSlots().forEach(function(sk){
       var dec=pMods[sk]||{zone:_spDefaultZoneForRegion(vp.region),automation:2};
       var m=_calcModuleSupplyMetrics(sk,dec.zone,dec.automation,vp.region);
-      totalAdj+=m.piece_adj;totalNRE+=m.nre_m;
+      totalAdj+=m.piece_adj;totalNRE+=m.nre_m;totalLanded+=m.landed_eur;
       var li=(SP_MODULE_TYPES[sk]||{labor_intensity:0.3}).labor_intensity;
       totalRisk+=m.risk*(0.5+li);totalW+=(0.5+li);
     });
@@ -19731,14 +19742,15 @@ function _calcSupplyPlanTotals(){
     _spGetActivePropSlots().forEach(function(sk){
       var m=_calcModuleSupplyMetrics(sk,'EU',2,'EU');
       var li=(SP_MODULE_TYPES[sk]||{labor_intensity:0.3}).labor_intensity;
-      totalAdj+=m.piece_adj;totalNRE+=m.nre_m;totalRisk+=m.risk*(0.5+li);totalW+=(0.5+li);
+      totalAdj+=m.piece_adj;totalNRE+=m.nre_m;totalLanded+=m.landed_eur;totalRisk+=m.risk*(0.5+li);totalW+=(0.5+li);
     });
   }
   var riskScore=totalW>0?Math.min(1,totalRisk/totalW):0.25;
   sp._total_piece_adj_eur=Math.round(totalAdj/nPlants);
   sp._total_nre_m=Math.round(totalNRE*10)/10;
   sp._risk_score=Math.round(riskScore*100)/100;
-  return {totalAdj:sp._total_piece_adj_eur,totalNRE:sp._total_nre_m,riskScore:sp._risk_score};
+  sp._total_landed_parts_eur=Math.round(totalLanded/nPlants);
+  return {totalAdj:sp._total_piece_adj_eur,totalNRE:sp._total_nre_m,riskScore:sp._risk_score,totalLanded:sp._total_landed_parts_eur};
 }
 
 function _renderPlantSupplyCard(vp,sp){
@@ -19746,46 +19758,49 @@ function _renderPlantSupplyCard(vp,sp){
   var slots=_spGetActivePropSlots();
   var _cl=INDUSTRIAL_COUNTRIES[vp.region]||[],_ct=_cl.find(function(c){return c.code===vp.country_code;})||{};
   var MO='font-family:DM Mono,monospace;';
-  var SEL=MO+'font-size:8px;background:var(--panel2);color:var(--white);border:1px solid var(--border2);border-radius:3px;padding:1px 2px;width:100%;cursor:pointer;';
-  var h='<div style="margin-bottom:10px;">';
-  h+='<div style="'+MO+'font-size:8px;font-weight:600;color:var(--gold);padding:2px 0 5px 0;">'
+  var SEL=MO+'font-size:8px;background:var(--panel2);color:var(--white);border:1px solid var(--border2);border-radius:3px;padding:1px 2px;cursor:pointer;';
+  var h='<div style="margin-bottom:12px;">';
+  h+='<div style="'+MO+'font-size:8px;font-weight:600;color:var(--gold);padding:2px 0 6px 0;">'
     +'🏭 '+(_ct.flag||'')+' '+(vp.country_name||vp.country_code||vp.region)
     +' &nbsp;·&nbsp; <span style="color:var(--muted2);">'+vp.region+'</span></div>';
-  var G='display:grid;grid-template-columns:1fr 130px 90px 54px 50px;gap:4px;align-items:center;';
-  h+='<div style="'+G+'">';
-  // header row
-  h+='<div></div>';
-  h+='<div style="'+MO+'font-size:7px;color:var(--muted2);">Zone</div>';
-  h+='<div style="'+MO+'font-size:7px;color:var(--muted2);">Automation</div>';
-  h+='<div style="'+MO+'font-size:7px;color:var(--muted2);text-align:right;">ΔCost</div>';
-  h+='<div style="'+MO+'font-size:7px;color:var(--muted2);text-align:right;">NRE</div>';
-  // module rows
-  var plantTotalAdj=0,plantTotalNRE=0;
+  var plantLanded=0,plantNrePu=0;
   slots.forEach(function(sk){
     var dec=plantMods[sk]||{zone:_spDefaultZoneForRegion(vp.region),automation:2};
     var m=_calcModuleSupplyMetrics(sk,dec.zone,dec.automation,vp.region);
-    plantTotalAdj+=m.piece_adj;plantTotalNRE+=m.nre_m;
-    var adjCol=m.piece_adj<=0?'var(--green)':'var(--orange)';
-    var adjStr=m.piece_adj>0?'+€'+m.piece_adj:m.piece_adj<0?'−€'+Math.abs(m.piece_adj):'±€0';
+    plantLanded+=m.landed_eur;plantNrePu+=m.nre_per_unit_eur;
     var lbl=_spSlotLabel(sk);
-    h+='<div style="'+MO+'font-size:8px;color:var(--white);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="'+lbl+'">'+lbl+'</div>';
+    var lAdj=m.labor_adj>=0?'+€'+m.labor_adj:'−€'+Math.abs(m.labor_adj);
+    var lAdjCol=m.labor_adj<=0?'var(--green)':'var(--orange)';
+    // Row 1: module name | zone select | auto select | landed cost
+    h+='<div style="display:grid;grid-template-columns:1fr 128px 88px auto;gap:4px;align-items:center;margin-bottom:2px;">';
+    h+='<div style="'+MO+'font-size:8px;font-weight:600;color:var(--white);">'+lbl+'</div>';
     h+='<select style="'+SEL+'" onchange="onSpZone(\''+vp.id+'\',\''+sk+'\',this.value)">';
     SP_ZONES.forEach(function(z){h+='<option value="'+z.key+'"'+(dec.zone===z.key?' selected':'')+'>'+z.flag+' '+z.label+'</option>';});
     h+='</select>';
     h+='<select style="'+SEL+'" onchange="onSpAuto(\''+vp.id+'\',\''+sk+'\',parseInt(this.value))">';
     SP_AUTO_LEVELS.forEach(function(al){h+='<option value="'+al.key+'"'+(dec.automation===al.key?' selected':'')+'>'+al.key+' — '+al.label+'</option>';});
     h+='</select>';
-    h+='<div style="'+MO+'font-size:8px;color:'+adjCol+';text-align:right;">'+adjStr+'</div>';
-    h+='<div style="'+MO+'font-size:8px;color:var(--muted2);text-align:right;">€'+m.nre_m.toFixed(1)+'M</div>';
+    h+='<div style="'+MO+'font-size:9px;font-weight:700;color:var(--cyan);text-align:right;white-space:nowrap;">€'+m.landed_eur.toLocaleString()+'</div>';
+    h+='</div>';
+    // Row 2: cost breakdown detail
+    var nrePuStr=m.nre_per_unit_eur>0?' · NRE +€'+m.nre_per_unit_eur+'/unit':'';
+    h+='<div style="'+MO+'font-size:7.5px;color:var(--muted2);padding:0 0 6px 2px;border-bottom:1px solid var(--border);">'
+      +'Design €'+m.base_tpc.toLocaleString()
+      +' · Purch. '+m.buy_pct+'% → €'+m.base_buy.toLocaleString()
+      +' · Labor <span style="color:'+lAdjCol+';">'+lAdj+'</span>'
+      +' · Freight €'+m.logistics_eur
+      +' · Duty €'+m.duty_eur
+      +nrePuStr
+      +'</div>';
   });
-  h+='</div>';
-  // plant total
-  var ptCol=plantTotalAdj<=0?'var(--green)':'var(--orange)';
-  var ptStr=plantTotalAdj>0?'+€'+plantTotalAdj:plantTotalAdj<0?'−€'+Math.abs(plantTotalAdj):'±€0';
-  h+='<div style="'+MO+'font-size:7.5px;border-top:1px solid var(--border2);padding-top:4px;margin-top:3px;'
-    +'display:flex;gap:12px;color:var(--muted2);">Total &nbsp;'
-    +'<span style="color:'+ptCol+';">'+ptStr+'/unit</span>'
-    +'&nbsp;&nbsp;NRE €'+plantTotalNRE.toFixed(1)+'M</div>';
+  // Plant total footer
+  var volK=_suggestedVolK()||0;
+  var volStr=volK>0?' @ '+volK+'k/yr':'';
+  h+='<div style="'+MO+'font-size:8px;padding-top:5px;display:flex;gap:16px;">'
+    +'<span style="color:var(--muted2);">Total landed parts:</span>'
+    +'<span style="color:var(--cyan);font-weight:700;">€'+plantLanded.toLocaleString()+'/unit</span>'
+    +(plantNrePu>0?'&nbsp;&nbsp;<span style="color:var(--muted2);">NRE amortized: +€'+plantNrePu.toFixed(2)+'/unit'+volStr+'</span>':'')
+    +'</div>';
   h+='</div>';
   return h;
 }
