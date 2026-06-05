@@ -3511,11 +3511,13 @@ var _PC = {
       var ice_pct = Math.round((is.tpc/r_ice.std_platform_tpc_eur-1)*1000)/10;
       var bev_pct = Math.round((bs.tpc/r_bev.std_platform_tpc_eur-1)*1000)/10;
 
+      var _si = _calcBomSplit(ice_mat, ice_proc, null);
+      var _sb = _calcBomSplit(bev_mat, bev_proc, null);
       return {
         platform_size: size, pwt_compatibility: 'ice_and_bev',
         is_multi_energy: true,
         ice_ready: {
-          std_platform_tpc_eur:    Math.round(is.tpc*100)/100,
+          std_platform_tpc_eur:    _si.std_tpc_eur,
           total_net_weight_kg:     Math.round(is.net*10)/10,
           total_gross_weight_kg:   Math.round(is.gross*10)/10,
           total_material_cost_eur: Math.round(is.mat*100)/100,
@@ -3523,11 +3525,11 @@ var _PC = {
           direct_cost_eur:         Math.round(is.dc*100)/100,
           total_std_direct_eur:    Math.round(is.std*100)/100,
           vs_pure_ice_pct: ice_pct,
-          material_lines: ice_mat,
-          process_lines:  ice_proc,
+          material_lines: ice_mat, process_lines: ice_proc,
+          dmp: _si.dmp, make: _si.make,
         },
         bev_ready: {
-          std_platform_tpc_eur:    Math.round(bs.tpc*100)/100,
+          std_platform_tpc_eur:    _sb.std_tpc_eur,
           total_net_weight_kg:     Math.round(bs.net*10)/10,
           total_gross_weight_kg:   Math.round(bs.gross*10)/10,
           total_material_cost_eur: Math.round(bs.mat*100)/100,
@@ -3535,8 +3537,8 @@ var _PC = {
           direct_cost_eur:         Math.round(bs.dc*100)/100,
           total_std_direct_eur:    Math.round(bs.std*100)/100,
           vs_pure_bev_pct: bev_pct,
-          material_lines: bev_mat,
-          process_lines:  bev_proc,
+          material_lines: bev_mat, process_lines: bev_proc,
+          dmp: _sb.dmp, make: _sb.make,
         },
         total_rd_cost_eur_m:    Math.round(rd_multi*10)/10,
         std_rd_fte_cost_eur_m:  Math.round(rd_fte*100)/100,
@@ -3547,8 +3549,9 @@ var _PC = {
         base_rd_cost_eur_m:     Math.round(brd*1.50*10)/10,
         rd_premium_pct:         Math.round((50 + rd_opt_pct)*10)/10,
         cost_opt_reduction_pct: r_ice.cost_opt_reduction_pct||0,
-        std_platform_tpc_eur:   Math.round(is.tpc*100)/100,
+        std_platform_tpc_eur:   _si.std_tpc_eur,
         total_net_weight_kg:    Math.round(is.net*10)/10,
+        dmp: _si.dmp, make: _si.make,
       };
     }
     if (!this.BOM[key]) return null;
@@ -3712,6 +3715,9 @@ var _PC = {
     var fte_months  = Math.round(rd_fte_cost*1000000/this.US_FTE_RATE_MONTH/10)*10; // round to 10
 
     // Convert to API-compatible field names for display reuse
+    var _matLines = mats.map(function(l){return {material_code:l.code,material_name:l.name,net_weight_kg:l.net,scrap_rate:l.sc,gross_weight_kg:l.gross,material_price_eur_kg:l.price,material_cost_eur:l.cost,spec_driven:l.spec,spec_label:l.label};});
+    var _procLines = procs.map(function(l){return {process_code:l.code,process_name:l.name,gross_weight_kg:l.gross,machine_cost_eur:l.mach,labor_hours:l.lhrs,labor_cost_eur:l.lcost,energy_kwh:l.ekwh,energy_cost_eur:l.ecost,process_cost_eur:l.total,spec_driven:l.spec,spec_label:l.label};});
+    var _split = _calcBomSplit(_matLines, _procLines, null);
     return {
       platform_size:size, pwt_compatibility:pwt,
       total_net_weight_kg:Math.round(tnw*10)/10,
@@ -3725,8 +3731,9 @@ var _PC = {
       supplier_total_eur:Math.round(stot*100)/100,
       oem_internal_eur:Math.round(oem*100)/100,
       total_std_direct_eur:Math.round(std*100)/100,
-      cost_opt_reduction_pct:0, // Reduction is embedded in BOM lines
-      std_platform_tpc_eur:Math.round(tpc*100)/100,
+      cost_opt_reduction_pct:0,
+      std_platform_tpc_eur:_split.std_tpc_eur,
+      dmp:_split.dmp, make:_split.make,
       base_rd_cost_eur_m:brd,
       rd_premium_pct:Math.round((cord+word+reld+safd+comd)*10000)/100,
       rd_prem_safety:      Math.round(safd*10000)/100,
@@ -3740,8 +3747,8 @@ var _PC = {
       std_fte_months:fte_months,
       std_fte_rate_eur_month:this.US_FTE_RATE_MONTH,
       rd_material_index:this.RD_MAT_INDEX,
-      material_lines:mats.map(function(l){return {material_code:l.code,material_name:l.name,net_weight_kg:l.net,scrap_rate:l.sc,gross_weight_kg:l.gross,material_price_eur_kg:l.price,material_cost_eur:l.cost,spec_driven:l.spec,spec_label:l.label};}),
-      process_lines:procs.map(function(l){return {process_code:l.code,process_name:l.name,gross_weight_kg:l.gross,machine_cost_eur:l.mach,labor_hours:l.lhrs,labor_cost_eur:l.lcost,energy_kwh:l.ekwh,energy_cost_eur:l.ecost,process_cost_eur:l.total,spec_driven:l.spec,spec_label:l.label};}),
+      material_lines:_matLines,
+      process_lines:_procLines,
     };
   }
 };
@@ -3985,9 +3992,72 @@ function _bomDetail(matLines, procLines, r) {
   h += '</tr></table>';
 
   // Cost build-up
-  if (r.direct_cost_eur) {
+  if (r.dmp || r.make) {
+    h += _renderBomSplitView(r);
+  } else if (r.direct_cost_eur) {
     h += _costBuildUp(r);
   }
+  return h;
+}
+
+function _renderBomSplitView(r) {
+  var dmp = r.dmp, mk = r.make;
+  if (!dmp && !mk) return '';
+  var MO = 'font-family:DM Mono,monospace;';
+  var BK = 'background:var(--s2);border-radius:4px;padding:10px 12px;margin-top:10px;';
+  var H2 = MO+'font-size:8px;text-transform:uppercase;letter-spacing:1px;color:';
+  var LN = 'display:flex;justify-content:space-between;font-size:9px;padding:2px 0;';
+  var LNm= LN+'color:var(--muted2);';
+  var DIV= 'border-top:1px solid var(--border2);margin:4px 0;';
+  function row(label, val, bold, col) {
+    var c = col||'var(--text)'; var fw = bold?'font-weight:600;':'';
+    return '<div style="'+LN+fw+'"><span style="color:'+c+';">'+label+'</span>'
+          +'<span style="'+MO+'color:'+c+';">€'+Math.round(val).toLocaleString()+'</span></div>';
+  }
+  function rowHrs(label, val) {
+    return '<div style="'+LNm+'"><span>'+label+'</span><span style="'+MO+'">'+val.toFixed(3)+' h/unit</span></div>';
+  }
+  function rowKwh(label, val) {
+    return '<div style="'+LNm+'"><span>'+label+'</span><span style="'+MO+'">'+val.toFixed(3)+' kWh/unit</span></div>';
+  }
+  var h = '';
+  // Category 1: DMP
+  if (dmp) {
+    h += '<div style="'+BK+'">';
+    h += '<div style="'+H2+'var(--orange);">① Direct Material Purchase (Supplier)</div>';
+    h += row('(a) Raw Material', dmp.raw_material_eur);
+    if (dmp.buy_labor_eur > 0)   h += row('(b) Supplier Labor', dmp.buy_labor_eur);
+    if (dmp.buy_energy_eur > 0)  h += row('(c) Supplier Energy', dmp.buy_energy_eur);
+    if (dmp.buy_deprec_eur > 0)  h += row('(e) Depreciation / Generic PPE', dmp.buy_deprec_eur);
+    h += '<div style="'+DIV+'"></div>';
+    h += row('Sub-total Direct', dmp.direct_eur, false, 'var(--muted)');
+    h += row('(d) Overhead 12%', dmp.overhead_eur, false, 'var(--muted2)');
+    h += row('(f) Supplier Profit 8%', dmp.profit_eur, false, 'var(--muted2)');
+    h += '<div style="'+DIV+'"></div>';
+    h += row('DMP Total', dmp.total_eur, true, 'var(--orange)');
+    h += '</div>';
+  }
+  // Category 2: Make
+  if (mk) {
+    h += '<div style="'+BK+'">';
+    h += '<div style="'+H2+'var(--cyan);">② Make Transformation (OEM)</div>';
+    h += row('(a) Labor — '+mk.labor_hrs_pu.toFixed(3)+' h/unit × €58/hr', mk.labor_eur);
+    h += row('(b) Energy — '+mk.energy_kwh_pu.toFixed(3)+' kWh/unit × €0.08/kWh', mk.energy_eur);
+    if (mk.machine_eur > 0) h += row('Machine depreciation', mk.machine_eur);
+    h += '<div style="'+DIV+'"></div>';
+    h += row('Sub-total Direct', mk.direct_eur, false, 'var(--muted)');
+    h += row('(c) Overhead 20%', mk.overhead_eur, false, 'var(--muted2)');
+    h += '<div style="'+DIV+'"></div>';
+    h += row('Make Total', mk.total_eur, true, 'var(--cyan)');
+    h += '</div>';
+  }
+  // TPC summary
+  var tpc = (dmp ? dmp.total_eur : 0) + (mk ? mk.total_eur : 0);
+  h += '<div style="'+MO+'font-size:9px;margin-top:8px;padding:6px 0;border-top:1px solid var(--border2);display:flex;justify-content:space-between;">';
+  h += '<span style="color:var(--muted2);">Standard Module TPC</span>';
+  h += '<span style="font-weight:700;color:var(--white);">€'+Math.round(tpc).toLocaleString()+'/veh</span>';
+  h += '</div>';
+  h += '<div style="'+MO+'font-size:7.5px;color:var(--muted2);margin-bottom:4px;">US reference rates · DMP repriced in §7 by sourcing zone · Make repriced by plant country</div>';
   return h;
 }
 
@@ -4412,7 +4482,7 @@ var _ICE_PC = {
       oem_internal_eur:        Math.round(oem*100)/100,
       total_std_direct_eur:    Math.round(std*100)/100,
       std_platform_tpc_eur:    Math.round(tpc*100)/100,
-      cost_opt_reduction_pct:  0, // Reduction is embedded in BOM lines, same as _PC
+      cost_opt_reduction_pct:  0,
       base_rd_cost_eur_m:      brd,
       rd_premium_pct:          rd_prem_pct,
       total_rd_cost_eur_m:     total_rd,
@@ -4433,6 +4503,9 @@ var _ICE_PC = {
         energy_kwh:l.ekwh, energy_cost_eur:l.ecost,
         process_cost_eur:l.total, spec_driven:l.spec, spec_label:l.label};}),
     };
+    var _sp=_calcBomSplit(r.material_lines,r.process_lines,null);
+    r.dmp=_sp.dmp; r.make=_sp.make; r.std_platform_tpc_eur=_sp.std_tpc_eur;
+    return r;
   }
 };
 
@@ -4718,6 +4791,9 @@ var _EPWT_PC = {
         energy_kwh:l.ekwh, energy_cost_eur:l.ecost,
         process_cost_eur:l.total, spec_driven:l.spec, spec_label:l.label};}),
     };
+    var _sp=_calcBomSplit(r.material_lines,r.process_lines,make_buy==='BUY'?'BUY':null);
+    r.dmp=_sp.dmp; r.make=_sp.make; r.std_platform_tpc_eur=_sp.std_tpc_eur;
+    return r;
   }
 };
 
@@ -5044,6 +5120,9 @@ var _TOPHAT_PC = {
         energy_kwh:l.ekwh, energy_cost_eur:l.ecost,
         process_cost_eur:l.total, spec_driven:l.spec, spec_label:l.label};}),
     };
+    var _sp=_calcBomSplit(r.material_lines,r.process_lines,null);
+    r.dmp=_sp.dmp; r.make=_sp.make; r.std_platform_tpc_eur=_sp.std_tpc_eur;
+    return r;
   }
 };
 
@@ -5387,6 +5466,9 @@ var _EANDS_PC = {
         energy_kwh:l.ekwh, energy_cost_eur:l.ecost,
         process_cost_eur:l.total, spec_driven:l.spec, spec_label:l.label};}),
     };
+    var _sp=_calcBomSplit(r.material_lines,r.process_lines,make_buy==='BUY'?'BUY':null);
+    r.dmp=_sp.dmp; r.make=_sp.make; r.std_platform_tpc_eur=_sp.std_tpc_eur;
+    return r;
   }
 };
 
@@ -5698,6 +5780,9 @@ var _BATTERY_PC = {
         energy_kwh:l.ekwh, energy_cost_eur:l.ecost,
         process_cost_eur:l.total, spec_driven:l.spec, spec_label:l.label};}),
     };
+    var _sp=_calcBomSplit(r.material_lines,r.process_lines,make_buy==='BUY'?'BUY':null);
+    r.dmp=_sp.dmp; r.make=_sp.make; r.std_platform_tpc_eur=_sp.std_tpc_eur;
+    return r;
   }
 };
 
@@ -16621,20 +16706,19 @@ function buildReviewSection() {
   function _getInfo(propKey, label, color, hex) {
     var p = _prop[propKey];
     var m = {label:label,color:color,hex:hex,mode:'',tpc:0,tpc_bev:0,rd:0,fte:0,weight:0,
-             mat_cost:0,proc_cost:0,material_lines:[],process_lines:[],specs:{},configKey:'',isMulti:false};
+             mat_cost:0,proc_cost:0,material_lines:[],process_lines:[],specs:{},configKey:'',isMulti:false,
+             dmp:null,make:null};
     if (!p||!p.mode) return m;
     m.mode=p.mode; m.specs=p.specs||{}; m.configKey=(p.specs||{}).config_key||'';
-    // Platform display key (size_pwt for readability)
     if (propKey==='platform' && !m.configKey && m.specs.size && m.specs.pwt)
       m.configKey = (m.specs.size+'_'+m.specs.pwt).toUpperCase();
     if (p.mode==='new') {
       var r=_recalc(propKey);
       if (r) {
         if (r.is_multi_energy) {
-          // ice_and_bev: variant-specific TPC, shared R&D
           m.isMulti = true;
-          m.tpc     = r.ice_ready.std_platform_tpc_eur||0;  // ICE-ready TPC
-          m.tpc_bev = r.bev_ready.std_platform_tpc_eur||0;  // BEV-ready TPC
+          m.tpc     = r.ice_ready.std_platform_tpc_eur||0;
+          m.tpc_bev = r.bev_ready.std_platform_tpc_eur||0;
           m.rd      = r.total_rd_cost_eur_m||0;
           m.fte     = r.std_fte_months||0;
           m.weight  = r.ice_ready.total_net_weight_kg||0;
@@ -16642,6 +16726,8 @@ function buildReviewSection() {
           m.proc_cost=r.ice_ready.total_process_cost_eur||0;
           m.material_lines = (r.ice_ready.material_lines||[]).concat(r.bev_ready.material_lines||[]);
           m.process_lines  = r.ice_ready.process_lines||[];
+          m.dmp  = r.ice_ready.dmp  || null;
+          m.make = r.ice_ready.make || null;
         } else {
           m.tpc    = r.std_platform_tpc_eur||0;
           m.tpc_bev= r.std_platform_tpc_eur||0;
@@ -16652,7 +16738,14 @@ function buildReviewSection() {
           m.proc_cost= r.total_process_cost_eur||0;
           m.material_lines = r.material_lines||[];
           m.process_lines  = r.process_lines||[];
+          m.dmp  = r.dmp  || null;
+          m.make = r.make || null;
         }
+        // Cache dmp/make on module object so §7 supply plan can read them
+        if (!p.module) p.module = {};
+        p.module.per_unit_tpc_eur = m.tpc;
+        p.module.dmp  = m.dmp;
+        p.module.make = m.make;
       }
     } else if (p.module) {
       var mod=p.module;
@@ -16660,6 +16753,8 @@ function buildReviewSection() {
       m.rd=parseFloat(mod.total_rd_spend_m||0);
       m.fte=parseFloat(mod.total_rd_fte||0);     m.weight=parseFloat(mod.total_weight_kg||0);
       m.name=mod.name; m.configKey=mod.config_key||''; m.specs=mod.specs||{};
+      m.dmp  = mod.dmp  || null;
+      m.make = mod.make || null;
     }
     return m;
   }
@@ -17903,6 +17998,82 @@ var QUALITY_TIERS = [
   {key:'PREMIUM',    label:'Premium Quality',  warranty_pct:0.012, pp100: 70, unit_add_eur:280, desc:'1.2% warranty · 70 PP100 · Premium segment quality'},
   {key:'WORLD_CLASS',label:'World-Class (TPS)',warranty_pct:0.007, pp100: 40, unit_add_eur:500, desc:'0.7% warranty · 40 PP100 · Toyota Production System'},
 ];
+
+// ── BOM Make/Buy split constants ─────────────────────────────────────────────
+var SUPPLIER_OVERHEAD_RATE = 0.12;  // 12% of supplier direct cost
+var SUPPLIER_PROFIT_RATE   = 0.08;  // 8% of (supplier direct + overhead)
+var OEM_OVERHEAD_RATE      = 0.20;  // 20% of OEM direct make cost
+
+// Process code classification: MAKE = OEM plant, BUY = supplier-performed
+var PROC_MAKE_BUY = {
+  // OEM plant operations (Make Transformation)
+  STAMPING:'MAKE', ROLL_FORMING:'MAKE', WELDING_MIG:'MAKE', WELDING_LASER:'MAKE',
+  WELDING_FRICTION:'MAKE', ASSEMBLY_GEN:'MAKE', ASSEMBLY_PRESS:'MAKE',
+  COATING_ECOAT:'MAKE', ENGINE_ASSEMBLY:'MAKE', DYNO_TEST:'MAKE',
+  MOTOR_ASSEMBLY:'MAKE', MOTOR_TEST:'MAKE', PANEL_STAMP:'MAKE',
+  GLASS_INSTALL:'MAKE', TRIM_ASSEMBLY:'MAKE', NVH_APPLICATION:'MAKE',
+  MECH_ASSEMBLY:'MAKE', SEAL_ASSEMBLY:'MAKE', SAFETY_INSTALL:'MAKE',
+  HARNESS_INSTALL:'MAKE', SENSOR_INSTALL:'MAKE', SW_INTEGRATION:'MAKE',
+  VALIDATION:'MAKE', MODULE_ASSEMBLY:'MAKE', PACK_INTEGRATION:'MAKE', EOL_TEST:'MAKE',
+  // Supplier-performed operations (Direct Material Purchase)
+  DIE_CASTING:'BUY', MACHINING_CNC:'BUY', COMPOSITE_LAY:'BUY',
+  IRON_CASTING:'BUY', ALU_DIE_CAST:'BUY', HOT_FORGING:'BUY', ENGINE_MACHINING:'BUY',
+  LAMI_STAMP:'BUY', COIL_WINDING:'BUY', MAGNET_ASSEMBLY:'BUY', SHAFT_MACHINING:'BUY',
+  SEAT_ASSEMBLY:'BUY', FOAM_MOULD:'BUY', ECU_ASSEMBLY:'BUY',
+  ELECTRODE_MIXING:'BUY', CELL_ASSEMBLY:'BUY', CELL_FORMATION:'BUY',
+};
+
+// Shared BOM split helper — called by all 6 cost engines after BOM is fully built.
+// makeBuyOverride: null (use PROC_MAKE_BUY table) | 'BUY' (entire module bought)
+function _calcBomSplit(matLines, procLines, makeBuyOverride) {
+  var allBuy = (makeBuyOverride === 'BUY');
+  var buyProcs = [], makeProcs = [];
+  procLines.forEach(function(l) {
+    var tag = allBuy ? 'BUY' : (PROC_MAKE_BUY[l.process_code] || 'MAKE');
+    (tag === 'BUY' ? buyProcs : makeProcs).push(l);
+  });
+  function sum(arr, f) { return arr.reduce(function(s,l){ return s+(l[f]||0); }, 0); }
+  var raw_mat  = sum(matLines, 'material_cost_eur');
+  var buy_lbr  = sum(buyProcs, 'labor_cost_eur');
+  var buy_eng  = sum(buyProcs, 'energy_cost_eur');
+  var buy_depr = sum(buyProcs, 'machine_cost_eur');
+  var buy_dir  = raw_mat + buy_lbr + buy_eng + buy_depr;
+  var buy_oh   = buy_dir * SUPPLIER_OVERHEAD_RATE;
+  var buy_prof = (buy_dir + buy_oh) * SUPPLIER_PROFIT_RATE;
+  var dmp_tot  = buy_dir + buy_oh + buy_prof;
+  var mk_lbr   = sum(makeProcs, 'labor_cost_eur');
+  var mk_eng   = sum(makeProcs, 'energy_cost_eur');
+  var mk_mach  = sum(makeProcs, 'machine_cost_eur');
+  var mk_dir   = mk_lbr + mk_eng + mk_mach;
+  var mk_oh    = mk_dir * OEM_OVERHEAD_RATE;
+  var mk_tot   = mk_dir + mk_oh;
+  var mk_lhrs  = sum(makeProcs, 'labor_hours');
+  var mk_ekwh  = sum(makeProcs, 'energy_kwh');
+  function r2(v){ return Math.round(v*100)/100; }
+  return {
+    dmp: {
+      raw_material_eur: r2(raw_mat),
+      buy_labor_eur:    r2(buy_lbr),
+      buy_energy_eur:   r2(buy_eng),
+      buy_deprec_eur:   r2(buy_depr),
+      direct_eur:       r2(buy_dir),
+      overhead_eur:     r2(buy_oh),
+      profit_eur:       r2(buy_prof),
+      total_eur:        r2(dmp_tot),
+    },
+    make: {
+      labor_eur:     r2(mk_lbr),
+      energy_eur:    r2(mk_eng),
+      machine_eur:   r2(mk_mach),
+      direct_eur:    r2(mk_dir),
+      overhead_eur:  r2(mk_oh),
+      total_eur:     r2(mk_tot),
+      labor_hrs_pu:  Math.round(mk_lhrs*1000)/1000,
+      energy_kwh_pu: Math.round(mk_ekwh*1000)/1000,
+    },
+    std_tpc_eur: r2(dmp_tot + mk_tot),
+  };
+}
 
 // ── Supply Plan lookup tables (Section 7 — Parts Supply Plan block) ─────────
 // Keyed by actual prop slot (platform/pwt/epwt/battery/tophat/eands)
@@ -19664,10 +19835,18 @@ function _spSlotLabel(sk){
 }
 
 function _spSlotBuyCost(sk){
-  var mt=SP_MODULE_TYPES[sk];if(!mt)return 0;
   var p=_prop[sk];
-  var tpc=(p&&p.module)?parseFloat(p.module.per_unit_tpc_eur||0):0;
+  if(!p)return 0;
+  // Use BOM-derived DMP total if available (set by _getInfo() cache or DB)
+  if(p.module&&p.module.dmp)return parseFloat(p.module.dmp.total_eur||0);
+  // Fallback: old approximation for modules without dmp data
+  var mt=SP_MODULE_TYPES[sk]||{buy_fraction:0.75};
+  var tpc=(p.module)?parseFloat(p.module.per_unit_tpc_eur||0):0;
   return tpc*mt.buy_fraction;
+}
+function _spSlotMake(sk){
+  var p=_prop[sk];
+  return (p&&p.module&&p.module.make)||null;
 }
 
 function _spInitFromPlants(){
@@ -19703,9 +19882,12 @@ function _calcModuleSupplyMetrics(sk,zoneKey,autoLevel,plantRegion){
   var zone=SP_ZONES.find(function(z){return z.key===zoneKey;})||SP_ZONES[0];
   var auto=SP_AUTO_LEVELS.find(function(a){return a.key===autoLevel;})||SP_AUTO_LEVELS[1];
   var p=_prop[sk];
+  var dmpData=p&&p.module&&p.module.dmp;
   var tpcRaw=p&&p.module?parseFloat(p.module.per_unit_tpc_eur||0):0;
-  var buyCost=tpcRaw*mt.buy_fraction;
-  var laborAdj=buyCost*mt.labor_intensity*(zone.labor_index*auto.labor_factor-1.0);
+  var buyCost=dmpData?parseFloat(dmpData.total_eur||0):tpcRaw*mt.buy_fraction;
+  // Use BOM-derived supplier labor as the basis for zone labor adjustment
+  var laborBase=dmpData?parseFloat(dmpData.buy_labor_eur||0):buyCost*mt.labor_intensity;
+  var laborAdj=laborBase*(zone.labor_index*auto.labor_factor-1.0);
   var freightEur=zone.logistics[plantRegion]||300;
   var dutyEur=buyCost*(zone.duty[plantRegion]||0)/100;
   var pieceAdj=Math.round(laborAdj+(freightEur-200)+dutyEur);
@@ -19763,15 +19945,17 @@ function _renderPlantSupplyCard(vp,sp){
   h+='<div style="'+MO+'font-size:8px;font-weight:600;color:var(--gold);padding:2px 0 6px 0;">'
     +'🏭 '+(_ct.flag||'')+' '+(vp.country_name||vp.country_code||vp.region)
     +' &nbsp;·&nbsp; <span style="color:var(--muted2);">'+vp.region+'</span></div>';
-  var plantLanded=0,plantNrePu=0;
+  var plantLanded=0,plantNrePu=0,plantMakeCost=0;
   slots.forEach(function(sk){
     var dec=plantMods[sk]||{zone:_spDefaultZoneForRegion(vp.region),automation:2};
     var m=_calcModuleSupplyMetrics(sk,dec.zone,dec.automation,vp.region);
     plantLanded+=m.landed_eur;plantNrePu+=m.nre_per_unit_eur;
+    var mc=_calcModuleMakeCost(sk,_ct);
+    plantMakeCost+=mc.total_eur;
     var lbl=_spSlotLabel(sk);
     var lAdj=m.labor_adj>=0?'+€'+m.labor_adj:'−€'+Math.abs(m.labor_adj);
     var lAdjCol=m.labor_adj<=0?'var(--green)':'var(--orange)';
-    // Row 1: module name | zone select | auto select | landed cost
+    // Row 1: module name | zone select | auto select | landed DMP cost
     h+='<div style="display:grid;grid-template-columns:1fr 128px 88px auto;gap:4px;align-items:center;margin-bottom:2px;">';
     h+='<div style="'+MO+'font-size:8px;font-weight:600;color:var(--white);">'+lbl+'</div>';
     h+='<select style="'+SEL+'" onchange="onSpZone(\''+vp.id+'\',\''+sk+'\',this.value)">';
@@ -19782,25 +19966,48 @@ function _renderPlantSupplyCard(vp,sp){
     h+='</select>';
     h+='<div style="'+MO+'font-size:9px;font-weight:700;color:var(--cyan);text-align:right;white-space:nowrap;">€'+m.landed_eur.toLocaleString()+'</div>';
     h+='</div>';
-    // Row 2: cost breakdown detail
+    // Row 2: DMP breakdown
     var nrePuStr=m.nre_per_unit_eur>0?' · NRE +€'+m.nre_per_unit_eur+'/unit':'';
-    h+='<div style="'+MO+'font-size:7.5px;color:var(--muted2);padding:0 0 6px 2px;border-bottom:1px solid var(--border);">'
-      +'Design €'+m.base_tpc.toLocaleString()
-      +' · Purch. '+m.buy_pct+'% → €'+m.base_buy.toLocaleString()
+    h+='<div style="'+MO+'font-size:7.5px;color:var(--muted2);padding:0 0 2px 2px;">'
+      +'① DMP: €'+m.base_buy.toLocaleString()+' std'
       +' · Labor <span style="color:'+lAdjCol+';">'+lAdj+'</span>'
       +' · Freight €'+m.logistics_eur
       +' · Duty €'+m.duty_eur
       +nrePuStr
       +'</div>';
+    // Row 3: Make cost at plant country
+    if(mc.total_eur>0){
+      var vsStr=mc.vs_standard_eur!==0?(mc.vs_standard_eur>0?' <span style="color:var(--orange);">+€'+mc.vs_standard_eur+'</span>':' <span style="color:var(--green);">−€'+Math.abs(mc.vs_standard_eur)+'</span>'):'';
+      h+='<div style="'+MO+'font-size:7.5px;color:var(--muted2);padding:0 0 5px 2px;border-bottom:1px solid var(--border);">'
+        +'② Make: Labor €'+mc.labor_eur+' · Energy €'+mc.energy_eur+' · OH €'+mc.overhead_eur
+        +' → <span style="color:var(--purple);font-weight:600;">€'+mc.total_eur+'</span>'+vsStr
+        +'</div>';
+    } else {
+      h+='<div style="'+MO+'font-size:7.5px;color:var(--muted2);padding:0 0 5px 2px;border-bottom:1px solid var(--border);">② Make: —</div>';
+    }
   });
   // Plant total footer
   var volK=_suggestedVolK()||0;
   var volStr=volK>0?' @ '+volK+'k/yr':'';
-  h+='<div style="'+MO+'font-size:8px;padding-top:5px;display:flex;gap:16px;">'
-    +'<span style="color:var(--muted2);">Total landed parts:</span>'
+  var hasMake=plantMakeCost>0;
+  h+='<div style="'+MO+'font-size:8px;padding-top:5px;">';
+  h+='<div style="display:flex;gap:16px;margin-bottom:2px;">'
+    +'<span style="color:var(--muted2);">① Landed parts (DMP):</span>'
     +'<span style="color:var(--cyan);font-weight:700;">€'+plantLanded.toLocaleString()+'/unit</span>'
-    +(plantNrePu>0?'&nbsp;&nbsp;<span style="color:var(--muted2);">NRE amortized: +€'+plantNrePu.toFixed(2)+'/unit'+volStr+'</span>':'')
+    +(plantNrePu>0?'&nbsp;&nbsp;<span style="color:var(--muted2);">NRE +€'+plantNrePu.toFixed(2)+'/unit'+volStr+'</span>':'')
     +'</div>';
+  if(hasMake){
+    h+='<div style="display:flex;gap:16px;margin-bottom:2px;">'
+      +'<span style="color:var(--muted2);">② Make transformation:</span>'
+      +'<span style="color:var(--purple);font-weight:700;">€'+plantMakeCost.toLocaleString()+'/unit</span>'
+      +((_ct.labor_eur_hr)?'&nbsp;&nbsp;<span style="color:var(--muted2);">@€'+_ct.labor_eur_hr+'/hr · €'+_ct.elec_eur_kwh+'/kWh</span>':'')
+      +'</div>';
+    h+='<div style="display:flex;gap:16px;">'
+      +'<span style="color:var(--muted2);">Full module COGS:</span>'
+      +'<span style="color:var(--white);font-weight:700;">€'+(plantLanded+plantMakeCost).toLocaleString()+'/unit</span>'
+      +'</div>';
+  }
+  h+='</div>';
   h+='</div>';
   return h;
 }
@@ -19842,6 +20049,20 @@ function onSpAuto(pid,sk,level){
   if(!sp.plants[pid].modules[sk])sp.plants[pid].modules[sk]={zone:'EU',automation:2};
   sp.plants[pid].modules[sk].automation=level;
   _refreshSupplyPlanArea();renderOpsAggregateSummary();
+}
+
+function _calcModuleMakeCost(sk,countryObj){
+  var mk=_spSlotMake(sk);
+  if(!mk)return {labor_eur:0,energy_eur:0,machine_eur:0,overhead_eur:0,total_eur:0,vs_standard_eur:0};
+  var ctr=countryObj||{labor_eur_hr:52,elec_eur_kwh:0.18};
+  var lEur=Math.round(mk.labor_hrs_pu*(ctr.labor_eur_hr||52)*100)/100;
+  var eEur=Math.round(mk.energy_kwh_pu*(ctr.elec_eur_kwh||0.18)*100)/100;
+  var mEur=mk.machine_eur||0;
+  var dir=lEur+eEur+mEur;
+  var oh=Math.round(dir*OEM_OVERHEAD_RATE*100)/100;
+  var tot=dir+oh;
+  return {labor_eur:lEur,energy_eur:eEur,machine_eur:mEur,overhead_eur:oh,total_eur:Math.round(tot),
+          vs_standard_eur:Math.round(tot-(mk.total_eur||0))};
 }
 
 function _refreshSupplyPlanArea(){
