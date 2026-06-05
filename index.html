@@ -3948,6 +3948,43 @@ function _rdCard(r) {
 
 function _bomDetail(matLines, procLines, r) {
   var h = '';
+  // Cost composition strip
+  var tpc  = r.std_platform_tpc_eur || r.total_std_direct_eur || 0;
+  var mat  = r.total_material_cost_eur || 0;
+  var proc = r.total_process_cost_eur  || 0;
+  var mkup = Math.max(0, tpc - mat - proc);
+  if (tpc > 0) {
+    var matPct  = Math.round(mat  / tpc * 100);
+    var procPct = Math.round(proc / tpc * 100);
+    var mkupPct = 100 - matPct - procPct;
+    h += '<div style="margin-bottom:14px;">';
+    h += '<div style="font-size:8px;font-family:DM Mono,monospace;text-transform:uppercase;letter-spacing:2px;' +
+         'color:var(--muted);margin-bottom:6px;display:flex;align-items:center;gap:8px;">' +
+         'Cost Composition — % of Platform TPC' +
+         '<span style="flex:1;height:1px;background:var(--border);display:inline-block;"></span>' +
+         '<span style="color:var(--white);font-size:10px;font-weight:600;">€' + Math.round(tpc).toLocaleString() + '/veh</span>' +
+         '</div>';
+    h += '<div style="display:flex;height:14px;border-radius:3px;overflow:hidden;margin-bottom:5px;">' +
+         '<div style="width:' + matPct  + '%;background:rgba(56,189,248,.6);"></div>' +
+         '<div style="width:' + procPct + '%;background:rgba(200,164,60,.7);"></div>' +
+         '<div style="width:' + mkupPct + '%;background:rgba(148,163,184,.25);"></div>' +
+         '</div>';
+    h += '<div style="display:flex;font-family:DM Mono,monospace;font-size:9px;">' +
+         '<div style="width:' + matPct  + '%;min-width:70px;">' +
+           '<div style="color:var(--cyan);">MATERIAL</div>' +
+           '<div style="color:var(--muted2);">' + matPct + '% · €' + Math.round(mat).toLocaleString() + '</div>' +
+         '</div>' +
+         '<div style="width:' + procPct + '%;min-width:60px;">' +
+           '<div style="color:var(--gold);">PROCESS</div>' +
+           '<div style="color:var(--muted2);">' + procPct + '% · €' + Math.round(proc).toLocaleString() + '</div>' +
+         '</div>' +
+         '<div style="flex:1;">' +
+           '<div style="color:var(--muted2);">MARKUP</div>' +
+           '<div style="color:var(--muted2);">' + mkupPct + '% · €' + Math.round(mkup).toLocaleString() + '</div>' +
+         '</div>' +
+         '</div>';
+    h += '</div>';
+  }
   // Material table
   h += '<div style="font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:2px;margin:6px 0 4px;">Material BOM</div>';
   h += '<table style="width:100%;border-collapse:collapse;font-size:10px;">';
