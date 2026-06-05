@@ -4466,7 +4466,7 @@ var _ICE_PC = {
     var rd_prem_pct = Math.round((pow_d+emis_d+rel_d+cord+word)*10000)/100;
 
     // Step 11 — Return (same shape as _PC.calc())
-    return {
+    var _r = {
       module_type: 'ice_pwt',
       pwt_compatibility: 'ice_only',
       config_key: config_key,
@@ -4503,9 +4503,9 @@ var _ICE_PC = {
         energy_kwh:l.ekwh, energy_cost_eur:l.ecost,
         process_cost_eur:l.total, spec_driven:l.spec, spec_label:l.label};}),
     };
-    var _sp=_calcBomSplit(r.material_lines,r.process_lines,null);
-    r.dmp=_sp.dmp; r.make=_sp.make; r.std_platform_tpc_eur=_sp.std_tpc_eur;
-    return r;
+    var _sp=_calcBomSplit(_r.material_lines,_r.process_lines,null);
+    _r.dmp=_sp.dmp; _r.make=_sp.make; _r.std_platform_tpc_eur=_sp.std_tpc_eur;
+    return _r;
   }
 };
 
@@ -4755,7 +4755,7 @@ var _EPWT_PC = {
     var rd_mat_cost = Math.round(total_rd*this.RD_MAT_SHARE*100)/100;
     var fte_months  = Math.round(rd_fte_cost*1000000/this.US_FTE_RATE_MONTH/10)*10;
 
-    return {
+    var _r = {
       module_type: 'epwt', make_buy: make_buy, epwt_class: epwt_class,
       pwt_compatibility: 'ice_only',
       total_net_weight_kg:     Math.round(tnw*10)/10,
@@ -4791,9 +4791,9 @@ var _EPWT_PC = {
         energy_kwh:l.ekwh, energy_cost_eur:l.ecost,
         process_cost_eur:l.total, spec_driven:l.spec, spec_label:l.label};}),
     };
-    var _sp=_calcBomSplit(r.material_lines,r.process_lines,make_buy==='BUY'?'BUY':null);
-    r.dmp=_sp.dmp; r.make=_sp.make; r.std_platform_tpc_eur=_sp.std_tpc_eur;
-    return r;
+    var _sp=_calcBomSplit(_r.material_lines,_r.process_lines,make_buy==='BUY'?'BUY':null);
+    _r.dmp=_sp.dmp; _r.make=_sp.make; _r.std_platform_tpc_eur=_sp.std_tpc_eur;
+    return _r;
   }
 };
 
@@ -5084,7 +5084,7 @@ var _TOPHAT_PC = {
     var fte_months  = Math.round(rd_fte_cost*1000000/_TOPHAT_PC.US_FTE_RATE_MONTH/10)*10;
     var rd_prem_pct = Math.round((room_d+prem_d+saf_d+rel_d+cord+word)*10000)/100;
 
-    return {
+    var _r = {
       module_type: 'tophat', config_key: config_key,
       pwt_compatibility: 'ice_only',
       total_net_weight_kg:     Math.round(tnw*10)/10,
@@ -5120,9 +5120,9 @@ var _TOPHAT_PC = {
         energy_kwh:l.ekwh, energy_cost_eur:l.ecost,
         process_cost_eur:l.total, spec_driven:l.spec, spec_label:l.label};}),
     };
-    var _sp=_calcBomSplit(r.material_lines,r.process_lines,null);
-    r.dmp=_sp.dmp; r.make=_sp.make; r.std_platform_tpc_eur=_sp.std_tpc_eur;
-    return r;
+    var _sp=_calcBomSplit(_r.material_lines,_r.process_lines,null);
+    _r.dmp=_sp.dmp; _r.make=_sp.make; _r.std_platform_tpc_eur=_sp.std_tpc_eur;
+    return _r;
   }
 };
 
@@ -5430,7 +5430,7 @@ var _EANDS_PC = {
     var rd_mat_cost = Math.round(total_rd*this.RD_MAT_SHARE*100)/100;
     var fte_months  = Math.round(rd_fte_cost*1000000/this.US_FTE_RATE_MONTH/10)*10;
 
-    return {
+    var _r = {
       module_type: 'eands', make_buy: make_buy, ee_arch: ee_arch,
       pwt_compatibility: 'any',
       total_net_weight_kg:     Math.round(tnw*10)/10,
@@ -5466,9 +5466,9 @@ var _EANDS_PC = {
         energy_kwh:l.ekwh, energy_cost_eur:l.ecost,
         process_cost_eur:l.total, spec_driven:l.spec, spec_label:l.label};}),
     };
-    var _sp=_calcBomSplit(r.material_lines,r.process_lines,make_buy==='BUY'?'BUY':null);
-    r.dmp=_sp.dmp; r.make=_sp.make; r.std_platform_tpc_eur=_sp.std_tpc_eur;
-    return r;
+    var _sp=_calcBomSplit(_r.material_lines,_r.process_lines,make_buy==='BUY'?'BUY':null);
+    _r.dmp=_sp.dmp; _r.make=_sp.make; _r.std_platform_tpc_eur=_sp.std_tpc_eur;
+    return _r;
   }
 };
 
@@ -5749,7 +5749,7 @@ var _BATTERY_PC = {
     var fte_months  = Math.round(rd_fte_cost*1000000/this.US_FTE_RATE_MONTH/10)*10;
     var pack_vol_l  = Math.round(target_kwh * 1000 / chem_props.wh_per_l * 10) / 10;
 
-    return {
+    var _r = {
       module_type:'battery', make_buy:make_buy, chemistry:chemistry, chemistry_name:chem_props.n,
       target_kwh:target_kwh, pack_volume_l:pack_vol_l,
       pwt_compatibility:'any',
@@ -5780,9 +5780,9 @@ var _BATTERY_PC = {
         energy_kwh:l.ekwh, energy_cost_eur:l.ecost,
         process_cost_eur:l.total, spec_driven:l.spec, spec_label:l.label};}),
     };
-    var _sp=_calcBomSplit(r.material_lines,r.process_lines,make_buy==='BUY'?'BUY':null);
-    r.dmp=_sp.dmp; r.make=_sp.make; r.std_platform_tpc_eur=_sp.std_tpc_eur;
-    return r;
+    var _sp=_calcBomSplit(_r.material_lines,_r.process_lines,make_buy==='BUY'?'BUY':null);
+    _r.dmp=_sp.dmp; _r.make=_sp.make; _r.std_platform_tpc_eur=_sp.std_tpc_eur;
+    return _r;
   }
 };
 
