@@ -8838,6 +8838,48 @@ function openModDetailModal(moduleId) {
   }
   html += '</div>';
 
+  // § Standard Cost Split
+  var _bom = _computeModDmpMake(mod);
+  if (_bom) {
+    var _d = _bom.dmp, _m = _bom.make;
+    var _tpc = _bom.tpc || parseFloat(mod.per_unit_tpc_eur||0);
+    var _dmpPct = _tpc > 0 ? Math.round(_d.total_eur / _tpc * 100) : 85;
+    var _mkPct  = 100 - _dmpPct;
+    var MO = 'font-family:DM Mono,monospace;';
+    html += '<div class="bc-section"><div class="bc-section-title">Standard Cost Split' +
+      (_bom.is_fallback ? ' <span style="font-size:8px;color:var(--muted2);">(estimated)</span>' : '') +
+      '</div>';
+    html += '<div style="height:6px;border-radius:3px;overflow:hidden;display:flex;margin-bottom:8px;">' +
+      '<div style="flex:'+_dmpPct+';background:var(--orange);"></div>' +
+      '<div style="flex:'+_mkPct+';background:var(--cyan);"></div></div>';
+    html += '<div style="display:flex;gap:14px;margin-bottom:10px;'+MO+'font-size:9px;">' +
+      '<span style="color:var(--orange);">&#9632; SUPPLIER DMP '+_dmpPct+'%</span>' +
+      '<span style="color:var(--cyan);">&#9632; OEM TRANSFORM '+_mkPct+'%</span></div>';
+    html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">';
+    html += '<div style="background:var(--s2);border:1px solid var(--orange)44;border-radius:4px;padding:10px 12px;">' +
+      '<div style="'+MO+'font-size:8px;text-transform:uppercase;letter-spacing:1px;color:var(--orange);margin-bottom:8px;">① Supplier Purchased Cost</div>';
+    [['Supplier Direct',_d.supplier_direct_eur],['+12% Overhead',_d.oh_eur],['+8% Profit',_d.profit_eur]].forEach(function(l){
+      html += '<div style="display:flex;justify-content:space-between;'+MO+'font-size:9px;color:var(--muted2);padding:2px 0;">' +
+        '<span>'+l[0]+'</span><span>€'+Math.round(l[1])+'</span></div>';
+    });
+    html += '<div style="border-top:1px solid var(--orange)44;margin-top:6px;padding-top:6px;display:flex;' +
+      'justify-content:space-between;'+MO+'font-size:10px;font-weight:700;color:var(--orange);">' +
+      '<span>DMP Total</span><span>€'+Math.round(_d.total_eur)+'</span></div></div>';
+    html += '<div style="background:var(--s2);border:1px solid var(--cyan)44;border-radius:4px;padding:10px 12px;">' +
+      '<div style="'+MO+'font-size:8px;text-transform:uppercase;letter-spacing:1px;color:var(--cyan);margin-bottom:8px;">② OEM Transformation</div>';
+    [['Labor',_m.labor_eur],['Energy',_m.energy_eur],['+20% Overhead',_m.oh_eur]].forEach(function(l){
+      html += '<div style="display:flex;justify-content:space-between;'+MO+'font-size:9px;color:var(--muted2);padding:2px 0;">' +
+        '<span>'+l[0]+'</span><span>€'+Math.round(l[1])+'</span></div>';
+    });
+    html += '<div style="border-top:1px solid var(--cyan)44;margin-top:6px;padding-top:6px;display:flex;' +
+      'justify-content:space-between;'+MO+'font-size:10px;font-weight:700;color:var(--cyan);">' +
+      '<span>OEM Make Total</span><span>€'+Math.round(_m.total_eur)+'</span></div></div>';
+    html += '</div>';
+    html += '<div style="margin-top:8px;'+MO+'font-size:10px;color:var(--muted2);text-align:right;">' +
+      'Total TPC: <span style="color:var(--gold);font-weight:700;">€'+Math.round(_tpc)+'/veh</span></div>';
+    html += '</div>';
+  }
+
   // § Vehicles using this module (loaded async)
   html += '<div class="bc-section"><div class="bc-section-title">Vehicles Using This Module</div>' +
     '<div id="mdm-vehicles-body" style="font-family:DM Mono,monospace;font-size:10px;color:var(--muted2);">' +
@@ -17982,6 +18024,54 @@ function _computeDmpMake() {
     }
   });
   return {dmp:dmp, make:make, matEur:mat, labEur:lab};
+}
+
+// Recompute DMP/Make split for a library module object using its stored specs + config_key.
+// Returns {dmp, make, tpc} or {…, is_fallback:true} estimate when engine can't be called.
+function _computeModDmpMake(mod) {
+  if (!mod || !mod.config_key) return null;
+  var s = mod.specs || {};
+  try {
+    var r = null;
+    if (mod.module_type === 'platform') {
+      var parts = mod.config_key.split('_');
+      var size  = parts[0].toLowerCase();
+      var pwt   = {ICE:'ice_only', BEV:'bev_only', MULTI:'ice_and_bev'}[parts[parts.length-1]] || 'ice_only';
+      r = _PC.calc(size, pwt, 0, 0,
+            parseFloat(s.reliability||0.5), parseFloat(s.safety||0.5), parseFloat(s.comfort||0.5));
+    } else if (mod.module_type === 'ice_pwt') {
+      r = _ICE_PC.calc(mod.config_key,
+            parseFloat(s.power||100), parseFloat(s.emission_tech||0.1),
+            parseFloat(s.reliability||0.5), 0, 0);
+    } else if (mod.module_type === 'epwt') {
+      r = _EPWT_PC.calc(mod.config_key,
+            parseFloat(s.power_kw||150), parseFloat(s.efficiency||0.7),
+            parseFloat(s.reliability||0.5), 0, 0);
+    } else if (mod.module_type === 'battery') {
+      r = _BATTERY_PC.calc(mod.config_key, parseFloat(s.target_kwh||60), 0);
+    } else if (mod.module_type === 'tophat') {
+      r = _TOPHAT_PC.calc(mod.config_key,
+            parseFloat(s.reliability||0.5), parseFloat(s.comfort||0.5),
+            parseFloat(s.safety||0.5), parseFloat(s.roominess||2.5),
+            parseFloat(s.premiumness||0.3), 0, 0);
+    } else if (mod.module_type === 'eands') {
+      r = _EANDS_PC.calc(mod.config_key,
+            parseFloat(s.adas_level||1), parseFloat(s.sensor_suite||30),
+            parseFloat(s.connectivity||30), parseFloat(s.infotainment||30),
+            parseFloat(s.cybersecurity||20), 0, 0);
+    }
+    if (r && r.dmp && r.make)
+      return {dmp:r.dmp, make:r.make, tpc:r.std_platform_tpc_eur||r.total_std_direct_eur||0};
+  } catch(e) { /* fall through to estimate */ }
+  if (mod.per_unit_tpc_eur) {
+    var tpc = parseFloat(mod.per_unit_tpc_eur);
+    return {
+      dmp:  {total_eur:tpc*0.85, supplier_direct_eur:tpc*0.72, oh_eur:tpc*0.086, profit_eur:tpc*0.064},
+      make: {total_eur:tpc*0.15, labor_eur:tpc*0.12, energy_eur:tpc*0.005, oh_eur:tpc*0.025},
+      tpc:  tpc, is_fallback:true
+    };
+  }
+  return null;
 }
 
 // _prop.commercial = { years: [{year, price, volume, discount}], markets: [{region, vol_pct, price_idx, selected}] }
