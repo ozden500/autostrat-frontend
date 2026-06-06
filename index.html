@@ -15910,6 +15910,41 @@ function buildModuleOptions(modType, propKey, nextFn) {
     if (list.length === 0) {
       html += '<div style="color:var(--muted2);font-size:11px;padding:12px;background:var(--s3);border-radius:3px;">' +
         'No compatible modules for this segment / PWT type. Switch to New Development.</div>';
+      // In Reuse mode, also show any library modules that exist but aren't ready yet,
+      // so the Details link is accessible for inspection even before modules are completed.
+      if (currentSel.mode === 'reuse') {
+        var libMods = mods.filter(function(m){ return _isPropModuleCompatible(m, modType).ok; });
+        if (libMods.length > 0) {
+          html += '<div style="margin-top:10px;font-family:DM Mono,monospace;font-size:8px;text-transform:uppercase;' +
+            'letter-spacing:1px;color:var(--muted2);padding:6px 0 4px;">Module Library — view only (in development)</div>';
+          html += '<div style="overflow-x:auto;">';
+          html += '<table style="width:100%;border-collapse:collapse;">';
+          html += '<thead><tr>' +
+            '<th style="font-family:DM Mono,monospace;font-size:8px;text-transform:uppercase;letter-spacing:1px;' +
+              'color:var(--muted);padding:6px 10px;text-align:left;background:var(--s2);border-bottom:1px solid var(--border);">Module</th>' +
+            '<th style="font-family:DM Mono,monospace;font-size:8px;text-transform:uppercase;letter-spacing:1px;' +
+              'color:var(--muted);padding:6px 10px;text-align:center;background:var(--s2);border-bottom:1px solid var(--border);">Config</th>' +
+            '<th style="font-family:DM Mono,monospace;font-size:8px;text-transform:uppercase;letter-spacing:1px;' +
+              'color:var(--muted);padding:6px 10px;text-align:center;background:var(--s2);border-bottom:1px solid var(--border);">Status</th>' +
+            '<th style="background:var(--s2);border-bottom:1px solid var(--border);padding:6px 10px;"></th>' +
+            '</tr></thead><tbody>';
+          libMods.forEach(function(m) {
+            var stCol = m.development_status==='completed' ? 'var(--green)' : m.development_status==='in_development' ? 'var(--gold)' : 'var(--muted2)';
+            var stLbl = {completed:'✓ Done', in_development:'⏳ In Dev'}[m.development_status] || '○ In Planning';
+            html += '<tr style="border-bottom:1px solid var(--border);opacity:0.7;">' +
+              '<td style="padding:7px 10px;font-weight:600;font-size:11px;color:var(--text);">' + m.name + '</td>' +
+              '<td style="padding:7px 10px;font-family:DM Mono,monospace;font-size:9px;color:var(--muted2);text-align:center;">' + m.config_key + '</td>' +
+              '<td style="padding:7px 10px;text-align:center;"><span style="font-family:DM Mono,monospace;font-size:8px;padding:2px 6px;border-radius:2px;background:' + stCol + '22;color:' + stCol + ';">' + stLbl + '</span></td>' +
+              '<td style="padding:7px 10px;text-align:center;">' +
+                '<button data-action="prop-mod-detail" data-modid="' + m.id + '" ' +
+                'style="font-family:DM Mono,monospace;font-size:8px;padding:3px 8px;border-radius:2px;' +
+                'border:1px solid var(--border2);background:var(--s3);color:var(--muted2);cursor:pointer;">' +
+                'ℹ Details</button></td>' +
+              '</tr>';
+          });
+          html += '</tbody></table></div>';
+        }
+      }
     } else {
       // Table header
       html += '<div style="overflow-x:auto;margin-top:10px;">';
@@ -15986,6 +16021,10 @@ function buildModuleOptions(modType, propKey, nextFn) {
           'border:1px solid rgba(200,164,60,.3);display:flex;align-items:center;gap:12px;">' +
           '<span style="color:var(--gold);font-size:16px;">\u2713</span>' +
           '<div style="flex:1;font-size:11px;color:var(--text);">Selected: <strong>' + currentSel.module.name + '</strong></div>' +
+          '<button data-action="prop-mod-detail" data-modid="' + currentSel.module.id + '" ' +
+          'style="font-family:DM Mono,monospace;font-size:9px;padding:5px 10px;border-radius:2px;' +
+          'border:1px solid var(--border2);background:var(--s3);color:var(--muted2);cursor:pointer;">' +
+          '\u2139 Details</button>' +
           '<button data-action="prop-continue" data-nextfn="' + nextFn + '" ' +
           'style="font-family:DM Mono,monospace;font-size:9px;padding:5px 14px;border-radius:2px;' +
           'border:1px solid rgba(200,164,60,.4);background:var(--goldl);color:var(--gold);cursor:pointer;">' +
