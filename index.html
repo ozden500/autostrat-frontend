@@ -9876,6 +9876,10 @@ document.addEventListener('click', function(e) {
   if (action === 'prop-ops-quality')      { onPropOpsQualitySelect(btn.getAttribute('data-key')); }
   if (action === 'prop-ops-supplauto')    { onPropOpsSupplAuto(btn.getAttribute('data-key')); }
   if (action === 'prop-ops-automationcard') { onPropOpsAutomationCard(btn.getAttribute('data-key')); }
+  if (action === 'sp-toggle-mod') {
+    e.stopPropagation();
+    _spToggleMod(btn.getAttribute('data-pid'), btn.getAttribute('data-sk'));
+  }
 });
 
 
@@ -20132,8 +20136,8 @@ async function buildOperationsSection() {
   if (!_prop.operations) _prop.operations = {};
   // Migrate old plants[] to vehicle_plants[]
   if (_prop.operations.plants && !_prop.operations.vehicle_plants) {
-    _prop.operations.vehicle_plants = (_prop.operations.plants||[]).map(function(p) {
-      return {id:p.id||'vp1',region:p.region||'EU',country_code:p.country_code||'DE',country_name:p.country_name||'Germany',
+    _prop.operations.vehicle_plants = (_prop.operations.plants||[]).map(function(p, i) {
+      return {id:p.id||(i===0?'vp1':'vp'+(i+1)),region:p.region||'EU',country_code:p.country_code||'DE',country_name:p.country_name||'Germany',
               jph:p.jph||40,automation_level:p.automation_level||2,platform_shared:p.platform_shared||false,module_capacity:{},_computed:null};
     });
   }
@@ -20144,6 +20148,7 @@ async function buildOperationsSection() {
   } else if (!_prop.operations.vehicle_plants[0].id) {
     _prop.operations.vehicle_plants[0].id = 'vp1';
   }
+  (function(){var _seen={},_dd=[];(_prop.operations.vehicle_plants||[]).forEach(function(vp){if(!_seen[vp.id]){_seen[vp.id]=true;_dd.push(vp);}});_prop.operations.vehicle_plants=_dd;})();
   if (!_prop.operations.powertrain_plants||!_prop.operations.powertrain_plants.length) {
     var _vp0=(_prop.operations.vehicle_plants||[])[0]||{region:'EU',country_code:'DE',country_name:'Germany',automation_level:2};
     _prop.operations.powertrain_plants=[{id:'pwt1',region:_vp0.region||'EU',country_code:_vp0.country_code||'DE',country_name:_vp0.country_name||'Germany',automation_level:_vp0.automation_level||2,module_capacity:{},_computed:null}];
@@ -20376,80 +20381,140 @@ function _calcSupplyPlanTotals(){
   return {totalAdj:sp._total_piece_adj_eur,totalNRE:sp._total_nre_m,riskScore:sp._risk_score,totalLanded:sp._total_landed_parts_eur};
 }
 
-function _renderPlantSupplyCard(vp,sp){
-  var plantMods=(sp.plants&&sp.plants[vp.id]&&sp.plants[vp.id].modules)||{};
-  var slots=_spGetActivePropSlots();
-  var _cl=INDUSTRIAL_COUNTRIES[vp.region]||[],_ct=_cl.find(function(c){return c.code===vp.country_code;})||{};
-  var MO='font-family:DM Mono,monospace;';
-  var SEL=MO+'font-size:8px;background:var(--panel2);color:var(--white);border:1px solid var(--border2);border-radius:3px;padding:1px 2px;cursor:pointer;';
-  var h='<div style="margin-bottom:12px;">';
-  h+='<div style="'+MO+'font-size:8px;font-weight:600;color:var(--gold);padding:2px 0 6px 0;">'
-    +'🏭 '+(_ct.flag||'')+' '+(vp.country_name||vp.country_code||vp.region)
-    +' &nbsp;·&nbsp; <span style="color:var(--muted2);">'+vp.region+'</span></div>';
-  var plantLanded=0,plantNrePu=0,plantMakeCost=0;
-  slots.forEach(function(sk){
-    var dec=plantMods[sk]||{zone:_spDefaultZoneForRegion(vp.region),automation:2};
-    var m=_calcModuleSupplyMetrics(sk,dec.zone,dec.automation,vp.region);
-    plantLanded+=m.landed_eur;plantNrePu+=m.nre_per_unit_eur;
-    var mc=_calcModuleMakeCost(sk,_ct);
-    plantMakeCost+=mc.total_eur;
-    var lbl=_spSlotLabel(sk);
-    var lAdj=m.labor_adj>=0?'+€'+m.labor_adj:'−€'+Math.abs(m.labor_adj);
-    var lAdjCol=m.labor_adj<=0?'var(--green)':'var(--orange)';
-    // Row 1: module name | zone select | auto select | landed DMP cost
-    h+='<div style="display:grid;grid-template-columns:1fr 128px 88px auto;gap:4px;align-items:center;margin-bottom:2px;">';
-    h+='<div style="'+MO+'font-size:8px;font-weight:600;color:var(--white);">'+lbl+'</div>';
-    h+='<select style="'+SEL+'" onchange="onSpZone(\''+vp.id+'\',\''+sk+'\',this.value)">';
-    SP_ZONES.forEach(function(z){h+='<option value="'+z.key+'"'+(dec.zone===z.key?' selected':'')+'>'+z.flag+' '+z.label+'</option>';});
-    h+='</select>';
-    h+='<select style="'+SEL+'" onchange="onSpAuto(\''+vp.id+'\',\''+sk+'\',parseInt(this.value))">';
-    SP_AUTO_LEVELS.forEach(function(al){h+='<option value="'+al.key+'"'+(dec.automation===al.key?' selected':'')+'>'+al.key+' — '+al.label+'</option>';});
-    h+='</select>';
-    h+='<div style="'+MO+'font-size:9px;font-weight:700;color:var(--cyan);text-align:right;white-space:nowrap;">€'+m.landed_eur.toLocaleString()+'</div>';
-    h+='</div>';
-    // Row 2: DMP breakdown
-    var nrePuStr=m.nre_per_unit_eur>0?' · NRE +€'+m.nre_per_unit_eur+'/unit':'';
-    h+='<div style="'+MO+'font-size:7.5px;color:var(--muted2);padding:0 0 2px 2px;">'
-      +'① DMP: €'+m.base_buy.toLocaleString()+' std'
-      +' · Labor <span style="color:'+lAdjCol+';">'+lAdj+'</span>'
-      +' · Freight €'+m.logistics_eur
-      +' · Duty €'+m.duty_eur
-      +nrePuStr
-      +'</div>';
-    // Row 3: Make cost at plant country
-    if(mc.total_eur>0){
-      var vsStr=mc.vs_standard_eur!==0?(mc.vs_standard_eur>0?' <span style="color:var(--orange);">+€'+mc.vs_standard_eur+'</span>':' <span style="color:var(--green);">−€'+Math.abs(mc.vs_standard_eur)+'</span>'):'';
-      h+='<div style="'+MO+'font-size:7.5px;color:var(--muted2);padding:0 0 5px 2px;border-bottom:1px solid var(--border);">'
-        +'② Make: Labor €'+mc.labor_eur+' · Energy €'+mc.energy_eur+' · OH €'+mc.overhead_eur
-        +' → <span style="color:var(--purple);font-weight:600;">€'+mc.total_eur+'</span>'+vsStr
-        +'</div>';
-    } else {
-      h+='<div style="'+MO+'font-size:7.5px;color:var(--muted2);padding:0 0 5px 2px;border-bottom:1px solid var(--border);">② Make: —</div>';
-    }
-  });
-  // Plant total footer
-  var volK=_suggestedVolK()||0;
-  var volStr=volK>0?' @ '+volK+'k/yr':'';
-  var hasMake=plantMakeCost>0;
-  h+='<div style="'+MO+'font-size:8px;padding-top:5px;">';
-  h+='<div style="display:flex;gap:16px;margin-bottom:2px;">'
-    +'<span style="color:var(--muted2);">① Landed parts (DMP):</span>'
-    +'<span style="color:var(--cyan);font-weight:700;">€'+plantLanded.toLocaleString()+'/unit</span>'
-    +(plantNrePu>0?'&nbsp;&nbsp;<span style="color:var(--muted2);">NRE +€'+plantNrePu.toFixed(2)+'/unit'+volStr+'</span>':'')
-    +'</div>';
-  if(hasMake){
-    h+='<div style="display:flex;gap:16px;margin-bottom:2px;">'
-      +'<span style="color:var(--muted2);">② Make transformation:</span>'
-      +'<span style="color:var(--purple);font-weight:700;">€'+plantMakeCost.toLocaleString()+'/unit</span>'
-      +((_ct.labor_eur_hr)?'&nbsp;&nbsp;<span style="color:var(--muted2);">@€'+_ct.labor_eur_hr+'/hr · €'+_ct.elec_eur_kwh+'/kWh</span>':'')
-      +'</div>';
-    h+='<div style="display:flex;gap:16px;">'
-      +'<span style="color:var(--muted2);">Full module COGS:</span>'
-      +'<span style="color:var(--white);font-weight:700;">€'+(plantLanded+plantMakeCost).toLocaleString()+'/unit</span>'
-      +'</div>';
+var _spModExpanded = {};
+function _spToggleMod(pid, sk) {
+  var k = pid + '__' + sk;
+  _spModExpanded[k] = !_spModExpanded[k];
+  _refreshSupplyPlanArea();
+}
+
+function _renderModuleCollapsedRow(sr, vp, expanded) {
+  var m = sr.m, dec = sr.dec, sk = sr.sk;
+  var MO = 'font-family:DM Mono,monospace;';
+  var SEL = MO + 'font-size:8px;background:var(--panel);color:var(--white);border:1px solid var(--border2);border-radius:3px;padding:1px 2px;cursor:pointer;';
+  var lbl = _spSlotLabel(sk);
+  var delta = m.landed_eur - m.base_buy;
+  var deltaAbs = Math.abs(delta);
+  var deltaStr = delta >= 0 ? '+€' + deltaAbs.toLocaleString() : '−€' + deltaAbs.toLocaleString();
+  var deltaCol = delta > 0 ? 'var(--orange)' : 'var(--green)';
+  var nreStr = m.nre_per_unit_eur > 0 ? 'NRE €' + m.nre_per_unit_eur.toFixed(1) + '/u' : '';
+  var chevron = expanded ? '▲' : '▼';
+  var h = '<div style="' + MO + 'display:grid;grid-template-columns:1fr 132px 92px 68px 18px 86px 58px 60px 22px;'
+    + 'gap:4px;align-items:center;padding:4px 6px;border-radius:3px;cursor:pointer;margin-bottom:2px;background:var(--panel2);" '
+    + 'data-action="sp-toggle-mod" data-pid="' + vp.id + '" data-sk="' + sk + '">';
+  h += '<div style="' + MO + 'font-size:8px;font-weight:600;color:var(--white);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + lbl + '</div>';
+  h += '<select style="' + SEL + '" onclick="event.stopPropagation()" onchange="onSpZone(\'' + vp.id + '\',\'' + sk + '\',this.value)">';
+  SP_ZONES.forEach(function(z) { h += '<option value="' + z.key + '"' + (dec.zone === z.key ? ' selected' : '') + '>' + z.flag + ' ' + z.label + '</option>'; });
+  h += '</select>';
+  h += '<select style="' + SEL + '" onclick="event.stopPropagation()" onchange="onSpAuto(\'' + vp.id + '\',\'' + sk + '\',parseInt(this.value))">';
+  SP_AUTO_LEVELS.forEach(function(al) { h += '<option value="' + al.key + '"' + (dec.automation === al.key ? ' selected' : '') + '>' + al.key + '—' + al.label + '</option>'; });
+  h += '</select>';
+  h += '<div style="' + MO + 'font-size:8px;color:var(--muted2);text-align:right;white-space:nowrap;">STD €' + m.base_buy.toLocaleString() + '</div>';
+  h += '<div style="' + MO + 'font-size:8px;color:var(--muted2);text-align:center;">→</div>';
+  h += '<div style="' + MO + 'font-size:9px;font-weight:700;color:var(--cyan);text-align:right;">€' + m.landed_eur.toLocaleString() + '</div>';
+  h += '<div style="' + MO + 'font-size:7.5px;color:' + deltaCol + ';text-align:center;">(' + deltaStr + ')</div>';
+  h += '<div style="' + MO + 'font-size:7.5px;color:var(--purple);text-align:right;white-space:nowrap;">' + nreStr + '</div>';
+  h += '<div style="' + MO + 'font-size:9px;color:var(--muted2);text-align:center;">' + chevron + '</div>';
+  h += '</div>';
+  return h;
+}
+
+function _renderModuleDetailCard(sr, vp, _ct) {
+  var m = sr.m, mc = sr.mc, dec = sr.dec;
+  var zone = SP_ZONES.find(function(z) { return z.key === dec.zone; }) || SP_ZONES[0];
+  var MO = 'font-family:DM Mono,monospace;';
+  var rowStyle = 'display:grid;grid-template-columns:1fr 78px 1fr;gap:4px;align-items:baseline;padding:1px 0;';
+  function fmtE(v) { var n = Math.round(v || 0); return (n >= 0 ? '€' : '−€') + Math.abs(n).toLocaleString(); }
+  function fmtAdj(v) { var n = Math.round(v || 0); return (n >= 0 ? '+€' : '−€') + Math.abs(n).toLocaleString(); }
+  function row(label, val, col, note, bold) {
+    var valStr = typeof val === 'string' ? val : fmtE(val);
+    return '<div style="' + rowStyle + '">'
+      + '<div style="' + MO + 'font-size:8px;color:' + (col || 'var(--muted2)') + ';' + (bold ? 'font-weight:700;' : '') + '">' + label + '</div>'
+      + '<div style="' + MO + 'font-size:8px;color:' + (col || 'var(--muted2)') + ';text-align:right;' + (bold ? 'font-weight:700;' : '') + '">' + valStr + '</div>'
+      + '<div style="' + MO + 'font-size:7px;color:var(--muted2);padding-left:4px;">' + (note || '') + '</div>'
+      + '</div>';
   }
-  h+='</div>';
-  h+='</div>';
+  function sep() { return '<div style="border-top:1px solid var(--border2);margin:3px 0;"></div>'; }
+  var h = '<div style="margin:0 0 6px 0;padding:8px 12px;background:var(--s3);border-radius:3px;border-left:2px solid var(--cyan);">';
+  h += '<div style="' + MO + 'font-size:7px;color:var(--cyan);font-weight:600;letter-spacing:1px;text-transform:uppercase;margin-bottom:5px;">Cost Build-up</div>';
+  h += row('Standard DMP (USA baseline)', m.base_buy, 'var(--muted)', 'BOM engine at standard rates');
+  if (m.labor_adj !== 0) {
+    h += row('+ Labor adjustment', fmtAdj(m.labor_adj), m.labor_adj <= 0 ? 'var(--green)' : 'var(--orange)', zone.label + ' vs US');
+  }
+  h += row('+ Freight', m.logistics_eur, 'var(--muted2)', zone.key + ' → ' + vp.region);
+  var dutyPct = zone.duty[vp.region] || 0;
+  h += row('+ Import duty', m.duty_eur, m.duty_eur > 0 ? 'var(--orange)' : 'var(--muted2)', dutyPct + '% tariff');
+  h += sep();
+  h += row('= Landed Parts (DMP)', m.landed_eur, 'var(--cyan)', '', true);
+  if (mc.total_eur > 0) {
+    h += '<div style="height:4px;"></div>';
+    h += row('+ OEM Make — Labor', mc.labor_eur, 'var(--muted2)', _ct.labor_eur_hr ? '@€' + _ct.labor_eur_hr + '/hr' : '');
+    h += row('+ OEM Make — Energy', mc.energy_eur, 'var(--muted2)', _ct.elec_eur_kwh ? '@€' + _ct.elec_eur_kwh + '/kWh' : '');
+    h += row('+ OEM Make — OH 20%', mc.overhead_eur, 'var(--muted2)', '');
+    h += sep();
+    h += row('= OEM Make Total', mc.total_eur, 'var(--purple)', '', true);
+    h += sep();
+    h += row('= Full Module COGS', m.landed_eur + mc.total_eur, 'var(--white)', '', true);
+  }
+  if (m.nre_m > 0) {
+    h += '<div style="height:4px;"></div>';
+    var nreNote = m.nre_per_unit_eur > 0 ? '→ €' + m.nre_per_unit_eur.toFixed(1) + '/unit amortised @ ' + (m.vol_k || 0) + 'k/yr' : '';
+    h += row('NRE Investment', '€' + m.nre_m.toFixed(1) + 'M', 'var(--purple)', nreNote);
+  }
+  h += '</div>';
+  return h;
+}
+
+function _renderPlantSupplyCard(vp, sp) {
+  var plantMods = (sp.plants && sp.plants[vp.id] && sp.plants[vp.id].modules) || {};
+  var slots = _spGetActivePropSlots();
+  var _cl = INDUSTRIAL_COUNTRIES[vp.region] || [], _ct = _cl.find(function(c) { return c.code === vp.country_code; }) || {};
+  var MO = 'font-family:DM Mono,monospace;';
+  // Pre-compute all slot results
+  var plantLanded = 0, plantMakeCost = 0;
+  var slotResults = slots.map(function(sk) {
+    var dec = plantMods[sk] || { zone: _spDefaultZoneForRegion(vp.region), automation: 2 };
+    var m = _calcModuleSupplyMetrics(sk, dec.zone, dec.automation, vp.region);
+    var mc = _calcModuleMakeCost(sk, _ct);
+    plantLanded += m.landed_eur;
+    plantMakeCost += mc.total_eur;
+    return { sk: sk, dec: dec, m: m, mc: mc };
+  });
+  var totalCogs = plantLanded + plantMakeCost;
+  var totalNreM = slotResults.reduce(function(s, sr) { return s + sr.m.nre_m; }, 0);
+  // Risk for header badge
+  var totRisk = 0, totW = 0;
+  slotResults.forEach(function(sr) {
+    var li = (SP_MODULE_TYPES[sr.sk] || { labor_intensity: 0.3 }).labor_intensity;
+    totRisk += sr.m.risk * (0.5 + li); totW += (0.5 + li);
+  });
+  var rPct = Math.round(totW > 0 ? Math.min(1, totRisk / totW) * 100 : 25);
+  var rCol = rPct < 30 ? 'var(--green)' : rPct < 55 ? 'var(--gold)' : 'var(--red)';
+  var rLabel = rPct < 30 ? 'LOW' : rPct < 55 ? 'MEDIUM' : 'HIGH';
+  var h = '<div style="margin-bottom:12px;">';
+  // ── Plant header ──
+  h += '<div style="display:flex;align-items:center;justify-content:space-between;background:var(--s2);border-radius:4px;padding:6px 10px;margin-bottom:6px;gap:8px;">';
+  h += '<div style="' + MO + 'font-size:8px;font-weight:600;color:var(--gold);white-space:nowrap;">'
+    + '🏭 ' + (_ct.flag || '') + ' ' + (vp.country_name || vp.country_code || vp.region)
+    + ' <span style="color:var(--muted2);font-weight:400;">· ' + vp.region + '</span></div>';
+  h += '<div style="display:flex;gap:14px;align-items:center;flex:1;justify-content:flex-end;">';
+  h += '<div style="' + MO + 'font-size:7.5px;"><span style="color:var(--muted2);">Landed </span><span style="color:var(--cyan);font-weight:700;">€' + plantLanded.toLocaleString() + '/u</span></div>';
+  if (plantMakeCost > 0) {
+    h += '<div style="' + MO + 'font-size:7.5px;"><span style="color:var(--muted2);">COGS </span><span style="color:var(--white);font-weight:700;">€' + totalCogs.toLocaleString() + '/u</span></div>';
+  }
+  if (totalNreM > 0) {
+    h += '<div style="' + MO + 'font-size:7.5px;"><span style="color:var(--muted2);">NRE </span><span style="color:var(--purple);font-weight:700;">€' + totalNreM.toFixed(1) + 'M</span></div>';
+  }
+  h += '</div>';
+  h += '<div style="' + MO + 'font-size:7px;font-weight:600;color:' + rCol + ';padding:2px 5px;border:1px solid ' + rCol + ';border-radius:2px;white-space:nowrap;">' + rLabel + ' risk</div>';
+  h += '</div>';
+  // ── Per-module rows ──
+  slotResults.forEach(function(sr) {
+    var expanded = !!_spModExpanded[vp.id + '__' + sr.sk];
+    h += _renderModuleCollapsedRow(sr, vp, expanded);
+    if (expanded) h += _renderModuleDetailCard(sr, vp, _ct);
+  });
+  h += '</div>';
   return h;
 }
 
