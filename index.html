@@ -1630,9 +1630,10 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
     <div class="prop-step" id="pstep-4">4 · Top Hat</div>
     <div class="prop-step" id="pstep-5">5 · E&amp;S</div>
     <div class="prop-step" id="pstep-6">6 · Review</div>
-    <div class="prop-step" id="pstep-7">7 · Operations</div>
-    <div class="prop-step" id="pstep-8">8 · Commercial</div>
-    <div class="prop-step" id="pstep-9">9 · Business Case</div>
+    <div class="prop-step" id="pstep-7">7 · Plants</div>
+    <div class="prop-step" id="pstep-8">8 · Sourcing</div>
+    <div class="prop-step" id="pstep-9">9 · Commercial</div>
+    <div class="prop-step" id="pstep-10">10 · Biz Case</div>
   </div>
 
   <!-- SECTION 1: Study Selection -->
@@ -1730,28 +1731,41 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
     </div>
   </div>
 
-  <!-- SECTION 8: Commercial Plan -->
+  <!-- SECTION 8: Components Sourcing -->
   <div class="prop-section" id="prop-sec-8">
     <div class="prop-sec-header" onclick="togglePropSection(8)">
       <div class="prop-sec-num">08</div>
-      <div class="prop-sec-title">COMMERCIAL PLAN</div>
-      <div class="prop-sec-status" id="prop-sec-8-status">— not configured</div>
+      <div class="prop-sec-title">COMPONENTS SOURCING</div>
+      <div class="prop-sec-status" id="prop-sec-8-status">— configure plant allocation first</div>
       <div class="prop-sec-chevron" id="prop-chev-8">▼</div>
     </div>
     <div class="prop-sec-body" id="prop-sec-8-body" style="display:none;">
+      <div id="prop-ops-sourcing-content"></div>
+    </div>
+  </div>
+
+  <!-- SECTION 9: Commercial Plan -->
+  <div class="prop-section" id="prop-sec-9">
+    <div class="prop-sec-header" onclick="togglePropSection(9)">
+      <div class="prop-sec-num">09</div>
+      <div class="prop-sec-title">COMMERCIAL PLAN</div>
+      <div class="prop-sec-status" id="prop-sec-9-status">— not configured</div>
+      <div class="prop-sec-chevron" id="prop-chev-9">▼</div>
+    </div>
+    <div class="prop-sec-body" id="prop-sec-9-body" style="display:none;">
       <div id="prop-commercial-content"></div>
     </div>
   </div>
 
-  <!-- SECTION 9: Business Case Summary -->
-  <div class="prop-section" id="prop-sec-9">
-    <div class="prop-sec-header" onclick="togglePropSection(9)">
-      <div class="prop-sec-num">09</div>
+  <!-- SECTION 10: Business Case Summary -->
+  <div class="prop-section" id="prop-sec-10">
+    <div class="prop-sec-header" onclick="togglePropSection(10)">
+      <div class="prop-sec-num">10</div>
       <div class="prop-sec-title">BUSINESS CASE SUMMARY</div>
-      <div class="prop-sec-status" id="prop-sec-9-status">— complete steps 7 &amp; 8 first</div>
-      <div class="prop-sec-chevron" id="prop-chev-9">▼</div>
+      <div class="prop-sec-status" id="prop-sec-10-status">— complete steps 7–9 first</div>
+      <div class="prop-sec-chevron" id="prop-chev-10">▼</div>
     </div>
-    <div class="prop-sec-body" id="prop-sec-9-body" style="display:none;">
+    <div class="prop-sec-body" id="prop-sec-10-body" style="display:none;">
       <div id="prop-bc-content" style="margin-bottom:16px;"></div>
 
       <!-- SOP conflict panel — shown when modules aren't ready before SOP -->
@@ -14043,7 +14057,7 @@ async function saveFootprintSetup() {
 let mfgPlants    = []; // {id, name, type, region, country_code, country_name, capacity_k, status}
 let mfgPipeline  = []; // {id, plant_id, decision, rounds_remaining, cost_m, cap_delta}
 let mfgCurrentRound = 1;
-let _propVoByPlant = {};    // locKey → units_sold last round (populated by buildOperationsSection)
+let _propVoByPlant = {};    // locKey → units_sold last round (populated by buildMfgPlantSection)
 let _propVoPerVehicle = {}; // vehicle_id → units_sold last round
 let _plantLeadTimes = { build: 4, expand: 2 };
 let mfgCountries = {}; // {region: [{country_code, country_name}]}
@@ -15642,7 +15656,7 @@ function togglePropSection(n) {
 function setPropStep(n) {
   _prop.currentSec = n;
   // Update progress bar
-  for (var i = 1; i <= 9; i++) {
+  for (var i = 1; i <= 10; i++) {
     var el = document.getElementById('pstep-' + i);
     if (!el) continue;
     el.classList.remove('active','done');
@@ -15650,7 +15664,7 @@ function setPropStep(n) {
     else if (i === n) el.classList.add('active');
   }
   // Open target section, collapse others
-  for (var j = 1; j <= 9; j++) {
+  for (var j = 1; j <= 10; j++) {
     var body = document.getElementById('prop-sec-' + j + '-body');
     var sec  = document.getElementById('prop-sec-' + j);
     var chev = document.getElementById('prop-chev-' + j);
@@ -18178,7 +18192,91 @@ function advanceToCommercial() {
   var s6 = document.getElementById('prop-sec-6-status');
   if (s6) s6.textContent = '\u2713 Specs reviewed';
   setPropStep(7);
-  buildOperationsSection();
+  buildMfgPlantSection();
+}
+
+function advanceToComponentsSourcing() {
+  var vp = (_prop.operations && _prop.operations.vehicle_plants) || [];
+  var confirmed = vp.filter(function(p){ return p.vehicle_capacity_yr > 0; });
+  if (!confirmed.length) { toast('\u26a0 Confirm at least one vehicle plant allocation first.'); return; }
+  var s7 = document.getElementById('prop-sec-7-status');
+  if (s7) {
+    var regions = confirmed.map(function(p){ return p.region; }).join('/');
+    s7.textContent = '\u2713 ' + confirmed.length + ' plant(s) \u2014 ' + regions;
+  }
+  _spSyncPlanWithPlants();
+  setPropStep(8);
+  buildComponentsSourcingSection();
+}
+
+function buildComponentsSourcingSection() {
+  var el = document.getElementById('prop-ops-sourcing-content');
+  if (!el) return;
+  if (!_prop.operations) _prop.operations = {};
+  _spSyncPlanWithPlants();
+  var ops = _prop.operations;
+  var srcKey = ops.sourcing_strategy || 'BALANCED';
+  var qualKey = ops.quality_tier || 'STANDARD';
+  var TH = 'font-family:DM Mono,monospace;font-size:8px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:8px;display:block;';
+  var html = '';
+
+  html += '<div style="font-family:DM Mono,monospace;font-size:9px;color:var(--muted2);margin-bottom:14px;">Define how components are sourced for each confirmed assembly plant.</div>';
+
+  html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px;">';
+
+  // Sourcing Strategy selector
+  html += '<div style="background:var(--s2);border-radius:4px;padding:12px;border:1px solid var(--border2);">';
+  html += '<span style="'+TH+'">\ud83c\udf10 Sourcing Strategy</span>';
+  html += '<div style="display:flex;gap:6px;flex-wrap:wrap;">';
+  SOURCING_STRATEGIES.forEach(function(s) {
+    var isSel = s.key === srcKey;
+    html += '<button onclick="onPropOpsSourcingStrategy(\''+s.key+'\')" style="font-family:DM Mono,monospace;font-size:9px;padding:5px 10px;border-radius:3px;cursor:pointer;border:1px solid '+(isSel?'var(--gold)':'var(--border2)')+';background:'+(isSel?'var(--goldl)':'var(--s3)')+';color:'+(isSel?'var(--gold)':'var(--text)')+';">'+s.label+' <span style="color:var(--muted2);">'+s.resilience+'</span></button>';
+  });
+  html += '</div>';
+  var srcTier = SOURCING_STRATEGIES.find(function(s){return s.key===srcKey;}) || SOURCING_STRATEGIES[1];
+  var srcAdjPct = Math.round(srcTier.mat_adj*100);
+  var srcAdjColor = srcTier.mat_adj > 0 ? 'var(--red)' : srcTier.mat_adj < 0 ? 'var(--green)' : 'var(--muted2)';
+  var srcAdjLabel = srcTier.mat_adj > 0 ? '+'+srcAdjPct+'% material cost' : srcTier.mat_adj < 0 ? srcAdjPct+'% material cost' : 'No material cost adjustment';
+  html += '<div style="font-family:DM Mono,monospace;font-size:8px;color:'+srcAdjColor+';margin-top:6px;">'+srcAdjLabel+'</div>';
+  html += '</div>';
+
+  // Quality Tier selector
+  html += '<div style="background:var(--s2);border-radius:4px;padding:12px;border:1px solid var(--border2);">';
+  html += '<span style="'+TH+'">\ud83c\udfc6 Quality Tier</span>';
+  html += '<div style="display:flex;gap:6px;flex-wrap:wrap;">';
+  QUALITY_TIERS.forEach(function(q) {
+    var isSel = q.key === qualKey;
+    html += '<button onclick="onPropOpsQualityTier(\''+q.key+'\')" style="font-family:DM Mono,monospace;font-size:9px;padding:5px 10px;border-radius:3px;cursor:pointer;border:1px solid '+(isSel?'var(--gold)':'var(--border2)')+';background:'+(isSel?'var(--goldl)':'var(--s3)')+';color:'+(isSel?'var(--gold)':'var(--text)')+';">'+q.key.replace(/_/g,' ')+'</button>';
+  });
+  html += '</div>';
+  var qualTier = QUALITY_TIERS.find(function(q){return q.key===qualKey;}) || QUALITY_TIERS[1];
+  html += '<div style="font-family:DM Mono,monospace;font-size:8px;color:var(--muted2);margin-top:6px;">+\u20ac'+qualTier.unit_add_eur+'/unit \u00b7 warranty '+Math.round(qualTier.warranty_pct*100)+'% rev \u00b7 '+qualTier.pp100+' PP100</div>';
+  html += '</div>';
+
+  html += '</div>';
+
+  html += '<div id="prop-ops-supply-plan-area">'+_renderSupplyPlanSection()+'</div>';
+
+  function aT2(l,v,c,id){return '<div style="background:var(--s2);border-radius:3px;padding:8px;border:1px solid var(--border)"><div style="font-size:8px;color:var(--muted2);margin-bottom:2px;">'+l+'</div><div style="font-family:DM Mono,monospace;font-size:11px;color:'+c+'" id="'+id+'">'+v+'</div></div>';}
+  html += '<div style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-bottom:18px;">';
+  html += aT2('Supplier NRE','\u2014','var(--cyan)','prop-ops-agg-sp');
+  html += aT2('Wtd Manuf/unit','\u2014','var(--text)','prop-ops-agg-cost');
+  html += '</div>';
+
+  html += '<div style="margin-top:14px;display:flex;justify-content:flex-end;"><button onclick="advanceToCommercialPlan()" style="font-family:DM Mono,monospace;font-size:10px;padding:8px 18px;border-radius:3px;border:1px solid rgba(200,164,60,.4);background:var(--goldl);color:var(--gold);cursor:pointer;">Continue \u2192 Commercial Plan</button></div>';
+
+  el.innerHTML = html;
+  renderOpsAggregateSummary();
+}
+
+function onPropOpsSourcingStrategy(key) {
+  if (_prop.operations) _prop.operations.sourcing_strategy = key;
+  buildComponentsSourcingSection();
+}
+
+function onPropOpsQualityTier(key) {
+  if (_prop.operations) _prop.operations.quality_tier = key;
+  buildComponentsSourcingSection();
 }
 
 function buildCommercialSection() {
@@ -18663,16 +18761,13 @@ var _MANUF_E = (function() {
 })();
 
 function advanceToCommercialPlan() {
-  var s7 = document.getElementById('prop-sec-7-status');
-  if (s7) {
-    var vp=(_prop.operations&&(_prop.operations.vehicle_plants||_prop.operations.plants))||[];
-    var pwt=(_prop.operations&&_prop.operations.powertrain_plants)||[];
-    var sp=(_prop.operations&&_prop.operations.supplier_parks)||[];
-    var totalFac=vp.length+pwt.length+sp.length;
-    var regions=vp.map(function(p){return p.region;}).join('/');
-    s7.textContent='\u2713 '+totalFac+' facilit'+(totalFac===1?'y':'ies')+' \u2014 '+(regions||'\u2014');
+  var s8 = document.getElementById('prop-sec-8-status');
+  if (s8) {
+    var srcKey = (_prop.operations && _prop.operations.sourcing_strategy) || 'BALANCED';
+    var qualKey = (_prop.operations && _prop.operations.quality_tier) || 'STANDARD';
+    s8.textContent = '\u2713 ' + srcKey + ' sourcing \u00b7 ' + qualKey.replace('_',' ') + ' quality';
   }
-  setPropStep(8);
+  setPropStep(9);
   buildCommercialSection();
 }
 
@@ -19020,7 +19115,7 @@ function onPropOpsAddFacility(type){
   var fac={id:'f'+Date.now(),region:nr,country_code:dc.code,country_name:dc.name,automation_level:2,module_capacity:{},_computed:null};
   if(type==='vehicle_plants'){fac.jph=40;fac.platform_shared=false;}
   if(type==='supplier_parks')fac.automation_level='MEDIUM';
-  arr.push(fac);buildOperationsSection();
+  arr.push(fac);buildMfgPlantSection();
 }
 function onPropOpsRemoveFacility(type,fid){
   if(!_prop.operations||!_prop.operations[type])return;
@@ -19030,7 +19125,7 @@ function onPropOpsRemoveFacility(type,fid){
     var vp=(_prop.operations.vehicle_plants||[])[0];
     _prop.commercial.markets.forEach(function(m){if(m.plant_id===fid)m.plant_id=vp?vp.id:null;});
   }
-  buildOperationsSection();
+  buildMfgPlantSection();
 }
 
 function renderOpsAggregateSummary(){
@@ -20130,7 +20225,7 @@ function _renderFootprintMatrix(){
   return h;
 }
 
-async function buildOperationsSection() {
+async function buildMfgPlantSection() {
   var el = document.getElementById('prop-operations-content');
   if (!el) return;
   if (!_prop.operations) _prop.operations = {};
@@ -20231,15 +20326,12 @@ async function buildOperationsSection() {
   if(_pwtSelLk2){html+=_renderPwtAllocationPanel(_pwtSelLk2);}else{html+='<div style="font-family:DM Mono,monospace;font-size:9px;color:var(--muted2);padding:8px 0;font-style:italic;">← Select a PWT plant row above to configure allocation.</div>';}
   html+='</div>';
 
-  html+='<div id="prop-ops-supply-plan-area">'+_renderSupplyPlanSection()+'</div>';
-  html+='<div id="prop-ops-agg" style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:18px;">';
+  html+='<div id="prop-ops-agg-plants" style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-bottom:18px;">';
   function aT(l,v,c,id){return '<div style="background:var(--s2);border-radius:3px;padding:8px;border:1px solid var(--border)"><div style="font-size:8px;color:var(--muted2);margin-bottom:2px;">'+l+'</div><div style="font-family:DM Mono,monospace;font-size:11px;color:'+c+'" id="'+id+'">'+v+'</div></div>';}
   html+=aT('Vehicle Plant Capex','—','var(--gold)','prop-ops-agg-vp');
   html+=aT('PWT Plant Capex','—','var(--orange)','prop-ops-agg-pwt');
-  html+=aT('Supplier NRE','—','var(--cyan)','prop-ops-agg-sp');
-  html+=aT('Wtd Manuf/unit','—','var(--text)','prop-ops-agg-cost');
   html+='</div>';
-  html+='<div style="margin-top:14px;display:flex;justify-content:flex-end;"><button onclick="advanceToCommercialPlan()" style="font-family:DM Mono,monospace;font-size:10px;padding:8px 18px;border-radius:3px;border:1px solid rgba(200,164,60,.4);background:var(--goldl);color:var(--gold);cursor:pointer;">Continue → Commercial Plan</button></div>';
+  html+='<div style="margin-top:14px;display:flex;justify-content:flex-end;"><button onclick="advanceToComponentsSourcing()" style="font-family:DM Mono,monospace;font-size:10px;padding:8px 18px;border-radius:3px;border:1px solid rgba(200,164,60,.4);background:var(--goldl);color:var(--gold);cursor:pointer;">Continue → Components Sourcing</button></div>';
   el.innerHTML = html;
   _buildPlantFromDecision();
 }
@@ -20907,13 +20999,13 @@ async function advanceToBizCase() {
     });
   });
   if(_negL.length>0){toast('⚠ Negative gross contribution: '+_negL.join(', ')+'. Adjust MSRP/volume.');return;}
-  var s8 = document.getElementById('prop-sec-8-status');
-  if (s8) {
+  var s9 = document.getElementById('prop-sec-9-status');
+  if (s9) {
     var _selM=((_prop.commercial&&_prop.commercial.markets)||[]).filter(function(m){return m.selected;});
     var _totV=_selM.reduce(function(s,m){return s+(m.years||[]).reduce(function(t,y){return t+y.volume;},0);},0);
-    s8.textContent = '\u2713 '+_selM.length+' market(s) \u00b7 '+Math.round(_totV/1000)+'k units lifecycle';
+    s9.textContent = '\u2713 '+_selM.length+' market(s) \u00b7 '+Math.round(_totV/1000)+'k units lifecycle';
   }
-  setPropStep(9);
+  setPropStep(10);
   if (_prop.study && _prop.study.id && _prop.operations) {
     try {
       await fetch(API_URL + '/vehicles/' + _prop.study.id, {
@@ -21096,8 +21188,8 @@ function calcPropBizCase() {
     ebitEl.style.color = avgEbitPct > 8 ? 'var(--purple)' : avgEbitPct > 0 ? 'var(--gold)' : 'var(--red)';
   }
 
-  var s9 = document.getElementById('prop-sec-9-status');
-  if (s9) s9.textContent = 'NPV: ' + (npv>=0?'\u20ac':'-\u20ac') + Math.abs(Math.round(npv)) + 'M';
+  var s10 = document.getElementById('prop-sec-10-status');
+  if (s10) s10.textContent = 'NPV: ' + (npv>=0?'\u20ac':'-\u20ac') + Math.abs(Math.round(npv)) + 'M';
 }
 
 
