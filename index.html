@@ -20387,15 +20387,19 @@ function _spSlotMake(sk){
   return (p&&p.module&&p.module.make)||null;
 }
 
+function _spConfirmedPlants(){
+  return ((_prop.operations&&_prop.operations.vehicle_plants)||[]).filter(function(vp){return vp.vehicle_capacity_yr>0;});
+}
+
 function _spInitFromPlants(){
   var slots=_spGetActivePropSlots(),plants={};
-  ((_prop.operations&&_prop.operations.vehicle_plants)||[]).forEach(function(vp){
+  _spConfirmedPlants().forEach(function(vp){
     var dz=_spDefaultZoneForRegion(vp.region),mods={};
     slots.forEach(function(sk){mods[sk]={zone:dz,automation:2};});
     plants[vp.id]={modules:mods};
   });
   if(!Object.keys(plants).length){
-    var vp0=((_prop.operations&&_prop.operations.vehicle_plants)||[])[0]||{id:'vp1',region:'EU'};
+    var vp0=_spConfirmedPlants()[0]||((_prop.operations&&_prop.operations.vehicle_plants)||[])[0]||{id:'vp1',region:'EU'};
     var mods2={};slots.forEach(function(sk){mods2[sk]={zone:_spDefaultZoneForRegion(vp0.region),automation:2};});
     plants[vp0.id||'vp1']={modules:mods2};
   }
@@ -20406,7 +20410,7 @@ function _spSyncPlanWithPlants(){
   var sp=_prop.operations&&_prop.operations.supply_plan;
   if(!sp||!sp.plants)return;
   var slots=_spGetActivePropSlots();
-  ((_prop.operations.vehicle_plants)||[]).forEach(function(vp){
+  _spConfirmedPlants().forEach(function(vp){
     if(sp.plants[vp.id])return;
     var dz=_spDefaultZoneForRegion(vp.region),mods={};
     slots.forEach(function(sk){mods[sk]={zone:dz,automation:2};});
@@ -20618,7 +20622,7 @@ function _renderPlantSupplyCard(vp, sp) {
 
 function _renderSupplyPlanSection(){
   var sp=(_prop.operations&&_prop.operations.supply_plan)||{};
-  var vPlants=(_prop.operations&&_prop.operations.vehicle_plants)||[];
+  var vPlants=_spConfirmedPlants();
   var TH='font-family:DM Mono,monospace;font-size:8px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:8px;display:block;';
   var h='<div style="margin-bottom:14px;">';
   h+='<div style="'+TH+'">📦 Parts Supply Plan</div>';
