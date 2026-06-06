@@ -20392,6 +20392,8 @@ function _renderModuleCollapsedRow(sr, vp, expanded) {
   var m = sr.m, dec = sr.dec, sk = sr.sk;
   var MO = 'font-family:DM Mono,monospace;';
   var SEL = MO + 'font-size:8px;background:var(--panel);color:var(--white);border:1px solid var(--border2);border-radius:3px;padding:1px 2px;cursor:pointer;';
+  var TYPE_LABELS = {platform:'PLATFORM', pwt:'ICE PWT', epwt:'e-PWT', battery:'BATTERY', tophat:'TOPHAT', eands:'E&S'};
+  var typeLabel = TYPE_LABELS[sk] || sk.toUpperCase();
   var lbl = _spSlotLabel(sk);
   var delta = m.landed_eur - m.base_buy;
   var deltaAbs = Math.abs(delta);
@@ -20402,7 +20404,11 @@ function _renderModuleCollapsedRow(sr, vp, expanded) {
   var h = '<div style="' + MO + 'display:grid;grid-template-columns:1fr 132px 92px 68px 18px 86px 58px 60px 22px;'
     + 'gap:4px;align-items:center;padding:4px 6px;border-radius:3px;cursor:pointer;margin-bottom:2px;background:var(--panel2);" '
     + 'data-action="sp-toggle-mod" data-pid="' + vp.id + '" data-sk="' + sk + '">';
-  h += '<div style="' + MO + 'font-size:8px;font-weight:600;color:var(--white);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + lbl + '</div>';
+  h += '<div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'
+    + '<span style="' + MO + 'font-size:7px;font-weight:600;color:var(--muted2);letter-spacing:0.5px;text-transform:uppercase;">' + typeLabel + '</span>'
+    + '<span style="' + MO + 'font-size:7px;color:var(--muted2);"> — </span>'
+    + '<span style="' + MO + 'font-size:8px;font-weight:600;color:var(--white);">' + lbl + '</span>'
+    + '</div>';
   h += '<select style="' + SEL + '" onclick="event.stopPropagation()" onchange="onSpZone(\'' + vp.id + '\',\'' + sk + '\',this.value)">';
   SP_ZONES.forEach(function(z) { h += '<option value="' + z.key + '"' + (dec.zone === z.key ? ' selected' : '') + '>' + z.flag + ' ' + z.label + '</option>'; });
   h += '</select>';
