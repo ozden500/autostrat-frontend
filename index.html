@@ -13399,7 +13399,7 @@ function _renderTcModCostTab() {
           pwt_type:_pwtToManufKey((v.rolled_up_specs||{}).pwt_type||''),
           jph:_p0.jph||40, automation_level:_a0, platform_shared:_p0.platform_shared||false,
           supplier_automation:_s0, country:_cO,
-          tpc_buy_eur:(v.total_unit_tpc_eur||0)*0.85
+          tpc_buy_eur:(v.rolled_up_specs&&v.rolled_up_specs.dmp_total_eur)||(v.total_unit_tpc_eur||0)*0.85
         });
       } catch(e) {}
     }
@@ -13498,7 +13498,7 @@ function _renderTcModCostTab() {
           platform_shared:     plant.platform_shared || false,
           supplier_automation: suppAuto,
           country:             _cObj,
-          tpc_buy_eur:         _tpc * 0.85
+          tpc_buy_eur:         (v.rolled_up_specs&&v.rolled_up_specs.dmp_total_eur)||_tpc*0.85
         });
       } catch(e) { mfr = {}; }
     }
@@ -17963,6 +17963,27 @@ function _computeBaseTpc() {
   return t;
 }
 
+// Returns {dmp, make, matEur, labEur} summed from actual BOM split data across all modules.
+// Falls back to 85/15 flat split per module when dmp/make not yet computed.
+function _computeDmpMake() {
+  var dmp=0, make=0, mat=0, lab=0;
+  ['platform','pwt','epwt','tophat','eands'].forEach(function(k) {
+    var p=_prop[k]; if(!p||!p.module) return;
+    var m=p.module;
+    if (m.dmp && m.make) {
+      dmp  += parseFloat(m.dmp.total_eur||0);
+      make += parseFloat(m.make.total_eur||0);
+      mat  += parseFloat(m.dmp.raw_material_eur||0);
+      lab  += parseFloat(m.make.labor_eur||0);
+    } else {
+      var tpc=parseFloat(m.per_unit_tpc_eur||0);
+      dmp  += tpc*0.85; make += tpc*0.15;
+      mat  += tpc*0.50; lab  += tpc*0.12;
+    }
+  });
+  return {dmp:dmp, make:make, matEur:mat, labEur:lab};
+}
+
 // _prop.commercial = { years: [{year, price, volume, discount}], markets: [{region, vol_pct, price_idx, selected}] }
 
 var SALES_MARKETS = [
@@ -18541,7 +18562,7 @@ function _getEffectiveCap(type,locKey,mk){
 function _getRefManuf(){
   if(_refManufResult)return _refManufResult;
   var cl=INDUSTRIAL_COUNTRIES['EU']||[],c=cl.find(function(x){return x.code==='DE';})||{labor_eur_hr:52,elec_eur_kwh:0.18};
-  _refManufResult=_MANUF_E.calc({platform_size:_getPlatformSize(),body_type:_getBodyType(),segment_code:(_prop.study&&_prop.study.segment_code)||'c_segment',pwt_type:_pwtKeyFromProp(),jph:40,automation_level:2,platform_shared:false,supplier_automation:'MEDIUM',country:c,tpc_buy_eur:_computeBaseTpc()*0.85});
+  _refManufResult=_MANUF_E.calc({platform_size:_getPlatformSize(),body_type:_getBodyType(),segment_code:(_prop.study&&_prop.study.segment_code)||'c_segment',pwt_type:_pwtKeyFromProp(),jph:40,automation_level:2,platform_shared:false,supplier_automation:'MEDIUM',country:c,tpc_buy_eur:_computeDmpMake().dmp});
   return _refManufResult;
 }
 
@@ -18555,7 +18576,7 @@ function _calcFacilityInv(type,fac){
 
   if(type==='vehicle_plants'){
     var cl2=INDUSTRIAL_COUNTRIES[fac.region||'EU']||[],c2=cl2.find(function(x){return x.code===fac.country_code;})||cl2[0]||{labor_eur_hr:52,elec_eur_kwh:0.18};
-    var m2=_MANUF_E.calc({platform_size:_getPlatformSize(),body_type:_getBodyType(),segment_code:(_prop.study&&_prop.study.segment_code)||'c_segment',pwt_type:pk,jph:fac.jph||40,automation_level:fac.automation_level||2,platform_shared:fac.platform_shared||false,supplier_automation:'MEDIUM',country:c2,tpc_buy_eur:_computeBaseTpc()*0.85});
+    var m2=_MANUF_E.calc({platform_size:_getPlatformSize(),body_type:_getBodyType(),segment_code:(_prop.study&&_prop.study.segment_code)||'c_segment',pwt_type:pk,jph:fac.jph||40,automation_level:fac.automation_level||2,platform_shared:fac.platform_shared||false,supplier_automation:'MEDIUM',country:c2,tpc_buy_eur:_computeDmpMake().dmp});
     if(!fac._computed)fac._computed={};
     fac._computed.manuf_result=m2;fac._computed.manuf_var_total=m2.manuf_var_total;fac._computed.eff_capacity_yr=m2.eff_capacity_yr;
     var ia2=m2.workshops.assembly.investment_m,ib2=m2.workshops.body_shop.investment_m,ipt2=m2.workshops.paint_shop.investment_m,ipw2=m2.workshops.powertrain.investment_m;
@@ -20568,20 +20589,21 @@ function renderPropOpsCostSummary() {
   var code   = ops.assembly_country_code || 'DE';
   var ctry   = (INDUSTRIAL_COUNTRIES[region]||[]).find(function(c){return c.code===code;}) || {labor_eur_hr:52,elec_eur_kwh:0.18};
 
-  var tpcNum = 0;
-  ['platform','pwt','epwt','tophat','eands'].forEach(function(k) {
-    var p = _prop[k];
-    if (p && p.module) tpcNum += parseFloat(p.module.per_unit_tpc_eur||0);
-  });
-  var tpcBuy = tpcNum * 0.85;
+  var tpcNum = _computeBaseTpc();
+  var _bom   = _computeDmpMake();
+  var tpcBuy = _bom.dmp;   // actual supplier DMP total from BOM split
+  var tpcMake= _bom.make;  // actual OEM Make total from BOM split
 
   var srcKey  = ops.sourcing_strategy || 'BALANCED';
   var srcTier = SOURCING_STRATEGIES.find(function(s){return s.key===srcKey;}) || SOURCING_STRATEGIES[1];
   var qualKey = ops.quality_tier || 'STANDARD';
   var qualTier= QUALITY_TIERS.find(function(q){return q.key===qualKey;}) || QUALITY_TIERS[1];
-  var labAdj  = tpcNum * 0.20 * (ctry.labor_eur_hr/52 - 1);
+  // Reprice OEM Make labour by plant country vs US reference (€58/hr in BOM engines)
+  var labAdj  = _bom.labEur > 0 ? _bom.labEur * (ctry.labor_eur_hr / 58.0 - 1) : tpcNum * 0.20 * (ctry.labor_eur_hr / 52 - 1);
   var _spObj  = ops.supply_plan;
-  var srcAdj  = (_spObj&&typeof _spObj._total_piece_adj_eur==='number') ? _spObj._total_piece_adj_eur : tpcNum*0.50*srcTier.mat_adj;
+  // srcAdj: use actual material fraction from DMP if available, else 50% fallback
+  var matFrac = (tpcNum > 0 && _bom.matEur > 0) ? _bom.matEur / tpcNum : 0.50;
+  var srcAdj  = (_spObj&&typeof _spObj._total_piece_adj_eur==='number') ? _spObj._total_piece_adj_eur : tpcNum*matFrac*srcTier.mat_adj;
 
   var m = _MANUF_E.calc({
     platform_size:      _getPlatformSize(),
@@ -20607,8 +20629,8 @@ function renderPropOpsCostSummary() {
   }
 
   _st('prop-ops-sum-tpc',      tpcNum > 0 ? '€' + Math.round(tpcNum) : '—');
-  _st('prop-ops-sum-tpc-buy',  tpcNum > 0 ? '€' + Math.round(tpcBuy) : '—');
-  _st('prop-ops-sum-tpc-make', tpcNum > 0 ? '€' + Math.round(tpcNum-tpcBuy) : '—');
+  _st('prop-ops-sum-tpc-buy',  tpcNum > 0 ? '€' + Math.round(tpcBuy)  + ' (' + Math.round(tpcBuy/tpcNum*100) + '%)' : '—');
+  _st('prop-ops-sum-tpc-make', tpcNum > 0 ? '€' + Math.round(tpcMake) + ' (' + Math.round(tpcMake/tpcNum*100) + '%)' : '—');
   _st('prop-ops-sum-labour',   _fmtAdj(labAdj), labAdj<=0?'var(--green)':'var(--orange)');
   _st('prop-ops-sum-src',      _fmtAdj(srcAdj), srcAdj<=0?'var(--green)':'var(--orange)');
   _st('prop-ops-sum-qual',     '+€' + qualTier.unit_add_eur);
@@ -21020,9 +21042,11 @@ async function confirmProposal() {
       kerb_mass_kg: _cons?_cons.kerb_mass_kg:null, CdA: _cons?_cons.CdA:null
     }); } catch(e) {}
 
+    var _bom = _computeDmpMake();
     var _rolledSpecs = {
       pwt_type: _pwtType, platform_size: _plS.size||'medium',
       body_type: _bodyC, segment_code: _prop.study.segment_code,
+      dmp_total_eur: Math.round(_bom.dmp), make_total_eur: Math.round(_bom.make),
       brand_name:  (_prop.study.rolled_up_specs && _prop.study.rolled_up_specs.brand_name) || '',
       safety:      parseFloat(_thS.safety||_plS.safety||50),
       comfort:     parseFloat(_thS.comfort||_plS.comfort||50),
