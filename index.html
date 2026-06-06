@@ -8858,7 +8858,7 @@ function openModDetailModal(moduleId) {
     html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">';
     html += '<div style="background:var(--s2);border:1px solid var(--orange)44;border-radius:4px;padding:10px 12px;">' +
       '<div style="'+MO+'font-size:8px;text-transform:uppercase;letter-spacing:1px;color:var(--orange);margin-bottom:8px;">① Supplier Purchased Cost</div>';
-    [['Supplier Direct',_d.supplier_direct_eur],['+12% Overhead',_d.oh_eur],['+8% Profit',_d.profit_eur]].forEach(function(l){
+    [['Supplier Direct',_d.direct_eur],['+12% Overhead',_d.overhead_eur],['+8% Profit',_d.profit_eur]].forEach(function(l){
       html += '<div style="display:flex;justify-content:space-between;'+MO+'font-size:9px;color:var(--muted2);padding:2px 0;">' +
         '<span>'+l[0]+'</span><span>€'+Math.round(l[1])+'</span></div>';
     });
@@ -8867,7 +8867,7 @@ function openModDetailModal(moduleId) {
       '<span>DMP Total</span><span>€'+Math.round(_d.total_eur)+'</span></div></div>';
     html += '<div style="background:var(--s2);border:1px solid var(--cyan)44;border-radius:4px;padding:10px 12px;">' +
       '<div style="'+MO+'font-size:8px;text-transform:uppercase;letter-spacing:1px;color:var(--cyan);margin-bottom:8px;">② OEM Transformation</div>';
-    [['Labor',_m.labor_eur],['Energy',_m.energy_eur],['+20% Overhead',_m.oh_eur]].forEach(function(l){
+    [['Labor',_m.labor_eur],['Energy',_m.energy_eur],['+20% Overhead',_m.overhead_eur]].forEach(function(l){
       html += '<div style="display:flex;justify-content:space-between;'+MO+'font-size:9px;color:var(--muted2);padding:2px 0;">' +
         '<span>'+l[0]+'</span><span>€'+Math.round(l[1])+'</span></div>';
     });
@@ -18027,9 +18027,15 @@ function _computeDmpMake() {
 }
 
 // Recompute DMP/Make split for a library module object using its stored specs + config_key.
-// Returns {dmp, make, tpc} or {…, is_fallback:true} estimate when engine can't be called.
+// Returns {dmp, make, tpc} using _calcBomSplit() field names (direct_eur / overhead_eur).
+// Scales engine output to stored per_unit_tpc_eur so modal and Section 7 agree.
+// Caches result onto mod.dmp / mod.make so Section 7 _spSlotBuyCost() picks up real DMP.
 function _computeModDmpMake(mod) {
   if (!mod || !mod.config_key) return null;
+  // If already computed (new-mode BOM run or prior call), return directly
+  if (mod.dmp && mod.make) {
+    return {dmp:mod.dmp, make:mod.make, tpc:parseFloat(mod.per_unit_tpc_eur||0)||mod.dmp.total_eur+mod.make.total_eur};
+  }
   var s = mod.specs || {};
   try {
     var r = null;
@@ -18060,14 +18066,45 @@ function _computeModDmpMake(mod) {
             parseFloat(s.connectivity||30), parseFloat(s.infotainment||30),
             parseFloat(s.cybersecurity||20), 0, 0);
     }
-    if (r && r.dmp && r.make)
-      return {dmp:r.dmp, make:r.make, tpc:r.std_platform_tpc_eur||r.total_std_direct_eur||0};
+    if (r && r.dmp && r.make) {
+      var engineTpc = r.std_platform_tpc_eur || r.total_std_direct_eur || (r.dmp.total_eur + r.make.total_eur);
+      var storedTpc = parseFloat(mod.per_unit_tpc_eur || 0);
+      // Scale to stored TPC so modal and Section 7 start from the same baseline
+      var sc = (engineTpc > 0 && storedTpc > 0) ? storedTpc / engineTpc : 1;
+      function s2(v){ return Math.round((v||0)*sc*100)/100; }
+      var dmp = {
+        total_eur:       s2(r.dmp.total_eur),
+        direct_eur:      s2(r.dmp.direct_eur),
+        overhead_eur:    s2(r.dmp.overhead_eur),
+        profit_eur:      s2(r.dmp.profit_eur),
+        raw_material_eur:s2(r.dmp.raw_material_eur),
+        buy_labor_eur:   s2(r.dmp.buy_labor_eur),
+        buy_energy_eur:  s2(r.dmp.buy_energy_eur),
+        buy_deprec_eur:  s2(r.dmp.buy_deprec_eur),
+      };
+      var make = {
+        total_eur:    s2(r.make.total_eur),
+        labor_eur:    s2(r.make.labor_eur),
+        energy_eur:   s2(r.make.energy_eur),
+        machine_eur:  s2(r.make.machine_eur),
+        direct_eur:   s2(r.make.direct_eur),
+        overhead_eur: s2(r.make.overhead_eur),
+      };
+      // Cache so _computeDmpMake() / _spSlotBuyCost() use engine-based values
+      mod.dmp  = dmp;
+      mod.make = make;
+      return {dmp:dmp, make:make, tpc:storedTpc || engineTpc};
+    }
   } catch(e) { /* fall through to estimate */ }
+  // Fallback: estimate from stored TPC using per-type buy fraction
   if (mod.per_unit_tpc_eur) {
     var tpc = parseFloat(mod.per_unit_tpc_eur);
+    var slotKey = {platform:'platform',ice_pwt:'pwt',epwt:'epwt',battery:'battery',tophat:'tophat',eands:'eands'}[mod.module_type]||'platform';
+    var bf = (SP_MODULE_TYPES && SP_MODULE_TYPES[slotKey]) ? SP_MODULE_TYPES[slotKey].buy_fraction : 0.85;
+    var dmpT = tpc * bf, makeT = tpc * (1 - bf);
     return {
-      dmp:  {total_eur:tpc*0.85, supplier_direct_eur:tpc*0.72, oh_eur:tpc*0.086, profit_eur:tpc*0.064},
-      make: {total_eur:tpc*0.15, labor_eur:tpc*0.12, energy_eur:tpc*0.005, oh_eur:tpc*0.025},
+      dmp:  {total_eur:dmpT, direct_eur:dmpT/1.212, overhead_eur:dmpT*0.1/1.212, profit_eur:dmpT*0.08/1.212, raw_material_eur:dmpT*0.70},
+      make: {total_eur:makeT, labor_eur:makeT*0.78, energy_eur:makeT*0.03, machine_eur:makeT*0.03, direct_eur:makeT/1.20, overhead_eur:makeT*0.20/1.20},
       tpc:  tpc, is_fallback:true
     };
   }
