@@ -4032,6 +4032,23 @@ function _bomDetail(matLines, procLines, r) {
     return t;
   }
 
+  // Material → category and BUY-process → category lookup dicts
+  var MAT_CAT = {
+    HSS_STAMPED:'metals', MILD_STEEL:'metals', UHSS:'metals', AHSS:'metals',
+    FRAME_STEEL:'metals', ALU_CAST:'metals', ALU_STAMP:'metals', ALU_EXTRUSION:'metals',
+    CFRP:'chemicals', RUBBER_EPDM:'chemicals', STRUCT_ADHESIVE:'chemicals',
+    BATTERY_HOUSING:'electronics'
+  };
+  var BUY_PROC_CAT = {
+    DIE_CASTING:'metals', MACHINING_CNC:'metals', IRON_CASTING:'metals',
+    ALU_DIE_CAST:'metals', HOT_FORGING:'metals', ENGINE_MACHINING:'metals',
+    SHAFT_MACHINING:'metals', LAMI_STAMP:'metals',
+    COMPOSITE_LAY:'chemicals', FOAM_MOULD:'chemicals', SEAT_ASSEMBLY:'chemicals',
+    ECU_ASSEMBLY:'electronics', COIL_WINDING:'electronics', MAGNET_ASSEMBLY:'electronics',
+    ELECTRODE_MIXING:'electronics', CELL_ASSEMBLY:'electronics', CELL_FORMATION:'electronics'
+  };
+  var CAT_META = {metals:'METALS', chemicals:'CHEMICALS & COMPOSITES', electronics:'ELECTRONICS & ELECTRICAL'};
+
   // Split process lines by BUY (supplier) vs MAKE (OEM)
   var buyProcs  = procLines.filter(function(l){ return PROC_MAKE_BUY[l.process_code] === 'BUY'; });
   var makeProcs = procLines.filter(function(l){ return PROC_MAKE_BUY[l.process_code] !== 'BUY'; });
@@ -4040,25 +4057,28 @@ function _bomDetail(matLines, procLines, r) {
   h += '<div style="background:var(--s2);border-radius:5px;padding:10px 12px;margin-bottom:8px;">';
   h += '<div style="'+MO+'font-size:8px;text-transform:uppercase;letter-spacing:1px;color:var(--orange);margin-bottom:8px;">① Supplier Purchased Cost</div>';
 
-  h += '<div style="'+MO+'font-size:7px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:2px;">Purchased Materials</div>';
-  h += '<table style="width:100%;border-collapse:collapse;font-size:10px;">';
-  h += '<tr style="color:var(--muted2);'+MO+'font-size:8px;"><td style="padding:2px 4px;">Material</td><td style="padding:2px 4px;text-align:right;">Net kg</td><td style="padding:2px 4px;text-align:right;">Gross kg</td><td style="padding:2px 4px;text-align:right;">€/kg</td><td style="padding:2px 4px;text-align:right;">Cost €</td></tr>';
-  matLines.forEach(function(l) {
-    var col = l.spec_label==='BEV Structural'?'var(--green)':l.spec_label==='Safety'?'var(--orange)':l.spec_label==='Comfort'?'var(--purple)':l.spec_label==='Reliability'?'var(--gold)':l.spec_label==='Weight Opt.'?'var(--cyan)':'var(--text)';
-    h += '<tr style="border-top:0.5px solid rgba(255,255,255,0.04);">';
-    h += '<td style="padding:2px 4px;color:'+col+';">'+(l.spec_driven?'+ ':'')+l.material_name+'</td>';
-    h += '<td style="padding:2px 4px;text-align:right;'+MO+'">'+(l.net_weight_kg||l.net||0).toFixed(1)+'</td>';
-    h += '<td style="padding:2px 4px;text-align:right;'+MO+'">'+(l.gross_weight_kg||l.gross||0).toFixed(1)+'</td>';
-    h += '<td style="padding:2px 4px;text-align:right;'+MO+'">€'+(l.material_price_eur_kg||l.price||0).toFixed(2)+'</td>';
-    h += '<td style="padding:2px 4px;text-align:right;'+MO+';color:var(--cyan);">€'+Math.round(l.material_cost_eur||l.cost||0)+'</td>';
-    h += '</tr>';
+  ['metals','chemicals','electronics'].forEach(function(cat) {
+    var catMats  = matLines.filter(function(l){ return (MAT_CAT[l.material_code||l.code]||'metals')===cat; });
+    var catProcs = buyProcs.filter(function(l){  return BUY_PROC_CAT[l.process_code]===cat; });
+    if (catMats.length===0 && catProcs.length===0) return;
+    h += '<div style="font-size:7.5px;'+MO+'text-transform:uppercase;letter-spacing:1.5px;color:var(--muted2);border-bottom:0.5px solid var(--border2);padding:4px 0 2px;margin:8px 0 4px;">'+CAT_META[cat]+'</div>';
+    if (catMats.length > 0) {
+      h += '<table style="width:100%;border-collapse:collapse;font-size:10px;">';
+      h += '<tr style="color:var(--muted2);'+MO+'font-size:8px;"><td style="padding:2px 4px;">Material</td><td style="padding:2px 4px;text-align:right;">Net kg</td><td style="padding:2px 4px;text-align:right;">Gross kg</td><td style="padding:2px 4px;text-align:right;">€/kg</td><td style="padding:2px 4px;text-align:right;">Cost €</td></tr>';
+      catMats.forEach(function(l) {
+        var col = l.spec_label==='BEV Structural'?'var(--green)':l.spec_label==='Safety'?'var(--orange)':l.spec_label==='Comfort'?'var(--purple)':l.spec_label==='Reliability'?'var(--gold)':l.spec_label==='Weight Opt.'?'var(--cyan)':'var(--text)';
+        h += '<tr style="border-top:0.5px solid rgba(255,255,255,0.04);">';
+        h += '<td style="padding:2px 4px;color:'+col+';">'+(l.spec_driven?'+ ':'')+l.material_name+'</td>';
+        h += '<td style="padding:2px 4px;text-align:right;'+MO+'">'+(l.net_weight_kg||l.net||0).toFixed(1)+'</td>';
+        h += '<td style="padding:2px 4px;text-align:right;'+MO+'">'+(l.gross_weight_kg||l.gross||0).toFixed(1)+'</td>';
+        h += '<td style="padding:2px 4px;text-align:right;'+MO+'">€'+(l.material_price_eur_kg||l.price||0).toFixed(2)+'</td>';
+        h += '<td style="padding:2px 4px;text-align:right;'+MO+';color:var(--cyan);">€'+Math.round(l.material_cost_eur||l.cost||0)+'</td>';
+        h += '</tr>';
+      });
+      h += '</table>';
+    }
+    if (catProcs.length > 0) h += procRows(catProcs, 'var(--orange)');
   });
-  h += '</table>';
-
-  if (buyProcs.length > 0) {
-    h += '<div style="'+MO+'font-size:7px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin:6px 0 2px;">Supplier Processes</div>';
-    h += procRows(buyProcs, 'var(--orange)');
-  }
 
   h += '<div style="'+DIV+'"></div>';
   h += '<div style="display:flex;justify-content:space-between;font-size:9px;padding:1px 0;"><span style="color:var(--muted2);">Supplier Direct</span><span style="'+MO+';color:var(--muted2);">€'+Math.round(dmp.direct_eur).toLocaleString()+'</span></div>';
