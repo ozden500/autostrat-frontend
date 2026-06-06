@@ -20390,17 +20390,31 @@ function _spSlotMake(sk){
 function _spConfirmedPlants(){
   return ((_prop.operations&&_prop.operations.vehicle_plants)||[]).filter(function(vp){return vp.vehicle_capacity_yr>0;});
 }
+function _spConfirmedPwtPlants(){
+  return ((_prop.operations&&_prop.operations.powertrain_plants)||[]).filter(function(pp){return pp.vehicle_capacity_yr>0;});
+}
+function _spVehiclePlantSlots(){
+  return _spGetActivePropSlots().filter(function(sk){return ['platform','tophat','eands'].indexOf(sk)>=0;});
+}
+function _spPwtPlantSlots(){
+  return _spGetActivePropSlots().filter(function(sk){return ['pwt','epwt','battery'].indexOf(sk)>=0;});
+}
 
 function _spInitFromPlants(){
-  var slots=_spGetActivePropSlots(),plants={};
+  var vpSlots=_spVehiclePlantSlots(),pwtSlots=_spPwtPlantSlots(),plants={};
   _spConfirmedPlants().forEach(function(vp){
     var dz=_spDefaultZoneForRegion(vp.region),mods={};
-    slots.forEach(function(sk){mods[sk]={zone:dz,automation:2};});
+    vpSlots.forEach(function(sk){mods[sk]={zone:dz,automation:2};});
     plants[vp.id]={modules:mods};
+  });
+  _spConfirmedPwtPlants().forEach(function(pp){
+    var dz=_spDefaultZoneForRegion(pp.region),mods={};
+    pwtSlots.forEach(function(sk){mods[sk]={zone:dz,automation:2};});
+    plants[pp.id]={modules:mods};
   });
   if(!Object.keys(plants).length){
     var vp0=_spConfirmedPlants()[0]||((_prop.operations&&_prop.operations.vehicle_plants)||[])[0]||{id:'vp1',region:'EU'};
-    var mods2={};slots.forEach(function(sk){mods2[sk]={zone:_spDefaultZoneForRegion(vp0.region),automation:2};});
+    var mods2={};vpSlots.concat(pwtSlots).forEach(function(sk){mods2[sk]={zone:_spDefaultZoneForRegion(vp0.region),automation:2};});
     plants[vp0.id||'vp1']={modules:mods2};
   }
   return {plants:plants};
@@ -20409,12 +20423,18 @@ function _spInitFromPlants(){
 function _spSyncPlanWithPlants(){
   var sp=_prop.operations&&_prop.operations.supply_plan;
   if(!sp||!sp.plants)return;
-  var slots=_spGetActivePropSlots();
+  var vpSlots=_spVehiclePlantSlots(),pwtSlots=_spPwtPlantSlots();
   _spConfirmedPlants().forEach(function(vp){
     if(sp.plants[vp.id])return;
     var dz=_spDefaultZoneForRegion(vp.region),mods={};
-    slots.forEach(function(sk){mods[sk]={zone:dz,automation:2};});
+    vpSlots.forEach(function(sk){mods[sk]={zone:dz,automation:2};});
     sp.plants[vp.id]={modules:mods};
+  });
+  _spConfirmedPwtPlants().forEach(function(pp){
+    if(sp.plants[pp.id])return;
+    var dz=_spDefaultZoneForRegion(pp.region),mods={};
+    pwtSlots.forEach(function(sk){mods[sk]={zone:dz,automation:2};});
+    sp.plants[pp.id]={modules:mods};
   });
 }
 
@@ -20448,7 +20468,8 @@ function _calcModuleSupplyMetrics(sk,zoneKey,autoLevel,plantRegion){
 
 function _calcSupplyPlanTotals(){
   var sp=(_prop.operations&&_prop.operations.supply_plan)||{};
-  var plants=sp.plants||{},vPlants=(_prop.operations&&_prop.operations.vehicle_plants)||[];
+  var plants=sp.plants||{};
+  var vPlants=((_prop.operations&&_prop.operations.vehicle_plants)||[]).concat((_prop.operations&&_prop.operations.powertrain_plants)||[]);
   var totalAdj=0,totalNRE=0,totalRisk=0,totalW=0,totalLanded=0;
   var nPlants=Math.max(1,Object.keys(plants).length);
   Object.keys(plants).forEach(function(pid){
@@ -20567,9 +20588,9 @@ function _renderModuleDetailCard(sr, vp, _ct) {
   return h;
 }
 
-function _renderPlantSupplyCard(vp, sp) {
+function _renderPlantSupplyCard(vp, sp, slots) {
   var plantMods = (sp.plants && sp.plants[vp.id] && sp.plants[vp.id].modules) || {};
-  var slots = _spGetActivePropSlots();
+  slots = slots || _spGetActivePropSlots();
   var _cl = INDUSTRIAL_COUNTRIES[vp.region] || [], _ct = _cl.find(function(c) { return c.code === vp.country_code; }) || {};
   var MO = 'font-family:DM Mono,monospace;';
   // Pre-compute all slot results
@@ -20623,10 +20644,19 @@ function _renderPlantSupplyCard(vp, sp) {
 function _renderSupplyPlanSection(){
   var sp=(_prop.operations&&_prop.operations.supply_plan)||{};
   var vPlants=_spConfirmedPlants();
-  var TH='font-family:DM Mono,monospace;font-size:8px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:8px;display:block;';
+  var pwtPlants=_spConfirmedPwtPlants();
+  var vpSlots=_spVehiclePlantSlots();
+  var pwtSlots=_spPwtPlantSlots();
+  var TH='font-family:DM Mono,monospace;font-size:8px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:6px;display:block;';
   var h='<div style="margin-bottom:14px;">';
-  h+='<div style="'+TH+'">📦 Parts Supply Plan</div>';
-  vPlants.forEach(function(vp){h+=_renderPlantSupplyCard(vp,sp);});
+  if(vPlants.length&&vpSlots.length){
+    h+='<div style="'+TH+'">🏭 Vehicle Assembly Plants — Component Sourcing</div>';
+    vPlants.forEach(function(vp){h+=_renderPlantSupplyCard(vp,sp,vpSlots);});
+  }
+  if(pwtPlants.length&&pwtSlots.length){
+    h+='<div style="'+TH+';margin-top:14px;">⚙ Powertrain Plants — Component Sourcing</div>';
+    pwtPlants.forEach(function(pp){h+=_renderPlantSupplyCard(pp,sp,pwtSlots);});
+  }
   var totals=_calcSupplyPlanTotals();
   var rPct=Math.round(totals.riskScore*100);
   var rCol=rPct<30?'var(--green)':rPct<55?'var(--gold)':'var(--red)';
