@@ -18632,19 +18632,64 @@ var SP_MODULE_TYPES = {
   tophat:   {buy_fraction:0.75, labor_intensity:0.65},
   eands:    {buy_fraction:0.88, labor_intensity:0.15},
 };
-// Five economic zones: geographic proximity + import duty regime
+// 11 economic zones: zone-to-zone duty (HS 8708 component rates) + container-freight matrices
+// duty{} and logistics{} are both keyed by DESTINATION ZONE (EW/EE/ND/MX/CN/JP/KR/SEA/IN/LA/ME)
+// — diagonal = domestic shipment (0% duty, cheapest €25/m³ freight tier)
 var SP_ZONES = [
-  {key:'EU',    label:'EU / EEA',     flag:'🇪🇺', desc:'European single market — zero internal tariff', labor_index:1.00, risk:0.12,
-   logistics:{EU:60, NA:400,APAC:620,SA:500,MEA:320}, duty:{EU:0,  NA:2.5,APAC:8, SA:6, MEA:4}},
-  {key:'USMCA', label:'USMCA',         flag:'🌎', desc:'N. America free-trade zone',                      labor_index:0.70, risk:0.18,
-   logistics:{EU:400,NA:60, APAC:520,SA:180,MEA:440}, duty:{EU:2.5,NA:0,  APAC:6, SA:4, MEA:5}},
-  {key:'CHINA', label:'China',         flag:'🇨🇳', desc:'Lowest labor cost — high tariff & geo risk',     labor_index:0.28, risk:0.58,
-   logistics:{EU:620,NA:540,APAC:100,SA:650,MEA:460}, duty:{EU:10, NA:25, APAC:4, SA:10,MEA:7}},
-  {key:'ASEAN', label:'ASEAN / India', flag:'🌏', desc:'SE Asia + India — very low labor, mod tariffs',   labor_index:0.22, risk:0.42,
-   logistics:{EU:650,NA:560,APAC:140,SA:690,MEA:500}, duty:{EU:10, NA:8,  APAC:3, SA:11,MEA:8}},
-  {key:'EMRG',  label:'Emerging',      flag:'🌍', desc:'LATAM & MEA — best logistics for SA/MEA plants',  labor_index:0.32, risk:0.45,
-   logistics:{EU:480,NA:380,APAC:540,SA:100,MEA:180}, duty:{EU:8,  NA:6,  APAC:10,SA:2, MEA:2}},
+  {key:'EU_WEST', label:'W. Europe', flag:'🇪🇺', desc:'Core EU manufacturing economies — DE/FR/IT/ES/GB', labor_index:1.10, risk:0.10,
+   logistics:{EW:25, EE:35, ND:75, MX:75, CN:85, JP:85, KR:85, SEA:95, IN:95, LA:120,ME:90},
+   duty:     {EW:0,  EE:0,  ND:2.5,MX:0,  CN:6,  JP:0,  KR:0,  SEA:5, IN:10, LA:14, ME:3}},
+  {key:'EU_EAST', label:'E. Europe', flag:'🇪🇺', desc:'Lower-cost EU/Customs-Union — PL/CZ/SK/RO/TR', labor_index:0.32, risk:0.20,
+   logistics:{EW:35, EE:25, ND:75, MX:75, CN:85, JP:85, KR:85, SEA:95, IN:95, LA:120,ME:90},
+   duty:     {EW:0,  EE:0,  ND:2.5,MX:0,  CN:6,  JP:0,  KR:0,  SEA:5, IN:10, LA:14, ME:3}},
+  {key:'NA_DEVELOPED', label:'US / Canada', flag:'🇺🇸', desc:'High-cost North America', labor_index:0.95, risk:0.12,
+   logistics:{EW:75, EE:75, ND:25, MX:40, CN:80, JP:80, KR:80, SEA:100,IN:100,LA:90, ME:130},
+   duty:     {EW:3.5,EE:3.5,ND:0,  MX:0,  CN:6,  JP:0,  KR:0,  SEA:5, IN:10, LA:14, ME:4}},
+  {key:'MEXICO', label:'Mexico', flag:'🇲🇽', desc:'Low-cost USMCA member — distinct FTA network (EU-Mexico, Mexico-Japan)', labor_index:0.13, risk:0.28,
+   logistics:{EW:75, EE:75, ND:40, MX:25, CN:80, JP:80, KR:80, SEA:100,IN:100,LA:90, ME:130},
+   duty:     {EW:0,  EE:0,  ND:0,  MX:0,  CN:5,  JP:0,  KR:8,  SEA:5, IN:10, LA:3,  ME:4}},
+  {key:'CHINA', label:'China', flag:'🇨🇳', desc:'Large-scale, low-to-mid-cost — high tariff exposure into NA (§301)', labor_index:0.24, risk:0.55,
+   logistics:{EW:85, EE:85, ND:80, MX:80, CN:25, JP:45, KR:45, SEA:55, IN:55, LA:140,ME:95},
+   duty:     {EW:4,  EE:4,  ND:25, MX:5,  CN:0,  JP:6,  KR:6,  SEA:3, IN:10, LA:14, ME:4}},
+  {key:'JAPAN', label:'Japan', flag:'🇯🇵', desc:'High-cost, high-quality — EU-Japan EPA, no comprehensive Japan-US deal', labor_index:0.92, risk:0.10,
+   logistics:{EW:85, EE:85, ND:80, MX:80, CN:45, JP:25, KR:45, SEA:55, IN:55, LA:140,ME:95},
+   duty:     {EW:0,  EE:0,  ND:2.5,MX:0,  CN:6,  JP:0,  KR:6,  SEA:0, IN:0,  LA:14, ME:4}},
+  {key:'KOREA', label:'South Korea', flag:'🇰🇷', desc:'KORUS + EU-Korea FTA — near-zero tariffs into NA/EU', labor_index:0.63, risk:0.16,
+   logistics:{EW:85, EE:85, ND:80, MX:80, CN:45, JP:45, KR:25, SEA:55, IN:55, LA:140,ME:95},
+   duty:     {EW:0,  EE:0,  ND:0,  MX:6,  CN:6,  JP:6,  KR:0,  SEA:0, IN:0,  LA:10, ME:4}},
+  {key:'SE_ASIA', label:'SE Asia', flag:'🇹🇭', desc:'Low-cost ASEAN/AFTA/RCEP — TH/ID', labor_index:0.12, risk:0.42,
+   logistics:{EW:95, EE:95, ND:100,MX:100,CN:55, JP:55, KR:55, SEA:25, IN:50, LA:150,ME:100},
+   duty:     {EW:4,  EE:4,  ND:2.5,MX:5,  CN:3,  JP:0,  KR:0,  SEA:0, IN:5,  LA:14, ME:5}},
+  {key:'INDIA', label:'India', flag:'🇮🇳', desc:'Low-cost, large-scale — protectionist, outside RCEP but inside JP/KR CEPA', labor_index:0.11, risk:0.40,
+   logistics:{EW:95, EE:95, ND:100,MX:100,CN:55, JP:55, KR:55, SEA:50, IN:25, LA:150,ME:100},
+   duty:     {EW:4,  EE:4,  ND:2.5,MX:5,  CN:6,  JP:0,  KR:0,  SEA:5, IN:0,  LA:14, ME:5}},
+  {key:'LATAM', label:'Latin America', flag:'🇧🇷', desc:'Mercosur core (BR/AR) + Colombia — high common external tariff', labor_index:0.18, risk:0.42,
+   logistics:{EW:120,EE:120,ND:90, MX:90, CN:140,JP:140,KR:140,SEA:150,IN:150,LA:25, ME:160},
+   duty:     {EW:4,  EE:4,  ND:2.5,MX:1,  CN:6,  JP:0,  KR:5,  SEA:5, IN:10, LA:0,  ME:5}},
+  {key:'MEA', label:'Middle East / Africa', flag:'🇿🇦', desc:'Africa/Middle East — Morocco/Egypt/SA hold EU association agreements', labor_index:0.14, risk:0.48,
+   logistics:{EW:90, EE:90, ND:130,MX:130,CN:95, JP:95, KR:95, SEA:100,IN:100,LA:160,ME:25},
+   duty:     {EW:1,  EE:1,  ND:2.5,MX:5,  CN:6,  JP:0,  KR:8,  SEA:5, IN:10, LA:14, ME:0}},
 ];
+// Reverse-lookup: country code → economic zone (same groupings as the roster above)
+var _ZONE_BY_COUNTRY = {
+  DE:'EU_WEST',FR:'EU_WEST',IT:'EU_WEST',ES:'EU_WEST',GB:'EU_WEST',
+  PL:'EU_EAST',CZ:'EU_EAST',SK:'EU_EAST',RO:'EU_EAST',TR:'EU_EAST',
+  US:'NA_DEVELOPED',CA:'NA_DEVELOPED', MX:'MEXICO',
+  CN:'CHINA', JP:'JAPAN', KR:'KOREA',
+  TH:'SE_ASIA',ID:'SE_ASIA', IN:'INDIA',
+  BR:'LATAM',AR:'LATAM',CO:'LATAM',
+  ZA:'MEA',MA:'MEA',EG:'MEA',NG:'MEA',SA_:'MEA'
+};
+function _zoneForPlant(countryCode, region){
+  return _ZONE_BY_COUNTRY[countryCode] || _spDefaultZoneForRegion(region);
+}
+// duty{}/logistics{} matrices are keyed by these short column abbreviations —
+// map a resolved destination zone (full SP_ZONES key) onto its matrix column
+var _ZONE_ABBR = {EU_WEST:'EW', EU_EAST:'EE', NA_DEVELOPED:'ND', MEXICO:'MX', CHINA:'CN',
+  JAPAN:'JP', KOREA:'KR', SE_ASIA:'SEA', INDIA:'IN', LATAM:'LA', MEA:'ME'};
+// m³ of shipped volume per €1,000 of module buy-cost — captures component "value density"
+// (E&S electronics are dense/compact; TopHat trim/glass/seating is bulky — ~30x spread)
+var MODULE_VOLUME_FACTOR = {platform:0.150, pwt:0.090, epwt:0.050, battery:0.050, tophat:0.300, eands:0.010};
 var SP_AUTO_LEVELS = [
   {key:1, label:'Manual',    labor_factor:1.30, nre_factor:0.004},
   {key:2, label:'Semi-auto', labor_factor:1.00, nre_factor:0.015},
@@ -20351,7 +20396,7 @@ function _getPlant(pid){return _getFacility('vehicle_plants',pid)||((_prop.opera
 // ── Supply Plan v2 helpers ────────────────────────────────────────────────────
 
 function _spDefaultZoneForRegion(region){
-  return ({EU:'EU',NA:'USMCA',APAC:'ASEAN',SA:'EMRG',MEA:'EMRG'})[region]||'EU';
+  return ({EU:'EU_WEST',NA:'NA_DEVELOPED',APAC:'SE_ASIA',SA:'LATAM',MEA:'MEA'})[region]||'EU_WEST';
 }
 
 function _spGetActivePropSlots(){
@@ -20442,7 +20487,7 @@ function _spSyncPlanWithPlants(){
   });
 }
 
-function _calcModuleSupplyMetrics(sk,zoneKey,autoLevel,plantRegion){
+function _calcModuleSupplyMetrics(sk,zoneKey,autoLevel,plantRegion,plantCountryCode){
   var mt=SP_MODULE_TYPES[sk];
   if(!mt)return {piece_adj:0,nre_m:0,risk:0.25,base_buy:0,base_tpc:0,buy_pct:0,labor_adj:0,logistics_eur:0,duty_eur:0,landed_eur:0,vol_k:0,nre_per_unit_eur:0};
   var zone=SP_ZONES.find(function(z){return z.key===zoneKey;})||SP_ZONES[0];
@@ -20454,8 +20499,11 @@ function _calcModuleSupplyMetrics(sk,zoneKey,autoLevel,plantRegion){
   // Use BOM-derived supplier labor as the basis for zone labor adjustment
   var laborBase=dmpData?parseFloat(dmpData.buy_labor_eur||0):buyCost*mt.labor_intensity;
   var laborAdj=laborBase*(zone.labor_index*auto.labor_factor-1.0);
-  var freightEur=zone.logistics[plantRegion]||300;
-  var dutyEur=buyCost*(zone.duty[plantRegion]||0)/100;
+  var destZone=_zoneForPlant(plantCountryCode,plantRegion);
+  var destAbbr=_ZONE_ABBR[destZone]||destZone;
+  var dutyEur=buyCost*(zone.duty[destAbbr]||0)/100;
+  var volumeM3=(buyCost/1000)*(MODULE_VOLUME_FACTOR[sk]||MODULE_VOLUME_FACTOR.platform);
+  var freightEur=volumeM3*(zone.logistics[destAbbr]||80);
   var pieceAdj=Math.round(laborAdj+(freightEur-200)+dutyEur);
   var landedEur=Math.round(buyCost+laborAdj+freightEur+dutyEur);
   var volK=_suggestedVolK()||50;
@@ -20477,11 +20525,11 @@ function _calcSupplyPlanTotals(){
   var totalAdj=0,totalNRE=0,totalRisk=0,totalW=0,totalLanded=0;
   var nPlants=Math.max(1,Object.keys(plants).length);
   Object.keys(plants).forEach(function(pid){
-    var vp=vPlants.find(function(p){return p.id===pid;})||{region:'EU'};
+    var vp=vPlants.find(function(p){return p.id===pid;})||{region:'EU',country_code:'DE'};
     var pMods=plants[pid].modules||{};
     _spGetActivePropSlots().forEach(function(sk){
       var dec=pMods[sk]||{zone:_spDefaultZoneForRegion(vp.region),automation:2};
-      var m=_calcModuleSupplyMetrics(sk,dec.zone,dec.automation,vp.region);
+      var m=_calcModuleSupplyMetrics(sk,dec.zone,dec.automation,vp.region,vp.country_code);
       totalAdj+=m.piece_adj;totalNRE+=m.nre_m;totalLanded+=m.landed_eur;
       var li=(SP_MODULE_TYPES[sk]||{labor_intensity:0.3}).labor_intensity;
       totalRisk+=m.risk*(0.5+li);totalW+=(0.5+li);
@@ -20489,7 +20537,7 @@ function _calcSupplyPlanTotals(){
   });
   if(!Object.keys(plants).length){
     _spGetActivePropSlots().forEach(function(sk){
-      var m=_calcModuleSupplyMetrics(sk,'EU',2,'EU');
+      var m=_calcModuleSupplyMetrics(sk,'EU_WEST',2,'EU','DE');
       var li=(SP_MODULE_TYPES[sk]||{labor_intensity:0.3}).labor_intensity;
       totalAdj+=m.piece_adj;totalNRE+=m.nre_m;totalLanded+=m.landed_eur;totalRisk+=m.risk*(0.5+li);totalW+=(0.5+li);
     });
@@ -20602,7 +20650,7 @@ function _renderPlantSupplyCard(vp, sp, slots) {
   var plantLanded = 0, plantMakeCost = 0;
   var slotResults = slots.map(function(sk) {
     var dec = plantMods[sk] || { zone: _spDefaultZoneForRegion(vp.region), automation: 2 };
-    var m = _calcModuleSupplyMetrics(sk, dec.zone, dec.automation, vp.region);
+    var m = _calcModuleSupplyMetrics(sk, dec.zone, dec.automation, vp.region, vp.country_code);
     var mc = _calcModuleMakeCost(sk, _ct);
     plantLanded += m.landed_eur;
     plantMakeCost += mc.total_eur;
@@ -20776,7 +20824,7 @@ function onSpZone(pid,sk,zk){
   var sp=_prop.operations&&_prop.operations.supply_plan;
   if(!sp||!sp.plants)return;
   if(!sp.plants[pid])sp.plants[pid]={modules:{}};
-  if(!sp.plants[pid].modules[sk])sp.plants[pid].modules[sk]={zone:'EU',automation:2};
+  if(!sp.plants[pid].modules[sk])sp.plants[pid].modules[sk]={zone:_spDefaultZoneForRegion((_getPlant(pid)||{}).region),automation:2};
   sp.plants[pid].modules[sk].zone=zk;
   _refreshSupplyPlanArea();renderOpsAggregateSummary();
 }
@@ -20785,7 +20833,7 @@ function onSpAuto(pid,sk,level){
   var sp=_prop.operations&&_prop.operations.supply_plan;
   if(!sp||!sp.plants)return;
   if(!sp.plants[pid])sp.plants[pid]={modules:{}};
-  if(!sp.plants[pid].modules[sk])sp.plants[pid].modules[sk]={zone:'EU',automation:2};
+  if(!sp.plants[pid].modules[sk])sp.plants[pid].modules[sk]={zone:_spDefaultZoneForRegion((_getPlant(pid)||{}).region),automation:2};
   sp.plants[pid].modules[sk].automation=level;
   _refreshSupplyPlanArea();renderOpsAggregateSummary();
 }
