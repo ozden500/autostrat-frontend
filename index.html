@@ -9894,6 +9894,9 @@ document.addEventListener('click', function(e) {
     e.stopPropagation();
     _spToggleMod(btn.getAttribute('data-pid'), btn.getAttribute('data-sk'));
   }
+  if (action === 'sp-toggle-plant') {
+    _spTogglePlantCard(btn.getAttribute('data-pid'));
+  }
 });
 
 
@@ -20441,7 +20444,7 @@ function _spSyncPlanWithPlants(){
 
 function _calcModuleSupplyMetrics(sk,zoneKey,autoLevel,plantRegion,plantCountryCode){
   var mt=SP_MODULE_TYPES[sk];
-  if(!mt)return {piece_adj:0,nre_m:0,risk:0.25,base_buy:0,base_tpc:0,buy_pct:0,labor_adj:0,logistics_eur:0,duty_eur:0,landed_eur:0,vol_k:0,nre_per_unit_eur:0};
+  if(!mt)return {piece_adj:0,nre_m:0,risk:0.25,base_buy:0,base_tpc:0,buy_pct:0,labor_adj:0,logistics_eur:0,duty_eur:0,landed_eur:0};
   var zone=SP_ZONES.find(function(z){return z.key===zoneKey;})||SP_ZONES[0];
   var auto=SP_AUTO_LEVELS.find(function(a){return a.key===autoLevel;})||SP_AUTO_LEVELS[1];
   var p=_prop[sk];
@@ -20460,13 +20463,12 @@ function _calcModuleSupplyMetrics(sk,zoneKey,autoLevel,plantRegion,plantCountryC
   var landedEur=Math.round(buyCost+laborAdj+freightEur+dutyEur);
   var volK=_suggestedVolK()||50;
   var nreM=(buyCost*volK*1000*auto.nre_factor)/1e6;
-  var nrePu=volK>0?Math.round(nreM*1e6/(volK*1000)*10)/10:0;
   var risk=zone.risk*(1-mt.labor_intensity*0.20);
   return {
     piece_adj:pieceAdj,nre_m:nreM,risk:risk,base_buy:Math.round(buyCost),
     base_tpc:Math.round(tpcRaw),buy_pct:Math.round(mt.buy_fraction*100),
     labor_adj:Math.round(laborAdj),logistics_eur:freightEur,duty_eur:Math.round(dutyEur),
-    landed_eur:landedEur,vol_k:volK,nre_per_unit_eur:nrePu
+    landed_eur:landedEur
   };
 }
 
@@ -20509,6 +20511,12 @@ function _spToggleMod(pid, sk) {
   _refreshSupplyPlanArea();
 }
 
+var _spPlantExpanded = {};
+function _spTogglePlantCard(pid) {
+  _spPlantExpanded[pid] = !_spPlantExpanded[pid];
+  _refreshSupplyPlanArea();
+}
+
 function _renderModuleCollapsedRow(sr, vp, expanded) {
   var m = sr.m, dec = sr.dec, sk = sr.sk;
   var MO = 'font-family:DM Mono,monospace;';
@@ -20520,7 +20528,6 @@ function _renderModuleCollapsedRow(sr, vp, expanded) {
   var deltaAbs = Math.abs(delta);
   var deltaStr = delta >= 0 ? '+€' + deltaAbs.toLocaleString() : '−€' + deltaAbs.toLocaleString();
   var deltaCol = delta > 0 ? 'var(--orange)' : 'var(--green)';
-  var nreStr = m.nre_per_unit_eur > 0 ? 'NRE €' + m.nre_per_unit_eur.toFixed(1) + '/u' : '';
   var chevron = expanded ? '▲' : '▼';
   var h = '<div style="' + MO + 'display:grid;grid-template-columns:1fr 132px 92px 68px 18px 86px 58px 60px 22px;'
     + 'gap:4px;align-items:center;padding:4px 6px;border-radius:3px;cursor:pointer;margin-bottom:2px;background:var(--panel2);" '
@@ -20540,7 +20547,7 @@ function _renderModuleCollapsedRow(sr, vp, expanded) {
   h += '<div style="' + MO + 'font-size:8px;color:var(--muted2);text-align:center;">→</div>';
   h += '<div style="' + MO + 'font-size:9px;font-weight:700;color:var(--cyan);text-align:right;">€' + m.landed_eur.toLocaleString() + '</div>';
   h += '<div style="' + MO + 'font-size:7.5px;color:' + deltaCol + ';text-align:center;">(' + deltaStr + ')</div>';
-  h += '<div style="' + MO + 'font-size:7.5px;color:var(--purple);text-align:right;white-space:nowrap;">' + nreStr + '</div>';
+  h += '<div></div>';
   h += '<div style="' + MO + 'font-size:9px;color:var(--muted2);text-align:center;">' + chevron + '</div>';
   h += '</div>';
   return h;
@@ -20585,8 +20592,7 @@ function _renderModuleDetailCard(sr, vp, _ct) {
   }
   if (m.nre_m > 0) {
     h += '<div style="height:4px;"></div>';
-    var nreNote = m.nre_per_unit_eur > 0 ? '→ €' + m.nre_per_unit_eur.toFixed(1) + '/unit amortised @ ' + (m.vol_k || 0) + 'k/yr' : '';
-    h += row('NRE Investment', '€' + m.nre_m.toFixed(1) + 'M', 'var(--purple)', nreNote);
+    h += row('NRE Investment', '€' + m.nre_m.toFixed(1) + 'M', 'var(--purple)', 'Supplier tooling/setup');
   }
   h += _mzcCapacityStrip(sr.sk, dec.zone, vp.vehicle_capacity_yr || 0);
   h += '</div>';
@@ -20619,11 +20625,14 @@ function _renderPlantSupplyCard(vp, sp, slots) {
   var rPct = Math.round(totW > 0 ? Math.min(1, totRisk / totW) * 100 : 25);
   var rCol = rPct < 30 ? 'var(--green)' : rPct < 55 ? 'var(--gold)' : 'var(--red)';
   var rLabel = rPct < 30 ? 'LOW' : rPct < 55 ? 'MEDIUM' : 'HIGH';
+  var pExpanded = !!_spPlantExpanded[vp.id];
+  var pChevron = pExpanded ? '▲' : '▼';
   var h = '<div style="margin-bottom:12px;">';
   // ── Plant header ──
-  h += '<div style="display:flex;align-items:center;justify-content:space-between;background:var(--s2);border-radius:4px;padding:6px 10px;margin-bottom:6px;gap:8px;">';
+  h += '<div style="display:flex;align-items:center;justify-content:space-between;background:var(--s2);border-radius:4px;padding:6px 10px;margin-bottom:6px;gap:8px;cursor:pointer;" '
+    + 'data-action="sp-toggle-plant" data-pid="' + vp.id + '">';
   h += '<div style="' + MO + 'font-size:8px;font-weight:600;color:var(--gold);white-space:nowrap;">'
-    + '🏭 ' + (_ct.flag || '') + ' ' + (vp.country_name || vp.country_code || vp.region)
+    + pChevron + ' 🏭 ' + (_ct.flag || '') + ' ' + (vp.country_name || vp.country_code || vp.region)
     + ' <span style="color:var(--muted2);font-weight:400;">· ' + vp.region + '</span></div>';
   h += '<div style="display:flex;gap:14px;align-items:center;flex:1;justify-content:flex-end;">';
   h += '<div style="' + MO + 'font-size:7.5px;"><span style="color:var(--muted2);">Landed </span><span style="color:var(--cyan);font-weight:700;">€' + plantLanded.toLocaleString() + '/u</span></div>';
@@ -20636,12 +20645,14 @@ function _renderPlantSupplyCard(vp, sp, slots) {
   h += '</div>';
   h += '<div style="' + MO + 'font-size:7px;font-weight:600;color:' + rCol + ';padding:2px 5px;border:1px solid ' + rCol + ';border-radius:2px;white-space:nowrap;">' + rLabel + ' risk</div>';
   h += '</div>';
-  // ── Per-module rows ──
-  slotResults.forEach(function(sr) {
-    var expanded = !!_spModExpanded[vp.id + '__' + sr.sk];
-    h += _renderModuleCollapsedRow(sr, vp, expanded);
-    if (expanded) h += _renderModuleDetailCard(sr, vp, _ct);
-  });
+  // ── Per-module rows (collapsed by default — expand plant to view) ──
+  if (pExpanded) {
+    slotResults.forEach(function(sr) {
+      var expanded = !!_spModExpanded[vp.id + '__' + sr.sk];
+      h += _renderModuleCollapsedRow(sr, vp, expanded);
+      if (expanded) h += _renderModuleDetailCard(sr, vp, _ct);
+    });
+  }
   h += '</div>';
   return h;
 }
