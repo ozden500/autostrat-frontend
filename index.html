@@ -18215,30 +18215,13 @@ function buildComponentsSourcingSection() {
   if (!_prop.operations) _prop.operations = {};
   _spSyncPlanWithPlants();
   var ops = _prop.operations;
-  var srcKey = ops.sourcing_strategy || 'BALANCED';
   var qualKey = ops.quality_tier || 'STANDARD';
   var TH = 'font-family:DM Mono,monospace;font-size:8px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:8px;display:block;';
   var html = '';
 
   html += '<div style="font-family:DM Mono,monospace;font-size:9px;color:var(--muted2);margin-bottom:14px;">Define how components are sourced for each confirmed assembly plant.</div>';
 
-  html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px;">';
-
-  // Sourcing Strategy selector
-  html += '<div style="background:var(--s2);border-radius:4px;padding:12px;border:1px solid var(--border2);">';
-  html += '<span style="'+TH+'">\ud83c\udf10 Sourcing Strategy</span>';
-  html += '<div style="display:flex;gap:6px;flex-wrap:wrap;">';
-  SOURCING_STRATEGIES.forEach(function(s) {
-    var isSel = s.key === srcKey;
-    html += '<button onclick="onPropOpsSourcingStrategy(\''+s.key+'\')" style="font-family:DM Mono,monospace;font-size:9px;padding:5px 10px;border-radius:3px;cursor:pointer;border:1px solid '+(isSel?'var(--gold)':'var(--border2)')+';background:'+(isSel?'var(--goldl)':'var(--s3)')+';color:'+(isSel?'var(--gold)':'var(--text)')+';">'+s.label+' <span style="color:var(--muted2);">'+s.resilience+'</span></button>';
-  });
-  html += '</div>';
-  var srcTier = SOURCING_STRATEGIES.find(function(s){return s.key===srcKey;}) || SOURCING_STRATEGIES[1];
-  var srcAdjPct = Math.round(srcTier.mat_adj*100);
-  var srcAdjColor = srcTier.mat_adj > 0 ? 'var(--red)' : srcTier.mat_adj < 0 ? 'var(--green)' : 'var(--muted2)';
-  var srcAdjLabel = srcTier.mat_adj > 0 ? '+'+srcAdjPct+'% material cost' : srcTier.mat_adj < 0 ? srcAdjPct+'% material cost' : 'No material cost adjustment';
-  html += '<div style="font-family:DM Mono,monospace;font-size:8px;color:'+srcAdjColor+';margin-top:6px;">'+srcAdjLabel+'</div>';
-  html += '</div>';
+  html += '<div style="display:grid;grid-template-columns:1fr;gap:10px;margin-bottom:16px;">';
 
   // Quality Tier selector
   html += '<div style="background:var(--s2);border-radius:4px;padding:12px;border:1px solid var(--border2);">';
@@ -18271,11 +18254,6 @@ function buildComponentsSourcingSection() {
   el.innerHTML = html;
   renderOpsAggregateSummary();
   _mzcLoadCapacity();
-}
-
-function onPropOpsSourcingStrategy(key) {
-  if (_prop.operations) _prop.operations.sourcing_strategy = key;
-  buildComponentsSourcingSection();
 }
 
 function onPropOpsQualityTier(key) {
@@ -18812,9 +18790,17 @@ var _MANUF_E = (function() {
 function advanceToCommercialPlan() {
   var s8 = document.getElementById('prop-sec-8-status');
   if (s8) {
-    var srcKey = (_prop.operations && _prop.operations.sourcing_strategy) || 'BALANCED';
     var qualKey = (_prop.operations && _prop.operations.quality_tier) || 'STANDARD';
-    s8.textContent = '\u2713 ' + srcKey + ' sourcing \u00b7 ' + qualKey.replace('_',' ') + ' quality';
+    var _spZones = {};
+    var _sp = _prop.operations && _prop.operations.supply_plan;
+    if (_sp && _sp.plants) {
+      Object.keys(_sp.plants).forEach(function(pid) {
+        var mods = _sp.plants[pid].modules || {};
+        Object.keys(mods).forEach(function(sk) { if (mods[sk] && mods[sk].zone) _spZones[mods[sk].zone] = true; });
+      });
+    }
+    var _zCount = Object.keys(_spZones).length;
+    s8.textContent = '\u2713 ' + qualKey.replace('_',' ') + ' quality \u00b7 ' + _zCount + ' zone(s) sourced';
   }
   setPropStep(9);
   buildCommercialSection();
@@ -20452,18 +20438,18 @@ function _spPwtPlantSlots(){
 function _spInitFromPlants(){
   var vpSlots=_spVehiclePlantSlots(),pwtSlots=_spPwtPlantSlots(),plants={};
   _spConfirmedPlants().forEach(function(vp){
-    var dz=_spDefaultZoneForRegion(vp.region),mods={};
+    var dz=_zoneForPlant(vp.country_code,vp.region),mods={};
     vpSlots.forEach(function(sk){mods[sk]={zone:dz,automation:2};});
     plants[vp.id]={modules:mods};
   });
   _spConfirmedPwtPlants().forEach(function(pp){
-    var dz=_spDefaultZoneForRegion(pp.region),mods={};
+    var dz=_zoneForPlant(pp.country_code,pp.region),mods={};
     pwtSlots.forEach(function(sk){mods[sk]={zone:dz,automation:2};});
     plants[pp.id]={modules:mods};
   });
   if(!Object.keys(plants).length){
     var vp0=_spConfirmedPlants()[0]||((_prop.operations&&_prop.operations.vehicle_plants)||[])[0]||{id:'vp1',region:'EU'};
-    var mods2={};vpSlots.concat(pwtSlots).forEach(function(sk){mods2[sk]={zone:_spDefaultZoneForRegion(vp0.region),automation:2};});
+    var mods2={};vpSlots.concat(pwtSlots).forEach(function(sk){mods2[sk]={zone:_zoneForPlant(vp0.country_code,vp0.region),automation:2};});
     plants[vp0.id||'vp1']={modules:mods2};
   }
   return {plants:plants};
@@ -20475,13 +20461,13 @@ function _spSyncPlanWithPlants(){
   var vpSlots=_spVehiclePlantSlots(),pwtSlots=_spPwtPlantSlots();
   _spConfirmedPlants().forEach(function(vp){
     if(sp.plants[vp.id])return;
-    var dz=_spDefaultZoneForRegion(vp.region),mods={};
+    var dz=_zoneForPlant(vp.country_code,vp.region),mods={};
     vpSlots.forEach(function(sk){mods[sk]={zone:dz,automation:2};});
     sp.plants[vp.id]={modules:mods};
   });
   _spConfirmedPwtPlants().forEach(function(pp){
     if(sp.plants[pp.id])return;
-    var dz=_spDefaultZoneForRegion(pp.region),mods={};
+    var dz=_zoneForPlant(pp.country_code,pp.region),mods={};
     pwtSlots.forEach(function(sk){mods[sk]={zone:dz,automation:2};});
     sp.plants[pp.id]={modules:mods};
   });
@@ -20528,7 +20514,7 @@ function _calcSupplyPlanTotals(){
     var vp=vPlants.find(function(p){return p.id===pid;})||{region:'EU',country_code:'DE'};
     var pMods=plants[pid].modules||{};
     _spGetActivePropSlots().forEach(function(sk){
-      var dec=pMods[sk]||{zone:_spDefaultZoneForRegion(vp.region),automation:2};
+      var dec=pMods[sk]||{zone:_zoneForPlant(vp.country_code,vp.region),automation:2};
       var m=_calcModuleSupplyMetrics(sk,dec.zone,dec.automation,vp.region,vp.country_code);
       totalAdj+=m.piece_adj;totalNRE+=m.nre_m;totalLanded+=m.landed_eur;
       var li=(SP_MODULE_TYPES[sk]||{labor_intensity:0.3}).labor_intensity;
@@ -20649,7 +20635,7 @@ function _renderPlantSupplyCard(vp, sp, slots) {
   // Pre-compute all slot results
   var plantLanded = 0, plantMakeCost = 0;
   var slotResults = slots.map(function(sk) {
-    var dec = plantMods[sk] || { zone: _spDefaultZoneForRegion(vp.region), automation: 2 };
+    var dec = plantMods[sk] || { zone: _zoneForPlant(vp.country_code, vp.region), automation: 2 };
     var m = _calcModuleSupplyMetrics(sk, dec.zone, dec.automation, vp.region, vp.country_code);
     var mc = _calcModuleMakeCost(sk, _ct);
     plantLanded += m.landed_eur;
@@ -20712,11 +20698,28 @@ async function _mzcLoadCapacity() {
   _mzcLoading = false;
 }
 
+// Mirrors backend MZC_TOOLING_COST_M (backend/main.py) — keep these in sync.
+var MZC_TOOLING_COST_M = 4.0; // one-time €M to qualify + tool a module in a new (module_slot, zone_key) pair
+
 function _mzcEstimateCapexM(currentK, additionalK) {
   if (additionalK <= 0) return 0;
   var RATE = 0.10, REF_K = 25.0;
   var scaleDiscount = Math.max(0.5, 1.0 - 0.08 * Math.log2(1 + currentK / REF_K));
   return additionalK * RATE * scaleDiscount;
+}
+
+// Estimates the supplier investment a (module_slot, zone_key, needed capacity)
+// combination would trigger on confirmation — split into one-time tooling
+// (only the team's first reservation of that module in that zone) vs. ongoing
+// capacity investment (incremental scale-up of an already-tooled contract).
+function _mzcEstimateInvestment(sk, zoneKey, needK) {
+  var c = _mzcCapacity[sk + '__' + zoneKey] || { contracted_k: 0, free_k: 0 };
+  var freeK = Math.max(0, c.free_k || 0);
+  var shortfall = Math.max(0, (needK || 0) - freeK);
+  var isFirstTime = (c.contracted_k || 0) <= 0 && shortfall > 0;
+  var toolingM = isFirstTime ? MZC_TOOLING_COST_M : 0;
+  var capacityM = _mzcEstimateCapexM(c.contracted_k || 0, shortfall);
+  return { shortfall: shortfall, isFirstTime: isFirstTime, toolingM: toolingM, capacityM: capacityM, totalM: toolingM + capacityM };
 }
 
 function _mzcCapacityStrip(sk, zoneKey, needK) {
@@ -20733,8 +20736,12 @@ function _mzcCapacityStrip(sk, zoneKey, needK) {
   h += '<span>Need <b style="color:var(--gold);">' + (needK || 0) + 'k</b></span>';
   h += '</div>';
   if (shortfall > 0) {
-    var capexEst = _mzcEstimateCapexM(c.contracted_k || 0, shortfall);
-    h += '<div style="' + MO + 'font-size:7px;color:var(--orange);margin-top:3px;">⚠ Shortfall ' + shortfall.toFixed(1) + 'k → invest ≈€' + capexEst.toFixed(2) + 'M now (capacity benefit applies from next round)</div>';
+    var inv = _mzcEstimateInvestment(sk, zoneKey, needK);
+    if (inv.isFirstTime) {
+      h += '<div style="' + MO + 'font-size:7px;color:var(--orange);margin-top:3px;">⚠ First-time tooling in ' + zoneKey + ': €' + inv.toolingM.toFixed(2) + 'M tooling + €' + inv.capacityM.toFixed(2) + 'M capacity = €' + inv.totalM.toFixed(2) + 'M now (capacity benefit applies from next round)</div>';
+    } else {
+      h += '<div style="' + MO + 'font-size:7px;color:var(--orange);margin-top:3px;">⚠ Capacity expansion in ' + zoneKey + ': €' + inv.capacityM.toFixed(2) + 'M now (capacity benefit applies from next round)</div>';
+    }
   } else {
     h += '<div style="' + MO + 'font-size:7px;color:var(--green);margin-top:3px;">✓ Covered by existing contracted capacity</div>';
   }
@@ -20757,7 +20764,7 @@ async function confirmSourcingPlan() {
     plants.forEach(function(p) {
       var mods = (sp.plants && sp.plants[p.id] && sp.plants[p.id].modules) || {};
       slots.forEach(function(sk) {
-        var dec = mods[sk] || { zone: _spDefaultZoneForRegion(p.region) };
+        var dec = mods[sk] || { zone: _zoneForPlant(p.country_code, p.region) };
         items.push({ module_slot: sk, zone_key: dec.zone, required_k: p.vehicle_capacity_yr || 0 });
       });
     });
@@ -20777,7 +20784,10 @@ async function confirmSourcingPlan() {
     if (data.success) {
       _prop.operations._sourcingCapexM = data.total_capex_m || 0;
       var msg = '✓ Sourcing plan confirmed — capacity reserved';
-      if (data.total_capex_m > 0) msg += ' · €' + data.total_capex_m.toFixed(2) + 'M capacity capex charged';
+      var toolM = data.total_tooling_capex_m || 0, capM = data.total_capacity_capex_m || 0;
+      if (toolM > 0 && capM > 0) msg += ' · €' + toolM.toFixed(2) + 'M tooling + €' + capM.toFixed(2) + 'M capacity capex charged';
+      else if (toolM > 0) msg += ' · €' + toolM.toFixed(2) + 'M tooling capex charged';
+      else if (capM > 0) msg += ' · €' + capM.toFixed(2) + 'M capacity capex charged';
       toast(msg);
       await _mzcLoadCapacity();
     } else {
@@ -20788,6 +20798,55 @@ async function confirmSourcingPlan() {
   } finally {
     if (btn) { btn.disabled = false; btn.textContent = '✓ Confirm Sourcing Plan — Reserve Capacity'; }
   }
+}
+
+// Aggregates the estimated supplier investment (tooling + capacity) implied by
+// the team's reservation amounts (plant.vehicle_capacity_yr) and chosen zones —
+// shown so teams can see the capex consequence of their sourcing plan before
+// confirming it (mirrors what confirmSourcingPlan() will actually charge).
+function _renderSourcingInvestmentSummary(){
+  var sp=(_prop.operations&&_prop.operations.supply_plan)||{};
+  var lines=[];
+  function _collect(plants,slots){
+    plants.forEach(function(p){
+      var mods=(sp.plants&&sp.plants[p.id]&&sp.plants[p.id].modules)||{};
+      slots.forEach(function(sk){
+        var dec=mods[sk]||{zone:_zoneForPlant(p.country_code,p.region)};
+        var needK=p.vehicle_capacity_yr||0;
+        if(needK<=0)return;
+        var inv=_mzcEstimateInvestment(sk,dec.zone,needK);
+        if(inv.totalM<=0)return;
+        lines.push({plant:p,sk:sk,zone:dec.zone,needK:needK,inv:inv});
+      });
+    });
+  }
+  _collect(_spConfirmedPlants(),_spVehiclePlantSlots());
+  _collect(_spConfirmedPwtPlants(),_spPwtPlantSlots());
+  if(!lines.length)return '';
+  var TYPE_LABELS={platform:'PLATFORM',pwt:'ICE PWT',epwt:'e-PWT',battery:'BATTERY',tophat:'TOPHAT',eands:'E&S'};
+  var MO='font-family:DM Mono,monospace;';
+  var totalTooling=0,totalCapacity=0;
+  lines.forEach(function(l){totalTooling+=l.inv.toolingM;totalCapacity+=l.inv.capacityM;});
+  var h='<div style="margin-bottom:12px;padding:10px 12px;background:var(--s2);border-radius:4px;border:1px solid var(--border2);">';
+  h+='<div style="'+MO+'font-size:8px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:6px;">💰 Required Supplier Investment — based on Section 7 reservation amounts</div>';
+  lines.forEach(function(l){
+    var rowCol=l.inv.isFirstTime?'var(--orange)':'var(--cyan)';
+    var kind=l.inv.isFirstTime
+      ? 'tooling €'+l.inv.toolingM.toFixed(2)+'M + capacity €'+l.inv.capacityM.toFixed(2)+'M'
+      : 'capacity €'+l.inv.capacityM.toFixed(2)+'M';
+    h+='<div style="display:flex;justify-content:space-between;gap:8px;'+MO+'font-size:7.5px;color:var(--muted2);padding:2px 0;">';
+    h+='<span>'+(TYPE_LABELS[l.sk]||l.sk.toUpperCase())+' · '+l.zone+' · need '+l.needK+'k <span style="color:'+(l.inv.isFirstTime?'var(--orange)':'var(--muted2)')+';">('+(l.inv.isFirstTime?'first-time tooling':'capacity expansion')+')</span></span>';
+    h+='<span style="color:'+rowCol+';font-weight:700;">'+kind+' = €'+l.inv.totalM.toFixed(2)+'M</span>';
+    h+='</div>';
+  });
+  h+='<div style="border-top:1px solid var(--border2);margin:6px 0 4px;"></div>';
+  h+='<div style="display:flex;justify-content:space-between;gap:8px;'+MO+'font-size:8px;font-weight:700;">';
+  h+='<span style="color:var(--text);">Total — €'+(totalTooling+totalCapacity).toFixed(2)+'M</span>';
+  h+='<span style="color:var(--muted2);font-weight:400;">Tooling €'+totalTooling.toFixed(2)+'M + Capacity €'+totalCapacity.toFixed(2)+'M</span>';
+  h+='</div>';
+  h+='<div style="'+MO+'font-size:7px;color:var(--muted2);margin-top:4px;">Charged on "Confirm Sourcing Plan — Reserve Capacity" below; capacity benefit (price discount) applies from next round.</div>';
+  h+='</div>';
+  return h;
 }
 
 function _renderSupplyPlanSection(){
@@ -20806,6 +20865,7 @@ function _renderSupplyPlanSection(){
     h+='<div style="'+TH+';margin-top:14px;">⚙ Powertrain Plants — Component Sourcing</div>';
     pwtPlants.forEach(function(pp){h+=_renderPlantSupplyCard(pp,sp,pwtSlots);});
   }
+  h+=_renderSourcingInvestmentSummary();
   var totals=_calcSupplyPlanTotals();
   var rPct=Math.round(totals.riskScore*100);
   var rCol=rPct<30?'var(--green)':rPct<55?'var(--gold)':'var(--red)';
@@ -20824,7 +20884,8 @@ function onSpZone(pid,sk,zk){
   var sp=_prop.operations&&_prop.operations.supply_plan;
   if(!sp||!sp.plants)return;
   if(!sp.plants[pid])sp.plants[pid]={modules:{}};
-  if(!sp.plants[pid].modules[sk])sp.plants[pid].modules[sk]={zone:_spDefaultZoneForRegion((_getPlant(pid)||{}).region),automation:2};
+  var _plnt=_getPlant(pid)||{};
+  if(!sp.plants[pid].modules[sk])sp.plants[pid].modules[sk]={zone:_zoneForPlant(_plnt.country_code,_plnt.region),automation:2};
   sp.plants[pid].modules[sk].zone=zk;
   _refreshSupplyPlanArea();renderOpsAggregateSummary();
 }
@@ -20833,7 +20894,8 @@ function onSpAuto(pid,sk,level){
   var sp=_prop.operations&&_prop.operations.supply_plan;
   if(!sp||!sp.plants)return;
   if(!sp.plants[pid])sp.plants[pid]={modules:{}};
-  if(!sp.plants[pid].modules[sk])sp.plants[pid].modules[sk]={zone:_spDefaultZoneForRegion((_getPlant(pid)||{}).region),automation:2};
+  var _plnt=_getPlant(pid)||{};
+  if(!sp.plants[pid].modules[sk])sp.plants[pid].modules[sk]={zone:_zoneForPlant(_plnt.country_code,_plnt.region),automation:2};
   sp.plants[pid].modules[sk].automation=level;
   _refreshSupplyPlanArea();renderOpsAggregateSummary();
 }
