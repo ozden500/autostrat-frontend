@@ -20800,30 +20800,91 @@ function _renderSourcingInvestmentSummary(){
         var dec=mods[sk]||{zone:_zoneForPlant(p.country_code,p.region),automation:2};
         var needK=p.vehicle_capacity_yr||0;
         if(needK<=0)return;
-        var inv=_mzcEstimateInvestment(sk,dec.zone,dec.automation||2,needK);
+        var auto=dec.automation||2;
+        var inv=_mzcEstimateInvestment(sk,dec.zone,auto,needK);
         if(inv.totalM<=0)return;
-        lines.push({plant:p,sk:sk,zone:dec.zone,needK:needK,inv:inv});
+        lines.push({plant:p,sk:sk,zone:dec.zone,needK:needK,automation:auto,inv:inv});
       });
     });
   }
   _collect(_spConfirmedPlants(),_spVehiclePlantSlots());
   _collect(_spConfirmedPwtPlants(),_spPwtPlantSlots());
   if(!lines.length)return '';
+  var TYPE_ORDER=['platform','pwt','epwt','battery','tophat','eands'];
   var TYPE_LABELS={platform:'PLATFORM',pwt:'ICE PWT',epwt:'e-PWT',battery:'BATTERY',tophat:'TOPHAT',eands:'E&S'};
   var MO='font-family:DM Mono,monospace;';
   var totalTooling=0,totalCapacity=0;
   lines.forEach(function(l){totalTooling+=l.inv.toolingM;totalCapacity+=l.inv.capacityM;});
+
+  // Group lines by module slot, then by sourcing zone — aggregating amounts
+  // (not recomputing) so the displayed totals stay in lockstep with what
+  // confirmSourcingPlan() actually reserves/charges per (plant, module, zone).
+  var groups={};
+  lines.forEach(function(l){
+    groups[l.sk]=groups[l.sk]||{};
+    var g=groups[l.sk][l.zone];
+    if(!g){
+      var c=_mzcCapacity[l.sk+'__'+l.zone]||{};
+      g=groups[l.sk][l.zone]={contracted_k:c.contracted_k||0,needK:0,shortfall:0,toolingM:0,capacityM:0,totalM:0,isFirstTime:false,autoSet:{}};
+    }
+    g.needK+=l.needK;
+    g.shortfall+=l.inv.shortfall;
+    g.toolingM+=l.inv.toolingM;
+    g.capacityM+=l.inv.capacityM;
+    g.totalM+=l.inv.totalM;
+    g.isFirstTime=g.isFirstTime||l.inv.isFirstTime;
+    g.autoSet[l.automation]=true;
+  });
+  var GRID='grid-template-columns:150px 92px 84px 84px 1fr 86px;';
+  var ROWSTYLE='display:grid;'+GRID+'gap:6px;align-items:center;';
+
   var h='<div style="margin-bottom:12px;padding:10px 12px;background:var(--s2);border-radius:4px;border:1px solid var(--border2);">';
   h+='<div style="'+MO+'font-size:8px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:6px;">💰 Required Supplier Investment — based on Section 7 reservation amounts</div>';
-  lines.forEach(function(l){
-    var rowCol=l.inv.isFirstTime?'var(--orange)':'var(--cyan)';
-    var kind=l.inv.isFirstTime
-      ? 'tooling €'+l.inv.toolingM.toFixed(2)+'M + capacity €'+l.inv.capacityM.toFixed(2)+'M'
-      : 'capacity €'+l.inv.capacityM.toFixed(2)+'M';
-    h+='<div style="display:flex;justify-content:space-between;gap:8px;'+MO+'font-size:7.5px;color:var(--muted2);padding:2px 0;">';
-    h+='<span>'+(TYPE_LABELS[l.sk]||l.sk.toUpperCase())+' · '+l.zone+' · need '+l.needK+'k <span style="color:'+(l.inv.isFirstTime?'var(--orange)':'var(--muted2)')+';">('+(l.inv.isFirstTime?'first-time tooling':'capacity expansion')+')</span></span>';
-    h+='<span style="color:'+rowCol+';font-weight:700;">'+kind+' = €'+l.inv.totalM.toFixed(2)+'M</span>';
+  h+='<div style="'+ROWSTYLE+MO+'font-size:6.5px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted2);padding:3px 0;border-bottom:1px solid var(--border2);">';
+  h+='<span>Zone</span><span style="text-align:right;">Contracted</span><span style="text-align:right;">Required</span><span style="text-align:right;">Additional</span><span>Investment</span><span>Automation</span>';
+  h+='</div>';
+  TYPE_ORDER.forEach(function(sk){
+    var zoneMap=groups[sk];
+    if(!zoneMap)return;
+    var zoneKeys=Object.keys(zoneMap);
+    var moduleTotalM=0;
+    zoneKeys.forEach(function(zk){moduleTotalM+=zoneMap[zk].totalM;});
+    zoneKeys.sort(function(a,b){
+      var za=SP_ZONES.find(function(z){return z.key===a;}),zb=SP_ZONES.find(function(z){return z.key===b;});
+      return (za&&za.label||a).localeCompare(zb&&zb.label||b);
+    });
+    h+='<div style="display:flex;justify-content:space-between;gap:8px;'+MO+'font-size:7.5px;font-weight:700;color:var(--text);padding:6px 0 2px;">';
+    h+='<span>'+(TYPE_LABELS[sk]||sk.toUpperCase())+'</span>';
+    h+='<span style="color:var(--muted2);font-weight:400;">€'+moduleTotalM.toFixed(2)+'M</span>';
     h+='</div>';
+    zoneKeys.forEach(function(zk){
+      var g=zoneMap[zk];
+      var zone=SP_ZONES.find(function(z){return z.key===zk;});
+      var zoneLabel=(zone?zone.flag+' '+zone.label:zk);
+      var autoKeys=Object.keys(g.autoSet);
+      var autoLabel='Mixed';
+      if(autoKeys.length===1){
+        var al=SP_AUTO_LEVELS.find(function(a){return a.key===Number(autoKeys[0]);});
+        autoLabel=al?al.label:autoKeys[0];
+      }
+      var addCol=g.shortfall>0?(g.isFirstTime?'var(--orange)':'var(--cyan)'):'var(--muted2)';
+      var addTxt=g.shortfall>0?('+'+g.shortfall.toFixed(0)+'k'):'—';
+      var invTxt,invCol;
+      if(g.totalM<=0){
+        invTxt='—';invCol='var(--muted2)';
+      }else{
+        invCol=g.isFirstTime?'var(--orange)':'var(--cyan)';
+        invTxt=(g.isFirstTime?('tooling €'+g.toolingM.toFixed(2)+'M + capacity €'+g.capacityM.toFixed(2)+'M'):('capacity €'+g.capacityM.toFixed(2)+'M'))+' = €'+g.totalM.toFixed(2)+'M';
+      }
+      h+='<div style="'+ROWSTYLE+MO+'font-size:7.5px;color:var(--muted2);padding:3px 0 3px 10px;border-top:1px solid rgba(255,255,255,.03);">';
+      h+='<span>'+zoneLabel+'</span>';
+      h+='<span style="text-align:right;color:'+(g.contracted_k>0?'var(--text)':'var(--muted2)')+';">'+g.contracted_k.toFixed(0)+'k</span>';
+      h+='<span style="text-align:right;color:var(--text);">'+g.needK.toFixed(0)+'k</span>';
+      h+='<span style="text-align:right;color:'+addCol+';">'+addTxt+'</span>';
+      h+='<span style="color:'+invCol+';font-weight:700;">'+invTxt+'</span>';
+      h+='<span style="color:var(--muted2);">'+autoLabel+'</span>';
+      h+='</div>';
+    });
   });
   h+='<div style="border-top:1px solid var(--border2);margin:6px 0 4px;"></div>';
   h+='<div style="display:flex;justify-content:space-between;gap:8px;'+MO+'font-size:8px;font-weight:700;">';
