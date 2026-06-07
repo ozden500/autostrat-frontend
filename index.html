@@ -18263,10 +18263,14 @@ function buildComponentsSourcingSection() {
   html += aT2('Wtd Manuf/unit','\u2014','var(--text)','prop-ops-agg-cost');
   html += '</div>';
 
-  html += '<div style="margin-top:14px;display:flex;justify-content:flex-end;"><button onclick="advanceToCommercialPlan()" style="font-family:DM Mono,monospace;font-size:10px;padding:8px 18px;border-radius:3px;border:1px solid rgba(200,164,60,.4);background:var(--goldl);color:var(--gold);cursor:pointer;">Continue \u2192 Commercial Plan</button></div>';
+  html += '<div style="margin-top:14px;display:flex;justify-content:space-between;gap:10px;">';
+  html += '<button id="prop-ops-confirm-sourcing-btn" onclick="confirmSourcingPlan()" style="font-family:DM Mono,monospace;font-size:10px;padding:8px 16px;border-radius:3px;border:1px solid rgba(74,140,224,.4);background:rgba(74,140,224,.1);color:var(--cyan);cursor:pointer;">\u2713 Confirm Sourcing Plan \u2014 Reserve Capacity</button>';
+  html += '<button onclick="advanceToCommercialPlan()" style="font-family:DM Mono,monospace;font-size:10px;padding:8px 18px;border-radius:3px;border:1px solid rgba(200,164,60,.4);background:var(--goldl);color:var(--gold);cursor:pointer;">Continue \u2192 Commercial Plan</button>';
+  html += '</div>';
 
   el.innerHTML = html;
   renderOpsAggregateSummary();
+  _mzcLoadCapacity();
 }
 
 function onPropOpsSourcingStrategy(key) {
@@ -20584,6 +20588,7 @@ function _renderModuleDetailCard(sr, vp, _ct) {
     var nreNote = m.nre_per_unit_eur > 0 ? '→ €' + m.nre_per_unit_eur.toFixed(1) + '/unit amortised @ ' + (m.vol_k || 0) + 'k/yr' : '';
     h += row('NRE Investment', '€' + m.nre_m.toFixed(1) + 'M', 'var(--purple)', nreNote);
   }
+  h += _mzcCapacityStrip(sr.sk, dec.zone, vp.vehicle_capacity_yr || 0);
   h += '</div>';
   return h;
 }
@@ -20639,6 +20644,102 @@ function _renderPlantSupplyCard(vp, sp, slots) {
   });
   h += '</div>';
   return h;
+}
+
+// ── Module Zone Capacity (per-team supply contracts) ────────────────────────
+var _mzcCapacity = {};   // {`${module_slot}__${zone_key}`: {contracted_k,reserved_k,free_k,price_adj_pct,pending_adj_pct}}
+var _mzcLoading = false;
+
+async function _mzcLoadCapacity() {
+  if (!sessionId || !teamId || _mzcLoading) return;
+  _mzcLoading = true;
+  try {
+    var res = await fetch(API_URL + '/sessions/' + sessionId + '/teams/' + teamId + '/module-zone-capacity');
+    var data = await res.json();
+    var map = {};
+    (data.capacity || []).forEach(function(c) { map[c.module_slot + '__' + c.zone_key] = c; });
+    _mzcCapacity = map;
+    _refreshSupplyPlanArea();
+  } catch (e) { console.warn('module-zone-capacity load failed', e); }
+  _mzcLoading = false;
+}
+
+function _mzcEstimateCapexM(currentK, additionalK) {
+  if (additionalK <= 0) return 0;
+  var RATE = 0.10, REF_K = 25.0;
+  var scaleDiscount = Math.max(0.5, 1.0 - 0.08 * Math.log2(1 + currentK / REF_K));
+  return additionalK * RATE * scaleDiscount;
+}
+
+function _mzcCapacityStrip(sk, zoneKey, needK) {
+  var c = _mzcCapacity[sk + '__' + zoneKey] || { contracted_k: 0, reserved_k: 0, free_k: 0, price_adj_pct: 0, pending_adj_pct: 0 };
+  var freeK = Math.max(0, c.free_k || 0);
+  var shortfall = Math.max(0, (needK || 0) - freeK);
+  var MO = 'font-family:DM Mono,monospace;';
+  var h = '<div style="margin-top:4px;padding:6px 8px;background:var(--s2);border-radius:3px;border:1px dashed var(--border2);">';
+  h += '<div style="' + MO + 'font-size:7px;color:var(--muted2);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:3px;">📦 Zone Supply Contract — ' + zoneKey + '</div>';
+  h += '<div style="display:flex;gap:10px;flex-wrap:wrap;' + MO + 'font-size:7.5px;color:var(--muted2);">';
+  h += '<span>Contracted <b style="color:var(--text);">' + (c.contracted_k || 0) + 'k</b></span>';
+  h += '<span>Reserved <b style="color:var(--text);">' + (c.reserved_k || 0) + 'k</b></span>';
+  h += '<span>Free <b style="color:' + (freeK > 0 ? 'var(--green)' : 'var(--muted2)') + ';">' + freeK.toFixed(1) + 'k</b></span>';
+  h += '<span>Need <b style="color:var(--gold);">' + (needK || 0) + 'k</b></span>';
+  h += '</div>';
+  if (shortfall > 0) {
+    var capexEst = _mzcEstimateCapexM(c.contracted_k || 0, shortfall);
+    h += '<div style="' + MO + 'font-size:7px;color:var(--orange);margin-top:3px;">⚠ Shortfall ' + shortfall.toFixed(1) + 'k → invest ≈€' + capexEst.toFixed(2) + 'M now (capacity benefit applies from next round)</div>';
+  } else {
+    h += '<div style="' + MO + 'font-size:7px;color:var(--green);margin-top:3px;">✓ Covered by existing contracted capacity</div>';
+  }
+  if (c.price_adj_pct) {
+    h += '<div style="' + MO + 'font-size:7px;color:var(--cyan);margin-top:2px;">Active scale discount on TPC: ' + c.price_adj_pct + '%</div>';
+  }
+  if (c.pending_adj_pct && c.pending_adj_pct !== c.price_adj_pct) {
+    h += '<div style="' + MO + 'font-size:7px;color:var(--purple);margin-top:1px;">Pending next round: ' + c.pending_adj_pct + '%</div>';
+  }
+  h += '</div>';
+  return h;
+}
+
+async function confirmSourcingPlan() {
+  var vid = _prop.study && _prop.study.id;
+  if (!vid) { toast('⚠ No vehicle selected'); return; }
+  var sp = (_prop.operations && _prop.operations.supply_plan) || {};
+  var items = [];
+  function _collect(plants, slots) {
+    plants.forEach(function(p) {
+      var mods = (sp.plants && sp.plants[p.id] && sp.plants[p.id].modules) || {};
+      slots.forEach(function(sk) {
+        var dec = mods[sk] || { zone: _spDefaultZoneForRegion(p.region) };
+        items.push({ module_slot: sk, zone_key: dec.zone, required_k: p.vehicle_capacity_yr || 0 });
+      });
+    });
+  }
+  _collect(_spConfirmedPlants(), _spVehiclePlantSlots());
+  _collect(_spConfirmedPwtPlants(), _spPwtPlantSlots());
+  items = items.filter(function(it) { return it.required_k > 0; });
+  if (!items.length) { toast('⚠ Confirm plant allocations with capacity first'); return; }
+
+  var btn = document.getElementById('prop-ops-confirm-sourcing-btn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Reserving capacity…'; }
+  try {
+    var res = await fetch(API_URL + '/vehicles/' + vid + '/module-zone-capacity/reserve', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(items)
+    });
+    var data = await res.json();
+    if (data.success) {
+      _prop.operations._sourcingCapexM = data.total_capex_m || 0;
+      var msg = '✓ Sourcing plan confirmed — capacity reserved';
+      if (data.total_capex_m > 0) msg += ' · €' + data.total_capex_m.toFixed(2) + 'M capacity capex charged';
+      toast(msg);
+      await _mzcLoadCapacity();
+    } else {
+      toast('⚠ Failed to reserve capacity');
+    }
+  } catch (e) {
+    toast('⚠ Error reserving capacity: ' + e.message);
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '✓ Confirm Sourcing Plan — Reserve Capacity'; }
+  }
 }
 
 function _renderSupplyPlanSection(){
@@ -21132,6 +21233,7 @@ function calcPropBizCase() {
   if(toolingM===0)(_ops.plants||[]).forEach(function(p){toolingM+=p._manuf?(p._manuf.grand_total_inv_m||p._manuf.total_investment_m||0):0;});
   if(toolingM===0&&_m)toolingM=(_m.grand_total_inv_m||_m.total_investment_m||0);
   if(_ops.supply_plan&&_ops.supply_plan._total_nre_m)toolingM+=_ops.supply_plan._total_nre_m;
+  if(_ops._sourcingCapexM)toolingM+=_ops._sourcingCapexM;
   var totalInvM=rdM+toolingM;
 
   // NPV
