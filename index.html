@@ -9890,12 +9890,11 @@ document.addEventListener('click', function(e) {
   if (action === 'prop-ops-quality')      { onPropOpsQualitySelect(btn.getAttribute('data-key')); }
   if (action === 'prop-ops-supplauto')    { onPropOpsSupplAuto(btn.getAttribute('data-key')); }
   if (action === 'prop-ops-automationcard') { onPropOpsAutomationCard(btn.getAttribute('data-key')); }
-  if (action === 'sp-toggle-mod') {
-    e.stopPropagation();
-    _spToggleMod(btn.getAttribute('data-pid'), btn.getAttribute('data-sk'));
-  }
   if (action === 'sp-toggle-plant') {
     _spTogglePlantCard(btn.getAttribute('data-pid'));
+  }
+  if (action === 'sp-toggle-panel') {
+    _spTogglePanel(btn.getAttribute('data-panel'));
   }
 });
 
@@ -18223,12 +18222,6 @@ function buildComponentsSourcingSection() {
 
   html += '<div id="prop-ops-supply-plan-area">'+_renderSupplyPlanSection()+'</div>';
 
-  function aT2(l,v,c,id){return '<div style="background:var(--s2);border-radius:3px;padding:8px;border:1px solid var(--border)"><div style="font-size:8px;color:var(--muted2);margin-bottom:2px;">'+l+'</div><div style="font-family:DM Mono,monospace;font-size:11px;color:'+c+'" id="'+id+'">'+v+'</div></div>';}
-  html += '<div style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-bottom:18px;">';
-  html += aT2('Supplier NRE','\u2014','var(--cyan)','prop-ops-agg-sp');
-  html += aT2('Wtd Manuf/unit','\u2014','var(--text)','prop-ops-agg-cost');
-  html += '</div>';
-
   html += '<div style="margin-top:14px;display:flex;justify-content:space-between;gap:10px;">';
   html += '<button id="prop-ops-confirm-sourcing-btn" onclick="confirmSourcingPlan()" style="font-family:DM Mono,monospace;font-size:10px;padding:8px 16px;border-radius:3px;border:1px solid rgba(74,140,224,.4);background:rgba(74,140,224,.1);color:var(--cyan);cursor:pointer;">\u2713 Confirm Sourcing Plan \u2014 Reserve Capacity</button>';
   html += '<button onclick="advanceToCommercialPlan()" style="font-family:DM Mono,monospace;font-size:10px;padding:8px 18px;border-radius:3px;border:1px solid rgba(200,164,60,.4);background:var(--goldl);color:var(--gold);cursor:pointer;">Continue \u2192 Commercial Plan</button>';
@@ -20513,10 +20506,9 @@ function _calcSupplyPlanTotals(){
   return {totalAdj:sp._total_piece_adj_eur,riskScore:sp._risk_score,totalLanded:sp._total_landed_parts_eur};
 }
 
-var _spModExpanded = {};
-function _spToggleMod(pid, sk) {
-  var k = pid + '__' + sk;
-  _spModExpanded[k] = !_spModExpanded[k];
+var _spPanelExpanded = { inputs: false, results: false };
+function _spTogglePanel(p) {
+  _spPanelExpanded[p] = !_spPanelExpanded[p];
   _refreshSupplyPlanArea();
 }
 
@@ -20526,46 +20518,68 @@ function _spTogglePlantCard(pid) {
   _refreshSupplyPlanArea();
 }
 
-function _renderModuleCollapsedRow(sr, vp, expanded) {
-  var m = sr.m, dec = sr.dec, sk = sr.sk;
+var _SP_TYPE_LABELS = {platform:'PLATFORM', pwt:'ICE PWT', epwt:'e-PWT', battery:'BATTERY', tophat:'TOPHAT', eands:'E&S'};
+
+// ── Left panel (inputs): module label + zone/automation pickers only ────────
+function _renderModuleInputRow(sk, vp, dec) {
   var MO = 'font-family:DM Mono,monospace;';
-  var SEL = MO + 'font-size:8px;background:var(--panel);color:var(--white);border:1px solid var(--border2);border-radius:3px;padding:1px 2px;cursor:pointer;';
-  var TYPE_LABELS = {platform:'PLATFORM', pwt:'ICE PWT', epwt:'e-PWT', battery:'BATTERY', tophat:'TOPHAT', eands:'E&S'};
-  var typeLabel = TYPE_LABELS[sk] || sk.toUpperCase();
+  var SEL = MO + 'font-size:8px;background:var(--panel);color:var(--white);border:1px solid var(--border2);border-radius:3px;padding:2px 4px;cursor:pointer;width:100%;';
+  var typeLabel = _SP_TYPE_LABELS[sk] || sk.toUpperCase();
   var lbl = _spSlotLabel(sk);
-  var delta = m.landed_eur - m.base_buy;
-  var deltaAbs = Math.abs(delta);
-  var deltaStr = delta >= 0 ? '+€' + deltaAbs.toLocaleString() : '−€' + deltaAbs.toLocaleString();
-  var deltaCol = delta > 0 ? 'var(--orange)' : 'var(--green)';
-  var chevron = expanded ? '▲' : '▼';
-  var h = '<div style="' + MO + 'display:grid;grid-template-columns:1fr 132px 92px 68px 18px 86px 58px 60px 22px;'
-    + 'gap:4px;align-items:center;padding:4px 6px;border-radius:3px;cursor:pointer;margin-bottom:2px;background:var(--panel2);" '
-    + 'data-action="sp-toggle-mod" data-pid="' + vp.id + '" data-sk="' + sk + '">';
+  var h = '<div style="' + MO + 'display:grid;grid-template-columns:1fr 150px 150px;'
+    + 'gap:6px;align-items:center;padding:4px 6px;border-radius:3px;margin-bottom:2px;background:var(--panel2);">';
   h += '<div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'
     + '<span style="' + MO + 'font-size:7px;font-weight:600;color:var(--muted2);letter-spacing:0.5px;text-transform:uppercase;">' + typeLabel + '</span>'
     + '<span style="' + MO + 'font-size:7px;color:var(--muted2);"> — </span>'
     + '<span style="' + MO + 'font-size:8px;font-weight:600;color:var(--white);">' + lbl + '</span>'
     + '</div>';
-  h += '<select style="' + SEL + '" onclick="event.stopPropagation()" onchange="onSpZone(\'' + vp.id + '\',\'' + sk + '\',this.value)">';
+  h += '<select style="' + SEL + '" onchange="onSpZone(\'' + vp.id + '\',\'' + sk + '\',this.value)">';
   SP_ZONES.forEach(function(z) { h += '<option value="' + z.key + '"' + (dec.zone === z.key ? ' selected' : '') + '>' + z.flag + ' ' + z.label + '</option>'; });
   h += '</select>';
-  h += '<select style="' + SEL + '" onclick="event.stopPropagation()" onchange="onSpAuto(\'' + vp.id + '\',\'' + sk + '\',parseInt(this.value))">';
+  h += '<select style="' + SEL + '" onchange="onSpAuto(\'' + vp.id + '\',\'' + sk + '\',parseInt(this.value))">';
   SP_AUTO_LEVELS.forEach(function(al) { h += '<option value="' + al.key + '"' + (dec.automation === al.key ? ' selected' : '') + '>' + al.key + '—' + al.label + '</option>'; });
   h += '</select>';
-  h += '<div style="' + MO + 'font-size:8px;color:var(--muted2);text-align:right;white-space:nowrap;">STD €' + m.base_buy.toLocaleString() + '</div>';
-  h += '<div style="' + MO + 'font-size:8px;color:var(--muted2);text-align:center;">→</div>';
-  h += '<div style="' + MO + 'font-size:9px;font-weight:700;color:var(--cyan);text-align:right;">€' + m.landed_eur.toLocaleString() + '</div>';
-  h += '<div style="' + MO + 'font-size:7.5px;color:' + deltaCol + ';text-align:center;">(' + deltaStr + ')</div>';
-  h += '<div></div>';
-  h += '<div style="' + MO + 'font-size:9px;color:var(--muted2);text-align:center;">' + chevron + '</div>';
   h += '</div>';
   return h;
 }
 
-function _renderModuleDetailCard(sr, vp, _ct) {
-  var m = sr.m, mc = sr.mc, dec = sr.dec;
-  var zone = SP_ZONES.find(function(z) { return z.key === dec.zone; }) || SP_ZONES[0];
+function _renderPlantInputCard(vp, sp, slots) {
+  var plantMods = (sp.plants && sp.plants[vp.id] && sp.plants[vp.id].modules) || {};
+  slots = slots || _spGetActivePropSlots();
+  var _cl = INDUSTRIAL_COUNTRIES[vp.region] || [], _ct = _cl.find(function(c) { return c.code === vp.country_code; }) || {};
   var MO = 'font-family:DM Mono,monospace;';
+  var pExpanded = !!_spPlantExpanded[vp.id];
+  var pChevron = pExpanded ? '▲' : '▼';
+  var h = '<div style="margin-bottom:10px;">';
+  h += '<div style="display:flex;align-items:center;justify-content:space-between;background:var(--s2);border-radius:4px;padding:6px 10px;margin-bottom:6px;gap:8px;cursor:pointer;" '
+    + 'data-action="sp-toggle-plant" data-pid="' + vp.id + '">';
+  h += '<div style="' + MO + 'font-size:8px;font-weight:600;color:var(--gold);white-space:nowrap;">'
+    + pChevron + ' 🏭 ' + (_ct.flag || '') + ' ' + (vp.country_name || vp.country_code || vp.region)
+    + ' <span style="color:var(--muted2);font-weight:400;">· ' + vp.region + '</span></div>';
+  h += '<div style="' + MO + 'font-size:7px;color:var(--muted2);">' + slots.length + ' module' + (slots.length === 1 ? '' : 's') + '</div>';
+  h += '</div>';
+  if (pExpanded) {
+    slots.forEach(function(sk) {
+      var dec = plantMods[sk] || { zone: _zoneForPlant(vp.country_code, vp.region), automation: 2 };
+      h += _renderModuleInputRow(sk, vp, dec);
+    });
+  }
+  h += '</div>';
+  return h;
+}
+
+// ── Right panel (results): cost build-up + zone contract, read-only ─────────
+function _renderModuleCostRow(sr, vp, _ct) {
+  var m = sr.m, mc = sr.mc, dec = sr.dec, sk = sr.sk;
+  var MO = 'font-family:DM Mono,monospace;';
+  var typeLabel = _SP_TYPE_LABELS[sk] || sk.toUpperCase();
+  var lbl = _spSlotLabel(sk);
+  var zone = SP_ZONES.find(function(z) { return z.key === dec.zone; }) || SP_ZONES[0];
+  var auto = SP_AUTO_LEVELS.find(function(a) { return a.key === dec.automation; });
+  var delta = m.landed_eur - m.base_buy;
+  var deltaAbs = Math.abs(delta);
+  var deltaStr = delta >= 0 ? '+€' + deltaAbs.toLocaleString() : '−€' + deltaAbs.toLocaleString();
+  var deltaCol = delta > 0 ? 'var(--orange)' : 'var(--green)';
   var rowStyle = 'display:grid;grid-template-columns:1fr 78px 1fr;gap:4px;align-items:baseline;padding:1px 0;';
   function fmtE(v) { var n = Math.round(v || 0); return (n >= 0 ? '€' : '−€') + Math.abs(n).toLocaleString(); }
   function fmtAdj(v) { var n = Math.round(v || 0); return (n >= 0 ? '+€' : '−€') + Math.abs(n).toLocaleString(); }
@@ -20578,8 +20592,20 @@ function _renderModuleDetailCard(sr, vp, _ct) {
       + '</div>';
   }
   function sep() { return '<div style="border-top:1px solid var(--border2);margin:3px 0;"></div>'; }
-  var h = '<div style="margin:0 0 6px 0;padding:8px 12px;background:var(--s3);border-radius:3px;border-left:2px solid var(--cyan);">';
-  h += '<div style="' + MO + 'font-size:7px;color:var(--cyan);font-weight:600;letter-spacing:1px;text-transform:uppercase;margin-bottom:5px;">Cost Build-up</div>';
+  var h = '<div style="margin:0 0 8px 0;padding:8px 12px;background:var(--s3);border-radius:3px;border-left:2px solid var(--cyan);">';
+  h += '<div style="display:flex;align-items:baseline;justify-content:space-between;gap:8px;margin-bottom:5px;flex-wrap:wrap;">';
+  h += '<div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'
+    + '<span style="' + MO + 'font-size:7px;font-weight:600;color:var(--muted2);letter-spacing:0.5px;text-transform:uppercase;">' + typeLabel + '</span>'
+    + '<span style="' + MO + 'font-size:7px;color:var(--muted2);"> — </span>'
+    + '<span style="' + MO + 'font-size:8px;font-weight:600;color:var(--white);">' + lbl + '</span>'
+    + '<span style="' + MO + 'font-size:7px;color:var(--muted2);"> · ' + zone.flag + ' ' + zone.label + ' · ' + (auto ? auto.label : '—') + '</span>'
+    + '</div>';
+  h += '<div style="' + MO + 'font-size:7.5px;white-space:nowrap;">'
+    + '<span style="color:var(--muted2);">STD €' + m.base_buy.toLocaleString() + ' → </span>'
+    + '<span style="color:var(--cyan);font-weight:700;">€' + m.landed_eur.toLocaleString() + '</span>'
+    + ' <span style="color:' + deltaCol + ';">(' + deltaStr + ')</span>'
+    + '</div>';
+  h += '</div>';
   h += row('Standard DMP (USA baseline)', m.base_buy, 'var(--muted)', 'BOM engine at standard rates');
   if (m.labor_adj !== 0) {
     h += row('+ Labor adjustment', fmtAdj(m.labor_adj), m.labor_adj <= 0 ? 'var(--green)' : 'var(--orange)', zone.label + ' vs US');
@@ -20604,7 +20630,7 @@ function _renderModuleDetailCard(sr, vp, _ct) {
   return h;
 }
 
-function _renderPlantSupplyCard(vp, sp, slots) {
+function _renderPlantCostCard(vp, sp, slots) {
   var plantMods = (sp.plants && sp.plants[vp.id] && sp.plants[vp.id].modules) || {};
   slots = slots || _spGetActivePropSlots();
   var _cl = INDUSTRIAL_COUNTRIES[vp.region] || [], _ct = _cl.find(function(c) { return c.code === vp.country_code; }) || {};
@@ -20631,7 +20657,7 @@ function _renderPlantSupplyCard(vp, sp, slots) {
   var rLabel = rPct < 30 ? 'LOW' : rPct < 55 ? 'MEDIUM' : 'HIGH';
   var pExpanded = !!_spPlantExpanded[vp.id];
   var pChevron = pExpanded ? '▲' : '▼';
-  var h = '<div style="margin-bottom:12px;">';
+  var h = '<div style="margin-bottom:10px;">';
   // ── Plant header ──
   h += '<div style="display:flex;align-items:center;justify-content:space-between;background:var(--s2);border-radius:4px;padding:6px 10px;margin-bottom:6px;gap:8px;cursor:pointer;" '
     + 'data-action="sp-toggle-plant" data-pid="' + vp.id + '">';
@@ -20646,12 +20672,10 @@ function _renderPlantSupplyCard(vp, sp, slots) {
   h += '</div>';
   h += '<div style="' + MO + 'font-size:7px;font-weight:600;color:' + rCol + ';padding:2px 5px;border:1px solid ' + rCol + ';border-radius:2px;white-space:nowrap;">' + rLabel + ' risk</div>';
   h += '</div>';
-  // ── Per-module rows (collapsed by default — expand plant to view) ──
+  // ── Per-module cost build-ups (always shown when plant is expanded) ──
   if (pExpanded) {
     slotResults.forEach(function(sr) {
-      var expanded = !!_spModExpanded[vp.id + '__' + sr.sk];
-      h += _renderModuleCollapsedRow(sr, vp, expanded);
-      if (expanded) h += _renderModuleDetailCard(sr, vp, _ct);
+      h += _renderModuleCostRow(sr, vp, _ct);
     });
   }
   h += '</div>';
@@ -20896,32 +20920,105 @@ function _renderSourcingInvestmentSummary(){
   return h;
 }
 
-function _renderSupplyPlanSection(){
-  var sp=(_prop.operations&&_prop.operations.supply_plan)||{};
-  var vPlants=_spConfirmedPlants();
-  var pwtPlants=_spConfirmedPwtPlants();
-  var vpSlots=_spVehiclePlantSlots();
-  var pwtSlots=_spPwtPlantSlots();
-  var TH='font-family:DM Mono,monospace;font-size:8px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:6px;display:block;';
-  var h='<div style="margin-bottom:14px;">';
-  if(vPlants.length&&vpSlots.length){
-    h+='<div style="'+TH+'">🏭 Vehicle Assembly Plants — Component Sourcing</div>';
-    vPlants.forEach(function(vp){h+=_renderPlantSupplyCard(vp,sp,vpSlots);});
-  }
-  if(pwtPlants.length&&pwtSlots.length){
-    h+='<div style="'+TH+';margin-top:14px;">⚙ Powertrain Plants — Component Sourcing</div>';
-    pwtPlants.forEach(function(pp){h+=_renderPlantSupplyCard(pp,sp,pwtSlots);});
-  }
-  h+=_renderSourcingInvestmentSummary();
+// Lightweight aggregate snapshot reused by the results panel's lean (collapsed)
+// summary line and its expanded KPI tiles — mirrors renderOpsAggregateSummary().
+function _spAggSnapshot(){
   var totals=_calcSupplyPlanTotals();
+  var ops=_prop.operations||{},tSP=0,wc=0,wv=0;
+  (ops.vehicle_plants||[]).forEach(function(f){if(!f._computed)return;wc+=(f._computed.manuf_var_total||0)*(f._computed.eff_capacity_yr||0);wv+=f._computed.eff_capacity_yr||0;});
+  (ops.supplier_parks||[]).forEach(function(f){if(!f._computed)return;tSP+=f._computed.total_inv_m||0;});
+  var avg=wv>0?Math.round(wc/wv):0;
   var rPct=Math.round(totals.riskScore*100);
-  var rCol=rPct<30?'var(--green)':rPct<55?'var(--gold)':'var(--red)';
   var rLabel=rPct<30?'LOW':rPct<55?'MEDIUM':'HIGH';
-  h+='<div style="display:flex;align-items:center;gap:10px;margin-top:2px;">';
-  h+='<div style="font-family:DM Mono,monospace;font-size:7.5px;color:var(--muted2);white-space:nowrap;">Supply Risk</div>';
-  h+='<div style="flex:1;background:var(--border);border-radius:2px;height:5px;overflow:hidden;"><div style="width:'+rPct+'%;height:100%;background:'+rCol+';border-radius:2px;"></div></div>';
-  h+='<div style="font-family:DM Mono,monospace;font-size:7.5px;color:'+rCol+';white-space:nowrap;">'+rLabel+' ('+rPct+'%)</div>';
-  h+='<div style="font-family:DM Mono,monospace;font-size:7.5px;color:var(--muted2);">→ Reliability</div>';
+  return {nreM:Math.round(tSP),avgCost:avg,riskPct:rPct,riskLabel:rLabel};
+}
+
+// ── Left column: sourcing inputs (zone + automation pickers only) ───────────
+function _renderSourcingInputsPanel(){
+  var sp=(_prop.operations&&_prop.operations.supply_plan)||{};
+  var vPlants=_spConfirmedPlants(), pwtPlants=_spConfirmedPwtPlants();
+  var vpSlots=_spVehiclePlantSlots(), pwtSlots=_spPwtPlantSlots();
+  var nPlants=vPlants.length+pwtPlants.length;
+  var nDecisions=vPlants.length*vpSlots.length+pwtPlants.length*pwtSlots.length;
+  var expanded=!!_spPanelExpanded.inputs;
+  var MO='font-family:DM Mono,monospace;';
+  var h='<div style="background:var(--s2);border-radius:4px;border:1px solid var(--border2);padding:10px 12px;">';
+  h+='<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;cursor:pointer;" data-action="sp-toggle-panel" data-panel="inputs">';
+  h+='<div style="'+MO+'font-size:9px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--text);white-space:nowrap;">'+(expanded?'▲':'▼')+' 🔧 Sourcing Decisions</div>';
+  if(!expanded){
+    h+='<div style="'+MO+'font-size:7.5px;color:var(--muted2);text-align:right;">'+nPlants+' plant'+(nPlants===1?'':'s')+' · '+nDecisions+' module sourcing zone'+(nDecisions===1?'':'s')+' configured</div>';
+  }
+  h+='</div>';
+  if(expanded){
+    h+='<div style="margin-top:10px;">';
+    var TH='font-family:DM Mono,monospace;font-size:8px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:6px;display:block;';
+    if(vPlants.length&&vpSlots.length){
+      h+='<div style="'+TH+'">🏭 Vehicle Assembly Plants</div>';
+      vPlants.forEach(function(vp){h+=_renderPlantInputCard(vp,sp,vpSlots);});
+    }
+    if(pwtPlants.length&&pwtSlots.length){
+      h+='<div style="'+TH+';margin-top:10px;">⚙ Powertrain Plants</div>';
+      pwtPlants.forEach(function(pp){h+=_renderPlantInputCard(pp,sp,pwtSlots);});
+    }
+    if(!nPlants){
+      h+='<div style="'+MO+'font-size:9px;color:var(--muted2);font-style:italic;padding:6px 0;">No confirmed plants yet — configure Industrial Operations first.</div>';
+    }
+    h+='</div>';
+  }
+  h+='</div>';
+  return h;
+}
+
+// ── Right column: cost build-up, supplier investment & risk (read-only) ─────
+function _renderSourcingResultsPanel(){
+  var sp=(_prop.operations&&_prop.operations.supply_plan)||{};
+  var vPlants=_spConfirmedPlants(), pwtPlants=_spConfirmedPwtPlants();
+  var vpSlots=_spVehiclePlantSlots(), pwtSlots=_spPwtPlantSlots();
+  var snap=_spAggSnapshot();
+  var rCol=snap.riskPct<30?'var(--green)':snap.riskPct<55?'var(--gold)':'var(--red)';
+  var expanded=!!_spPanelExpanded.results;
+  var MO='font-family:DM Mono,monospace;';
+  function aT2(l,v,c,id){return '<div style="background:var(--s2);border-radius:3px;padding:8px;border:1px solid var(--border)"><div style="font-size:8px;color:var(--muted2);margin-bottom:2px;">'+l+'</div><div style="font-family:DM Mono,monospace;font-size:11px;color:'+c+'" id="'+id+'">'+v+'</div></div>';}
+  var h='<div style="background:var(--s2);border-radius:4px;border:1px solid var(--border2);padding:10px 12px;">';
+  h+='<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;cursor:pointer;" data-action="sp-toggle-panel" data-panel="results">';
+  h+='<div style="'+MO+'font-size:9px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--text);white-space:nowrap;">'+(expanded?'▲':'▼')+' 📊 Cost & Investment Summary</div>';
+  if(!expanded){
+    h+='<div style="'+MO+'font-size:7.5px;color:var(--muted2);text-align:right;">Supplier NRE €'+snap.nreM+'M · Wtd Manuf €'+snap.avgCost+'/u · Risk <span style="color:'+rCol+';">'+snap.riskLabel+' ('+snap.riskPct+'%)</span></div>';
+  }
+  h+='</div>';
+  if(expanded){
+    h+='<div style="margin-top:10px;">';
+    h+='<div style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-bottom:14px;">';
+    h+=aT2('Supplier NRE','€'+snap.nreM+'M','var(--cyan)','prop-ops-agg-sp');
+    h+=aT2('Wtd Manuf/unit','€'+snap.avgCost,'var(--text)','prop-ops-agg-cost');
+    h+='</div>';
+    var TH='font-family:DM Mono,monospace;font-size:8px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:6px;display:block;';
+    if(vPlants.length&&vpSlots.length){
+      h+='<div style="'+TH+'">🏭 Vehicle Assembly Plants — Landed Cost & Build-up</div>';
+      vPlants.forEach(function(vp){h+=_renderPlantCostCard(vp,sp,vpSlots);});
+    }
+    if(pwtPlants.length&&pwtSlots.length){
+      h+='<div style="'+TH+';margin-top:10px;">⚙ Powertrain Plants — Landed Cost & Build-up</div>';
+      pwtPlants.forEach(function(pp){h+=_renderPlantCostCard(pp,sp,pwtSlots);});
+    }
+    h+=_renderSourcingInvestmentSummary();
+    h+='<div style="display:flex;align-items:center;gap:10px;margin-top:2px;">';
+    h+='<div style="'+MO+'font-size:7.5px;color:var(--muted2);white-space:nowrap;">Supply Risk</div>';
+    h+='<div style="flex:1;background:var(--border);border-radius:2px;height:5px;overflow:hidden;"><div style="width:'+snap.riskPct+'%;height:100%;background:'+rCol+';border-radius:2px;"></div></div>';
+    h+='<div style="'+MO+'font-size:7.5px;color:'+rCol+';white-space:nowrap;">'+snap.riskLabel+' ('+snap.riskPct+'%)</div>';
+    h+='<div style="'+MO+'font-size:7.5px;color:var(--muted2);">→ Reliability</div>';
+    h+='</div>';
+    h+='</div>';
+  }
+  h+='</div>';
+  return h;
+}
+
+function _renderSupplyPlanSection(){
+  var h='<div style="margin-bottom:14px;">';
+  h+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;align-items:start;">';
+  h+='<div>'+_renderSourcingInputsPanel()+'</div>';
+  h+='<div>'+_renderSourcingResultsPanel()+'</div>';
   h+='</div>';
   h+='</div>';
   return h;
