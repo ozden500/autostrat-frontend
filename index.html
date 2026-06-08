@@ -20933,6 +20933,32 @@ function _spAggSnapshot(){
   return {nreM:Math.round(tSP),avgCost:avg,riskPct:rPct,riskLabel:rLabel};
 }
 
+// Classifies the team's overall sourcing footprint by comparing each plant's
+// per-module zone choice against that plant's own local economic zone
+// (_zoneForPlant): all-local → Local, all-elsewhere → Global, mix → Hybrid.
+function _spSourcingProfile(){
+  var sp=(_prop.operations&&_prop.operations.supply_plan)||{};
+  var vPlants=_spConfirmedPlants(), pwtPlants=_spConfirmedPwtPlants();
+  var vpSlots=_spVehiclePlantSlots(), pwtSlots=_spPwtPlantSlots();
+  var nLocal=0, nNonLocal=0;
+  function _scan(plants,slots){
+    plants.forEach(function(p){
+      var mods=(sp.plants&&sp.plants[p.id]&&sp.plants[p.id].modules)||{};
+      var localZone=_zoneForPlant(p.country_code,p.region);
+      slots.forEach(function(sk){
+        var dec=mods[sk]||{zone:localZone};
+        if((dec.zone||localZone)===localZone) nLocal++; else nNonLocal++;
+      });
+    });
+  }
+  _scan(vPlants,vpSlots);
+  _scan(pwtPlants,pwtSlots);
+  if(nLocal+nNonLocal===0) return null;
+  if(nNonLocal===0) return {label:'Local Sourcing',color:'var(--green)'};
+  if(nLocal===0) return {label:'Global Sourcing',color:'var(--gold)'};
+  return {label:'Hybrid Sourcing',color:'var(--cyan)'};
+}
+
 // ── Left column: sourcing inputs (zone + automation pickers only) ───────────
 function _renderSourcingInputsPanel(){
   var sp=(_prop.operations&&_prop.operations.supply_plan)||{};
@@ -20941,10 +20967,16 @@ function _renderSourcingInputsPanel(){
   var nPlants=vPlants.length+pwtPlants.length;
   var nDecisions=vPlants.length*vpSlots.length+pwtPlants.length*pwtSlots.length;
   var expanded=!!_spPanelExpanded.inputs;
+  var profile=_spSourcingProfile();
   var MO='font-family:DM Mono,monospace;';
   var h='<div style="background:var(--s2);border-radius:4px;border:1px solid var(--border2);padding:10px 12px;">';
   h+='<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;cursor:pointer;" data-action="sp-toggle-panel" data-panel="inputs">';
+  h+='<div style="display:flex;align-items:center;gap:8px;">';
   h+='<div style="'+MO+'font-size:9px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--text);white-space:nowrap;">'+(expanded?'▲':'▼')+' 🔧 Sourcing Decisions</div>';
+  if(profile){
+    h+='<span style="'+MO+'font-size:7px;font-weight:600;color:'+profile.color+';padding:2px 6px;border:1px solid '+profile.color+';border-radius:2px;white-space:nowrap;">'+profile.label+'</span>';
+  }
+  h+='</div>';
   if(!expanded){
     h+='<div style="'+MO+'font-size:7.5px;color:var(--muted2);text-align:right;">'+nPlants+' plant'+(nPlants===1?'':'s')+' · '+nDecisions+' module sourcing zone'+(nDecisions===1?'':'s')+' configured</div>';
   }
