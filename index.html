@@ -20864,14 +20864,12 @@ function _renderSourcingInvestmentSummary(){
     g.isFirstTime=g.isFirstTime||l.inv.isFirstTime;
     g.autoSet[l.automation]=true;
   });
-  var GRID='grid-template-columns:150px 92px 84px 84px 1fr 86px;';
-  var ROWSTYLE='display:grid;'+GRID+'gap:6px;align-items:center;';
-
+  // Each zone entry is rendered as its own short paragraph (header line of stats +
+  // an optional investment line below) rather than a fixed-column grid — long
+  // "tooling €X + capacity €Y = €Z" strings used to wrap inside a narrow grid cell
+  // and break row alignment with the neighboring columns, producing a jumbled look.
   var h='<div style="margin-bottom:12px;padding:10px 12px;background:var(--s2);border-radius:4px;border:1px solid var(--border2);">';
-  h+='<div style="'+MO+'font-size:8px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:6px;">💰 Required Supplier Investment — based on Section 7 reservation amounts</div>';
-  h+='<div style="'+ROWSTYLE+MO+'font-size:6.5px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted2);padding:3px 0;border-bottom:1px solid var(--border2);">';
-  h+='<span>Zone</span><span style="text-align:right;">Contracted</span><span style="text-align:right;">Required</span><span style="text-align:right;">Additional</span><span>Investment</span><span>Automation</span>';
-  h+='</div>';
+  h+='<div style="'+MO+'font-size:8px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:7px;">💰 Required Supplier Investment — based on Section 7 reservation amounts</div>';
   TYPE_ORDER.forEach(function(sk){
     var zoneMap=groups[sk];
     if(!zoneMap)return;
@@ -20882,7 +20880,7 @@ function _renderSourcingInvestmentSummary(){
       var za=SP_ZONES.find(function(z){return z.key===a;}),zb=SP_ZONES.find(function(z){return z.key===b;});
       return (za&&za.label||a).localeCompare(zb&&zb.label||b);
     });
-    h+='<div style="display:flex;justify-content:space-between;gap:8px;'+MO+'font-size:7.5px;font-weight:700;color:var(--text);padding:6px 0 2px;">';
+    h+='<div style="display:flex;justify-content:space-between;gap:8px;'+MO+'font-size:8px;font-weight:700;color:var(--text);padding:7px 0 3px;border-top:1px solid var(--border2);">';
     h+='<span>'+(TYPE_LABELS[sk]||sk.toUpperCase())+'</span>';
     h+='<span style="color:var(--muted2);font-weight:400;">€'+moduleTotalM.toFixed(2)+'M</span>';
     h+='</div>';
@@ -20897,21 +20895,25 @@ function _renderSourcingInvestmentSummary(){
         autoLabel=al?al.label:autoKeys[0];
       }
       var addCol=g.shortfall>0?(g.isFirstTime?'var(--orange)':'var(--cyan)'):'var(--muted2)';
-      var addTxt=g.shortfall>0?('+'+g.shortfall.toFixed(0)+'k'):'—';
-      var invTxt,invCol;
-      if(g.totalM<=0){
-        invTxt='—';invCol='var(--muted2)';
-      }else{
-        invCol=g.isFirstTime?'var(--orange)':'var(--cyan)';
-        invTxt=(g.isFirstTime?('tooling €'+g.toolingM.toFixed(2)+'M + capacity €'+g.capacityM.toFixed(2)+'M'):('capacity €'+g.capacityM.toFixed(2)+'M'))+' = €'+g.totalM.toFixed(2)+'M';
+      h+='<div style="padding:4px 0 4px 12px;">';
+      h+='<div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px;flex-wrap:wrap;'+MO+'font-size:7.5px;">';
+      h+='<span style="color:var(--text);font-weight:600;">'+zoneLabel+'</span>';
+      h+='<span style="color:var(--muted2);text-align:right;">'
+        +'Contracted <b style="color:'+(g.contracted_k>0?'var(--text)':'var(--muted2)')+';font-weight:600;">'+g.contracted_k.toFixed(0)+'k</b>'
+        +' · Required <b style="color:var(--text);font-weight:600;">'+g.needK.toFixed(0)+'k</b>'
+        +(g.shortfall>0?(' · <span style="color:'+addCol+';font-weight:600;">+'+g.shortfall.toFixed(0)+'k</span>'):'')
+        +' · '+autoLabel
+        +'</span>';
+      h+='</div>';
+      if(g.totalM>0){
+        var invCol=g.isFirstTime?'var(--orange)':'var(--cyan)';
+        var invTxt=g.isFirstTime
+          ?('Tooling <b>€'+g.toolingM.toFixed(2)+'M</b> + Capacity <b>€'+g.capacityM.toFixed(2)+'M</b> = <b>€'+g.totalM.toFixed(2)+'M</b>')
+          :('Capacity <b>€'+g.capacityM.toFixed(2)+'M</b> = <b>€'+g.totalM.toFixed(2)+'M</b>');
+        h+='<div style="'+MO+'font-size:7px;color:'+invCol+';margin-top:2px;">→ '+invTxt+'</div>';
+      } else {
+        h+='<div style="'+MO+'font-size:7px;color:var(--muted2);margin-top:2px;">→ Covered by existing contracted capacity — no new investment</div>';
       }
-      h+='<div style="'+ROWSTYLE+MO+'font-size:7.5px;color:var(--muted2);padding:3px 0 3px 10px;border-top:1px solid rgba(255,255,255,.03);">';
-      h+='<span>'+zoneLabel+'</span>';
-      h+='<span style="text-align:right;color:'+(g.contracted_k>0?'var(--text)':'var(--muted2)')+';">'+g.contracted_k.toFixed(0)+'k</span>';
-      h+='<span style="text-align:right;color:var(--text);">'+g.needK.toFixed(0)+'k</span>';
-      h+='<span style="text-align:right;color:'+addCol+';">'+addTxt+'</span>';
-      h+='<span style="color:'+invCol+';font-weight:700;">'+invTxt+'</span>';
-      h+='<span style="color:var(--muted2);">'+autoLabel+'</span>';
       h+='</div>';
     });
   });
