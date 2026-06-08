@@ -20580,50 +20580,55 @@ function _renderModuleCostRow(sr, vp, _ct) {
   var deltaAbs = Math.abs(delta);
   var deltaStr = delta >= 0 ? '+€' + deltaAbs.toLocaleString() : '−€' + deltaAbs.toLocaleString();
   var deltaCol = delta > 0 ? 'var(--orange)' : 'var(--green)';
-  var rowStyle = 'display:grid;grid-template-columns:1fr 78px 1fr;gap:4px;align-items:baseline;padding:1px 0;';
   function fmtE(v) { var n = Math.round(v || 0); return (n >= 0 ? '€' : '−€') + Math.abs(n).toLocaleString(); }
   function fmtAdj(v) { var n = Math.round(v || 0); return (n >= 0 ? '+€' : '−€') + Math.abs(n).toLocaleString(); }
-  function row(label, val, col, note, bold) {
+  // Two-column row: label (with inline muted note) on the left, right-aligned value.
+  // `top` draws a divider above the row and adds breathing room — used for subtotal/total lines.
+  function row(label, val, col, note, bold, top) {
     var valStr = typeof val === 'string' ? val : fmtE(val);
-    return '<div style="' + rowStyle + '">'
-      + '<div style="' + MO + 'font-size:8px;color:' + (col || 'var(--muted2)') + ';' + (bold ? 'font-weight:700;' : '') + '">' + label + '</div>'
-      + '<div style="' + MO + 'font-size:8px;color:' + (col || 'var(--muted2)') + ';text-align:right;' + (bold ? 'font-weight:700;' : '') + '">' + valStr + '</div>'
-      + '<div style="' + MO + 'font-size:7px;color:var(--muted2);padding-left:4px;">' + (note || '') + '</div>'
+    var c = col || 'var(--muted2)';
+    var fz = bold ? '8.5px' : '8px';
+    return '<div style="display:flex;justify-content:space-between;align-items:baseline;gap:12px;'
+      + (top ? 'margin-top:5px;padding-top:5px;border-top:1px solid var(--border2);' : 'padding:1.5px 0;') + '">'
+      + '<div style="' + MO + 'font-size:' + fz + ';color:' + c + ';' + (bold ? 'font-weight:700;' : '') + 'white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">'
+      + label + (note ? '<span style="color:var(--muted2);font-weight:400;font-size:7px;"> · ' + note + '</span>' : '') + '</div>'
+      + '<div style="' + MO + 'font-size:' + fz + ';color:' + c + ';' + (bold ? 'font-weight:700;' : '') + 'text-align:right;white-space:nowrap;flex-shrink:0;">' + valStr + '</div>'
       + '</div>';
   }
-  function sep() { return '<div style="border-top:1px solid var(--border2);margin:3px 0;"></div>'; }
-  var h = '<div style="margin:0 0 8px 0;padding:8px 12px;background:var(--s3);border-radius:3px;border-left:2px solid var(--cyan);">';
-  h += '<div style="display:flex;align-items:baseline;justify-content:space-between;gap:8px;margin-bottom:5px;flex-wrap:wrap;">';
-  h += '<div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'
-    + '<span style="' + MO + 'font-size:7px;font-weight:600;color:var(--muted2);letter-spacing:0.5px;text-transform:uppercase;">' + typeLabel + '</span>'
-    + '<span style="' + MO + 'font-size:7px;color:var(--muted2);"> — </span>'
-    + '<span style="' + MO + 'font-size:8px;font-weight:600;color:var(--white);">' + lbl + '</span>'
-    + '<span style="' + MO + 'font-size:7px;color:var(--muted2);"> · ' + zone.flag + ' ' + zone.label + ' · ' + (auto ? auto.label : '—') + '</span>'
-    + '</div>';
-  h += '<div style="' + MO + 'font-size:7.5px;white-space:nowrap;">'
-    + '<span style="color:var(--muted2);">STD €' + m.base_buy.toLocaleString() + ' → </span>'
-    + '<span style="color:var(--cyan);font-weight:700;">€' + m.landed_eur.toLocaleString() + '</span>'
-    + ' <span style="color:' + deltaCol + ';">(' + deltaStr + ')</span>'
-    + '</div>';
-  h += '</div>';
-  h += row('Standard DMP (USA baseline)', m.base_buy, 'var(--muted)', 'BOM engine at standard rates');
-  if (m.labor_adj !== 0) {
-    h += row('+ Labor adjustment', fmtAdj(m.labor_adj), m.labor_adj <= 0 ? 'var(--green)' : 'var(--orange)', zone.label + ' vs US');
+  function sectionLabel(t) {
+    return '<div style="' + MO + 'font-size:6.5px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--muted2);margin:8px 0 3px;">' + t + '</div>';
   }
-  h += row('+ Freight', m.logistics_eur, 'var(--muted2)', zone.key + ' → ' + vp.region);
+  var h = '<div style="margin:0 0 12px 0;padding:10px 12px;background:var(--s3);border-radius:3px;border-left:2px solid var(--cyan);">';
+  // Header — two lines: identity (left) vs. cost headline (right), avoids a single cramped wrapping line
+  h += '<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap;padding-bottom:7px;margin-bottom:7px;border-bottom:1px solid var(--border2);">';
+  h += '<div>';
+  h += '<div style="' + MO + 'font-size:9px;font-weight:700;color:var(--white);">' + lbl
+    + ' <span style="font-size:7px;font-weight:600;color:var(--muted2);letter-spacing:0.5px;text-transform:uppercase;">' + typeLabel + '</span></div>';
+  h += '<div style="' + MO + 'font-size:7px;color:var(--muted2);margin-top:2px;">' + zone.flag + ' ' + zone.label + ' · ' + (auto ? auto.label : '—') + '</div>';
+  h += '</div>';
+  h += '<div style="text-align:right;">';
+  h += '<div style="' + MO + 'font-size:9px;white-space:nowrap;"><span style="color:var(--muted2);">€' + m.base_buy.toLocaleString() + ' → </span><span style="color:var(--cyan);font-weight:700;">€' + m.landed_eur.toLocaleString() + '</span></div>';
+  h += '<div style="' + MO + 'font-size:7px;color:' + deltaCol + ';margin-top:2px;">' + deltaStr + ' vs standard</div>';
+  h += '</div>';
+  h += '</div>';
+  // ── Landed parts build-up ──
+  h += sectionLabel('Landed Parts Build-up');
+  h += row('Standard DMP', m.base_buy, 'var(--muted)', 'USA baseline BOM');
+  if (m.labor_adj !== 0) {
+    h += row('Labor adjustment', fmtAdj(m.labor_adj), m.labor_adj <= 0 ? 'var(--green)' : 'var(--orange)', zone.label + ' vs US');
+  }
+  h += row('Freight', m.logistics_eur, 'var(--muted2)', zone.key + ' → ' + vp.region);
   var dutyPct = zone.duty[vp.region] || 0;
-  h += row('+ Import duty', m.duty_eur, m.duty_eur > 0 ? 'var(--orange)' : 'var(--muted2)', dutyPct + '% tariff');
-  h += sep();
-  h += row('= Landed Parts (DMP)', m.landed_eur, 'var(--cyan)', '', true);
+  h += row('Import duty', m.duty_eur, m.duty_eur > 0 ? 'var(--orange)' : 'var(--muted2)', dutyPct + '% tariff');
+  h += row('Landed Parts (DMP)', m.landed_eur, 'var(--cyan)', '', true, true);
+  // ── OEM make cost (only when this slot is OEM-made, not pure buy) ──
   if (mc.total_eur > 0) {
-    h += '<div style="height:4px;"></div>';
-    h += row('+ OEM Make — Labor', mc.labor_eur, 'var(--muted2)', _ct.labor_eur_hr ? '@€' + _ct.labor_eur_hr + '/hr' : '');
-    h += row('+ OEM Make — Energy', mc.energy_eur, 'var(--muted2)', _ct.elec_eur_kwh ? '@€' + _ct.elec_eur_kwh + '/kWh' : '');
-    h += row('+ OEM Make — OH 20%', mc.overhead_eur, 'var(--muted2)', '');
-    h += sep();
-    h += row('= OEM Make Total', mc.total_eur, 'var(--purple)', '', true);
-    h += sep();
-    h += row('= Full Module COGS', m.landed_eur + mc.total_eur, 'var(--white)', '', true);
+    h += sectionLabel('OEM Make Cost');
+    h += row('Labor', mc.labor_eur, 'var(--muted2)', _ct.labor_eur_hr ? '@€' + _ct.labor_eur_hr + '/hr' : '');
+    h += row('Energy', mc.energy_eur, 'var(--muted2)', _ct.elec_eur_kwh ? '@€' + _ct.elec_eur_kwh + '/kWh' : '');
+    h += row('Overhead (20%)', mc.overhead_eur, 'var(--muted2)', '');
+    h += row('OEM Make Total', mc.total_eur, 'var(--purple)', '', true, true);
+    h += row('Full Module COGS', m.landed_eur + mc.total_eur, 'var(--white)', '', true, true);
   }
   h += _mzcCapacityStrip(sr.sk, dec.zone, dec.automation, vp.vehicle_capacity_yr || 0);
   h += '</div>';
@@ -20657,7 +20662,7 @@ function _renderPlantCostCard(vp, sp, slots) {
   var rLabel = rPct < 30 ? 'LOW' : rPct < 55 ? 'MEDIUM' : 'HIGH';
   var pExpanded = !!_spPlantExpanded[vp.id];
   var pChevron = pExpanded ? '▲' : '▼';
-  var h = '<div style="margin-bottom:10px;">';
+  var h = '<div style="margin-bottom:14px;">';
   // ── Plant header ──
   h += '<div style="display:flex;align-items:center;justify-content:space-between;background:var(--s2);border-radius:4px;padding:6px 10px;margin-bottom:6px;gap:8px;cursor:pointer;" '
     + 'data-action="sp-toggle-plant" data-pid="' + vp.id + '">';
@@ -20737,7 +20742,7 @@ function _mzcCapacityStrip(sk, zoneKey, autoLevel, needK) {
   var freeK = Math.max(0, c.free_k || 0);
   var shortfall = Math.max(0, (needK || 0) - freeK);
   var MO = 'font-family:DM Mono,monospace;';
-  var h = '<div style="margin-top:4px;padding:6px 8px;background:var(--s2);border-radius:3px;border:1px dashed var(--border2);">';
+  var h = '<div style="margin-top:9px;padding:7px 9px;background:var(--s2);border-radius:3px;border:1px dashed var(--border2);">';
   h += '<div style="' + MO + 'font-size:7px;color:var(--muted2);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:3px;">📦 Zone Supply Contract — ' + zoneKey + '</div>';
   h += '<div style="display:flex;gap:10px;flex-wrap:wrap;' + MO + 'font-size:7.5px;color:var(--muted2);">';
   h += '<span>Contracted <b style="color:var(--text);">' + (c.contracted_k || 0) + 'k</b></span>';
