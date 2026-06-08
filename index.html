@@ -19141,13 +19141,12 @@ function onPropOpsRemoveFacility(type,fid){
 
 function renderOpsAggregateSummary(){
   _calcSupplyPlanTotals();
-  var ops=_prop.operations||{},tVP=0,tPWT=0,tSP=0,wc=0,wv=0;
+  var ops=_prop.operations||{},tVP=0,tPWT=0,wc=0,wv=0;
   (ops.vehicle_plants||[]).forEach(function(f){if(!f._computed)return;tVP+=f._computed.total_inv_m||0;wc+=(f._computed.manuf_var_total||0)*(f._computed.eff_capacity_yr||0);wv+=f._computed.eff_capacity_yr||0;});
   (ops.powertrain_plants||[]).forEach(function(f){if(!f._computed)return;tPWT+=f._computed.total_inv_m||0;});
-  (ops.supplier_parks||[]).forEach(function(f){if(!f._computed)return;tSP+=f._computed.total_inv_m||0;});
   var avg=wv>0?Math.round(wc/wv):0;
   function _s(id,v){var e=document.getElementById(id);if(e)e.textContent=String(v);}
-  _s('prop-ops-agg-vp','€'+Math.round(tVP)+'M');_s('prop-ops-agg-pwt','€'+Math.round(tPWT)+'M');_s('prop-ops-agg-sp','€'+Math.round(tSP)+'M');_s('prop-ops-agg-cost','€'+avg);
+  _s('prop-ops-agg-vp','€'+Math.round(tVP)+'M');_s('prop-ops-agg-pwt','€'+Math.round(tPWT)+'M');_s('prop-ops-agg-sp','€'+_spTotalSupplierInvestmentM().toFixed(1)+'M');_s('prop-ops-agg-cost','€'+avg);
 }
 
 function _getVehicleModuleColumns(){
@@ -20927,17 +20926,41 @@ function _renderSourcingInvestmentSummary(){
   return h;
 }
 
+// Total €M of supplier investment (tooling + capacity expansion) the current
+// zone/automation choices would trigger on confirmation — sums _mzcEstimateInvestment
+// across every (plant, module slot) the same way _renderSourcingInvestmentSummary
+// groups and totals them, so the KPI tile always matches that breakdown.
+// Replaces the old "Supplier NRE" figure (which read from the no-longer-existing
+// ops.supplier_parks concept and was always €0).
+function _spTotalSupplierInvestmentM(){
+  var sp=(_prop.operations&&_prop.operations.supply_plan)||{};
+  var total=0;
+  function _sum(plants,slots){
+    plants.forEach(function(p){
+      var mods=(sp.plants&&sp.plants[p.id]&&sp.plants[p.id].modules)||{};
+      slots.forEach(function(sk){
+        var dec=mods[sk]||{zone:_zoneForPlant(p.country_code,p.region),automation:2};
+        var needK=p.vehicle_capacity_yr||0;
+        if(needK<=0)return;
+        total+=_mzcEstimateInvestment(sk,dec.zone,dec.automation||2,needK).totalM;
+      });
+    });
+  }
+  _sum(_spConfirmedPlants(),_spVehiclePlantSlots());
+  _sum(_spConfirmedPwtPlants(),_spPwtPlantSlots());
+  return total;
+}
+
 // Lightweight aggregate snapshot reused by the results panel's lean (collapsed)
 // summary line and its expanded KPI tiles — mirrors renderOpsAggregateSummary().
 function _spAggSnapshot(){
   var totals=_calcSupplyPlanTotals();
-  var ops=_prop.operations||{},tSP=0,wc=0,wv=0;
+  var ops=_prop.operations||{},wc=0,wv=0;
   (ops.vehicle_plants||[]).forEach(function(f){if(!f._computed)return;wc+=(f._computed.manuf_var_total||0)*(f._computed.eff_capacity_yr||0);wv+=f._computed.eff_capacity_yr||0;});
-  (ops.supplier_parks||[]).forEach(function(f){if(!f._computed)return;tSP+=f._computed.total_inv_m||0;});
   var avg=wv>0?Math.round(wc/wv):0;
   var rPct=Math.round(totals.riskScore*100);
   var rLabel=rPct<30?'LOW':rPct<55?'MEDIUM':'HIGH';
-  return {nreM:Math.round(tSP),avgCost:avg,riskPct:rPct,riskLabel:rLabel};
+  return {investM:_spTotalSupplierInvestmentM(),avgCost:avg,riskPct:rPct,riskLabel:rLabel};
 }
 
 // Classifies the team's overall sourcing footprint by comparing each plant's
@@ -21022,13 +21045,13 @@ function _renderSourcingResultsPanel(){
   h+='<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;cursor:pointer;" data-action="sp-toggle-panel" data-panel="results">';
   h+='<div style="'+MO+'font-size:9px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--text);white-space:nowrap;">'+(expanded?'▲':'▼')+' 📊 Cost & Investment Summary</div>';
   if(!expanded){
-    h+='<div style="'+MO+'font-size:7.5px;color:var(--muted2);text-align:right;">Supplier NRE €'+snap.nreM+'M · Wtd Manuf €'+snap.avgCost+'/u · Risk <span style="color:'+rCol+';">'+snap.riskLabel+' ('+snap.riskPct+'%)</span></div>';
+    h+='<div style="'+MO+'font-size:7.5px;color:var(--muted2);text-align:right;">Supplier Investment €'+snap.investM.toFixed(1)+'M · Wtd Manuf €'+snap.avgCost+'/u · Risk <span style="color:'+rCol+';">'+snap.riskLabel+' ('+snap.riskPct+'%)</span></div>';
   }
   h+='</div>';
   if(expanded){
     h+='<div style="margin-top:10px;">';
     h+='<div style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-bottom:14px;">';
-    h+=aT2('Supplier NRE','€'+snap.nreM+'M','var(--cyan)','prop-ops-agg-sp');
+    h+=aT2('Supplier Investment','€'+snap.investM.toFixed(1)+'M','var(--cyan)','prop-ops-agg-sp');
     h+=aT2('Wtd Manuf/unit','€'+snap.avgCost,'var(--text)','prop-ops-agg-cost');
     h+='</div>';
     var TH='font-family:DM Mono,monospace;font-size:8px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:6px;display:block;';
