@@ -15738,6 +15738,9 @@ function selectStudy(vid) {
     var v = (data.vehicles || []).find(function(x){ return x.id === vid; });
     if (!v) return;
     _prop.study = v;
+    // Clean up any 'draft' modules left over from a previously abandoned proposal
+    fetch(API_URL + '/teams/' + teamId + '/modules/cleanup-drafts', { method: 'POST' })
+      .catch(function(e){ console.warn('cleanup-drafts failed', e); });
     // Mark selected
     document.querySelectorAll('.prop-study-card').forEach(function(el) {
       el.classList.toggle('selected', el.getAttribute('data-vid') === vid);
@@ -18210,10 +18213,96 @@ function advanceToCommercial() {
   buildMfgPlantSection();
 }
 
-function advanceToComponentsSourcing() {
+var _PROP_SIZE_ABBR  = {micro:'MICRO',small:'SMALL',medium:'MEDIUM',large:'LARGE',frame:'FRAME',performance:'PERF',commercial:'COMMERCIAL'};
+var _PROP_PWT_ABBR   = {'ice_only':'ICE','bev_only':'BEV','ice_and_bev':'MULTI'};
+var _PROP_SIZE_LABEL = {micro:'Micro',small:'Small',medium:'Medium',large:'Large',frame:'Frame',performance:'Perf',commercial:'Commercial'};
+
+// Creates a 'draft' team_modules row for a 'new' module slot so its module_id is
+// available for \u00a78 capacity reservation. Returns false on failure (caller should
+// block the step advance), true if created, undefined if nothing to do.
+async function _savePropNew(slot, modType, ck, specs, autoName) {
+  if (!slot || slot.mode !== 'new' || !ck) return;
+  if (slot.module && slot.module.id) return; // already saved
+  try {
+    var r = await fetch(API_URL + '/teams/' + teamId + '/modules', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({team_id:teamId, session_id:sessionId,
+        module_type:modType, config_key:ck, name:autoName, specs:specs,
+        developed_from_module_id: null, development_status: 'draft'})
+    });
+    var d = await r.json();
+    if (d.success && d.module_id) {
+      slot.module = {id: d.module_id};
+      toast('\u23f3 New ' + modType + ' module queued: ' + autoName);
+      return true;
+    }
+    console.warn('createPropModule failed', modType, d.detail || d);
+    return false;
+  } catch(e) {
+    console.warn('createPropModule failed', modType, e);
+    return false;
+  }
+}
+
+async function advanceToComponentsSourcing() {
   var vp = (_prop.operations && _prop.operations.vehicle_plants) || [];
   var confirmed = vp.filter(function(p){ return p.vehicle_capacity_yr > 0; });
   if (!confirmed.length) { toast('\u26a0 Confirm at least one vehicle plant allocation first.'); return; }
+
+  // \u2500\u2500 Create 'new development' modules (as drafts) so module_id is available for \u00a78 capacity \u2500\u2500
+  var _modCounts = {};
+  (teamModuleLibrary||[]).forEach(function(m){ _modCounts[m.module_type]=(_modCounts[m.module_type]||0)+1; });
+  function _nextModName(type,base){ _modCounts[type]=(_modCounts[type]||0)+1; return base+'-'+String(_modCounts[type]).padStart(3,'0'); }
+
+  if (_prop.platform && _prop.platform.mode === 'new') {
+    var ps = _prop.platform.specs || {};
+    var ck = ps.size && ps.pwt ? (_PROP_SIZE_ABBR[ps.size]||'MEDIUM')+'_'+(_PROP_PWT_ABBR[ps.pwt]||'ICE') : null;
+    if ((await _savePropNew(_prop.platform, 'platform', ck,
+      {reliability:(ps.reliability||50)/100, comfort:(ps.comfort||50)/100,
+       safety:(ps.safety||50)/100, cost_opt:(ps.cost_opt||0)/100, weight_opt:(ps.weight_opt||0)/100},
+      _nextModName('platform', 'PL-'+(_PROP_SIZE_LABEL[ps.size]||'Platform')))) === false) {
+      toast('\u26a0 Failed to create new platform module \u2014 cannot continue'); return;
+    }
+  }
+  if (_prop.pwt && _prop.pwt.mode === 'new') {
+    var ps = _prop.pwt.specs || {};
+    if ((await _savePropNew(_prop.pwt, 'ice_pwt', ps.config_key||null,
+      {reliability:(ps.reliability||50)/100, emission_tech:(ps.emission_tech||10)/100,
+       power:ps.power||100, cost_opt:(ps.cost_opt||0)/100, weight_opt:(ps.weight_opt||0)/100},
+      _nextModName('ice_pwt', 'IC-'+(ps.config_key||'ICE').replace(/_ICE$/,'').replace(/_/g,'-')))) === false) {
+      toast('\u26a0 Failed to create new ICE PWT module \u2014 cannot continue'); return;
+    }
+  }
+  if (_prop.epwt && _prop.epwt.mode === 'new') {
+    var ps = _prop.epwt.specs || {};
+    if ((await _savePropNew(_prop.epwt, 'epwt', ps.config_key||null,
+      {reliability:(ps.reliability||50)/100, efficiency:ps.efficiency||0.7,
+       power_kw:ps.power_kw||150, cost_opt:(ps.cost_opt||0)/100, weight_opt:(ps.weight_opt||0)/100},
+      _nextModName('epwt', 'EP-'+(ps.epwt_class||'ePWT').replace(/_/g,'-')))) === false) {
+      toast('\u26a0 Failed to create new ePWT module \u2014 cannot continue'); return;
+    }
+  }
+  if (_prop.tophat && _prop.tophat.mode === 'new') {
+    var ps = _prop.tophat.specs || {};
+    if ((await _savePropNew(_prop.tophat, 'tophat', ps.config_key||null,
+      {reliability:(ps.reliability||50)/100, comfort:(ps.comfort||50)/100,
+       safety:(ps.safety||50)/100, roominess:ps.roominess||2.5,
+       premiumness:ps.premiumness||0.3, cost_opt:0, weight_opt:0},
+      _nextModName('tophat', 'TH-'+((ps.config_key||'Body').replace(/_/g,'-')||'Body')))) === false) {
+      toast('\u26a0 Failed to create new Top Hat module \u2014 cannot continue'); return;
+    }
+  }
+  if (_prop.eands && _prop.eands.mode === 'new') {
+    var ps = _prop.eands.specs || {};
+    if ((await _savePropNew(_prop.eands, 'eands', ps.config_key||null,
+      {adas_level:ps.adas_level||1, sensor_suite:(ps.sensor_suite||30)/100,
+       connectivity:(ps.connectivity||30)/100, infotainment:(ps.infotainment||30)/100,
+       cybersecurity:(ps.cybersecurity||20)/100},
+      _nextModName('eands', 'ES-L'+(ps.adas_level||1)))) === false) {
+      toast('\u26a0 Failed to create new E&S module \u2014 cannot continue'); return;
+    }
+  }
+
   var s7 = document.getElementById('prop-sec-7-status');
   if (s7) {
     var regions = confirmed.map(function(p){ return p.region; }).join('/');
@@ -20420,21 +20509,30 @@ function _spPwtPlantSlots(){
   return _spGetActivePropSlots().filter(function(sk){return ['pwt','epwt','battery'].indexOf(sk)>=0;});
 }
 
+// module_id for a given module slot — used to scope §8 capacity contracts/reservations
+// to the specific named module instance. Battery has no module-instance linkage
+// anywhere in the codebase and stays pooled per (module_slot='battery', zone_key).
+function _spModuleIdForSlot(sk){
+  if (sk === 'battery') return null;
+  var p = _prop[sk];
+  return (p && p.module && p.module.id) || null;
+}
+
 function _spInitFromPlants(){
   var vpSlots=_spVehiclePlantSlots(),pwtSlots=_spPwtPlantSlots(),plants={};
   _spConfirmedPlants().forEach(function(vp){
     var dz=_zoneForPlant(vp.country_code,vp.region),mods={};
-    vpSlots.forEach(function(sk){mods[sk]={zone:dz,automation:2};});
+    vpSlots.forEach(function(sk){mods[sk]={zone:dz,automation:2,module_id:_spModuleIdForSlot(sk)};});
     plants[vp.id]={modules:mods};
   });
   _spConfirmedPwtPlants().forEach(function(pp){
     var dz=_zoneForPlant(pp.country_code,pp.region),mods={};
-    pwtSlots.forEach(function(sk){mods[sk]={zone:dz,automation:2};});
+    pwtSlots.forEach(function(sk){mods[sk]={zone:dz,automation:2,module_id:_spModuleIdForSlot(sk)};});
     plants[pp.id]={modules:mods};
   });
   if(!Object.keys(plants).length){
     var vp0=_spConfirmedPlants()[0]||((_prop.operations&&_prop.operations.vehicle_plants)||[])[0]||{id:'vp1',region:'EU'};
-    var mods2={};vpSlots.concat(pwtSlots).forEach(function(sk){mods2[sk]={zone:_zoneForPlant(vp0.country_code,vp0.region),automation:2};});
+    var mods2={};vpSlots.concat(pwtSlots).forEach(function(sk){mods2[sk]={zone:_zoneForPlant(vp0.country_code,vp0.region),automation:2,module_id:_spModuleIdForSlot(sk)};});
     plants[vp0.id||'vp1']={modules:mods2};
   }
   return {plants:plants};
@@ -20445,16 +20543,25 @@ function _spSyncPlanWithPlants(){
   if(!sp||!sp.plants)return;
   var vpSlots=_spVehiclePlantSlots(),pwtSlots=_spPwtPlantSlots();
   _spConfirmedPlants().forEach(function(vp){
-    if(sp.plants[vp.id])return;
-    var dz=_zoneForPlant(vp.country_code,vp.region),mods={};
-    vpSlots.forEach(function(sk){mods[sk]={zone:dz,automation:2};});
-    sp.plants[vp.id]={modules:mods};
+    if(!sp.plants[vp.id]){
+      var dz=_zoneForPlant(vp.country_code,vp.region),mods={};
+      vpSlots.forEach(function(sk){mods[sk]={zone:dz,automation:2,module_id:_spModuleIdForSlot(sk)};});
+      sp.plants[vp.id]={modules:mods};
+      return;
+    }
+    // Backfill module_id for plans created before the §7→8 reorder populated module ids
+    var mods=sp.plants[vp.id].modules||{};
+    vpSlots.forEach(function(sk){ if(mods[sk]&&mods[sk].module_id==null) mods[sk].module_id=_spModuleIdForSlot(sk); });
   });
   _spConfirmedPwtPlants().forEach(function(pp){
-    if(sp.plants[pp.id])return;
-    var dz=_zoneForPlant(pp.country_code,pp.region),mods={};
-    pwtSlots.forEach(function(sk){mods[sk]={zone:dz,automation:2};});
-    sp.plants[pp.id]={modules:mods};
+    if(!sp.plants[pp.id]){
+      var dz=_zoneForPlant(pp.country_code,pp.region),mods={};
+      pwtSlots.forEach(function(sk){mods[sk]={zone:dz,automation:2,module_id:_spModuleIdForSlot(sk)};});
+      sp.plants[pp.id]={modules:mods};
+      return;
+    }
+    var mods=sp.plants[pp.id].modules||{};
+    pwtSlots.forEach(function(sk){ if(mods[sk]&&mods[sk].module_id==null) mods[sk].module_id=_spModuleIdForSlot(sk); });
   });
 }
 
@@ -20641,7 +20748,7 @@ function _renderModuleCostRow(sr, vp, _ct) {
     h += row('OEM Make Total', mc.total_eur, 'var(--purple)', '', true, true);
     h += row('Full Module COGS', m.landed_eur + mc.total_eur, 'var(--white)', '', true, true);
   }
-  h += _mzcCapacityStrip(sr.sk, dec.zone, dec.automation, vp.vehicle_capacity_yr || 0);
+  h += _mzcCapacityStrip(sr.sk, _spModuleIdForSlot(sr.sk), dec.zone, dec.automation, vp.vehicle_capacity_yr || 0);
   h += '</div>';
   return h;
 }
@@ -20699,7 +20806,7 @@ function _renderPlantCostCard(vp, sp, slots) {
 }
 
 // ── Module Zone Capacity (per-team supply contracts) ────────────────────────
-var _mzcCapacity = {};   // {`${module_slot}__${zone_key}`: {contracted_k,reserved_k,free_k,price_adj_pct,pending_adj_pct}}
+var _mzcCapacity = {};   // {`${module_id||module_slot}__${zone_key}`: {contracted_k,reserved_k,free_k,price_adj_pct,pending_adj_pct,module_id,module_name}}
 var _mzcLoading = false;
 
 async function _mzcLoadCapacity() {
@@ -20709,7 +20816,7 @@ async function _mzcLoadCapacity() {
     var res = await fetch(API_URL + '/sessions/' + sessionId + '/teams/' + teamId + '/module-zone-capacity');
     var data = await res.json();
     var map = {};
-    (data.capacity || []).forEach(function(c) { map[c.module_slot + '__' + c.zone_key] = c; });
+    (data.capacity || []).forEach(function(c) { map[(c.module_id || c.module_slot) + '__' + c.zone_key] = c; });
     _mzcCapacity = map;
     _refreshSupplyPlanArea();
   } catch (e) { console.warn('module-zone-capacity load failed', e); }
@@ -20736,8 +20843,8 @@ function _mzcEstimateCapexM(sk, autoLevel, currentK, additionalK) {
 // sourcing zone's relative cost via labor_index) vs. ongoing capacity investment
 // (incremental scale-up of an already-tooled contract, scaled by automation level).
 // Mirrors backend _mzc_invest (backend/main.py) — keep these in sync.
-function _mzcEstimateInvestment(sk, zoneKey, autoLevel, needK) {
-  var c = _mzcCapacity[sk + '__' + zoneKey] || { contracted_k: 0, free_k: 0 };
+function _mzcEstimateInvestment(sk, moduleId, zoneKey, autoLevel, needK) {
+  var c = _mzcCapacity[(moduleId || sk) + '__' + zoneKey] || { contracted_k: 0, free_k: 0 };
   var freeK = Math.max(0, c.free_k || 0);
   var shortfall = Math.max(0, (needK || 0) - freeK);
   var isFirstTime = (c.contracted_k || 0) <= 0 && shortfall > 0;
@@ -20748,8 +20855,8 @@ function _mzcEstimateInvestment(sk, zoneKey, autoLevel, needK) {
   return { shortfall: shortfall, isFirstTime: isFirstTime, toolingM: toolingM, capacityM: capacityM, totalM: toolingM + capacityM };
 }
 
-function _mzcCapacityStrip(sk, zoneKey, autoLevel, needK) {
-  var c = _mzcCapacity[sk + '__' + zoneKey] || { contracted_k: 0, reserved_k: 0, free_k: 0, price_adj_pct: 0, pending_adj_pct: 0 };
+function _mzcCapacityStrip(sk, moduleId, zoneKey, autoLevel, needK) {
+  var c = _mzcCapacity[(moduleId || sk) + '__' + zoneKey] || { contracted_k: 0, reserved_k: 0, free_k: 0, price_adj_pct: 0, pending_adj_pct: 0 };
   var freeK = Math.max(0, c.free_k || 0);
   var shortfall = Math.max(0, (needK || 0) - freeK);
   var MO = 'font-family:DM Mono,monospace;';
@@ -20762,7 +20869,7 @@ function _mzcCapacityStrip(sk, zoneKey, autoLevel, needK) {
   h += '<span>Need <b style="color:var(--gold);">' + (needK || 0) + 'k</b></span>';
   h += '</div>';
   if (shortfall > 0) {
-    var inv = _mzcEstimateInvestment(sk, zoneKey, autoLevel, needK);
+    var inv = _mzcEstimateInvestment(sk, moduleId, zoneKey, autoLevel, needK);
     var leadTxt = '~' + _mzcLeadTimeQ + ' round' + (_mzcLeadTimeQ > 1 ? 's' : '');
     if (inv.isFirstTime) {
       h += '<div style="' + MO + 'font-size:7px;color:var(--orange);margin-top:3px;">⚠ First-time tooling in ' + zoneKey + ': €' + inv.toolingM.toFixed(2) + 'M tooling + €' + inv.capacityM.toFixed(2) + 'M capacity = €' + inv.totalM.toFixed(2) + 'M now — +' + inv.shortfall.toFixed(1) + 'k usable in ' + leadTxt + '</div>';
@@ -20792,7 +20899,8 @@ async function confirmSourcingPlan() {
       var mods = (sp.plants && sp.plants[p.id] && sp.plants[p.id].modules) || {};
       slots.forEach(function(sk) {
         var dec = mods[sk] || { zone: _zoneForPlant(p.country_code, p.region), automation: 2 };
-        items.push({ module_slot: sk, zone_key: dec.zone, automation_level: dec.automation || 2, required_k: p.vehicle_capacity_yr || 0 });
+        var moduleId = dec.module_id != null ? dec.module_id : _spModuleIdForSlot(sk);
+        items.push({ module_slot: sk, module_id: moduleId, zone_key: dec.zone, automation_level: dec.automation || 2, required_k: p.vehicle_capacity_yr || 0 });
       });
     });
   }
@@ -20857,9 +20965,10 @@ function _renderSourcingInvestmentSummary(){
         var needK=p.vehicle_capacity_yr||0;
         if(needK<=0)return;
         var auto=dec.automation||2;
-        var inv=_mzcEstimateInvestment(sk,dec.zone,auto,needK);
+        var moduleId=dec.module_id!=null?dec.module_id:_spModuleIdForSlot(sk);
+        var inv=_mzcEstimateInvestment(sk,moduleId,dec.zone,auto,needK);
         if(inv.totalM<=0)return;
-        lines.push({plant:p,sk:sk,zone:dec.zone,needK:needK,automation:auto,inv:inv});
+        lines.push({plant:p,sk:sk,moduleId:moduleId,zone:dec.zone,needK:needK,automation:auto,inv:inv});
       });
     });
   }
@@ -20880,7 +20989,7 @@ function _renderSourcingInvestmentSummary(){
     groups[l.sk]=groups[l.sk]||{};
     var g=groups[l.sk][l.zone];
     if(!g){
-      var c=_mzcCapacity[l.sk+'__'+l.zone]||{};
+      var c=_mzcCapacity[(l.moduleId||l.sk)+'__'+l.zone]||{};
       g=groups[l.sk][l.zone]={contracted_k:c.contracted_k||0,needK:0,shortfall:0,toolingM:0,capacityM:0,totalM:0,isFirstTime:false,autoSet:{}};
     }
     g.needK+=l.needK;
@@ -20970,7 +21079,8 @@ function _spTotalSupplierInvestmentM(){
         var dec=mods[sk]||{zone:_zoneForPlant(p.country_code,p.region),automation:2};
         var needK=p.vehicle_capacity_yr||0;
         if(needK<=0)return;
-        total+=_mzcEstimateInvestment(sk,dec.zone,dec.automation||2,needK).totalM;
+        var moduleId=dec.module_id!=null?dec.module_id:_spModuleIdForSlot(sk);
+        total+=_mzcEstimateInvestment(sk,moduleId,dec.zone,dec.automation||2,needK).totalM;
       });
     });
   }
@@ -21739,70 +21849,7 @@ async function confirmProposal() {
   if (btn) { btn.disabled = true; btn.textContent = 'Submitting...'; }
 
   try {
-    // \u2500\u2500 Create 'new development' modules that aren't in DB yet \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
-    var _sizeAbbr  = {micro:'MICRO',small:'SMALL',medium:'MEDIUM',large:'LARGE',frame:'FRAME',performance:'PERF',commercial:'COMMERCIAL'};
-    var _pwtAbbr   = {'ice_only':'ICE','bev_only':'BEV','ice_and_bev':'MULTI'};
-    var _sizeLabel = {micro:'Micro',small:'Small',medium:'Medium',large:'Large',frame:'Frame',performance:'Perf',commercial:'Commercial'};
-    var _modCounts = {};
-    (teamModuleLibrary||[]).forEach(function(m){ _modCounts[m.module_type]=(_modCounts[m.module_type]||0)+1; });
-    function _nextModName(type,base){ _modCounts[type]=(_modCounts[type]||0)+1; return base+'-'+String(_modCounts[type]).padStart(3,'0'); }
-
-    async function _savePropNew(slot, modType, ck, specs, autoName) {
-      if (!slot || slot.mode !== 'new' || !ck) return;
-      if (slot.module && slot.module.id) return; // already saved
-      var r = await fetch(API_URL + '/teams/' + teamId + '/modules', {
-        method: 'POST', headers: {'Content-Type':'application/json'},
-        body: JSON.stringify({team_id:teamId, session_id:sessionId,
-          module_type:modType, config_key:ck, name:autoName, specs:specs,
-          developed_from_module_id: null})
-      });
-      var d = await r.json();
-      if (d.success && d.module_id) {
-        slot.module = {id: d.module_id};
-        toast('\u23f3 New ' + modType + ' module queued: ' + autoName);
-      } else console.warn('createPropModule failed', modType, d.detail || d);
-    }
-
-    if (_prop.platform && _prop.platform.mode === 'new') {
-      var ps = _prop.platform.specs || {};
-      var ck = ps.size && ps.pwt ? (_sizeAbbr[ps.size]||'MEDIUM')+'_'+(_pwtAbbr[ps.pwt]||'ICE') : null;
-      await _savePropNew(_prop.platform, 'platform', ck,
-        {reliability:(ps.reliability||50)/100, comfort:(ps.comfort||50)/100,
-         safety:(ps.safety||50)/100, cost_opt:(ps.cost_opt||0)/100, weight_opt:(ps.weight_opt||0)/100},
-        _nextModName('platform', 'PL-'+(_sizeLabel[ps.size]||'Platform')));
-    }
-    if (_prop.pwt && _prop.pwt.mode === 'new') {
-      var ps = _prop.pwt.specs || {};
-      await _savePropNew(_prop.pwt, 'ice_pwt', ps.config_key||null,
-        {reliability:(ps.reliability||50)/100, emission_tech:(ps.emission_tech||10)/100,
-         power:ps.power||100, cost_opt:(ps.cost_opt||0)/100, weight_opt:(ps.weight_opt||0)/100},
-        _nextModName('ice_pwt', 'IC-'+(ps.config_key||'ICE').replace(/_ICE$/,'').replace(/_/g,'-')));
-    }
-    if (_prop.epwt && _prop.epwt.mode === 'new') {
-      var ps = _prop.epwt.specs || {};
-      await _savePropNew(_prop.epwt, 'epwt', ps.config_key||null,
-        {reliability:(ps.reliability||50)/100, efficiency:ps.efficiency||0.7,
-         power_kw:ps.power_kw||150, cost_opt:(ps.cost_opt||0)/100, weight_opt:(ps.weight_opt||0)/100},
-        _nextModName('epwt', 'EP-'+(ps.epwt_class||'ePWT').replace(/_/g,'-')));
-    }
-    if (_prop.tophat && _prop.tophat.mode === 'new') {
-      var ps = _prop.tophat.specs || {};
-      await _savePropNew(_prop.tophat, 'tophat', ps.config_key||null,
-        {reliability:(ps.reliability||50)/100, comfort:(ps.comfort||50)/100,
-         safety:(ps.safety||50)/100, roominess:ps.roominess||2.5,
-         premiumness:ps.premiumness||0.3, cost_opt:0, weight_opt:0},
-        _nextModName('tophat', 'TH-'+((ps.config_key||'Body').replace(/_/g,'-')||'Body')));
-    }
-    if (_prop.eands && _prop.eands.mode === 'new') {
-      var ps = _prop.eands.specs || {};
-      await _savePropNew(_prop.eands, 'eands', ps.config_key||null,
-        {adas_level:ps.adas_level||1, sensor_suite:(ps.sensor_suite||30)/100,
-         connectivity:(ps.connectivity||30)/100, infotainment:(ps.infotainment||30)/100,
-         cybersecurity:(ps.cybersecurity||20)/100},
-        _nextModName('eands', 'ES-L'+(ps.adas_level||1)));
-    }
-
-    // \u2500\u2500 Collect module IDs (new ones now in slot.module.id) \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+    // \u2500\u2500 Collect module IDs (new ones already created as 'draft' at the \u00a77\u21928 transition) \u2500\u2500
     var pwtId      = (_prop.pwt    && _prop.pwt.module)    ? _prop.pwt.module.id    : null;
     var epwtId     = (_prop.epwt   && _prop.epwt.module)   ? _prop.epwt.module.id   : null;
     var platformId = (_prop.platform && _prop.platform.module) ? _prop.platform.module.id : null;
@@ -21939,6 +21986,11 @@ async function confirmProposal() {
 
     if (data.success) {
       toast('\u2713 Proposal submitted \u2014 vehicle moved to PLAN');
+      // Activate any 'draft' modules created at the \u00a77\u21928 transition for this proposal
+      [platformId, pwtId, epwtId, tophatId, eandsId].filter(Boolean).forEach(function(mid){
+        fetch(API_URL + '/modules/' + mid + '/activate', { method: 'POST' })
+          .catch(function(e){ console.warn('activate-draft failed', mid, e); });
+      });
       // Full reset of proposal state
       _prop.study = null; _prop.platform = null; _prop.pwt = null;
       _prop.epwt  = null; _prop.tophat   = null; _prop.eands = null;
@@ -25259,38 +25311,18 @@ function _renderSourcingSummaryTab() {
       if (label === '—') return 'var(--muted2)';
       return 'var(--cyan)';
     };
-    // Per-vehicle, per-zone consumption (k/yr) for a given module slot
-    var vehicleZoneUnits = function(v, sk) {
-      var plants = ((v.operations.supply_plan || {}).plants) || {};
-      var pUnits = v.plant_units || {};
-      var out = {}; // zone_key -> k units/yr
-      Object.keys(pUnits).forEach(function(pid) {
-        var dec = (plants[pid] || {}).modules || {};
-        var zone = dec[sk] && dec[sk].zone;
-        if (!zone) return;
-        out[zone] = (out[zone] || 0) + pUnits[pid] / 1000;
-      });
-      return out;
-    };
-    // Aggregate contracted/consumed/free/capex/util/ramping for one module instance,
-    // attributed across the sourcing zone(s) used by the vehicles that reference it.
+    // Aggregate contracted/consumed/free/capex/util/ramping for one module instance —
+    // capacity rows are now tracked per (module_id, zone_key), so a direct match is
+    // sufficient (no need to attribute via vehicles/plants).
     var moduleMetrics = function(m) {
-      var zoneUnits = {}; // zone_key -> consumed k/yr
-      (m.vehicles_using || []).forEach(function(vname) {
-        var v = (data.vehicles || []).find(function(x) { return x.name === vname; });
-        if (!v) return;
-        var zu = vehicleZoneUnits(v, m.sourcing_slot);
-        Object.keys(zu).forEach(function(z) { zoneUnits[z] = (zoneUnits[z] || 0) + zu[z]; });
-      });
-      var zones = Object.keys(zoneUnits);
-      var consumed = zones.reduce(function(s, z) { return s + zoneUnits[z]; }, 0);
-      var contracted = 0, free = 0, capex = 0, pending = 0, readyQabs = null, readyLabel = null;
-      zones.forEach(function(z) {
-        var c = capacity.find(function(x) { return x.module_slot === m.sourcing_slot && x.zone_key === z; });
-        if (!c) return;
-        contracted += (c.contracted_k || 0);
-        free += (c.free_k != null ? c.free_k : (c.contracted_k || 0) - (c.reserved_k || 0));
-        capex += (c.total_capex_m || 0);
+      var rows = capacity.filter(function(c) { return c.module_slot === m.sourcing_slot && c.module_id === m.id; });
+      var zones = rows.map(function(c) { return c.zone_key; });
+      var consumed = rows.reduce(function(s, c) { return s + (c.reserved_k || 0); }, 0);
+      var contracted = rows.reduce(function(s, c) { return s + (c.contracted_k || 0); }, 0);
+      var free = rows.reduce(function(s, c) { return s + (c.free_k != null ? c.free_k : (c.contracted_k || 0) - (c.reserved_k || 0)); }, 0);
+      var capex = rows.reduce(function(s, c) { return s + (c.total_capex_m || 0); }, 0);
+      var pending = 0, readyQabs = null, readyLabel = null;
+      rows.forEach(function(c) {
         if (c.pending_k > 0 && c.ready_label) {
           pending += c.pending_k;
           var qabs = labelToQabs(c.ready_label);
