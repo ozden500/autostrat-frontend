@@ -2466,6 +2466,12 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
           style="width:100%;background:var(--s2);border:1px solid var(--border);border-radius:6px;color:#f1f5f9;padding:9px 12px;font-size:14px;font-family:'DM Mono',monospace"/>
         <div style="font-size:10px;color:var(--muted2);margin-top:4px;">Time from decision to expanded capacity coming online.</div>
       </div>
+      <div>
+        <label style="font-size:12px;color:#94a3b8;display:block;margin-bottom:6px;">Component sourcing capacity <span style="color:var(--muted2)">(rounds)</span></label>
+        <input id="cfg-lt-module-capacity" type="number" min="1" max="12" placeholder="2 (default)"
+          style="width:100%;background:var(--s2);border:1px solid var(--border);border-radius:6px;color:#f1f5f9;padding:9px 12px;font-size:14px;font-family:'DM Mono',monospace"/>
+        <div style="font-size:10px;color:var(--muted2);margin-top:4px;">Time from a §8 supplier-capacity investment to that capacity becoming usable for production.</div>
+      </div>
     </div>
   </div>
 </div>
@@ -12077,6 +12083,8 @@ async function loadSettingsPage() {
     const peEl = document.getElementById('cfg-lt-plant-expand');
     if (pbEl) pbEl.value = cfg.lt_plant_build_q  != null ? cfg.lt_plant_build_q  : '';
     if (peEl) peEl.value = cfg.lt_plant_expand_q != null ? cfg.lt_plant_expand_q : '';
+    const mcEl = document.getElementById('cfg-lt-module-capacity');
+    if (mcEl) mcEl.value = cfg.lt_module_capacity_q != null ? cfg.lt_module_capacity_q : '';
   } catch(e) { console.warn('loadSettingsPage:', e); }
 }
 
@@ -12100,6 +12108,8 @@ async function settingsSave() {
   const peVal = document.getElementById('cfg-lt-plant-expand')?.value?.trim();
   body.lt_plant_build_q  = pbVal ? parseInt(pbVal) : null;
   body.lt_plant_expand_q = peVal ? parseInt(peVal) : null;
+  const mcVal = document.getElementById('cfg-lt-module-capacity')?.value?.trim();
+  body.lt_module_capacity_q = mcVal ? parseInt(mcVal) : null;
   try {
     const res = await fetch(`${API_URL}/sessions/${sessionId}/config`, {
       method: 'PATCH', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body)
@@ -14062,6 +14072,7 @@ let mfgCurrentRound = 1;
 let _propVoByPlant = {};    // locKey → units_sold last round (populated by buildMfgPlantSection)
 let _propVoPerVehicle = {}; // vehicle_id → units_sold last round
 let _plantLeadTimes = { build: 4, expand: 2 };
+let _mzcLeadTimeQ = 2;
 let mfgCountries = {}; // {region: [{country_code, country_name}]}
 
 // Footprint tab state
@@ -14137,6 +14148,7 @@ function opsTab(tab, el) {
         const cfg = d.config || {};
         if (cfg.lt_plant_build_q  != null) _plantLeadTimes.build  = cfg.lt_plant_build_q;
         if (cfg.lt_plant_expand_q != null) _plantLeadTimes.expand = cfg.lt_plant_expand_q;
+        if (cfg.lt_module_capacity_q != null) _mzcLeadTimeQ = cfg.lt_module_capacity_q;
         updateDecisionPreview();
       }).catch(() => {});
     }
@@ -14192,6 +14204,7 @@ async function loadMfgFootprint(forceRefresh = false) {
         const cfg = cfgData.config || {};
         if (cfg.lt_plant_build_q  != null) _plantLeadTimes.build  = cfg.lt_plant_build_q;
         if (cfg.lt_plant_expand_q != null) _plantLeadTimes.expand = cfg.lt_plant_expand_q;
+        if (cfg.lt_module_capacity_q != null) _mzcLeadTimeQ = cfg.lt_module_capacity_q;
       } catch(e) {}
     }
   } catch(e) {
@@ -20750,10 +20763,11 @@ function _mzcCapacityStrip(sk, zoneKey, autoLevel, needK) {
   h += '</div>';
   if (shortfall > 0) {
     var inv = _mzcEstimateInvestment(sk, zoneKey, autoLevel, needK);
+    var leadTxt = '~' + _mzcLeadTimeQ + ' round' + (_mzcLeadTimeQ > 1 ? 's' : '');
     if (inv.isFirstTime) {
-      h += '<div style="' + MO + 'font-size:7px;color:var(--orange);margin-top:3px;">⚠ First-time tooling in ' + zoneKey + ': €' + inv.toolingM.toFixed(2) + 'M tooling + €' + inv.capacityM.toFixed(2) + 'M capacity = €' + inv.totalM.toFixed(2) + 'M now (capacity benefit applies from next round)</div>';
+      h += '<div style="' + MO + 'font-size:7px;color:var(--orange);margin-top:3px;">⚠ First-time tooling in ' + zoneKey + ': €' + inv.toolingM.toFixed(2) + 'M tooling + €' + inv.capacityM.toFixed(2) + 'M capacity = €' + inv.totalM.toFixed(2) + 'M now — +' + inv.shortfall.toFixed(1) + 'k usable in ' + leadTxt + '</div>';
     } else {
-      h += '<div style="' + MO + 'font-size:7px;color:var(--orange);margin-top:3px;">⚠ Capacity expansion in ' + zoneKey + ': €' + inv.capacityM.toFixed(2) + 'M now (capacity benefit applies from next round)</div>';
+      h += '<div style="' + MO + 'font-size:7px;color:var(--orange);margin-top:3px;">⚠ Capacity expansion in ' + zoneKey + ': €' + inv.capacityM.toFixed(2) + 'M now — +' + inv.shortfall.toFixed(1) + 'k usable in ' + leadTxt + '</div>';
     }
   } else {
     h += '<div style="' + MO + 'font-size:7px;color:var(--green);margin-top:3px;">✓ Covered by existing contracted capacity</div>';
@@ -20801,6 +20815,21 @@ async function confirmSourcingPlan() {
       if (toolM > 0 && capM > 0) msg += ' · €' + toolM.toFixed(2) + 'M tooling + €' + capM.toFixed(2) + 'M capacity capex charged';
       else if (toolM > 0) msg += ' · €' + toolM.toFixed(2) + 'M tooling capex charged';
       else if (capM > 0) msg += ' · €' + capM.toFixed(2) + 'M capacity capex charged';
+      // Surface the latest "ready by" date among any newly-invested capacity tranches
+      var rampedK = 0, latestLabel = null, latestQabs = -1;
+      (data.reservations || []).forEach(function(r) {
+        if (r.invested_k > 0 && r.ready_label) {
+          rampedK += r.invested_k;
+          var m = /^Y(\d+)Q(\d+)$/.exec(r.ready_label);
+          if (m) {
+            var qabs = (parseInt(m[1]) - 2025) * 4 + (parseInt(m[2]) - 1);
+            if (qabs > latestQabs) { latestQabs = qabs; latestLabel = r.ready_label; }
+          }
+        }
+      });
+      if (rampedK > 0 && latestLabel) {
+        msg += ' · 🚧 +' + rampedK.toFixed(1) + 'k units/yr ramping — ready by ' + latestLabel;
+      }
       toast(msg);
       await _mzcLoadCapacity();
     } else {
@@ -25135,6 +25164,10 @@ function _renderSourcingSummaryTab() {
   };
   var th = function(t, align) { return '<th style="text-align:' + (align || 'left') + ';font-size:8px;color:var(--muted2);text-transform:uppercase;letter-spacing:.05em;padding:4px 6px;border-bottom:1px solid var(--border);">' + t + '</th>'; };
   var td = function(t, align, col) { return '<td style="text-align:' + (align || 'left') + ';font-size:10px;font-family:DM Mono,monospace;padding:4px 6px;color:' + (col || 'var(--fg)') + ';border-bottom:1px solid var(--border);">' + t + '</td>'; };
+  var labelToQabs = function(label) {
+    var m = /^Y(\d+)Q(\d+)$/.exec(label || '');
+    return m ? (parseInt(m[1]) - 2025) * 4 + (parseInt(m[2]) - 1) : null;
+  };
 
   if (!capacity.length) {
     return '<div style="color:var(--muted2);font-family:DM Mono,monospace;font-size:11px;padding:16px 0;">No §8 Components Sourcing decisions found yet — confirm a sourcing plan in a vehicle proposal first.</div>';
@@ -25150,48 +25183,75 @@ function _renderSourcingSummaryTab() {
   var utilPct = totalContracted > 0 ? (totalConsumed / totalContracted * 100) : null;
   var utilCol = utilPct === null ? 'var(--muted)' : utilPct > 85 ? 'var(--red)' : utilPct < 35 ? 'var(--gold)' : 'var(--green)';
 
+  var totalPending = capacity.reduce(function(s, c) { return s + (c.pending_k || 0); }, 0);
+  var earliestReadyQabs = null, earliestReadyLabel = null;
+  capacity.forEach(function(c) {
+    if (!(c.pending_k > 0) || !c.ready_label) return;
+    var qabs = labelToQabs(c.ready_label);
+    if (qabs !== null && (earliestReadyQabs === null || qabs < earliestReadyQabs)) {
+      earliestReadyQabs = qabs; earliestReadyLabel = c.ready_label;
+    }
+  });
+
   var html = data.last_round_label
     ? '<div style="font-size:9px;color:var(--muted2);font-family:DM Mono,monospace;margin-bottom:6px;">Consumption based on last cleared round: ' + data.last_round_label + '</div>'
     : '<div style="font-size:9px;color:var(--muted2);font-family:DM Mono,monospace;margin-bottom:6px;">No production data yet — capacity & investment shown only.</div>';
 
-  html += '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:10px;">' +
+  html += '<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-bottom:10px;">' +
     tile('Supplier Investment', '€' + totalCapex.toFixed(1) + 'M', 'var(--cyan)') +
     tile('Contracted Capacity', totalContracted.toFixed(0) + 'k /yr', 'var(--fg)') +
     tile('Last-Round Consumption', data.last_round_id ? totalConsumed.toFixed(0) + 'k' : '—', 'var(--fg)') +
     tile('Overall Utilization', utilPct === null ? '—' : utilPct.toFixed(0) + '%', utilCol) +
+    tile('Capacity Ramping', totalPending > 0 ? totalPending.toFixed(0) + 'k' : '—', totalPending > 0 ? 'var(--cyan)' : 'var(--muted)') +
     '</div>';
+  if (totalPending > 0 && earliestReadyLabel) {
+    html += '<div style="font-size:9px;color:var(--muted2);font-family:DM Mono,monospace;margin:-6px 0 10px;">🚧 Next tranche ready ' + earliestReadyLabel + '</div>';
+  }
 
   // ── Module capacity vs. consumption ──────────────────────────────────────────
   var modRows = SC_MOD_ORDER.map(function(sk) {
     var rows = capacity.filter(function(c) { return c.module_slot === sk; });
     var contracted = rows.reduce(function(s, c) { return s + (c.contracted_k || 0); }, 0);
     var capex = rows.reduce(function(s, c) { return s + (c.total_capex_m || 0); }, 0);
+    var pending = rows.reduce(function(s, c) { return s + (c.pending_k || 0); }, 0);
+    var reserved = rows.reduce(function(s, c) { return s + (c.reserved_k || 0); }, 0);
+    var readyLabel = null, readyQabs = null;
+    rows.forEach(function(c) {
+      if (!(c.pending_k > 0) || !c.ready_label) return;
+      var qabs = labelToQabs(c.ready_label);
+      if (qabs !== null && (readyQabs === null || qabs < readyQabs)) { readyQabs = qabs; readyLabel = c.ready_label; }
+    });
     var consumed = 0;
     if (consumption[sk]) Object.keys(consumption[sk]).forEach(function(z) { consumed += consumption[sk][z]; });
     var free = contracted - consumed;
     var util = contracted > 0 ? (consumed / contracted * 100) : null;
     var badge = '';
-    if (util !== null) {
+    var isRamping = reserved > contracted && pending > 0;
+    if (isRamping) {
+      badge = ' <span style="color:var(--cyan);font-size:9px;">🚧 RAMPING — +' + pending.toFixed(1) + 'k arriving' + (readyLabel ? ' ' + readyLabel : '') + '</span>';
+    } else if (util !== null) {
       if (util > 85) badge = ' <span style="color:var(--red);font-size:9px;">🔴 NEAR CAPACITY</span>';
       else if (util < 35) badge = ' <span style="color:var(--gold);font-size:9px;">🟡 UNDERUTILIZED</span>';
     }
-    return { sk: sk, contracted: contracted, consumed: consumed, free: free, capex: capex, util: util, badge: badge };
-  }).filter(function(r) { return r.contracted > 0 || r.consumed > 0 || r.capex > 0; });
+    return { sk: sk, contracted: contracted, consumed: consumed, free: free, capex: capex, util: util, badge: badge, pending: pending, readyLabel: readyLabel };
+  }).filter(function(r) { return r.contracted > 0 || r.consumed > 0 || r.capex > 0 || r.pending > 0; });
 
   var modTableHtml;
   if (!modRows.length) {
     modTableHtml = '<div style="font-size:10px;color:var(--muted2);font-family:DM Mono,monospace;">No module sourcing contracts yet.</div>';
   } else {
     modTableHtml = '<table style="width:100%;border-collapse:collapse;"><tr>' +
-      th('Module') + th('Contracted (k/yr)', 'right') + th('Consumed (k)', 'right') + th('Util %', 'right') + th('Free (k)', 'right') + th('Capex (€M)', 'right') +
+      th('Module') + th('Contracted (k/yr)', 'right') + th('Consumed (k)', 'right') + th('Util %', 'right') + th('Free (k)', 'right') + th('Ramping', 'right') + th('Capex (€M)', 'right') +
       '</tr>' + modRows.map(function(r) {
         var uCol = r.util === null ? 'var(--muted)' : r.util > 85 ? 'var(--red)' : r.util < 35 ? 'var(--gold)' : 'var(--green)';
+        var rampTxt = r.pending > 0 ? '+' + r.pending.toFixed(1) + 'k' + (r.readyLabel ? ' by ' + r.readyLabel : '') : '—';
         return '<tr>' +
           td('<b>' + (SC_MOD_LABELS[r.sk] || r.sk) + '</b>' + r.badge) +
           td(r.contracted.toFixed(1), 'right') +
           td(data.last_round_id ? r.consumed.toFixed(1) : '—', 'right') +
           td(r.util === null ? '—' : r.util.toFixed(0) + '%', 'right', uCol) +
           td(r.free.toFixed(1), 'right') +
+          td(rampTxt, 'right', r.pending > 0 ? 'var(--cyan)' : 'var(--muted2)') +
           td('€' + r.capex.toFixed(2), 'right') +
           '</tr>';
       }).join('') + '</table>';
