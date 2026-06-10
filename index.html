@@ -25259,19 +25259,73 @@ function _renderSourcingSummaryTab() {
       if (label === '—') return 'var(--muted2)';
       return 'var(--cyan)';
     };
+    // Per-vehicle, per-zone consumption (k/yr) for a given module slot
+    var vehicleZoneUnits = function(v, sk) {
+      var plants = ((v.operations.supply_plan || {}).plants) || {};
+      var pUnits = v.plant_units || {};
+      var out = {}; // zone_key -> k units/yr
+      Object.keys(pUnits).forEach(function(pid) {
+        var dec = (plants[pid] || {}).modules || {};
+        var zone = dec[sk] && dec[sk].zone;
+        if (!zone) return;
+        out[zone] = (out[zone] || 0) + pUnits[pid] / 1000;
+      });
+      return out;
+    };
+    // Aggregate contracted/consumed/free/capex/util/ramping for one module instance,
+    // attributed across the sourcing zone(s) used by the vehicles that reference it.
+    var moduleMetrics = function(m) {
+      var zoneUnits = {}; // zone_key -> consumed k/yr
+      (m.vehicles_using || []).forEach(function(vname) {
+        var v = (data.vehicles || []).find(function(x) { return x.name === vname; });
+        if (!v) return;
+        var zu = vehicleZoneUnits(v, m.sourcing_slot);
+        Object.keys(zu).forEach(function(z) { zoneUnits[z] = (zoneUnits[z] || 0) + zu[z]; });
+      });
+      var zones = Object.keys(zoneUnits);
+      var consumed = zones.reduce(function(s, z) { return s + zoneUnits[z]; }, 0);
+      var contracted = 0, free = 0, capex = 0, pending = 0, readyQabs = null, readyLabel = null;
+      zones.forEach(function(z) {
+        var c = capacity.find(function(x) { return x.module_slot === m.sourcing_slot && x.zone_key === z; });
+        if (!c) return;
+        contracted += (c.contracted_k || 0);
+        free += (c.free_k != null ? c.free_k : (c.contracted_k || 0) - (c.reserved_k || 0));
+        capex += (c.total_capex_m || 0);
+        if (c.pending_k > 0 && c.ready_label) {
+          pending += c.pending_k;
+          var qabs = labelToQabs(c.ready_label);
+          if (qabs !== null && (readyQabs === null || qabs < readyQabs)) { readyQabs = qabs; readyLabel = c.ready_label; }
+        }
+      });
+      var util = contracted > 0 ? (consumed / contracted * 100) : null;
+      return { zones: zones, consumed: consumed, contracted: contracted, free: free, capex: capex, util: util, pending: pending, readyLabel: readyLabel };
+    };
     var subTableHtml = function(sk) {
       var mods = modules.filter(function(m) { return m.sourcing_slot === sk; });
       if (!mods.length) {
         return '<div style="font-size:9px;color:var(--muted2);font-family:DM Mono,monospace;padding:4px 6px;">No ' + (SC_MOD_LABELS[sk] || sk) + ' modules in your library yet.</div>';
       }
       return '<table style="width:100%;border-collapse:collapse;"><tr>' +
-        th('Name') + th('Status') + th('Dev Type') + th('Vehicles Using') + th('Readiness Date', 'right') +
+        th('Name') + th('Zone') + th('Contracted (k/yr)', 'right') + th('Consumed (k)', 'right') + th('Util %', 'right') + th('Free (k)', 'right') + th('Ramping', 'right') + th('Capex (€M)', 'right') + th('Status') + th('Vehicles Using') + th('Readiness Date', 'right') +
         '</tr>' + mods.map(function(m) {
           var vehTxt = (m.vehicles_using && m.vehicles_using.length) ? m.vehicles_using.join(', ') : '—';
+          var met = moduleMetrics(m);
+          var zoneTxt = met.zones.length ? met.zones.map(function(z) {
+            var zo = SP_ZONES.find(function(s) { return s.key === z; });
+            return zo ? (zo.flag + ' ' + zo.label) : z;
+          }).join(', ') : '—';
+          var uCol = met.util === null ? 'var(--muted)' : met.util > 85 ? 'var(--red)' : met.util < 35 ? 'var(--gold)' : 'var(--green)';
+          var rampTxt = met.pending > 0 ? '+' + met.pending.toFixed(1) + 'k' + (met.readyLabel ? ' by ' + met.readyLabel : '') : '—';
           return '<tr>' +
             td(m.name || '—') +
+            td(zoneTxt) +
+            td(met.zones.length ? met.contracted.toFixed(1) : '—', 'right') +
+            td(met.zones.length ? met.consumed.toFixed(1) : '—', 'right') +
+            td(met.util === null ? '—' : met.util.toFixed(0) + '%', 'right', uCol) +
+            td(met.zones.length ? met.free.toFixed(1) : '—', 'right') +
+            td(rampTxt, 'right', met.pending > 0 ? 'var(--cyan)' : 'var(--muted2)') +
+            td(met.zones.length ? '€' + met.capex.toFixed(2) : '—', 'right') +
             td(modStatusBadge(m)) +
-            td(m.development_type || '—') +
             td(vehTxt) +
             td(m.ready_label || '—', 'right', readyLabelCol(m.ready_label || '—')) +
             '</tr>';
