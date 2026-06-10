@@ -2311,6 +2311,9 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
       font-family:'DM Mono',monospace;font-size:8px;text-transform:uppercase;letter-spacing:2px;color:#a78bfa;">
       Strategy Archetypes — Auto-assigned to teams
     </div>
+    <div style="padding:8px 16px 0 16px;font-family:'DM Mono',monospace;font-size:9px;color:var(--muted2);">
+      Configure per-team starting conditions below before running Setup Session History / Initialize AI Fleet / Initialize Plants.
+    </div>
     <div id="hist-archetype-table" style="padding:14px;">
       <div style="color:var(--muted2);font-size:11px;">Load session teams to preview archetype assignments</div>
     </div>
@@ -23013,12 +23016,14 @@ async function loadInstrHistory() {
 function renderArchetypeTable(teams) {
   var el = document.getElementById('hist-archetype-table');
   if (!el || teams.length === 0) return;
+  var th = '<th style="font-family:DM Mono,monospace;font-size:8px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);padding:6px 10px;text-align:left;background:var(--s2);border-bottom:1px solid var(--border);">';
   var html = '<table style="width:100%;border-collapse:collapse;">';
   html += '<thead><tr>' +
-    '<th style="font-family:DM Mono,monospace;font-size:8px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);padding:6px 10px;text-align:left;background:var(--s2);border-bottom:1px solid var(--border);">Team</th>' +
-    '<th style="font-family:DM Mono,monospace;font-size:8px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);padding:6px 10px;text-align:left;background:var(--s2);border-bottom:1px solid var(--border);">Type</th>' +
-    '<th style="font-family:DM Mono,monospace;font-size:8px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);padding:6px 10px;text-align:left;background:var(--s2);border-bottom:1px solid var(--border);">Archetype</th>' +
-    '<th style="font-family:DM Mono,monospace;font-size:8px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);padding:6px 10px;text-align:left;background:var(--s2);border-bottom:1px solid var(--border);">Profile</th>' +
+    th + 'Team</th>' +
+    th + 'Type</th>' +
+    th + 'Archetype</th>' +
+    th + 'Profile</th>' +
+    th + 'Starting Conditions</th>' +
     '</tr></thead><tbody>';
   // Exclude instructor from archetype table
   var playingTeams = teams.filter(function(t){ return t.name.toLowerCase() !== 'instructor'; });
@@ -23026,15 +23031,107 @@ function renderArchetypeTable(teams) {
     var arch = ARCHETYPE_CYCLE[i % ARCHETYPE_CYCLE.length];
     var col  = ARCHETYPE_COLORS[arch] || 'var(--text)';
     var isAI = team.team_type === 'ai';
+    var hasOverride = team.starting_cash_m != null || team.starting_ppe_gross_m != null
+                    || team.starting_lt_debt_m != null || team.starting_share_capital_m != null
+                    || !!team.skip_initial_plants || !!team.skip_initial_vehicles;
     html += '<tr style="border-bottom:1px solid var(--border);">' +
       '<td style="padding:7px 10px;font-weight:600;font-size:11px;">' + team.name + '</td>' +
       '<td style="padding:7px 10px;font-family:DM Mono,monospace;font-size:9px;color:var(--muted2);">' + (isAI ? 'AI' : 'Human') + '</td>' +
       '<td style="padding:7px 10px;"><span style="font-family:DM Mono,monospace;font-size:9px;padding:2px 8px;border-radius:2px;background:' + col + '22;color:' + col + ';">' + arch + '</span></td>' +
       '<td style="padding:7px 10px;font-size:10px;color:var(--muted2);">' + (ARCHETYPE_DESC[arch]||'') + '</td>' +
+      '<td style="padding:7px 10px;">' +
+        '<button onclick="toggleStartCondEditor(\'' + team.id + '\')" style="font-family:DM Mono,monospace;font-size:9px;padding:3px 8px;border-radius:3px;border:1px solid ' + (hasOverride?'rgba(74,222,128,.5)':'var(--border)') + ';background:' + (hasOverride?'rgba(74,222,128,.1)':'var(--s2)') + ';color:' + (hasOverride?'#4ade80':'var(--muted2)') + ';cursor:pointer;">' +
+          (hasOverride ? '⚙ Custom' : '⚙ Default') +
+        '</button>' +
+      '</td>' +
+    '</tr>';
+    html += '<tr id="start-cond-row-' + team.id + '" style="display:none;background:rgba(99,102,241,.04);">' +
+      '<td colspan="5" style="padding:10px 16px;">' + renderStartCondEditor(team) + '</td>' +
     '</tr>';
   });
   html += '</tbody></table>';
   el.innerHTML = html;
+}
+
+function renderStartCondEditor(team) {
+  var f = function(v){ return (v === null || v === undefined) ? '' : v; };
+  var inp = function(id, val, placeholder) {
+    return '<input type="number" id="' + id + '" value="' + f(val) + '" placeholder="' + placeholder + '" ' +
+      'style="width:110px;padding:5px 7px;background:var(--s2);border:1px solid var(--border);color:var(--text);border-radius:3px;font-family:DM Mono,monospace;font-size:9px;">';
+  };
+  return '<div style="display:flex;gap:14px;flex-wrap:wrap;align-items:flex-end;font-family:DM Mono,monospace;font-size:9px;">' +
+    '<div><label style="display:block;color:var(--muted2);margin-bottom:3px;">Starting Cash (€M)</label>' +
+      inp('sc-cash-' + team.id, team.starting_cash_m, '4000 (default)') + '</div>' +
+    '<div><label style="display:block;color:var(--muted2);margin-bottom:3px;">Starting PPE Gross (€M)</label>' +
+      inp('sc-ppe-' + team.id, team.starting_ppe_gross_m, '1500 (default)') + '</div>' +
+    '<div><label style="display:block;color:var(--muted2);margin-bottom:3px;">Starting LT Debt (€M)</label>' +
+      inp('sc-debt-' + team.id, team.starting_lt_debt_m, '500 (default)') + '</div>' +
+    '<div><label style="display:block;color:var(--muted2);margin-bottom:3px;">Starting Equity (€M)</label>' +
+      inp('sc-equity-' + team.id, team.starting_share_capital_m, '5000 (default)') + '</div>' +
+    '<div style="display:flex;flex-direction:column;gap:4px;">' +
+      '<label style="display:flex;align-items:center;gap:5px;color:var(--muted2);"><input type="checkbox" id="sc-skipplants-' + team.id + '" ' + (team.skip_initial_plants?'checked':'') + '> Skip initial plants</label>' +
+      '<label style="display:flex;align-items:center;gap:5px;color:var(--muted2);"><input type="checkbox" id="sc-skipveh-' + team.id + '" ' + (team.skip_initial_vehicles?'checked':'') + '> Skip initial vehicles</label>' +
+    '</div>' +
+    '<button onclick="applyDisruptorPreset(\'' + team.id + '\')" style="padding:6px 10px;border-radius:3px;border:1px solid rgba(251,191,36,.5);background:rgba(251,191,36,.1);color:#fbbf24;cursor:pointer;">🚀 Disruptor Preset</button>' +
+    '<button onclick="saveStartCond(\'' + team.id + '\')" style="padding:6px 14px;border-radius:3px;border:1px solid rgba(99,102,241,.6);background:rgba(99,102,241,.15);color:#818cf8;cursor:pointer;font-weight:700;">Save</button>' +
+    '<button onclick="resetStartCond(\'' + team.id + '\')" style="padding:6px 10px;border-radius:3px;border:1px solid var(--border);background:var(--s2);color:var(--muted2);cursor:pointer;">Reset to Default</button>' +
+  '</div>';
+}
+
+function toggleStartCondEditor(teamId) {
+  var row = document.getElementById('start-cond-row-' + teamId);
+  if (row) row.style.display = (row.style.display === 'none') ? '' : 'none';
+}
+
+function applyDisruptorPreset(teamId) {
+  document.getElementById('sc-cash-'   + teamId).value = 5000;
+  document.getElementById('sc-ppe-'    + teamId).value = 0;
+  document.getElementById('sc-debt-'   + teamId).value = 0;
+  document.getElementById('sc-equity-' + teamId).value = 5000;
+  document.getElementById('sc-skipplants-' + teamId).checked = true;
+  document.getElementById('sc-skipveh-'    + teamId).checked = true;
+}
+
+async function saveStartCond(teamId) {
+  var val = function(id) {
+    var v = document.getElementById(id).value;
+    return v === '' ? null : parseFloat(v);
+  };
+  var body = {
+    starting_cash_m:          val('sc-cash-'   + teamId),
+    starting_ppe_gross_m:     val('sc-ppe-'    + teamId),
+    starting_lt_debt_m:       val('sc-debt-'   + teamId),
+    starting_share_capital_m: val('sc-equity-' + teamId),
+    skip_initial_plants:   document.getElementById('sc-skipplants-' + teamId).checked,
+    skip_initial_vehicles: document.getElementById('sc-skipveh-'    + teamId).checked,
+  };
+  try {
+    const res = await fetch(API_URL + '/sessions/' + sessionId + '/teams/' + teamId + '/starting-conditions', {
+      method: 'PATCH',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(body)
+    });
+    const data = await res.json();
+    if (data.success) {
+      toast('✓ Starting conditions saved');
+      await loadInstrHistory();
+    } else toast('⚠ ' + (data.detail || 'Save failed'));
+  } catch(e) { toast('⚠ ' + e.message); }
+}
+
+async function resetStartCond(teamId) {
+  try {
+    const res = await fetch(API_URL + '/sessions/' + sessionId + '/teams/' + teamId + '/starting-conditions', {
+      method: 'PATCH',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({clear_overrides: true})
+    });
+    const data = await res.json();
+    if (data.success) {
+      toast('✓ Reset to default');
+      await loadInstrHistory();
+    } else toast('⚠ ' + (data.detail || 'Reset failed'));
+  } catch(e) { toast('⚠ ' + e.message); }
 }
 
 async function initAIFleet() {
