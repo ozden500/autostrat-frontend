@@ -24893,7 +24893,12 @@ var _scRoundState = {
   vehicles: [],          // [{id, name, locked:{...}, tactical:{...}}]
   activeVehIdx: 0,
   saving: false,
+  activeSubTab: 'summary',  // 'summary' | 'tactics'
+  sourcing: null,           // {last_round_id, last_round_label, capacity:[...], vehicles:[...]}
 };
+
+var SC_MOD_LABELS = {platform:'Platform', pwt:'ICE PWT', epwt:'ePWT', battery:'Battery', tophat:'Top Hat', eands:'E&S'};
+var SC_MOD_ORDER  = ['platform','pwt','epwt','battery','tophat','eands'];
 
 var _scRoundDefaults = {
   sourcing_strategy: 'BALANCED',
@@ -24936,6 +24941,10 @@ async function loadScRoundTab() {
     var tacByVid = {};
     (tacData.tactics || []).forEach(function(t){ tacByVid[t.vehicle_id] = t; });
 
+    // Team-level §8 sourcing decisions rollup
+    var srcRes  = await fetch(API_URL + '/sessions/' + sessionId + '/teams/' + teamId + '/sourcing-summary');
+    _scRoundState.sourcing = await srcRes.json().catch(function(){ return null; });
+
     _scRoundState.vehicles = vehs.map(function(v, i) {
       var locked   = lockedData[i] || {};
       var tactical = tacByVid[v.id] || Object.assign({}, _scRoundDefaults);
@@ -24952,8 +24961,27 @@ async function loadScRoundTab() {
 function _renderScRoundTab() {
   var el = document.getElementById('sc-round-content');
   if (!el) return;
+  var subTabs = [['summary','📦 Sourcing Summary'],['tactics','⚙ Round Tactics']];
+  var tabHtml = '<div style="display:flex;gap:6px;margin-bottom:12px;">' + subTabs.map(function(t) {
+    var active = _scRoundState.activeSubTab === t[0];
+    var style = active ? 'background:var(--accent);color:#fff;' : 'background:var(--bg2);color:var(--muted);cursor:pointer;';
+    return '<span onclick="_scSwitchSubTab(\'' + t[0] + '\')" style="' + style +
+           'padding:5px 12px;border-radius:4px;font-size:11px;font-family:DM Mono,monospace;">' + t[1] + '</span>';
+  }).join('') + '</div>';
+
+  var body = _scRoundState.activeSubTab === 'tactics' ? _renderScTacticsTab() : _renderSourcingSummaryTab();
+  el.innerHTML = tabHtml + body;
+}
+
+function _scSwitchSubTab(tab) {
+  _scRoundState.activeSubTab = tab;
+  _renderScRoundTab();
+}
+
+// ── Round Tactics sub-tab ─────────────────────────────────────────────────────
+function _renderScTacticsTab() {
   var vehs = _scRoundState.vehicles;
-  if (!vehs.length) { el.innerHTML = ''; return; }
+  if (!vehs.length) return '';
   var idx = Math.min(_scRoundState.activeVehIdx, vehs.length - 1);
   var veh = vehs[idx];
 
@@ -25059,7 +25087,235 @@ function _renderScRoundTab() {
     html += '<button onclick="saveScRoundDecisions()" style="background:var(--accent);color:#fff;border:none;border-radius:6px;padding:8px 20px;font-size:12px;font-family:DM Mono,monospace;cursor:pointer;width:100%;">SAVE SC DECISIONS</button>';
   }
 
-  el.innerHTML = html;
+  return html;
+}
+
+// ── Sourcing Summary sub-tab ──────────────────────────────────────────────────
+function _scAggregateConsumption(data) {
+  var consumption = {}; // consumption[module_slot][zone_key] = k units/yr
+  (data.vehicles || []).forEach(function(v) {
+    var plants = ((v.operations.supply_plan || {}).plants) || {};
+    var pUnits = v.plant_units || {};
+    Object.keys(pUnits).forEach(function(pid) {
+      var units = pUnits[pid];
+      var mods = (plants[pid] || {}).modules || {};
+      Object.keys(mods).forEach(function(sk) {
+        var zone = mods[sk] && mods[sk].zone;
+        if (!zone) return;
+        consumption[sk] = consumption[sk] || {};
+        consumption[sk][zone] = (consumption[sk][zone] || 0) + units / 1000;
+      });
+    });
+  });
+  return consumption;
+}
+
+function _scFindPlant(v, pid) {
+  var all = (v.operations.vehicle_plants || []).concat(v.operations.powertrain_plants || []);
+  return all.find(function(p) { return p.id === pid; });
+}
+
+function _renderSourcingSummaryTab() {
+  var data = _scRoundState.sourcing;
+  if (!data || !data.capacity) {
+    return '<div style="color:var(--muted2);font-family:DM Mono,monospace;font-size:11px;padding:16px 0;">Failed to load sourcing summary.</div>';
+  }
+  var capacity = data.capacity || [];
+  var consumption = _scAggregateConsumption(data);
+
+  var tile = function(label, val, color) {
+    return '<div style="background:var(--s2);border-radius:4px;padding:8px 10px;border:1px solid var(--border);">' +
+      '<div style="font-size:8px;color:var(--muted2);margin-bottom:2px;font-family:DM Mono,monospace;text-transform:uppercase;letter-spacing:.05em;">' + label + '</div>' +
+      '<div style="font-family:DM Mono,monospace;font-size:14px;font-weight:600;color:' + (color || 'var(--fg)') + ';">' + val + '</div></div>';
+  };
+  var section = function(title, content) {
+    return '<div style="background:var(--bg2);border:1px solid var(--border);border-radius:6px;padding:12px 16px;margin-bottom:10px;">' +
+           '<div style="font-size:11px;font-weight:600;color:var(--fg);font-family:DM Mono,monospace;margin-bottom:10px;letter-spacing:.04em;">' + title + '</div>' +
+           content + '</div>';
+  };
+  var th = function(t, align) { return '<th style="text-align:' + (align || 'left') + ';font-size:8px;color:var(--muted2);text-transform:uppercase;letter-spacing:.05em;padding:4px 6px;border-bottom:1px solid var(--border);">' + t + '</th>'; };
+  var td = function(t, align, col) { return '<td style="text-align:' + (align || 'left') + ';font-size:10px;font-family:DM Mono,monospace;padding:4px 6px;color:' + (col || 'var(--fg)') + ';border-bottom:1px solid var(--border);">' + t + '</td>'; };
+
+  if (!capacity.length) {
+    return '<div style="color:var(--muted2);font-family:DM Mono,monospace;font-size:11px;padding:16px 0;">No §8 Components Sourcing decisions found yet — confirm a sourcing plan in a vehicle proposal first.</div>';
+  }
+
+  // ── KPI strip ──────────────────────────────────────────────────────────────
+  var totalCapex = capacity.reduce(function(s, c) { return s + (c.total_capex_m || 0); }, 0);
+  var totalContracted = capacity.reduce(function(s, c) { return s + (c.contracted_k || 0); }, 0);
+  var totalConsumed = 0;
+  Object.keys(consumption).forEach(function(sk) {
+    Object.keys(consumption[sk]).forEach(function(z) { totalConsumed += consumption[sk][z]; });
+  });
+  var utilPct = totalContracted > 0 ? (totalConsumed / totalContracted * 100) : null;
+  var utilCol = utilPct === null ? 'var(--muted)' : utilPct > 85 ? 'var(--red)' : utilPct < 35 ? 'var(--gold)' : 'var(--green)';
+
+  var html = data.last_round_label
+    ? '<div style="font-size:9px;color:var(--muted2);font-family:DM Mono,monospace;margin-bottom:6px;">Consumption based on last cleared round: ' + data.last_round_label + '</div>'
+    : '<div style="font-size:9px;color:var(--muted2);font-family:DM Mono,monospace;margin-bottom:6px;">No production data yet — capacity & investment shown only.</div>';
+
+  html += '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:10px;">' +
+    tile('Supplier Investment', '€' + totalCapex.toFixed(1) + 'M', 'var(--cyan)') +
+    tile('Contracted Capacity', totalContracted.toFixed(0) + 'k /yr', 'var(--fg)') +
+    tile('Last-Round Consumption', data.last_round_id ? totalConsumed.toFixed(0) + 'k' : '—', 'var(--fg)') +
+    tile('Overall Utilization', utilPct === null ? '—' : utilPct.toFixed(0) + '%', utilCol) +
+    '</div>';
+
+  // ── Module capacity vs. consumption ──────────────────────────────────────────
+  var modRows = SC_MOD_ORDER.map(function(sk) {
+    var rows = capacity.filter(function(c) { return c.module_slot === sk; });
+    var contracted = rows.reduce(function(s, c) { return s + (c.contracted_k || 0); }, 0);
+    var capex = rows.reduce(function(s, c) { return s + (c.total_capex_m || 0); }, 0);
+    var consumed = 0;
+    if (consumption[sk]) Object.keys(consumption[sk]).forEach(function(z) { consumed += consumption[sk][z]; });
+    var free = contracted - consumed;
+    var util = contracted > 0 ? (consumed / contracted * 100) : null;
+    var badge = '';
+    if (util !== null) {
+      if (util > 85) badge = ' <span style="color:var(--red);font-size:9px;">🔴 NEAR CAPACITY</span>';
+      else if (util < 35) badge = ' <span style="color:var(--gold);font-size:9px;">🟡 UNDERUTILIZED</span>';
+    }
+    return { sk: sk, contracted: contracted, consumed: consumed, free: free, capex: capex, util: util, badge: badge };
+  }).filter(function(r) { return r.contracted > 0 || r.consumed > 0 || r.capex > 0; });
+
+  var modTableHtml;
+  if (!modRows.length) {
+    modTableHtml = '<div style="font-size:10px;color:var(--muted2);font-family:DM Mono,monospace;">No module sourcing contracts yet.</div>';
+  } else {
+    modTableHtml = '<table style="width:100%;border-collapse:collapse;"><tr>' +
+      th('Module') + th('Contracted (k/yr)', 'right') + th('Consumed (k)', 'right') + th('Util %', 'right') + th('Free (k)', 'right') + th('Capex (€M)', 'right') +
+      '</tr>' + modRows.map(function(r) {
+        var uCol = r.util === null ? 'var(--muted)' : r.util > 85 ? 'var(--red)' : r.util < 35 ? 'var(--gold)' : 'var(--green)';
+        return '<tr>' +
+          td('<b>' + (SC_MOD_LABELS[r.sk] || r.sk) + '</b>' + r.badge) +
+          td(r.contracted.toFixed(1), 'right') +
+          td(data.last_round_id ? r.consumed.toFixed(1) : '—', 'right') +
+          td(r.util === null ? '—' : r.util.toFixed(0) + '%', 'right', uCol) +
+          td(r.free.toFixed(1), 'right') +
+          td('€' + r.capex.toFixed(2), 'right') +
+          '</tr>';
+      }).join('') + '</table>';
+  }
+  html += section('📦 Module Capacity vs. Last-Round Consumption', modTableHtml);
+
+  // ── By sourcing zone / region ────────────────────────────────────────────────
+  var zoneAgg = {};
+  capacity.forEach(function(c) {
+    if (!(c.contracted_k > 0)) return;
+    zoneAgg[c.zone_key] = zoneAgg[c.zone_key] || { contracts: 0, contracted: 0, consumed: 0, capex: 0, adjSum: 0, adjN: 0 };
+    var z = zoneAgg[c.zone_key];
+    z.contracts++; z.contracted += c.contracted_k; z.capex += (c.total_capex_m || 0);
+    z.adjSum += (c.price_adj_pct || 0); z.adjN++;
+  });
+  Object.keys(consumption).forEach(function(sk) {
+    Object.keys(consumption[sk]).forEach(function(zk) {
+      zoneAgg[zk] = zoneAgg[zk] || { contracts: 0, contracted: 0, consumed: 0, capex: 0, adjSum: 0, adjN: 0 };
+      zoneAgg[zk].consumed += consumption[sk][zk];
+    });
+  });
+  var zoneRows = Object.keys(zoneAgg).map(function(zk) {
+    var z = SP_ZONES.find(function(s) { return s.key === zk; }) || { flag: '', label: zk };
+    var a = zoneAgg[zk];
+    return { flag: z.flag, label: z.label, contracts: a.contracts, contracted: a.contracted, consumed: a.consumed, capex: a.capex, avgAdj: a.adjN ? a.adjSum / a.adjN : 0 };
+  }).sort(function(a, b) { return b.contracted - a.contracted; });
+
+  if (zoneRows.length) {
+    var zoneTableHtml = '<table style="width:100%;border-collapse:collapse;"><tr>' +
+      th('Zone') + th('Contracts', 'right') + th('Contracted (k)', 'right') + th('Consumed (k)', 'right') + th('Capex (€M)', 'right') + th('Avg Price Adj', 'right') +
+      '</tr>' + zoneRows.map(function(r) {
+        var adjCol = r.avgAdj < 0 ? 'var(--green)' : r.avgAdj > 0 ? 'var(--red)' : 'var(--muted)';
+        return '<tr>' +
+          td(r.flag + ' ' + r.label) +
+          td(r.contracts, 'right') +
+          td(r.contracted.toFixed(1), 'right') +
+          td(data.last_round_id ? r.consumed.toFixed(1) : '—', 'right') +
+          td('€' + r.capex.toFixed(2), 'right') +
+          td(r.avgAdj.toFixed(1) + '%', 'right', adjCol) +
+          '</tr>';
+      }).join('') + '</table>';
+    html += section('🌍 By Sourcing Zone / Region', zoneTableHtml);
+  }
+
+  // ── Duty & logistics highlights ──────────────────────────────────────────────
+  var combos = []; // {sk, src, dest, dutyPct, freightRate, weight}
+  (data.vehicles || []).forEach(function(v) {
+    var plants = ((v.operations.supply_plan || {}).plants) || {};
+    var pUnits = v.plant_units || {};
+    Object.keys(plants).forEach(function(pid) {
+      var plantObj = _scFindPlant(v, pid);
+      if (!plantObj) return;
+      var destZoneKey = _zoneForPlant(plantObj.country_code, plantObj.region);
+      var destAbbr = _ZONE_ABBR[destZoneKey] || destZoneKey;
+      var weight = (pUnits[pid] || 0) / 1000;
+      var mods = plants[pid].modules || {};
+      Object.keys(mods).forEach(function(sk) {
+        var dec = mods[sk];
+        if (!dec || !dec.zone) return;
+        var srcZone = SP_ZONES.find(function(z) { return z.key === dec.zone; });
+        if (!srcZone) return;
+        combos.push({
+          sk: sk, src: dec.zone, dest: destZoneKey,
+          dutyPct: srcZone.duty[destAbbr] || 0,
+          freightRate: srcZone.logistics[destAbbr] || 80,
+          weight: weight,
+        });
+      });
+    });
+  });
+
+  var hasConsumption = combos.some(function(c) { return c.weight > 0; });
+  if (!hasConsumption) combos.forEach(function(c) { c.weight = 1; });
+  var totalWeight = combos.reduce(function(s, c) { return s + c.weight; }, 0);
+
+  var dutyHtml;
+  if (!combos.length) {
+    dutyHtml = '<div style="font-size:10px;color:var(--muted2);font-family:DM Mono,monospace;">No sourcing zone decisions found.</div>';
+  } else {
+    var avgDuty = totalWeight > 0 ? combos.reduce(function(s, c) { return s + c.dutyPct * c.weight; }, 0) / totalWeight : 0;
+    var dutyFreeWeight = combos.filter(function(c) { return c.dutyPct === 0; }).reduce(function(s, c) { return s + c.weight; }, 0);
+    var dutyFreePct = totalWeight > 0 ? dutyFreeWeight / totalWeight * 100 : 0;
+
+    var comboMap = {};
+    combos.forEach(function(c) {
+      var key = c.sk + '|' + c.src + '|' + c.dest;
+      comboMap[key] = comboMap[key] || { sk: c.sk, src: c.src, dest: c.dest, dutyPct: c.dutyPct, freightRate: c.freightRate, weight: 0 };
+      comboMap[key].weight += c.weight;
+    });
+    var comboList = Object.keys(comboMap).map(function(k) { return comboMap[k]; });
+    var topDuty = comboList.filter(function(c) { return c.dutyPct > 0; })
+      .sort(function(a, b) { return b.dutyPct - a.dutyPct || b.weight - a.weight; }).slice(0, 3);
+    var dutyFree = comboList.filter(function(c) { return c.dutyPct === 0; })
+      .sort(function(a, b) { return b.weight - a.weight; }).slice(0, 3);
+
+    var zoneLabel = function(zk) { var z = SP_ZONES.find(function(s) { return s.key === zk; }); return z ? (z.flag + ' ' + z.label) : zk; };
+
+    dutyHtml = '<div style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-bottom:10px;">' +
+      tile('Wtd. Avg Duty Rate', avgDuty.toFixed(1) + '%', avgDuty > 5 ? 'var(--red)' : avgDuty > 0 ? 'var(--gold)' : 'var(--green)') +
+      tile('Duty-Free Volume Share', dutyFreePct.toFixed(0) + '%', dutyFreePct > 50 ? 'var(--green)' : 'var(--muted)') +
+      '</div>';
+    if (!hasConsumption) {
+      dutyHtml += '<div style="font-size:9px;color:var(--muted2);font-family:DM Mono,monospace;margin-bottom:8px;">No last-round production data — combos weighted equally.</div>';
+    }
+    if (topDuty.length) {
+      dutyHtml += '<div style="font-size:9px;color:var(--muted2);font-family:DM Mono,monospace;margin-bottom:4px;">⚠ HIGH DUTY EXPOSURE</div>';
+      dutyHtml += topDuty.map(function(c) {
+        return '<div style="font-size:10px;font-family:DM Mono,monospace;color:var(--fg);margin-bottom:3px;">' +
+          (SC_MOD_LABELS[c.sk] || c.sk) + ': ' + zoneLabel(c.src) + ' → ' + zoneLabel(c.dest) +
+          ' <span style="color:var(--red);">' + c.dutyPct + '% duty</span></div>';
+      }).join('');
+    }
+    if (dutyFree.length) {
+      dutyHtml += '<div style="font-size:9px;color:var(--muted2);font-family:DM Mono,monospace;margin:8px 0 4px;">✓ DUTY-FREE COMBOS IN USE</div>';
+      dutyHtml += dutyFree.map(function(c) {
+        return '<div style="font-size:10px;font-family:DM Mono,monospace;color:var(--fg);margin-bottom:3px;">' +
+          (SC_MOD_LABELS[c.sk] || c.sk) + ': ' + zoneLabel(c.src) + ' → ' + zoneLabel(c.dest) +
+          ' <span style="color:var(--green);">0% duty</span></div>';
+      }).join('');
+    }
+  }
+  html += section('💱 Duty & Logistics Highlights', dutyHtml);
+
+  return html;
 }
 
 function _scSelectVeh(idx) {
