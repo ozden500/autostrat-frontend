@@ -24928,6 +24928,12 @@ var _scRoundState = {
 
 var SC_MOD_LABELS = {platform:'Platform', pwt:'ICE PWT', epwt:'ePWT', battery:'Battery', tophat:'Top Hat', eands:'E&S'};
 var SC_MOD_ORDER  = ['platform','pwt','epwt','battery','tophat','eands'];
+var _scExpandedMod = {};  // { [module_slot]: bool }
+
+function _scToggleModule(sk) {
+  _scExpandedMod[sk] = !_scExpandedMod[sk];
+  _renderScRoundTab();
+}
 
 var _scRoundDefaults = {
   sourcing_strategy: 'BALANCED',
@@ -25240,13 +25246,45 @@ function _renderSourcingSummaryTab() {
   if (!modRows.length) {
     modTableHtml = '<div style="font-size:10px;color:var(--muted2);font-family:DM Mono,monospace;">No module sourcing contracts yet.</div>';
   } else {
+    var modules = data.modules || [];
+    var modStatusBadge = function(m) {
+      var st = m.development_status;
+      if (st === 'completed')  return '<span style="color:var(--green);">✓ READY</span>';
+      if (st === 'cancelled')  return '<span style="color:var(--red);">✗ CANCELLED</span>';
+      return '<span style="color:var(--gold);">⏳ IN DEV</span>';
+    };
+    var readyLabelCol = function(label) {
+      if (label === 'READY') return 'var(--green)';
+      if (label === 'CANCELLED') return 'var(--red)';
+      if (label === '—') return 'var(--muted2)';
+      return 'var(--cyan)';
+    };
+    var subTableHtml = function(sk) {
+      var mods = modules.filter(function(m) { return m.sourcing_slot === sk; });
+      if (!mods.length) {
+        return '<div style="font-size:9px;color:var(--muted2);font-family:DM Mono,monospace;padding:4px 6px;">No ' + (SC_MOD_LABELS[sk] || sk) + ' modules in your library yet.</div>';
+      }
+      return '<table style="width:100%;border-collapse:collapse;"><tr>' +
+        th('Name') + th('Status') + th('Dev Type') + th('Vehicles Using') + th('Readiness Date', 'right') +
+        '</tr>' + mods.map(function(m) {
+          var vehTxt = (m.vehicles_using && m.vehicles_using.length) ? m.vehicles_using.join(', ') : '—';
+          return '<tr>' +
+            td(m.name || '—') +
+            td(modStatusBadge(m)) +
+            td(m.development_type || '—') +
+            td(vehTxt) +
+            td(m.ready_label || '—', 'right', readyLabelCol(m.ready_label || '—')) +
+            '</tr>';
+        }).join('') + '</table>';
+    };
     modTableHtml = '<table style="width:100%;border-collapse:collapse;"><tr>' +
       th('Module') + th('Contracted (k/yr)', 'right') + th('Consumed (k)', 'right') + th('Util %', 'right') + th('Free (k)', 'right') + th('Ramping', 'right') + th('Capex (€M)', 'right') +
       '</tr>' + modRows.map(function(r) {
         var uCol = r.util === null ? 'var(--muted)' : r.util > 85 ? 'var(--red)' : r.util < 35 ? 'var(--gold)' : 'var(--green)';
         var rampTxt = r.pending > 0 ? '+' + r.pending.toFixed(1) + 'k' + (r.readyLabel ? ' by ' + r.readyLabel : '') : '—';
-        return '<tr>' +
-          td('<b>' + (SC_MOD_LABELS[r.sk] || r.sk) + '</b>' + r.badge) +
+        var open = !!_scExpandedMod[r.sk];
+        var rowHtml = '<tr onclick="_scToggleModule(\'' + r.sk + '\')" style="cursor:pointer;">' +
+          td('<b>' + (open ? '▼' : '▶') + ' ' + (SC_MOD_LABELS[r.sk] || r.sk) + '</b>' + r.badge) +
           td(r.contracted.toFixed(1), 'right') +
           td(data.last_round_id ? r.consumed.toFixed(1) : '—', 'right') +
           td(r.util === null ? '—' : r.util.toFixed(0) + '%', 'right', uCol) +
@@ -25254,6 +25292,10 @@ function _renderSourcingSummaryTab() {
           td(rampTxt, 'right', r.pending > 0 ? 'var(--cyan)' : 'var(--muted2)') +
           td('€' + r.capex.toFixed(2), 'right') +
           '</tr>';
+        if (open) {
+          rowHtml += '<tr><td colspan="7" style="padding:4px 6px 10px 20px;border-bottom:1px solid var(--border);background:var(--bg2);">' + subTableHtml(r.sk) + '</td></tr>';
+        }
+        return rowHtml;
       }).join('') + '</table>';
   }
   html += section('📦 Module Capacity vs. Last-Round Consumption', modTableHtml);
