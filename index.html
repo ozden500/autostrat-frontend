@@ -20617,7 +20617,7 @@ function _calcModuleSupplyMetrics(sk,zoneKey,autoLevel,plantRegion,plantCountryC
   var dutyEur=buyCost*(zone.duty[destAbbr]||0)/100;
   var volumeM3=(buyCost/1000)*(MODULE_VOLUME_FACTOR[sk]||MODULE_VOLUME_FACTOR.platform);
   var freightEur=volumeM3*(zone.logistics[destAbbr]||80);
-  var pieceAdj=Math.round(laborAdj+(freightEur-200)+dutyEur);
+  var pieceAdj=Math.round(laborAdj+freightEur+dutyEur);
   var landedEur=Math.round(buyCost+laborAdj+freightEur+dutyEur);
   var risk=zone.risk*(1-mt.labor_intensity*0.20);
   return {
