@@ -8387,7 +8387,7 @@ function _bcMiniBar(val, max, col, w) {
     '<div style="width:'+filled+'px;height:100%;background:'+col+';border-radius:2px;"></div></div>';
 }
 
-function _buildBizCasePanels(byYear,mktEcon,modTpc,modRd,mktsBC,plants,tpcNum,rdM,toolingM,totalInvM,npv,irr,paybackQ,avgEbitPct,rateP,cumFcf,fcfArr,bcYears,marketingM,dmpMake) {
+function _buildBizCasePanels(byYear,mktEcon,modTpc,modRd,mktsBC,plants,tpcNum,rdM,toolingM,totalInvM,npv,irr,paybackQ,avgEbitPct,rateP,cumFcf,fcfArr,bcYears,marketingM,dmpMake,srcAdj) {
   marketingM = marketingM || 0;
   dmpMake = dmpMake || {dmp:tpcNum*0.85, make:tpcNum*0.15};
   var DM='font-family:DM Mono,monospace;';
@@ -8562,7 +8562,8 @@ function _buildBizCasePanels(byYear,mktEcon,modTpc,modRd,mktsBC,plants,tpcNum,rd
   }
   var avgLogistics=mktEcon.length>0?mktEcon.reduce(function(s,m){return s+m.logistics*m.totalVol;},0)/Math.max(1,mktEcon.reduce(function(s,m){return s+m.totalVol;},0)):0;
   var avgTariff=mktEcon.length>0?mktEcon.reduce(function(s,m){return s+m.tariff*m.totalVol;},0)/Math.max(1,mktEcon.reduce(function(s,m){return s+m.totalVol;},0)):0;
-  var estLanded=tpcNum+avgBuyAdj+avgPlantManuf+avgLogistics+avgTariff;
+  srcAdj=srcAdj||0;
+  var estLanded=tpcNum+srcAdj+avgBuyAdj+avgPlantManuf+avgLogistics+avgTariff;
   var avgNetRev=mktEcon.length>0?mktEcon.reduce(function(s,m){return s+m.netRev*m.totalVol;},0)/Math.max(1,mktEcon.reduce(function(s,m){return s+m.totalVol;},0)):0;
   var estMargin=avgNetRev-estLanded;
 
@@ -8581,6 +8582,7 @@ function _buildBizCasePanels(byYear,mktEcon,modTpc,modRd,mktsBC,plants,tpcNum,rd
   modTpc.forEach(function(m){ html += costRow(m.name, m.tpc, 'var(--muted2)', true, false); });
   html += costRow('Purchased Material Cost (DMP, suppliers)', dmpMake.dmp, 'var(--gold)', true, false);
   html += costRow('OEM Make Cost (in-house BOM)', dmpMake.make, 'var(--muted2)', true, false);
+  if (srcAdj!==0) html += costRow('Sourcing & logistics adj (§8 Components Sourcing)', srcAdj, srcAdj<0?'var(--green)':'var(--orange)', false, false);
   html += costRow('Manufacturing transformation', avgPlantManuf, 'var(--cyan)', false, true);
   html += costRow('Labour + energy + maintenance', avgPlantManuf, 'var(--muted2)', true, false);
   if (avgBuyAdj!==0) html += costRow('Buy-side adj (supplier/volume)', avgBuyAdj, avgBuyAdj<0?'var(--green)':'var(--red)', true, false);
@@ -18375,7 +18377,8 @@ function buildCommercialSection() {
     var cp=_findClosestPlant(sm.region);
     var isAuto=plant&&cp&&plant.id===cp.id;
     var lo=plant?(((MARKET_LOGISTICS_COST[plant.region]||{})[sm.region])||{l:200,t:0}):{l:200,t:0};
-    var baseC=plant&&plant._manuf?(tpcNum+plant._manuf.buy_cost_adj+plant._manuf.manuf_var_total):tpcNum;
+    var econ=_computeUnitEconCost(plant);
+    var baseC=econ.baseC;
     var landedX=baseC+lo.l;
     html+='<div style="margin-bottom:16px;border:1px solid '+(sel?'var(--border2)':'var(--border)')+';border-radius:4px;background:'+(sel?'var(--s3)':'var(--s2)')+';padding:14px 16px;'+(sel?'':'opacity:0.7')+'">';
     html+='<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:'+(sel?'14px':'0')+'">';
@@ -18385,13 +18388,14 @@ function buildCommercialSection() {
       html+='<select id="prop-com-plant-sel-'+sm.region+'" onchange="onPropComMarketPlant(\''+sm.region+'\',this)" style="background:var(--s2);border:1px solid var(--border2);color:var(--text);border-radius:2px;padding:3px 6px;font-size:10px;font-family:DM Mono,monospace;">';
       plants.forEach(function(p){html+='<option value="'+p.id+'"'+(p.id===mkt.plant_id?' selected':'')+'>'+p.country_name+' ('+p.region+')</option>';});
       html+='</select>';
-      html+='<span style="font-family:DM Mono,monospace;font-size:8px;padding:1px 5px;border-radius:2px;background:var(--s2);color:'+(isAuto?'var(--cyan)':'var(--gold)');+'">'+(isAuto?'AUTO':'MANUAL')+'</span>';
+      html+='<span style="font-family:DM Mono,monospace;font-size:8px;padding:1px 5px;border-radius:2px;background:var(--s2);color:'+(isAuto?'var(--cyan)':'var(--gold)')+'">'+(isAuto?'AUTO':'MANUAL')+'</span>';
     }
     html+='</div>';
     if(sel){
-      html+='<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:12px;">';
+      html+='<div style="display:grid;grid-template-columns:repeat('+(econ.srcAdj!==0?'5':'4')+',1fr);gap:8px;margin-bottom:12px;">';
       function ctile(l,v,c){return '<div style="background:var(--s2);border-radius:3px;padding:7px;"><div style="font-size:8px;color:var(--muted2);margin-bottom:2px;">'+l+'</div><div style="font-family:DM Mono,monospace;font-size:10px;color:'+(c||'var(--text)')+';">'+v+'</div></div>';}
       html+=ctile('Manuf cost/unit','€'+Math.round(baseC),'var(--text)');
+      if(econ.srcAdj!==0)html+=ctile('Sourcing adj (§8)',(econ.srcAdj>=0?'+':'')+'€'+Math.round(econ.srcAdj)+'/unit',econ.srcAdj<=0?'var(--green)':'var(--orange)');
       html+=ctile('Outbound logistics','€'+lo.l+'/unit','var(--orange)');
       html+=ctile('Import tariff',(lo.t*100).toFixed(1)+'% on net rev','var(--orange)');
       html+=ctile('Landed (excl tariff)','€'+Math.round(landedX)+'/unit','var(--muted2)');
@@ -18478,9 +18482,8 @@ function _refreshMarketRows(region){
   if(!mkt||!mkt.selected)return;
   var plants=(_prop.operations&&(_prop.operations.vehicle_plants||_prop.operations.plants))||[];
   var plant=plants.find(function(p){return p.id===mkt.plant_id;})||plants[0]||null;
-  var tpc=_computeBaseTpc();
   var lo=plant?(((MARKET_LOGISTICS_COST[plant.region]||{})[mkt.region])||{l:200,t:0}):{l:200,t:0};
-  var baseC=plant&&plant._manuf?(tpc+plant._manuf.buy_cost_adj+plant._manuf.manuf_var_total):tpc;
+  var baseC=_computeUnitEconCost(plant).baseC;
   var lX=baseC+lo.l, totV=0, totGC=0;
   (mkt.years||[]).forEach(function(yr,i){
     var nR=mkt.msrp_eur_k*1000*(1-yr.discount/100), tE=nR*lo.t, m=nR-(lX+tE), gc=m*yr.volume/1e6;
@@ -18503,9 +18506,8 @@ function renderComValidation(){
   var neg=[];
   mkts.forEach(function(mkt){
     var plant=plants.find(function(p){return p.id===mkt.plant_id;})||plants[0]||null;
-    var tpc=_computeBaseTpc();
     var lo=plant?(((MARKET_LOGISTICS_COST[plant.region]||{})[mkt.region])||{l:200,t:0}):{l:200,t:0};
-    var baseC=plant&&plant._manuf?(tpc+plant._manuf.buy_cost_adj+plant._manuf.manuf_var_total):tpc;
+    var baseC=_computeUnitEconCost(plant).baseC;
     var lX=baseC+lo.l;
     (mkt.years||[]).forEach(function(yr,i){
       var nR=mkt.msrp_eur_k*1000*(1-yr.discount/100);
@@ -19019,6 +19021,18 @@ function _ensureVehiclePlantManuf(plant) {
     plant._manuf.grand_total_inv_m = comp.total_inv_m;
   }
   return plant._manuf || null;
+}
+
+// Single source of truth for per-unit landed-cost-before-logistics, used by both
+// §9 (Commercial Plan) and §10 (Business Case) so they never disagree.
+function _computeUnitEconCost(plant) {
+  var tpcNum = _computeBaseTpc();
+  var mfr = plant ? _ensureVehiclePlantManuf(plant) : _getRefManuf();
+  var srcAdj = (_prop.operations && _prop.operations.supply_plan &&
+                typeof _prop.operations.supply_plan._total_piece_adj_eur === 'number')
+                ? _prop.operations.supply_plan._total_piece_adj_eur : 0;
+  var baseC = tpcNum + (mfr ? (mfr.buy_cost_adj + mfr.manuf_var_total) : 0) + srcAdj;
+  return {tpcNum: tpcNum, mfr: mfr, srcAdj: srcAdj, baseC: baseC};
 }
 
 function _suggestedVolK(){
@@ -21594,9 +21608,7 @@ async function advanceToBizCase() {
   _bMkts.forEach(function(mkt){
     var plant=_bPl.find(function(p){return p.id===mkt.plant_id;})||_bPl[0]||null;
     var lo=plant?(((MARKET_LOGISTICS_COST[plant.region]||{})[mkt.region])||{l:200,t:0}):{l:200,t:0};
-    var tpc=_computeBaseTpc();
-    var mfr=plant?_ensureVehiclePlantManuf(plant):_getRefManuf();
-    var baseC=mfr?(tpc+mfr.buy_cost_adj+mfr.manuf_var_total):tpc;
+    var baseC=_computeUnitEconCost(plant).baseC;
     (mkt.years||[]).forEach(function(yr){
       var nR=mkt.msrp_eur_k*1000*(1-yr.discount/100);
       var gc=(nR-(baseC+lo.l+nR*lo.t))*yr.volume/1e6;
@@ -21634,6 +21646,12 @@ function calcPropBizCase() {
 
   var _dmpMake = _computeDmpMake();
 
+  // §8 Components Sourcing per-unit adjustment (zone labour reprice + freight + duty) —
+  // must be included alongside §7 manufacturing cost so §9/§10 agree with §8's own summary.
+  var _srcAdj = (_prop.operations && _prop.operations.supply_plan &&
+                 typeof _prop.operations.supply_plan._total_piece_adj_eur === 'number')
+                 ? _prop.operations.supply_plan._total_piece_adj_eur : 0;
+
   // Ensure every vehicle plant's manufacturing transformation cost (_manuf) reflects the
   // current BOM split + Section 7 plant config — never rely on stale/missing lazy values.
   var _fcfPl=(_prop.operations&&(_prop.operations.vehicle_plants||_prop.operations.plants))||[];
@@ -21662,7 +21680,7 @@ function calcPropBizCase() {
       });
     }
   }
-  var finalTpcNum = tpcNum + (_m ? (_m.buy_cost_adj + _m.manuf_var_total) : 0);
+  var finalTpcNum = tpcNum + _srcAdj + (_m ? (_m.buy_cost_adj + _m.manuf_var_total) : 0);
 
   // Build quarterly FCF (per-market-year model)
   var _fcfMk=((_prop.commercial&&_prop.commercial.markets)||[]).filter(function(m){return m.selected;});
@@ -21682,7 +21700,7 @@ function calcPropBizCase() {
           var uQ=Math.round(yd.volume/4);
           var nR=(mkt.msrp_eur_k||0)*1000*(1-yd.discount/100);
           var lo=plant?(((MARKET_LOGISTICS_COST[plant.region]||{})[mkt.region])||{l:200,t:0}):{l:200,t:0};
-          var landed=tpcNum+mfr.buy_cost_adj+mfr.manuf_var_total+lo.l+nR*lo.t;
+          var landed=tpcNum+_srcAdj+mfr.buy_cost_adj+mfr.manuf_var_total+lo.l+nR*lo.t;
           revM+=uQ*nR/1e6; cogsM+=uQ*landed/1e6;
         });
         if(tpcNum===0)cogsM=revM*0.70;
@@ -21749,7 +21767,7 @@ function calcPropBizCase() {
     var plant=_bcPlants.find(function(p){return p.id===mkt.plant_id;})||_bcPlants[0]||null;
     var lo=plant?(((MARKET_LOGISTICS_COST[plant.region]||{})[mkt.region])||{l:200,t:0}):{l:200,t:0};
     var mfr=plant?plant._manuf:_m;
-    var baseC=mfr?(tpcNum+mfr.buy_cost_adj+mfr.manuf_var_total):tpcNum;
+    var baseC=tpcNum+_srcAdj+(mfr?(mfr.buy_cost_adj+mfr.manuf_var_total):0);
     var avgDisc=(mkt.years||[]).reduce(function(s,y){return s+y.discount;},0)/Math.max(1,(mkt.years||[]).length);
     var nR=(mkt.msrp_eur_k||0)*1000*(1-avgDisc/100);
     var tE=nR*lo.t, lnd=baseC+lo.l+tE, mg=nR-lnd;
@@ -21771,7 +21789,7 @@ function calcPropBizCase() {
   var _bcEl=document.getElementById('prop-bc-content');
   if (_bcEl) {
     _bcEl.innerHTML=_buildBizCasePanels(_byYear,_mktEcon,_modTpc,_modRd,_bcMkts,_bcPlants,
-      tpcNum,rdM,toolingM,totalInvM,npv,irr,paybackQ,avgEbitPct,rateP,_cumFcf,fcfArr,_bcYears,marketingM,_dmpMake);
+      tpcNum,rdM,toolingM,totalInvM,npv,irr,paybackQ,avgEbitPct,rateP,_cumFcf,fcfArr,_bcYears,marketingM,_dmpMake,_srcAdj);
   }
 
 
