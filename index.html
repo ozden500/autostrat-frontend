@@ -18085,7 +18085,7 @@ function _findClosestPlant(marketRegion) {
 
 function _computeBaseTpc() {
   var t=0;
-  ['platform','pwt','epwt','tophat','eands'].forEach(function(k){var p=_prop[k];if(p&&p.module)t+=parseFloat(p.module.per_unit_tpc_eur||0);});
+  ['platform','pwt','epwt','battery','tophat','eands'].forEach(function(k){var p=_prop[k];if(p&&p.module)t+=parseFloat(p.module.per_unit_tpc_eur||0);});
   return t;
 }
 
@@ -18093,7 +18093,7 @@ function _computeBaseTpc() {
 // Falls back to 85/15 flat split per module when dmp/make not yet computed.
 function _computeDmpMake() {
   var dmp=0, make=0, mat=0, lab=0;
-  ['platform','pwt','epwt','tophat','eands'].forEach(function(k) {
+  ['platform','pwt','epwt','battery','tophat','eands'].forEach(function(k) {
     var p=_prop[k]; if(!p||!p.module) return;
     var m=p.module;
     if (m.dmp && m.make) {
@@ -21661,7 +21661,7 @@ function calcPropBizCase() {
   var comYears = (_prop.commercial && _prop.commercial.years) || [];
   var marketingM = 0; // Marketing is now brand-level (set in Brand Management page)
   var tpcNum   = 0;
-  ['platform','pwt','epwt','tophat','eands'].forEach(function(k) {
+  ['platform','pwt','epwt','battery','tophat','eands'].forEach(function(k) {
     var p = _prop[k];
     if (p && p.module) tpcNum += parseFloat(p.module.per_unit_tpc_eur||0);
   });
@@ -21739,7 +21739,7 @@ function calcPropBizCase() {
 
   // Total investment: R&D + tooling capex
   var rdM = 0;
-  ['platform','pwt','epwt','tophat','eands'].forEach(function(k) {
+  ['platform','pwt','epwt','battery','tophat','eands'].forEach(function(k) {
     var p = _prop[k];
     if (p && p.module) rdM += parseFloat(p.module.total_rd_spend_m||0);
   });
@@ -21800,7 +21800,7 @@ function calcPropBizCase() {
   var _cumFcf=[],_cum=-totalInvM;
   fcfArr.forEach(function(f){_cum+=f.fcf;_cumFcf.push(_cum);});
   var _modTpc=[],_modRd=[];
-  ['platform','pwt','epwt','tophat','eands'].forEach(function(k){
+  ['platform','pwt','epwt','battery','tophat','eands'].forEach(function(k){
     var p=_prop[k];
     if(p&&p.module){
       if(parseFloat(p.module.per_unit_tpc_eur||0)>0) _modTpc.push({name:p.module.name||k,tpc:parseFloat(p.module.per_unit_tpc_eur)});
