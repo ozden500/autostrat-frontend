@@ -18404,32 +18404,44 @@ function buildCommercialSection() {
       html+='<div style="font-size:9px;color:var(--muted2);">MSRP (€ k):</div>';
       html+='<input type="number" min="5" max="500" step="0.5" value="'+(mkt.msrp_eur_k||defPK)+'" id="prop-com-msrp-'+sm.region+'" oninput="onPropComMsrp(\''+sm.region+'\',this.value)" style="width:90px;background:var(--s2);border:1px solid var(--border2);border-radius:2px;color:var(--gold);font-family:DM Mono,monospace;font-size:12px;text-align:center;padding:4px 6px;">';
       html+='</div>';
-      html+='<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;min-width:640px;">';
+      html+='<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;min-width:860px;">';
       html+='<thead><tr>';
-      ['Year','Discount %','Volume','Net Rev/unit','Var Margin/unit','Gross Contrib (€M)'].forEach(function(h){html+='<th style="font-family:DM Mono,monospace;font-size:8px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);padding:6px 10px;background:var(--s2);border-bottom:1px solid var(--border);text-align:center;">'+h+'</th>';});
+      ['Year','Discount %','Volume','Net Rev/unit','Total Cost/unit','Var Margin/unit','Revenue (€M)','Cost (€M)','Gross Contrib (€M)'].forEach(function(h){html+='<th style="font-family:DM Mono,monospace;font-size:8px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);padding:6px 10px;background:var(--s2);border-bottom:1px solid var(--border);text-align:center;">'+h+'</th>';});
       html+='</tr></thead><tbody>';
       (mkt.years||[]).forEach(function(yr,i){
         var netRev=(mkt.msrp_eur_k||defPK)*1000*(1-yr.discount/100);
-        var tE=netRev*lo.t, margin=netRev-(landedX+tE), gc=margin*yr.volume/1e6;
+        var tE=netRev*lo.t, totalCost=landedX+tE, margin=netRev-totalCost;
+        var revM=netRev*yr.volume/1e6, costM=totalCost*yr.volume/1e6, gc=revM-costM;
         var bg=gc<=0&&yr.volume>0?'background:rgba(220,50,50,0.08);':'';
         html+='<tr id="prop-com-'+sm.region+'-yr-'+i+'-row" style="border-bottom:1px solid var(--border);'+bg+'">';
         html+='<td style="padding:6px 10px;font-family:DM Mono,monospace;font-size:11px;font-weight:700;color:var(--white);text-align:center;">'+yr.year+'</td>';
         html+='<td style="padding:4px 6px;text-align:center;"><input type="number" min="0" max="40" step="0.5" value="'+yr.discount+'" oninput="onPropComYearDiscount(\''+sm.region+'\','+i+',this.value)" style="width:65px;background:var(--s2);border:1px solid var(--border2);border-radius:2px;color:var(--text);font-family:DM Mono,monospace;font-size:11px;text-align:center;padding:3px;"></td>';
         html+='<td style="padding:4px 6px;text-align:center;"><input type="number" min="0" max="500000" step="500" value="'+yr.volume+'" oninput="onPropComYearVolume(\''+sm.region+'\','+i+',this.value)" style="width:90px;background:var(--s2);border:1px solid var(--border2);border-radius:2px;color:var(--text);font-family:DM Mono,monospace;font-size:11px;text-align:center;padding:3px;"></td>';
         html+='<td style="padding:6px 10px;font-family:DM Mono,monospace;font-size:10px;color:var(--muted2);text-align:center;">€'+Math.round(netRev).toLocaleString()+'</td>';
+        html+='<td id="prop-com-'+sm.region+'-yr-'+i+'-cost" style="padding:6px 10px;font-family:DM Mono,monospace;font-size:10px;color:var(--orange);text-align:center;">€'+Math.round(totalCost).toLocaleString()+'</td>';
         var mc=margin>=0?'var(--cyan)':'var(--red)';
         html+='<td id="prop-com-'+sm.region+'-yr-'+i+'-margin" style="padding:6px 10px;font-family:DM Mono,monospace;font-size:10px;color:'+mc+';text-align:center;">€'+Math.round(margin).toLocaleString()+'</td>';
+        html+='<td id="prop-com-'+sm.region+'-yr-'+i+'-revm" style="padding:6px 10px;font-family:DM Mono,monospace;font-size:10px;color:var(--muted2);text-align:center;">'+(yr.volume>0?revM.toFixed(2):'—')+'</td>';
+        html+='<td id="prop-com-'+sm.region+'-yr-'+i+'-costm" style="padding:6px 10px;font-family:DM Mono,monospace;font-size:10px;color:var(--orange);text-align:center;">'+(yr.volume>0?costM.toFixed(2):'—')+'</td>';
         var gc2=gc>0?'var(--green)':gc<0?'var(--red)':'var(--muted2)';
         html+='<td id="prop-com-'+sm.region+'-yr-'+i+'-gc" style="padding:6px 10px;font-family:DM Mono,monospace;font-size:11px;font-weight:700;color:'+gc2+';text-align:center;">'+(yr.volume>0?(gc>=0?'+':'')+gc.toFixed(2):'—')+'</td>';
         html+='</tr>';
       });
       var totV=(mkt.years||[]).reduce(function(s,yr){return s+yr.volume;},0);
-      var totGC=(mkt.years||[]).reduce(function(s,yr){var n=(mkt.msrp_eur_k||defPK)*1000*(1-yr.discount/100);var t=n*lo.t;return s+(n-(landedX+t))*yr.volume/1e6;},0);
+      var totRevM=0, totCostM=0;
+      (mkt.years||[]).forEach(function(yr){
+        var n=(mkt.msrp_eur_k||defPK)*1000*(1-yr.discount/100);
+        var t=n*lo.t, tc=landedX+t;
+        totRevM+=n*yr.volume/1e6; totCostM+=tc*yr.volume/1e6;
+      });
+      var totGC=totRevM-totCostM;
       var tgcC=totGC>0?'var(--green)':totGC<0?'var(--red)':'var(--muted2)';
       html+='<tr style="background:var(--s2);">';
       html+='<td style="padding:6px 10px;font-family:DM Mono,monospace;font-size:9px;color:var(--muted);">TOTAL</td><td></td>';
       html+='<td style="padding:6px 10px;font-family:DM Mono,monospace;font-size:10px;color:var(--text);text-align:center;" id="prop-com-'+sm.region+'-total-vol">'+(totV>0?totV.toLocaleString()+' units':'—')+'</td>';
-      html+='<td></td><td></td>';
+      html+='<td></td><td></td><td></td>';
+      html+='<td style="padding:6px 10px;font-family:DM Mono,monospace;font-size:10px;color:var(--muted2);text-align:center;" id="prop-com-'+sm.region+'-total-rev">'+totRevM.toFixed(2)+'€M</td>';
+      html+='<td style="padding:6px 10px;font-family:DM Mono,monospace;font-size:10px;color:var(--orange);text-align:center;" id="prop-com-'+sm.region+'-total-cost">'+totCostM.toFixed(2)+'€M</td>';
       html+='<td style="padding:6px 10px;font-family:DM Mono,monospace;font-size:11px;font-weight:700;color:'+tgcC+';text-align:center;" id="prop-com-'+sm.region+'-total-gc">'+(totGC>=0?'+':'')+totGC.toFixed(2)+'€M</td></tr>';
       html+='</tbody></table></div>';
     }
@@ -18484,18 +18496,28 @@ function _refreshMarketRows(region){
   var plant=plants.find(function(p){return p.id===mkt.plant_id;})||plants[0]||null;
   var lo=plant?(((MARKET_LOGISTICS_COST[plant.region]||{})[mkt.region])||{l:200,t:0}):{l:200,t:0};
   var baseC=_computeUnitEconCost(plant).baseC;
-  var lX=baseC+lo.l, totV=0, totGC=0;
+  var lX=baseC+lo.l, totV=0, totRevM=0, totCostM=0;
   (mkt.years||[]).forEach(function(yr,i){
-    var nR=mkt.msrp_eur_k*1000*(1-yr.discount/100), tE=nR*lo.t, m=nR-(lX+tE), gc=m*yr.volume/1e6;
-    totV+=yr.volume; totGC+=gc;
+    var nR=mkt.msrp_eur_k*1000*(1-yr.discount/100), tE=nR*lo.t, totalCost=lX+tE, m=nR-totalCost;
+    var revM=nR*yr.volume/1e6, costM=totalCost*yr.volume/1e6, gc=revM-costM;
+    totV+=yr.volume; totRevM+=revM; totCostM+=costM;
     var rEl=document.getElementById('prop-com-'+region+'-yr-'+i+'-row');
     if(rEl)rEl.style.background=(gc<=0&&yr.volume>0)?'rgba(220,50,50,0.08)':'';
+    var cEl=document.getElementById('prop-com-'+region+'-yr-'+i+'-cost');
+    if(cEl)cEl.textContent='€'+Math.round(totalCost).toLocaleString();
     var mEl=document.getElementById('prop-com-'+region+'-yr-'+i+'-margin');
     if(mEl){mEl.textContent='€'+Math.round(m).toLocaleString();mEl.style.color=m>=0?'var(--cyan)':'var(--red)';}
+    var rmEl=document.getElementById('prop-com-'+region+'-yr-'+i+'-revm');
+    if(rmEl)rmEl.textContent=yr.volume>0?revM.toFixed(2):'—';
+    var cmEl=document.getElementById('prop-com-'+region+'-yr-'+i+'-costm');
+    if(cmEl)cmEl.textContent=yr.volume>0?costM.toFixed(2):'—';
     var gEl=document.getElementById('prop-com-'+region+'-yr-'+i+'-gc');
     if(gEl){gEl.textContent=yr.volume>0?(gc>=0?'+':'')+gc.toFixed(2):'—';gEl.style.color=gc>0?'var(--green)':gc<0?'var(--red)':'var(--muted2)';}
   });
+  var totGC=totRevM-totCostM;
   var tvEl=document.getElementById('prop-com-'+region+'-total-vol');if(tvEl)tvEl.textContent=totV>0?totV.toLocaleString()+' units':'—';
+  var trEl=document.getElementById('prop-com-'+region+'-total-rev');if(trEl)trEl.textContent=totRevM.toFixed(2)+'€M';
+  var tcEl=document.getElementById('prop-com-'+region+'-total-cost');if(tcEl)tcEl.textContent=totCostM.toFixed(2)+'€M';
   var tgEl=document.getElementById('prop-com-'+region+'-total-gc');
   if(tgEl){tgEl.textContent=(totGC>=0?'+':'')+totGC.toFixed(2)+'€M';tgEl.style.color=totGC>0?'var(--green)':totGC<0?'var(--red)':'var(--muted2)';}
   renderComValidation();
