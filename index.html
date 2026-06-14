@@ -19031,37 +19031,43 @@ function _renderStandardCostSummary() {
 }
 
 // Section 7, after the plant configuration controls: shows the transformation cost
-// (_MANUF_E.manuf_var_total) implied by the plant(s) currently configured below, vs the
-// §2-5 standard Make baseline. Updates live via renderOpsAggregateSummary() as the user
-// adjusts JPH/automation/country — this is the same manuf_var_total that
-// _computeUnitEconCost() already passes on to §9/§10.
+// (_MANUF_E.manuf_var_total) implied by the plant(s) the team has actually confirmed
+// below, vs the §2-5 standard Make baseline. Hidden (placeholder only) until both a
+// vehicle plant and a powertrain plant allocation are confirmed — re-rendered via
+// renderOpsAggregateSummary() whenever the team confirms/removes an allocation. This is
+// the same manuf_var_total that _computeUnitEconCost() already passes on to §9/§10.
 function _renderPlantTransformationImpact() {
   var c = _computeStandardModuleCosts();
   if (!c.rows) return '';
-  var imp = _computePlantTransformationImpact(c.totMake);
+  var vpConfirmed=_spConfirmedPlants(), pwtConfirmed=_spConfirmedPwtPlants();
   var h = '<div style="border:1px solid var(--border2);border-radius:4px;padding:12px;margin:14px 0;background:var(--s2);">';
   h += '<div style="font-family:DM Mono,monospace;font-size:8px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:10px;">Transformation Cost Impact — Your Plant Configuration Above</div>';
-  h += '<div style="display:flex;gap:18px;font-family:DM Mono,monospace;font-size:8px;flex-wrap:wrap;">'+
-       '<div><span style="color:var(--muted2);">Standard transformation (Make, §2-5):</span> <span style="color:var(--white);font-weight:700;">€'+Math.round(c.totMake).toLocaleString()+'/unit</span></div>'+
-       '<div><span style="color:var(--muted2);">Your plant configuration:</span> <span id="prop-ops-impact-actual" style="color:var(--white);font-weight:700;">€'+Math.round(imp.actualMake).toLocaleString()+'/unit</span></div>'+
-       '<div><span style="color:var(--muted2);">Delta vs standard:</span> <span id="prop-ops-impact-delta" style="color:'+imp.deltaColor+';font-weight:700;">'+imp.deltaStr+'</span></div>'+
-       '</div>';
+  if (!vpConfirmed.length || !pwtConfirmed.length) {
+    h += '<div style="font-family:DM Mono,monospace;font-size:8px;color:var(--muted2);font-style:italic;">Confirm your vehicle plant and powertrain plant allocation above to see the transformation cost impact of your decisions.</div>';
+  } else {
+    var imp = _computePlantTransformationImpact(c.totMake, vpConfirmed);
+    h += '<div style="display:flex;gap:18px;font-family:DM Mono,monospace;font-size:8px;flex-wrap:wrap;">'+
+         '<div><span style="color:var(--muted2);">Standard transformation (Make, §2-5):</span> <span style="color:var(--white);font-weight:700;">€'+Math.round(c.totMake).toLocaleString()+'/unit</span></div>'+
+         '<div><span style="color:var(--muted2);">Your plant configuration:</span> <span style="color:var(--white);font-weight:700;">€'+Math.round(imp.actualMake).toLocaleString()+'/unit</span></div>'+
+         '<div><span style="color:var(--muted2);">Delta vs standard:</span> <span style="color:'+imp.deltaColor+';font-weight:700;">'+imp.deltaStr+'</span></div>'+
+         '</div>';
+  }
   h += '</div>';
   return h;
 }
 
-// Capacity-weighted manuf_var_total across configured vehicle plants vs the §2-5
+// Capacity-weighted manuf_var_total across confirmed vehicle plants vs the §2-5
 // standard Make total. Shared by _renderPlantTransformationImpact() and
 // renderOpsAggregateSummary() (for live updates).
-function _computePlantTransformationImpact(standardMake) {
-  var ops=_prop.operations||{}, totCap=0, weighted=0;
-  (ops.vehicle_plants||[]).forEach(function(p){
+function _computePlantTransformationImpact(standardMake, vehiclePlants) {
+  var totCap=0, weighted=0;
+  (vehiclePlants||[]).forEach(function(p){
     var mfr=_ensureVehiclePlantManuf(p);
     if(!mfr) return;
     var cap=mfr.eff_capacity_yr||0;
     totCap+=cap; weighted+=(mfr.manuf_var_total||0)*cap;
   });
-  var actualMake = totCap>0 ? weighted/totCap : (_getRefManuf().manuf_var_total||0);
+  var actualMake = totCap>0 ? weighted/totCap : 0;
   var delta = actualMake - standardMake;
   var deltaColor = delta<=0 ? 'var(--green)' : 'var(--red)';
   var deltaStr = (delta>=0?'+':'')+'€'+Math.round(delta).toLocaleString();
@@ -19398,14 +19404,9 @@ function renderOpsAggregateSummary(){
   (ops.powertrain_plants||[]).forEach(function(f){if(!f._computed)return;tPWT+=f._computed.total_inv_m||0;});
   function _s(id,v){var e=document.getElementById(id);if(e)e.textContent=String(v);}
   _s('prop-ops-agg-vp','€'+Math.round(tVP)+'M');_s('prop-ops-agg-pwt','€'+Math.round(tPWT)+'M');_s('prop-ops-agg-sp','€'+_spTotalSupplierInvestmentM().toFixed(1)+'M');_s('prop-ops-agg-cost','€'+totals.totalLanded);
-  // Live-refresh the §7 transformation cost impact panel as plant configs change
-  var stdCosts=_computeStandardModuleCosts();
-  if(stdCosts.rows){
-    var imp=_computePlantTransformationImpact(stdCosts.totMake);
-    var aEl=document.getElementById('prop-ops-impact-actual'),dEl=document.getElementById('prop-ops-impact-delta');
-    if(aEl)aEl.textContent='€'+Math.round(imp.actualMake).toLocaleString()+'/unit';
-    if(dEl){dEl.textContent=imp.deltaStr;dEl.style.color=imp.deltaColor;}
-  }
+  // Re-render the §7 transformation cost impact panel as plant allocations are confirmed/removed
+  var impEl=document.getElementById('prop-ops-impact-area');
+  if(impEl)impEl.innerHTML=_renderPlantTransformationImpact();
 }
 
 function _getVehicleModuleColumns(){
