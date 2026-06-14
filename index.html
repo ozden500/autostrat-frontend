@@ -18985,10 +18985,9 @@ var OEM_COST_MOD_META = {
   eands:    {label:'E&S / ADAS',      color:'var(--blue)'},
 };
 
-// Section 7 panel: per-module standard cost breakdown from §2-5 (cached DMP/Make/TPC),
-// compared against the plant-actual transformation cost (_MANUF_E.manuf_var_total) so
-// teams can see whether their §7 footprint matches the standard cost baseline.
-function _renderOemTransformationCostSummary() {
+// Per-module standard cost breakdown from §2-5 (cached DMP/Make/TPC). Shared by the
+// static baseline panel and the plant-impact panel below.
+function _computeStandardModuleCosts() {
   var rows = '';
   var totDmp=0, totMake=0, totTpc=0;
   Object.keys(OEM_COST_MOD_META).forEach(function(k){
@@ -19008,9 +19007,53 @@ function _renderOemTransformationCostSummary() {
       '<div style="text-align:right;color:'+meta.color+';font-weight:700;">€'+Math.round(tpc).toLocaleString()+'</div>'+
     '</div>';
   });
-  if (!rows) return '';
+  return {rows:rows, totDmp:totDmp, totMake:totMake, totTpc:totTpc};
+}
 
-  // Plant-actual transformation cost (capacity-weighted across configured vehicle plants)
+// Section 7, top of page: static OEM standard manufacturing cost baseline carried over
+// from Sections 2-5 (DMP/Make/TPC per module, at the engines' fixed reference rates).
+// This does not depend on any §7 plant decision.
+function _renderStandardCostSummary() {
+  var c = _computeStandardModuleCosts();
+  if (!c.rows) return '';
+  var h = '<div style="border:1px solid var(--border2);border-radius:4px;padding:12px;margin-bottom:18px;background:var(--s2);">';
+  h += '<div style="font-family:DM Mono,monospace;font-size:8px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:10px;">OEM Standard Manufacturing Cost — from Sections 2-5 (reference rates)</div>';
+  h += '<div style="display:grid;grid-template-columns:140px 1fr 70px 70px 70px;gap:8px;padding:0 0 4px 0;font-family:DM Mono,monospace;font-size:7px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;">'+
+       '<div>Module</div><div>Config</div><div style="text-align:right;">DMP €</div><div style="text-align:right;">Make €</div><div style="text-align:right;">TPC €</div></div>';
+  h += c.rows;
+  h += '<div style="display:grid;grid-template-columns:140px 1fr 70px 70px 70px;gap:8px;padding:6px 0 0 0;margin-top:4px;border-top:1px solid rgba(200,164,60,.3);font-family:DM Mono,monospace;font-size:9px;font-weight:700;">'+
+       '<div style="color:var(--gold);">TOTAL</div><div></div>'+
+       '<div style="text-align:right;color:var(--white);">€'+Math.round(c.totDmp).toLocaleString()+'</div>'+
+       '<div style="text-align:right;color:var(--white);">€'+Math.round(c.totMake).toLocaleString()+'</div>'+
+       '<div style="text-align:right;color:var(--gold);">€'+Math.round(c.totTpc).toLocaleString()+'</div></div>';
+  h += '</div>';
+  return h;
+}
+
+// Section 7, after the plant configuration controls: shows the transformation cost
+// (_MANUF_E.manuf_var_total) implied by the plant(s) currently configured below, vs the
+// §2-5 standard Make baseline. Updates live via renderOpsAggregateSummary() as the user
+// adjusts JPH/automation/country — this is the same manuf_var_total that
+// _computeUnitEconCost() already passes on to §9/§10.
+function _renderPlantTransformationImpact() {
+  var c = _computeStandardModuleCosts();
+  if (!c.rows) return '';
+  var imp = _computePlantTransformationImpact(c.totMake);
+  var h = '<div style="border:1px solid var(--border2);border-radius:4px;padding:12px;margin:14px 0;background:var(--s2);">';
+  h += '<div style="font-family:DM Mono,monospace;font-size:8px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:10px;">Transformation Cost Impact — Your Plant Configuration Above</div>';
+  h += '<div style="display:flex;gap:18px;font-family:DM Mono,monospace;font-size:8px;flex-wrap:wrap;">'+
+       '<div><span style="color:var(--muted2);">Standard transformation (Make, §2-5):</span> <span style="color:var(--white);font-weight:700;">€'+Math.round(c.totMake).toLocaleString()+'/unit</span></div>'+
+       '<div><span style="color:var(--muted2);">Your plant configuration:</span> <span id="prop-ops-impact-actual" style="color:var(--white);font-weight:700;">€'+Math.round(imp.actualMake).toLocaleString()+'/unit</span></div>'+
+       '<div><span style="color:var(--muted2);">Delta vs standard:</span> <span id="prop-ops-impact-delta" style="color:'+imp.deltaColor+';font-weight:700;">'+imp.deltaStr+'</span></div>'+
+       '</div>';
+  h += '</div>';
+  return h;
+}
+
+// Capacity-weighted manuf_var_total across configured vehicle plants vs the §2-5
+// standard Make total. Shared by _renderPlantTransformationImpact() and
+// renderOpsAggregateSummary() (for live updates).
+function _computePlantTransformationImpact(standardMake) {
   var ops=_prop.operations||{}, totCap=0, weighted=0;
   (ops.vehicle_plants||[]).forEach(function(p){
     var mfr=_ensureVehiclePlantManuf(p);
@@ -19019,27 +19062,10 @@ function _renderOemTransformationCostSummary() {
     totCap+=cap; weighted+=(mfr.manuf_var_total||0)*cap;
   });
   var actualMake = totCap>0 ? weighted/totCap : (_getRefManuf().manuf_var_total||0);
-  var delta = actualMake - totMake;
+  var delta = actualMake - standardMake;
   var deltaColor = delta<=0 ? 'var(--green)' : 'var(--red)';
   var deltaStr = (delta>=0?'+':'')+'€'+Math.round(delta).toLocaleString();
-
-  var h = '<div style="border:1px solid var(--border2);border-radius:4px;padding:12px;margin-bottom:18px;background:var(--s2);">';
-  h += '<div style="font-family:DM Mono,monospace;font-size:8px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:10px;">OEM Transformation Standard Cost — from Sections 2-5</div>';
-  h += '<div style="display:grid;grid-template-columns:140px 1fr 70px 70px 70px;gap:8px;padding:0 0 4px 0;font-family:DM Mono,monospace;font-size:7px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;">'+
-       '<div>Module</div><div>Config</div><div style="text-align:right;">DMP €</div><div style="text-align:right;">Make €</div><div style="text-align:right;">TPC €</div></div>';
-  h += rows;
-  h += '<div style="display:grid;grid-template-columns:140px 1fr 70px 70px 70px;gap:8px;padding:6px 0 0 0;margin-top:4px;border-top:1px solid rgba(200,164,60,.3);font-family:DM Mono,monospace;font-size:9px;font-weight:700;">'+
-       '<div style="color:var(--gold);">TOTAL</div><div></div>'+
-       '<div style="text-align:right;color:var(--white);">€'+Math.round(totDmp).toLocaleString()+'</div>'+
-       '<div style="text-align:right;color:var(--white);">€'+Math.round(totMake).toLocaleString()+'</div>'+
-       '<div style="text-align:right;color:var(--gold);">€'+Math.round(totTpc).toLocaleString()+'</div></div>';
-  h += '<div style="display:flex;gap:18px;margin-top:10px;padding-top:8px;border-top:1px solid var(--border2);font-family:DM Mono,monospace;font-size:8px;flex-wrap:wrap;">'+
-       '<div><span style="color:var(--muted2);">Standard transformation (Make, §2-5):</span> <span style="color:var(--white);font-weight:700;">€'+Math.round(totMake).toLocaleString()+'/unit</span></div>'+
-       '<div><span style="color:var(--muted2);">Plant-actual transformation (§7):</span> <span style="color:var(--white);font-weight:700;">€'+Math.round(actualMake).toLocaleString()+'/unit</span></div>'+
-       '<div><span style="color:var(--muted2);">Delta vs standard:</span> <span style="color:'+deltaColor+';font-weight:700;">'+deltaStr+'</span></div>'+
-       '</div>';
-  h += '</div>';
-  return h;
+  return {actualMake:actualMake, delta:delta, deltaColor:deltaColor, deltaStr:deltaStr};
 }
 
 function _calcFacilityInv(type,fac){
@@ -19372,6 +19398,14 @@ function renderOpsAggregateSummary(){
   (ops.powertrain_plants||[]).forEach(function(f){if(!f._computed)return;tPWT+=f._computed.total_inv_m||0;});
   function _s(id,v){var e=document.getElementById(id);if(e)e.textContent=String(v);}
   _s('prop-ops-agg-vp','€'+Math.round(tVP)+'M');_s('prop-ops-agg-pwt','€'+Math.round(tPWT)+'M');_s('prop-ops-agg-sp','€'+_spTotalSupplierInvestmentM().toFixed(1)+'M');_s('prop-ops-agg-cost','€'+totals.totalLanded);
+  // Live-refresh the §7 transformation cost impact panel as plant configs change
+  var stdCosts=_computeStandardModuleCosts();
+  if(stdCosts.rows){
+    var imp=_computePlantTransformationImpact(stdCosts.totMake);
+    var aEl=document.getElementById('prop-ops-impact-actual'),dEl=document.getElementById('prop-ops-impact-delta');
+    if(aEl)aEl.textContent='€'+Math.round(imp.actualMake).toLocaleString()+'/unit';
+    if(dEl){dEl.textContent=imp.deltaStr;dEl.style.color=imp.deltaColor;}
+  }
 }
 
 function _getVehicleModuleColumns(){
@@ -20547,7 +20581,7 @@ async function buildMfgPlantSection() {
   var CS='border-radius:4px;padding:12px;cursor:pointer;border:1px solid var(--gold);background:var(--s3);';
 
   var _allocMode2=(ops&&ops.allocation_mode)||'new',_selLk2=(ops&&ops.selected_plant_key)||null;
-  var html=_renderOemTransformationCostSummary();
+  var html=_renderStandardCostSummary();
   html+='<div id="prop-ops-footprint-area">'+_renderSimplifiedFootprint()+'</div>';
   html+='<div id="prop-ops-alloc-area">';
   if(_allocMode2==='existing'&&_selLk2){html+=_renderPlantAllocationPanel(_selLk2);}
@@ -20559,6 +20593,7 @@ async function buildMfgPlantSection() {
   var _pwtSelLk2=(ops&&ops.selected_pwt_plant_key)||null;
   if(_pwtSelLk2){html+=_renderPwtAllocationPanel(_pwtSelLk2);}else{html+='<div style="font-family:DM Mono,monospace;font-size:9px;color:var(--muted2);padding:8px 0;font-style:italic;">← Select a PWT plant row above to configure allocation.</div>';}
   html+='</div>';
+  html+='<div id="prop-ops-impact-area">'+_renderPlantTransformationImpact()+'</div>';
 
   html+='<div id="prop-ops-agg-plants" style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-bottom:18px;">';
   function aT(l,v,c,id){return '<div style="background:var(--s2);border-radius:3px;padding:8px;border:1px solid var(--border)"><div style="font-size:8px;color:var(--muted2);margin-bottom:2px;">'+l+'</div><div style="font-family:DM Mono,monospace;font-size:11px;color:'+c+'" id="'+id+'">'+v+'</div></div>';}
