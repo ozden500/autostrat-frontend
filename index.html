@@ -18241,7 +18241,8 @@ async function _savePropNew(slot, modType, ck, specs, autoName) {
     });
     var d = await r.json();
     if (d.success && d.module_id) {
-      slot.module = {id: d.module_id};
+      if (!slot.module) slot.module = {};
+      slot.module.id = d.module_id;
       toast('\u23f3 New ' + modType + ' module queued: ' + autoName);
       return true;
     }
