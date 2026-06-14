@@ -18976,6 +18976,72 @@ function _getRefManuf(){
   return _refManufResult;
 }
 
+var OEM_COST_MOD_META = {
+  platform: {label:'Platform',        color:'var(--gold)'},
+  pwt:      {label:'ICE Powertrain',  color:'var(--orange)'},
+  epwt:     {label:'Electric Drive',  color:'var(--cyan)'},
+  battery:  {label:'Battery Pack',    color:'var(--green)'},
+  tophat:   {label:'Top Hat',         color:'var(--purple)'},
+  eands:    {label:'E&S / ADAS',      color:'var(--blue)'},
+};
+
+// Section 7 panel: per-module standard cost breakdown from §2-5 (cached DMP/Make/TPC),
+// compared against the plant-actual transformation cost (_MANUF_E.manuf_var_total) so
+// teams can see whether their §7 footprint matches the standard cost baseline.
+function _renderOemTransformationCostSummary() {
+  var rows = '';
+  var totDmp=0, totMake=0, totTpc=0;
+  Object.keys(OEM_COST_MOD_META).forEach(function(k){
+    var p=_prop[k];
+    if(!p||!p.mode||!p.module) return;
+    var meta=OEM_COST_MOD_META[k];
+    var tpc=parseFloat(p.module.per_unit_tpc_eur||0);
+    var dmp=p.module.dmp?parseFloat(p.module.dmp.total_eur||0):tpc*0.85;
+    var make=p.module.make?parseFloat(p.module.make.total_eur||0):tpc*0.15;
+    var ck=(p.specs&&p.specs.config_key)||p.module.config_key||'';
+    totDmp+=dmp; totMake+=make; totTpc+=tpc;
+    rows += '<div style="display:grid;grid-template-columns:140px 1fr 70px 70px 70px;gap:8px;align-items:center;padding:4px 0;border-bottom:1px solid rgba(255,255,255,.04);font-family:DM Mono,monospace;font-size:8px;">'+
+      '<div style="display:flex;align-items:center;gap:5px;color:var(--white);"><span style="width:6px;height:6px;border-radius:1px;background:'+meta.color+';flex-shrink:0;"></span>'+meta.label+'</div>'+
+      '<div style="color:var(--muted2);">'+ck+'</div>'+
+      '<div style="text-align:right;color:var(--muted2);">€'+Math.round(dmp).toLocaleString()+'</div>'+
+      '<div style="text-align:right;color:var(--muted2);">€'+Math.round(make).toLocaleString()+'</div>'+
+      '<div style="text-align:right;color:'+meta.color+';font-weight:700;">€'+Math.round(tpc).toLocaleString()+'</div>'+
+    '</div>';
+  });
+  if (!rows) return '';
+
+  // Plant-actual transformation cost (capacity-weighted across configured vehicle plants)
+  var ops=_prop.operations||{}, totCap=0, weighted=0;
+  (ops.vehicle_plants||[]).forEach(function(p){
+    var mfr=_ensureVehiclePlantManuf(p);
+    if(!mfr) return;
+    var cap=mfr.eff_capacity_yr||0;
+    totCap+=cap; weighted+=(mfr.manuf_var_total||0)*cap;
+  });
+  var actualMake = totCap>0 ? weighted/totCap : (_getRefManuf().manuf_var_total||0);
+  var delta = actualMake - totMake;
+  var deltaColor = delta<=0 ? 'var(--green)' : 'var(--red)';
+  var deltaStr = (delta>=0?'+':'')+'€'+Math.round(delta).toLocaleString();
+
+  var h = '<div style="border:1px solid var(--border2);border-radius:4px;padding:12px;margin-bottom:18px;background:var(--s2);">';
+  h += '<div style="font-family:DM Mono,monospace;font-size:8px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:10px;">OEM Transformation Standard Cost — from Sections 2-5</div>';
+  h += '<div style="display:grid;grid-template-columns:140px 1fr 70px 70px 70px;gap:8px;padding:0 0 4px 0;font-family:DM Mono,monospace;font-size:7px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;">'+
+       '<div>Module</div><div>Config</div><div style="text-align:right;">DMP €</div><div style="text-align:right;">Make €</div><div style="text-align:right;">TPC €</div></div>';
+  h += rows;
+  h += '<div style="display:grid;grid-template-columns:140px 1fr 70px 70px 70px;gap:8px;padding:6px 0 0 0;margin-top:4px;border-top:1px solid rgba(200,164,60,.3);font-family:DM Mono,monospace;font-size:9px;font-weight:700;">'+
+       '<div style="color:var(--gold);">TOTAL</div><div></div>'+
+       '<div style="text-align:right;color:var(--white);">€'+Math.round(totDmp).toLocaleString()+'</div>'+
+       '<div style="text-align:right;color:var(--white);">€'+Math.round(totMake).toLocaleString()+'</div>'+
+       '<div style="text-align:right;color:var(--gold);">€'+Math.round(totTpc).toLocaleString()+'</div></div>';
+  h += '<div style="display:flex;gap:18px;margin-top:10px;padding-top:8px;border-top:1px solid var(--border2);font-family:DM Mono,monospace;font-size:8px;flex-wrap:wrap;">'+
+       '<div><span style="color:var(--muted2);">Standard transformation (Make, §2-5):</span> <span style="color:var(--white);font-weight:700;">€'+Math.round(totMake).toLocaleString()+'/unit</span></div>'+
+       '<div><span style="color:var(--muted2);">Plant-actual transformation (§7):</span> <span style="color:var(--white);font-weight:700;">€'+Math.round(actualMake).toLocaleString()+'/unit</span></div>'+
+       '<div><span style="color:var(--muted2);">Delta vs standard:</span> <span style="color:'+deltaColor+';font-weight:700;">'+deltaStr+'</span></div>'+
+       '</div>';
+  h += '</div>';
+  return h;
+}
+
 function _calcFacilityInv(type,fac){
   var pk=_pwtKeyFromProp(),isEv=pk==='bev_only',isHybrid=pk==='ice_and_bev',hasIce=!isEv,hasBev=isEv||isHybrid;
   var targetKwh=((_prop.battery&&_prop.battery.module&&_prop.battery.module.specs&&_prop.battery.module.specs.target_kwh)||(_prop.battery&&_prop.battery.specs&&_prop.battery.specs.target_kwh))||60;
@@ -20481,7 +20547,8 @@ async function buildMfgPlantSection() {
   var CS='border-radius:4px;padding:12px;cursor:pointer;border:1px solid var(--gold);background:var(--s3);';
 
   var _allocMode2=(ops&&ops.allocation_mode)||'new',_selLk2=(ops&&ops.selected_plant_key)||null;
-  var html='<div id="prop-ops-footprint-area">'+_renderSimplifiedFootprint()+'</div>';
+  var html=_renderOemTransformationCostSummary();
+  html+='<div id="prop-ops-footprint-area">'+_renderSimplifiedFootprint()+'</div>';
   html+='<div id="prop-ops-alloc-area">';
   if(_allocMode2==='existing'&&_selLk2){html+=_renderPlantAllocationPanel(_selLk2);}
   else if(_allocMode2==='new'){html+=_renderAllocationDecision();}
