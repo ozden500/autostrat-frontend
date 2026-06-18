@@ -23247,6 +23247,7 @@ function renderStartCondEditor(team) {
     '</div>' +
     '<button onclick="applyDisruptorPreset(\'' + team.id + '\')" style="padding:6px 10px;border-radius:3px;border:1px solid rgba(251,191,36,.5);background:rgba(251,191,36,.1);color:#fbbf24;cursor:pointer;">🚀 Disruptor Preset</button>' +
     '<button onclick="saveStartCond(\'' + team.id + '\')" style="padding:6px 14px;border-radius:3px;border:1px solid rgba(99,102,241,.6);background:rgba(99,102,241,.15);color:#818cf8;cursor:pointer;font-weight:700;">Save</button>' +
+    '<button onclick="applyAndRegenHistory(\'' + team.id + '\')" style="padding:6px 10px;border-radius:3px;border:1px solid rgba(234,88,12,.6);background:rgba(234,88,12,.15);color:#fb923c;cursor:pointer;font-weight:700;">⚡ Apply & Regenerate History</button>' +
     '<button onclick="resetStartCond(\'' + team.id + '\')" style="padding:6px 10px;border-radius:3px;border:1px solid var(--border);background:var(--s2);color:var(--muted2);cursor:pointer;">Reset to Default</button>' +
   '</div>';
 }
@@ -23304,6 +23305,22 @@ async function resetStartCond(teamId) {
       toast('✓ Reset to default');
       await loadInstrHistory();
     } else toast('⚠ ' + (data.detail || 'Reset failed'));
+  } catch(e) { toast('⚠ ' + e.message); }
+}
+
+async function applyAndRegenHistory(teamId) {
+  if (!confirm('This will delete all AI-seeded vehicles and historical financials for this team, then recompute them using the saved starting conditions. Continue?')) return;
+  await saveStartCond(teamId);
+  try {
+    toast('⏳ Regenerating history...');
+    const res = await fetch(API_URL + '/sessions/' + sessionId + '/teams/' + teamId + '/apply-starting-conditions', {method: 'POST'});
+    const data = await res.json();
+    if (data.status === 'ok') {
+      toast('✓ History regenerated — ' + data.rounds_processed + ' rounds, ' + data.vehicles_removed + ' vehicles removed');
+      await loadInstrHistory();
+    } else {
+      toast('⚠ ' + (data.detail || JSON.stringify(data)));
+    }
   } catch(e) { toast('⚠ ' + e.message); }
 }
 
