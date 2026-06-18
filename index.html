@@ -2293,15 +2293,23 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
       <div>
         <div style="font-size:12px;color:var(--text);margin-bottom:4px;">Real-engine history — 20 quarters (Q1 2020 – Q4 2024)</div>
         <div style="font-family:'DM Mono',monospace;font-size:9px;color:var(--muted2);">
-          Creates AI vehicles for all teams via cost engines, then runs 20 market-clearing rounds using the same
+          Creates AI vehicles for all teams via cost engines, then runs market-clearing rounds using the same
           logit-share and COGS engines as live game rounds. Run once at session start before opening to players.
         </div>
       </div>
-      <div style="flex:1;"></div>
-      <button onclick="generateHistory()" id="btn-gen-history"
-        style="font-family:'DM Mono',monospace;font-size:10px;font-weight:700;padding:10px 20px;
-        border-radius:3px;border:1px solid rgba(99,102,241,.6);background:rgba(99,102,241,.12);
-        color:#818cf8;cursor:pointer;letter-spacing:.5px;">⚡ SETUP SESSION HISTORY</button>
+      <div style="display:flex;align-items:center;gap:10px;">
+        <div style="display:flex;align-items:center;gap:6px;font-family:'DM Mono',monospace;font-size:9px;color:var(--muted2);">
+          <label for="hist-n-quarters">Quarters</label>
+          <input type="number" id="hist-n-quarters" min="1" max="20" value="4"
+            style="width:52px;padding:4px 6px;background:var(--s2);border:1px solid var(--border);
+            color:var(--text);border-radius:3px;font-family:'DM Mono',monospace;font-size:9px;text-align:center;">
+          <span style="color:var(--muted2);">(1–20)</span>
+        </div>
+        <button onclick="generateHistory()" id="btn-gen-history"
+          style="font-family:'DM Mono',monospace;font-size:10px;font-weight:700;padding:10px 20px;
+          border-radius:3px;border:1px solid rgba(99,102,241,.6);background:rgba(99,102,241,.12);
+          color:#818cf8;cursor:pointer;letter-spacing:.5px;">⚡ SETUP SESSION HISTORY</button>
+      </div>
     </div>
   </div>
 
@@ -23346,11 +23354,14 @@ async function initAIFleet() {
 
 async function generateHistory() {
   if (!sessionId) { toast('\u26a0 No session selected'); return; }
+  var nQ = parseInt(document.getElementById('hist-n-quarters')?.value || '4', 10);
+  if (isNaN(nQ) || nQ < 1) nQ = 1;
+  if (nQ > 20) nQ = 20;
   var btn = document.getElementById('btn-gen-history');
-  if (btn) { btn.disabled = true; btn.textContent = '\u23f3 Running 20 rounds... (may take ~60s)'; }
+  if (btn) { btn.disabled = true; btn.textContent = '\u23f3 Running ' + nQ + ' rounds...'; }
 
   try {
-    const res  = await fetch(API_URL + '/sessions/' + sessionId + '/generate-history', {method:'POST'});
+    const res  = await fetch(API_URL + '/sessions/' + sessionId + '/generate-history?n_quarters=' + nQ, {method:'POST'});
     const data = await res.json();
     if (data.success) {
       if (data.status === 'already_exists') {
