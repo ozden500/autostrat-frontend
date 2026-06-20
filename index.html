@@ -1288,8 +1288,8 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
   <div class="kpi-grid g4">
     <div class="kpi kk-c"><div class="kl">Revenue (Qtr)</div><div class="kv" id="fin-revenue" style="color:var(--cyan)">€10,585M</div><div class="kd up" id="fin-revenue-delta">▲ +8.2%</div></div>
     <div class="kpi kk-g"><div class="kl">EBIT</div><div class="kv" id="fin-ebit" style="color:var(--gold)">€784M</div><div class="kd up" id="fin-ebit-pct">7.4% margin</div></div>
-    <div class="kpi kk-r"><div class="kl">Net Debt</div><div class="kv" id="fin-debt" style="color:var(--red)">€6,240M</div><div class="kd dn">1.5× EBITDA</div></div>
-    <div class="kpi kk-b"><div class="kl">Free Cash Flow</div><div class="kv" id="fin-cashflow">€455M</div><div class="kd up">▲ strong</div></div>
+    <div class="kpi kk-r"><div class="kl">Net Debt</div><div class="kv" id="fin-debt" style="color:var(--red)">€6,240M</div><div class="kd dn" id="fin-debt-sub">1.5× EBITDA</div></div>
+    <div class="kpi kk-b"><div class="kl">Free Cash Flow</div><div class="kv" id="fin-cashflow">€455M</div><div class="kd up" id="fin-cashflow-sub">▲ strong</div></div>
   </div>
   <div class="card" style="margin-bottom:12px;">
     <div class="card-title" id="pl-title">Quarterly P&L — Q2 2025</div>
@@ -13053,6 +13053,44 @@ async function loadFinancePanel() {
       } else {
         cov.style.display = 'none';
       }
+
+      // Top KPI tiles + P&L table — replace stale demo placeholders with real (or zero-state) data
+      var fmt2 = function(v, d) { return parseFloat(v||0).toLocaleString(undefined,{maximumFractionDigits:d||0}); };
+      var fmtEur = function(v) { var n = parseFloat(v)||0; return (n<0?'-':'')+'€'+fmt2(Math.abs(n))+'M'; };
+      var rev   = parseFloat(myStmt.net_revenue_m)||0;
+      var cogs  = parseFloat(myStmt.cogs_m)||0;
+      var gp    = parseFloat(myStmt.gross_profit_m)||0;
+      var rd    = parseFloat(myStmt.rd_expense_m)||0;
+      var sga   = parseFloat(myStmt.sga_m)||0;
+      var ebit  = parseFloat(myStmt.ebit_m)||0;
+      var ni    = parseFloat(myStmt.net_income_m)||0;
+      var cfo   = parseFloat(myStmt.cfo_total_m)||0;
+      var cfi   = parseFloat(myStmt.cfi_total_m)||0;
+      var fcf   = cfo + cfi;
+      var ebitPct = rev > 0 ? (ebit/rev*100).toFixed(1) : '0.0';
+      var netDebt = (parseFloat(myStmt.long_term_debt_m)||0) + (parseFloat(myStmt.short_term_debt_m)||0) - (parseFloat(myStmt.cash_m)||0);
+      var ndMult  = ebit > 0 ? (netDebt/ebit).toFixed(1)+'× EBITDA' : '—';
+
+      document.getElementById('fin-revenue').textContent       = fmtEur(rev);
+      document.getElementById('fin-revenue-delta').textContent = myStmt.is_opening_balance ? 'Pre-launch' : 'Last round';
+      document.getElementById('fin-ebit').textContent          = fmtEur(ebit);
+      document.getElementById('fin-ebit-pct').textContent      = ebitPct+'% margin';
+      document.getElementById('fin-debt').textContent          = fmtEur(netDebt);
+      document.getElementById('fin-debt-sub').textContent      = ndMult;
+      document.getElementById('fin-cashflow').textContent      = fmtEur(fcf);
+      document.getElementById('fin-cashflow-sub').textContent  = myStmt.is_opening_balance ? '—' : (fcf>=0?'▲ strong':'▼ negative');
+
+      var qLabel = (data.round && !data.round.is_historical) ? ('Q'+data.round.quarter+' '+data.round.year) : '';
+      if (qLabel) document.getElementById('pl-title').textContent = 'Quarterly P&L — '+qLabel;
+      document.getElementById('pl-rev').textContent  = fmt2(rev);
+      document.getElementById('pl-cogs').textContent = '-'+fmt2(cogs);
+      document.getElementById('pl-gp').textContent   = fmt2(gp);
+      document.getElementById('pl-rd').textContent   = '-'+fmt2(rd);
+      document.getElementById('pl-mktg').textContent = '-'+fmt2(sga);
+      document.getElementById('pl-ebit').textContent = fmt2(ebit);
+      var taxFin = ebit - ni;
+      document.getElementById('pl-tax').textContent  = '-'+fmt2(taxFin);
+      document.getElementById('pl-ni').textContent   = fmt2(ni);
     }
 
     // Check for pending decisions
