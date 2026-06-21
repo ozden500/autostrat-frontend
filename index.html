@@ -2448,10 +2448,10 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
         <div style="font-size:10px;color:var(--muted2);margin-top:4px;">If exceeded, module progress slows proportionally or by priority.</div>
       </div>
       <div>
-        <label style="font-size:12px;color:#94a3b8;display:block;margin-bottom:6px;">Engineering FTE cap <span style="color:var(--muted2)">(headcount / team)</span></label>
-        <input id="cfg-max-fte" type="number" min="0" placeholder="unlimited"
+        <label style="font-size:12px;color:#94a3b8;display:block;margin-bottom:6px;">Engineering FTE cap <span style="color:var(--muted2)">(FTE-months / quarter / team — NOT headcount)</span></label>
+        <input id="cfg-max-fte" type="number" min="0" placeholder="unlimited (recommended)"
           style="width:100%;background:var(--s2);border:1px solid var(--border);border-radius:6px;color:#f1f5f9;padding:9px 12px;font-size:14px;font-family:'DM Mono',monospace"/>
-        <div style="font-size:10px;color:var(--muted2);margin-top:4px;">Derived from R&D spend (60% FTE share). Both constraints apply independently.</div>
+        <div style="font-size:10px;color:var(--muted2);margin-top:4px;">Optional extra ceiling on top of each team's real tech-center capacity (Engineering &gt; Capacity tab) — most modules need 300–3,000+ FTE-months/quarter, so a small number here will silently stall all development. Leave blank unless you specifically want a tighter session-wide cap.</div>
       </div>
     </div>
     <div style="display:flex;align-items:center;gap:12px;">
