@@ -7037,10 +7037,8 @@ function _calcCapacityMetrics() {
 }
 
 function _calcModuleDemandFteMo() {
-  var totalOnroll = _engState.centers.reduce(function(s,c){ return s+(c.onroll||0); }, 0);
-  var totalHC     = _engState.centers.reduce(function(s,c){ return s+(c.onroll||0)+(c.contractor||0); }, 0);
   // Onroll engineers deliver more work per FTE-month; effect is hidden — shows up as lower demand
-  var prodFactor  = totalHC > 0 ? (1 - 0.25 * (totalOnroll / totalHC)) : 1.0;
+  var prodFactor  = _prodFactor();
   var rawDemand   = (teamModuleLibrary||[]).filter(function(m){
     return m.development_status==='in_development';
   }).reduce(function(s,m){
@@ -7049,6 +7047,31 @@ function _calcModuleDemandFteMo() {
     return s + rdFteM * 1e6 / 13333 / lt;
   }, 0);
   return Math.round(rawDemand * prodFactor);
+}
+
+function _prodFactor() {
+  var totalOnroll = _engState.centers.reduce(function(s,c){ return s+(c.onroll||0); }, 0);
+  var totalHC     = _engState.centers.reduce(function(s,c){ return s+(c.onroll||0)+(c.contractor||0); }, 0);
+  return totalHC > 0 ? (1 - 0.25 * (totalOnroll / totalHC)) : 1.0;
+}
+
+// demand[qabs] = { module_type: fte_months }
+function _calcFteDemandByQuarter(mods) {
+  var prodFactor = _prodFactor();
+  var demand = {};
+  (mods||[]).filter(function(m){
+    return m.submitted_year && m.ready_year && m.development_status!=='cancelled';
+  }).forEach(function(m){
+    var lt = Math.max(1, parseFloat(m.lead_time_quarters||4));
+    var fteMoPerQ = parseFloat(m.total_rd_spend_m||0) * 0.60 * 1e6 / 13333 / lt * prodFactor;
+    var qStart = (m.submitted_year-2025)*4+(m.submitted_quarter-1);
+    var qEnd   = (m.ready_year-2025)*4+(m.ready_quarter-1);
+    for (var q=qStart; q<qEnd; q++) {
+      demand[q] = demand[q] || {};
+      demand[q][m.module_type] = (demand[q][m.module_type]||0) + fteMoPerQ;
+    }
+  });
+  return demand;
 }
 
 function _updateBlendedFTERate() {
@@ -7254,6 +7277,31 @@ function buildEngCapacityTab() {
     h += '<div style="margin-top:8px;padding:7px 10px;background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.20);border-radius:4px;font-family:DM Mono,monospace;font-size:9px;color:var(--red);">▲ Module pipeline demand exceeds capacity by '+gap+' FTE-mo/qtr — R&D may be delayed.</div>';
   }
   h += '</div>';
+
+  // Forward-looking forecast chips — next 6 quarters, so teams see overload before they hit it
+  var todayQabsCap = (currentRoundYear - 2025) * 4 + (currentRoundQuarter - 1);
+  var fteByQ = _calcFteDemandByQuarter(teamModuleLibrary||[]);
+  h += '<div style="background:var(--s2);border:1px solid var(--border2);border-radius:6px;padding:14px;margin-bottom:16px;">';
+  h += '<div style="font-family:DM Mono,monospace;font-size:9px;color:var(--muted2);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px;">Quarterly FTE Forecast</div>';
+  h += '<div style="display:flex;gap:6px;flex-wrap:wrap;">';
+  for (var fq=todayQabsCap; fq<todayQabsCap+6; fq++) {
+    var qDemand = _ENG_MOD_ORDER.reduce(function(s,t){ return s+(fteByQ[fq]&&fteByQ[fq][t]||0); }, 0);
+    var qCovPct = m.qtrCapFteMo > 0 ? Math.round(qDemand / m.qtrCapFteMo * 100) : (qDemand > 0 ? 200 : 0);
+    var qStatus = (m.qtrCapFteMo===0 && qDemand===0) ? 'IDLE'
+                : qCovPct <= 90  ? 'OVERLOADED'
+                : qCovPct <= 110 ? 'TIGHT'
+                : 'OK';
+    var qColor = qStatus==='OK' ? 'var(--green)'
+               : qStatus==='TIGHT' ? 'var(--gold)'
+               : qStatus==='IDLE' ? 'var(--muted2)'
+               : 'var(--red)';
+    h += '<div style="flex:1;min-width:80px;background:var(--s3);border:1px solid '+qColor+';border-radius:5px;padding:8px 6px;text-align:center;">';
+    h += '<div style="font-family:DM Mono,monospace;font-size:8px;color:var(--muted2);margin-bottom:3px;">'+_qLabel(fq)+'</div>';
+    h += '<div style="font-family:Orbitron,sans-serif;font-size:11px;font-weight:700;color:'+qColor+';">'+Math.round(qDemand)+' FTE-mo</div>';
+    h += '<div style="font-family:DM Mono,monospace;font-size:7px;color:'+qColor+';letter-spacing:.5px;margin-top:2px;">'+qStatus+'</div>';
+    h += '</div>';
+  }
+  h += '</div></div>';
 
   // Centers section header
   h += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">';
@@ -7884,6 +7932,31 @@ function _renderEngineeringDashboard(mods, vehicles, todayQabs, sessionCfg) {
       '<span style="display:inline-block;width:10px;height:1.5px;background:rgba(250,204,21,.8);border-top:1.5px dashed rgba(250,204,21,.8);"></span>BUDGET CAP €'+sessionCfg.rd_budget_per_team_per_qtr_m+'M</span>';
   h += '</div></div></div>';
 
+  // ── FTE demand chart ──
+  if (!_engState._restored) { _restoreEngState(); _engState._restored=true; _updateBlendedFTERate(); }
+  var capMetrics = _calcCapacityMetrics();
+  h += '<div style="background:var(--s2);border-radius:4px;border:1px solid var(--border2);margin-bottom:14px;overflow:hidden;">';
+  h += '<div style="padding:10px 14px;border-bottom:1px solid var(--border);">';
+  h += '<span style="font-family:DM Mono,monospace;font-size:8px;letter-spacing:2px;color:var(--muted);text-transform:uppercase;">ENGINEERING FTE DEMAND — FTE-MO / QUARTER</span>';
+  h += '</div>';
+  h += '<div style="padding:14px;">';
+  h += '<canvas id="eng-fte-canvas" height="140" style="width:100%;display:block;"></canvas>';
+  // legend
+  h += '<div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:8px;">';
+  _ENG_MOD_ORDER.forEach(function(t){
+    if(!mods.find(function(m){return m.module_type===t;})) return;
+    h += '<span style="display:flex;align-items:center;gap:4px;font-family:DM Mono,monospace;font-size:8px;color:var(--muted2);">'+
+      '<span style="width:10px;height:8px;border-radius:1px;background:'+_ENG_MOD_COLORS[t]+';display:inline-block;"></span>'+
+      _ENG_MOD_LABELS[t]+'</span>';
+  });
+  h += '<span style="display:flex;align-items:center;gap:4px;font-family:DM Mono,monospace;font-size:8px;color:rgba(255,100,100,.7);">'+
+    '<span style="width:1px;height:10px;background:rgba(255,100,100,.7);display:inline-block;"></span>TODAY</span>';
+  h += '<span style="display:flex;align-items:center;gap:4px;font-family:DM Mono,monospace;font-size:8px;color:rgba(56,212,134,.8);">'+
+    '<span style="display:inline-block;width:10px;height:1.5px;background:rgba(56,212,134,.8);border-top:1.5px dashed rgba(56,212,134,.8);"></span>CAPACITY '+capMetrics.qtrCapFteMo+' FTE-MO/QTR</span>';
+  h += '<span style="display:flex;align-items:center;gap:4px;font-family:DM Mono,monospace;font-size:8px;color:rgba(239,68,68,.85);">'+
+    '<span style="display:inline-block;width:10px;height:8px;border:1.5px solid rgba(239,68,68,.85);"></span>OVER CAPACITY</span>';
+  h += '</div></div></div>';
+
   // ── Vehicle-module matrix ──
   var planV = vehicles.filter(function(v){return v.status!=='cancelled';});
   if (planV.length>0) {
@@ -7895,7 +7968,10 @@ function _renderEngineeringDashboard(mods, vehicles, todayQabs, sessionCfg) {
   }
 
   el.innerHTML = h;
-  setTimeout(function(){ _drawResourceChart(mods, todayQabs, sessionCfg); }, 60);
+  setTimeout(function(){
+    _drawResourceChart(mods, todayQabs, sessionCfg);
+    _drawFteChart(mods, todayQabs, capMetrics.qtrCapFteMo);
+  }, 60);
 }
 
 function _buildModuleGantt(mods, vehicles, todayQabs, sessionCfg) {
@@ -8115,6 +8191,103 @@ function _drawResourceChart(mods, todayQabs, sessionCfg) {
       ctx.setLineDash([]);
       ctx.fillStyle='rgba(250,204,21,.8)'; ctx.font='8px DM Mono,monospace'; ctx.textAlign='left';
       ctx.fillText('Budget cap €'+rdBudget+'M',PL+3,budgetY-3);
+    }
+  }
+}
+
+function _drawFteChart(mods, todayQabs, capFteMo) {
+  var canvas=document.getElementById('eng-fte-canvas');
+  if(!canvas) return;
+  canvas.width=canvas.offsetWidth||700;
+  var W=canvas.width, H=canvas.height;
+  var ctx=canvas.getContext('2d');
+  ctx.clearRect(0,0,W,H);
+
+  var active=mods.filter(function(m){return m.submitted_year&&m.ready_year&&m.development_status!=='cancelled';});
+  if(!active.length){
+    ctx.fillStyle='rgba(150,150,150,.3)'; ctx.font='11px DM Mono,monospace'; ctx.textAlign='center';
+    ctx.fillText('No active module developments',W/2,H/2); return;
+  }
+
+  // Quarter range
+  var allQ=[todayQabs];
+  active.forEach(function(m){
+    allQ.push((m.submitted_year-2025)*4+(m.submitted_quarter-1));
+    allQ.push((m.ready_year-2025)*4+(m.ready_quarter-1));
+  });
+  var qMin=Math.max(0,Math.min.apply(null,allQ)-1);
+  var qMax=Math.max.apply(null,allQ)+2;
+  if(qMax-qMin<8) qMax=qMin+8;
+  var numQ=qMax-qMin;
+
+  var demand=_calcFteDemandByQuarter(active);
+
+  var maxTotal=0;
+  for(var q=qMin;q<qMax;q++){
+    var tot=_ENG_MOD_ORDER.reduce(function(s,t){return s+(demand[q]&&demand[q][t]||0);},0);
+    if(tot>maxTotal) maxTotal=tot;
+  }
+  if(capFteMo>maxTotal) maxTotal=capFteMo;
+  if(maxTotal===0) maxTotal=10;
+
+  var PL=38,PB=22,PT=8,PR=10;
+  var cW=W-PL-PR, cH=H-PT-PB;
+  var bW=Math.max(4,Math.floor(cW/numQ)-2);
+
+  // Grid + Y labels
+  ctx.strokeStyle='rgba(255,255,255,.05)';
+  ctx.fillStyle='rgba(150,150,150,.5)';
+  ctx.font='8px DM Mono,monospace';
+  ctx.textAlign='right';
+  for(var yi=0;yi<=4;yi++){
+    var yVal=maxTotal*yi/4;
+    var yPx=PT+cH*(1-yi/4);
+    ctx.beginPath(); ctx.moveTo(PL,yPx); ctx.lineTo(W-PR,yPx); ctx.stroke();
+    ctx.fillText(Math.round(yVal),PL-3,yPx+3);
+  }
+
+  // Stacked bars — quarters over capacity get a red outline so overload is visible per-quarter
+  for(var q2=qMin;q2<qMax;q2++){
+    var xPx=PL+(q2-qMin)*(cW/numQ);
+    var stackBase=PT+cH;
+    var qTotal=_ENG_MOD_ORDER.reduce(function(s,t){return s+(demand[q2]&&demand[q2][t]||0);},0);
+    var overCap=capFteMo>0&&qTotal>capFteMo;
+    _ENG_MOD_ORDER.forEach(function(type){
+      var val=demand[q2]&&demand[q2][type]||0;
+      if(val<=0) return;
+      var bH=Math.max(1,val/maxTotal*cH);
+      var alpha=q2>todayQabs?'55':'cc';
+      ctx.fillStyle=_ENG_MOD_COLORS[type]+alpha;
+      ctx.fillRect(Math.round(xPx),Math.round(stackBase-bH),bW,Math.ceil(bH));
+      stackBase-=bH;
+    });
+    if(overCap){
+      ctx.strokeStyle='rgba(239,68,68,.85)'; ctx.lineWidth=1.5;
+      ctx.strokeRect(Math.round(xPx),Math.round(stackBase),bW,Math.ceil(PT+cH-stackBase));
+    }
+    // X label
+    ctx.fillStyle='rgba(150,150,150,.5)';
+    ctx.font='7px DM Mono,monospace'; ctx.textAlign='center';
+    ctx.fillText(_qLabel(q2),xPx+bW/2,H-5);
+  }
+
+  // Today line
+  var todayX=PL+(todayQabs-qMin+0.5)*(cW/numQ);
+  ctx.strokeStyle='rgba(255,80,80,.6)'; ctx.lineWidth=1.5;
+  ctx.setLineDash([3,2]);
+  ctx.beginPath(); ctx.moveTo(todayX,PT); ctx.lineTo(todayX,PT+cH); ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Capacity line
+  if(capFteMo>0&&capFteMo<=maxTotal*1.5){
+    var capY=PT+cH*(1-capFteMo/maxTotal);
+    if(capY>=PT&&capY<=PT+cH){
+      ctx.strokeStyle='rgba(56,212,134,.8)'; ctx.lineWidth=1.5;
+      ctx.setLineDash([5,3]);
+      ctx.beginPath(); ctx.moveTo(PL,capY); ctx.lineTo(W-PR,capY); ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle='rgba(56,212,134,.8)'; ctx.font='8px DM Mono,monospace'; ctx.textAlign='left';
+      ctx.fillText('Capacity '+Math.round(capFteMo)+' FTE-mo/qtr',PL+3,capY-3);
     }
   }
 }
