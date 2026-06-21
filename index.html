@@ -7087,16 +7087,39 @@ function _updateBlendedFTERate() {
 function _persistEngState() {
   if (!teamId) return;
   try { sessionStorage.setItem('as_engState_'+teamId, JSON.stringify(_engState)); } catch(e){}
+  // Backend is the real source of truth -- _advance_module_progress() reads this
+  // server-side to gate R&D progress against actual workforce capacity, so it must
+  // be persisted there too, not just cached in this browser's sessionStorage.
+  if (sessionId) {
+    fetch(API_URL+'/sessions/'+sessionId+'/teams/'+teamId+'/eng-centers', {
+      method:'PUT', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({centers: _engState.centers})
+    }).catch(function(e){ console.warn('persist eng-centers failed', e); });
+  }
 }
 
 function _restoreEngState() {
   if (!teamId) return;
   try {
     var raw = sessionStorage.getItem('as_engState_'+teamId);
-    if (!raw) return;
-    var d = JSON.parse(raw);
-    if (d.centers) _engState.centers = d.centers;
+    if (raw) { var d = JSON.parse(raw); if (d.centers) _engState.centers = d.centers; }
   } catch(e){}
+  // sessionStorage above gives an instant first render; refresh from the backend
+  // (authoritative, also reflects other devices/browsers) and re-render once it
+  // resolves -- covers a fresh browser with no local cache too.
+  if (sessionId) {
+    fetch(API_URL+'/sessions/'+sessionId+'/teams/'+teamId+'/eng-centers')
+      .then(function(r){ return r.json(); })
+      .then(function(d){
+        if (!d || !d.centers) return;
+        _engState.centers = d.centers;
+        try { sessionStorage.setItem('as_engState_'+teamId, JSON.stringify(_engState)); } catch(e){}
+        _updateBlendedFTERate();
+        if (document.getElementById('eng-capacity-content'))  buildEngCapacityTab();
+        if (document.getElementById('eng-dashboard-content')) buildEngineeringDashboard();
+      })
+      .catch(function(e){ console.warn('restore eng-centers failed', e); });
+  }
 }
 
 // ── Modal helpers ──────────────────────────────────────────────
