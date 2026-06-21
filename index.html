@@ -2562,6 +2562,8 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
 
     <div class="bc-modal-body">
 
+      <div id="bc-sop-conflict" style="display:none;margin-bottom:14px;"></div>
+
       <!-- Headline KPIs -->
       <div class="bc-kpi-row">
         <div class="bc-kpi npv">
@@ -8958,6 +8960,9 @@ function openBCModal(vehicleId) {
   if (approveBtn) approveBtn.style.display = v.status === 'plan'     ? 'block' : 'none';
   if (reviseBtn)  reviseBtn.style.display  = v.status === 'approved' ? 'block' : 'none';
 
+  var sopConflictEl = document.getElementById('bc-sop-conflict');
+  if (sopConflictEl) sopConflictEl.style.display = 'none';
+
   document.getElementById('bcModal').classList.add('open');
   recalcBC();
 }
@@ -8965,6 +8970,8 @@ function openBCModal(vehicleId) {
 function closeBCModal() {
   document.getElementById('bcModal').classList.remove('open');
   _bcVehicle = null;
+  var sopConflictEl = document.getElementById('bc-sop-conflict');
+  if (sopConflictEl) sopConflictEl.style.display = 'none';
 }
 
 function openModDetailModal(moduleId) {
@@ -9134,18 +9141,69 @@ function closeModDetailModal() {
   document.getElementById('modDetailModal').classList.remove('open');
 }
 
-async function approveBCVehicle() {
+function acceptNewSOPAndApproveBC(year, quarter) {
+  var el = document.getElementById('bc-sop-conflict');
+  if (el) el.style.display = 'none';
+  approveBCVehicle({year: year, quarter: quarter});
+}
+
+async function approveBCVehicle(acceptedSop) {
   if (!_bcVehicle) return;
   var vid  = _bcVehicle.id;
   var name = _bcVehicle.name;
   try {
+    var patch = {status: 'approved'};
+    var sopYear, sopQuarter;
+    if (acceptedSop) {
+      // Team already confirmed pushing the launch quarter back far enough to
+      // cover every blocking module's ready date -- a later SOP can only
+      // resolve existing blockers, never create new ones, so re-checking is
+      // redundant. Apply it directly and overwrite the vehicle's launch quarter.
+      sopYear = acceptedSop.year; sopQuarter = acceptedSop.quarter;
+      patch.start_year = sopYear; patch.start_quarter = sopQuarter;
+    } else {
+      sopYear    = _bcVehicle.start_year    || null;
+      sopQuarter = _bcVehicle.start_quarter || null;
+      var moduleIds = [_bcVehicle.platform_module_id, _bcVehicle.pwt_module_id,
+                       _bcVehicle.tophat_module_id, _bcVehicle.eands_module_id].filter(Boolean);
+      if (sopYear && moduleIds.length) {
+        try {
+          var params = new URLSearchParams();
+          if (_bcVehicle.platform_module_id) params.set('platform_module_id', _bcVehicle.platform_module_id);
+          if (_bcVehicle.pwt_module_id)      params.set('pwt_module_id',      _bcVehicle.pwt_module_id);
+          if (_bcVehicle.tophat_module_id)   params.set('tophat_module_id',   _bcVehicle.tophat_module_id);
+          if (_bcVehicle.eands_module_id)    params.set('eands_module_id',    _bcVehicle.eands_module_id);
+          params.set('sop_year', sopYear);
+          params.set('sop_quarter', sopQuarter||1);
+          var chk = await fetch(API_URL + '/vehicles/readiness-check?' + params.toString(),
+            { signal: AbortSignal.timeout(5000) });
+          var chkData = await chk.json();
+          if (!chkData.ok) {
+            var blockers = (chkData.modules||[]).filter(function(m){return m.blocks_sop;});
+            if (blockers.length > 0) {
+              _showSOPConflict(blockers, sopYear, sopQuarter||1, {
+                elId: 'bc-sop-conflict', onAccept: 'acceptNewSOPAndApproveBC', actionLabel: 'APPROVE',
+                replaceHint: 'Click \u2190 Revise to return this vehicle to PLAN, then swap the conflicting module for one ready in time'
+              });
+              return;
+            }
+            console.warn('Readiness check ok:false but no blocking modules:', chkData.modules);
+          }
+        } catch(e) { console.warn('Readiness check failed, continuing:', e); }
+      }
+    }
+
     const res = await fetch(API_URL + '/vehicles/' + vid, {
       method: 'PATCH', headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({status: 'approved'})
+      body: JSON.stringify(patch)
     });
     const data = await res.json();
     if (data.success) {
-      toast('\u2713 ' + name + ' APPROVED');
+      if (acceptedSop) {
+        toast('\u2713 Launch quarter moved to Q' + sopQuarter + ' ' + sopYear + ' \u2014 ' + name + ' APPROVED');
+      } else {
+        toast('\u2713 ' + name + ' APPROVED');
+      }
       closeBCModal();
       await loadVehiclePlan();
     } else toast('\u26a0 ' + (data.detail || 'Error'));
@@ -22167,8 +22225,13 @@ function calcPropBizCase() {
 }
 
 
-function _showSOPConflict(blockers, sopYear, sopQuarter) {
-  var el = document.getElementById('prop-sop-conflict');
+function _showSOPConflict(blockers, sopYear, sopQuarter, opts) {
+  opts = opts || {};
+  var elId        = opts.elId        || 'prop-sop-conflict';
+  var onAccept     = opts.onAccept     || 'acceptNewSOPAndResubmit';
+  var actionLabel  = opts.actionLabel  || 'SUBMIT';
+  var replaceHint  = opts.replaceHint  || 'Use the Back buttons above to go to Section 3, 4 or 5 and select a different (completed or earlier-ready) module';
+  var el = document.getElementById(elId);
   if (!el) return;
   if (!blockers || blockers.length === 0) { el.style.display = 'none'; return; }
 
@@ -22226,15 +22289,15 @@ function _showSOPConflict(blockers, sopYear, sopQuarter) {
         '<div style="display:flex;align-items:flex-start;gap:10px;background:var(--s3);border-radius:3px;padding:10px;">' +
           '<span style="font-size:16px;flex-shrink:0;">\ud83d\udd04</span>' +
           '<div><div style="font-size:11px;font-weight:600;color:var(--text);margin-bottom:2px;">Replace the conflicting module with one ready before ' + sopLabel + '</div>' +
-          '<div style="font-family:DM Mono,monospace;font-size:9px;color:var(--muted2);">Use the Back buttons above to go to Section 3, 4 or 5 and select a different (completed or earlier-ready) module</div></div>' +
+          '<div style="font-family:DM Mono,monospace;font-size:9px;color:var(--muted2);">' + replaceHint + '</div></div>' +
         '</div>' +
       '</div>' +
       '<div style="display:flex;align-items:center;justify-content:space-between;gap:14px;background:rgba(56,212,134,.08);border:1px solid rgba(56,212,134,.3);border-radius:5px;padding:12px 14px;">' +
         '<div><div style="font-size:11px;font-weight:600;color:var(--text);margin-bottom:2px;">Or push your launch quarter back to ' + minSopLabel + '</div>' +
         '<div style="font-family:DM Mono,monospace;font-size:9px;color:var(--muted2);">This will overwrite the SOP you set in the Product Plan study for this vehicle.</div></div>' +
-        '<button onclick="acceptNewSOPAndResubmit(' + minSopYear + ',' + minSopQtr + ')" style="flex-shrink:0;font-family:DM Mono,monospace;font-size:10px;font-weight:700;' +
+        '<button onclick="' + onAccept + '(' + minSopYear + ',' + minSopQtr + ')" style="flex-shrink:0;font-family:DM Mono,monospace;font-size:10px;font-weight:700;' +
           'padding:8px 16px;border-radius:3px;border:1px solid rgba(56,212,134,.5);background:rgba(56,212,134,.15);color:var(--green);cursor:pointer;white-space:nowrap;letter-spacing:.5px;">' +
-          '\u2713 ACCEPT ' + minSopLabel + ' &amp; SUBMIT</button>' +
+          '\u2713 ACCEPT ' + minSopLabel + ' &amp; ' + actionLabel + '</button>' +
       '</div>' +
     '</div>';
 }
