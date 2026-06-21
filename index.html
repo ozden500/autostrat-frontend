@@ -22207,7 +22207,7 @@ function _showSOPConflict(blockers, sopYear, sopQuarter) {
   el.style.display = 'block';
   el.innerHTML =
     '<div style="background:rgba(224,58,82,.08);border:1px solid rgba(224,58,82,.4);border-radius:5px;padding:18px;">' +
-      '<div style="font-family:DM Mono,monospace;font-size:9px;letter-spacing:2px;color:var(--red);text-transform:uppercase;margin-bottom:10px;">\u26a0 Start of Production Conflict \u2014 Cannot Submit</div>' +
+      '<div style="font-family:DM Mono,monospace;font-size:9px;letter-spacing:2px;color:var(--red);text-transform:uppercase;margin-bottom:10px;">\u26a0 Start of Production Conflict</div>' +
       '<p style="font-size:12px;color:var(--text);margin:0 0 10px;">Your vehicle is planned to launch <strong>' + sopLabel + '</strong>, but the following modules will not be ready in time:</p>' +
       '<table style="width:100%;border-collapse:collapse;margin-bottom:14px;">' +
         '<thead><tr>' +
@@ -22222,22 +22222,30 @@ function _showSOPConflict(blockers, sopYear, sopQuarter) {
         '<div style="font-size:13px;font-weight:700;color:var(--gold);">' + minSopLabel + '</div>' +
       '</div>' +
       '<div style="font-family:DM Mono,monospace;font-size:9px;color:var(--muted2);margin-bottom:6px;letter-spacing:1px;">TO RESOLVE, CHOOSE ONE:</div>' +
-      '<div style="display:flex;flex-direction:column;gap:6px;">' +
-        '<div style="display:flex;align-items:flex-start;gap:10px;background:var(--s3);border-radius:3px;padding:10px;">' +
-          '<span style="font-size:16px;flex-shrink:0;">\ud83d\udcc5</span>' +
-          '<div><div style="font-size:11px;font-weight:600;color:var(--text);margin-bottom:2px;">Move the SOP date to ' + minSopLabel + ' or later</div>' +
-          '<div style="font-family:DM Mono,monospace;font-size:9px;color:var(--muted2);">Go to Vehicle Plan \u2192 edit the study to push SOP by ' + (minSopQtr === sopQuarter && minSopYear === sopYear ? 0 : (maxQ - ((sopYear-2025)*4+(sopQuarter-1)))) + ' quarter(s)</div></div>' +
-        '</div>' +
+      '<div style="display:flex;flex-direction:column;gap:6px;margin-bottom:14px;">' +
         '<div style="display:flex;align-items:flex-start;gap:10px;background:var(--s3);border-radius:3px;padding:10px;">' +
           '<span style="font-size:16px;flex-shrink:0;">\ud83d\udd04</span>' +
           '<div><div style="font-size:11px;font-weight:600;color:var(--text);margin-bottom:2px;">Replace the conflicting module with one ready before ' + sopLabel + '</div>' +
           '<div style="font-family:DM Mono,monospace;font-size:9px;color:var(--muted2);">Use the Back buttons above to go to Section 3, 4 or 5 and select a different (completed or earlier-ready) module</div></div>' +
         '</div>' +
       '</div>' +
+      '<div style="display:flex;align-items:center;justify-content:space-between;gap:14px;background:rgba(56,212,134,.08);border:1px solid rgba(56,212,134,.3);border-radius:5px;padding:12px 14px;">' +
+        '<div><div style="font-size:11px;font-weight:600;color:var(--text);margin-bottom:2px;">Or push your launch quarter back to ' + minSopLabel + '</div>' +
+        '<div style="font-family:DM Mono,monospace;font-size:9px;color:var(--muted2);">This will overwrite the SOP you set in the Product Plan study for this vehicle.</div></div>' +
+        '<button onclick="acceptNewSOPAndResubmit(' + minSopYear + ',' + minSopQtr + ')" style="flex-shrink:0;font-family:DM Mono,monospace;font-size:10px;font-weight:700;' +
+          'padding:8px 16px;border-radius:3px;border:1px solid rgba(56,212,134,.5);background:rgba(56,212,134,.15);color:var(--green);cursor:pointer;white-space:nowrap;letter-spacing:.5px;">' +
+          '\u2713 ACCEPT ' + minSopLabel + ' &amp; SUBMIT</button>' +
+      '</div>' +
     '</div>';
 }
 
-async function confirmProposal() {
+function acceptNewSOPAndResubmit(year, quarter) {
+  var el = document.getElementById('prop-sop-conflict');
+  if (el) el.style.display = 'none';
+  confirmProposal({year: year, quarter: quarter});
+}
+
+async function confirmProposal(acceptedSop) {
   if (!_prop.study) { toast('\u26a0 No study selected'); return; }
   var vid = _prop.study.id;
   var btn = document.getElementById('prop-confirm-btn');
@@ -22347,7 +22355,15 @@ async function confirmProposal() {
     // \u2500\u2500 SOP readiness check \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
     var sopYear    = _prop.study.start_year    || null;
     var sopQuarter = _prop.study.start_quarter || null;
-    if (sopYear && (platformId || pwtId || epwtId || tophatId || eandsId)) {
+    if (acceptedSop) {
+      // Team already confirmed pushing the launch quarter back far enough to
+      // cover every blocking module's ready date (the max ready date across
+      // blockers, computed in _showSOPConflict) -- a later SOP can only
+      // resolve existing blockers, never create new ones, so re-checking is
+      // redundant. Apply it directly and overwrite the vehicle's launch quarter.
+      sopYear = acceptedSop.year; sopQuarter = acceptedSop.quarter;
+      patch.start_year = sopYear; patch.start_quarter = sopQuarter;
+    } else if (sopYear && (platformId || pwtId || epwtId || tophatId || eandsId)) {
       try {
         var params = new URLSearchParams();
         if (platformId) params.set('platform_module_id', platformId);
@@ -22380,7 +22396,11 @@ async function confirmProposal() {
     const data = await res.json();
 
     if (data.success) {
-      toast('\u2713 Proposal submitted \u2014 vehicle moved to PLAN');
+      if (acceptedSop) {
+        toast('\u2713 Launch quarter moved to Q' + sopQuarter + ' ' + sopYear + ' \u2014 proposal submitted');
+      } else {
+        toast('\u2713 Proposal submitted \u2014 vehicle moved to PLAN');
+      }
       // Activate any 'draft' modules created at the \u00a77\u21928 transition for this proposal
       [platformId, pwtId, epwtId, tophatId, eandsId].filter(Boolean).forEach(function(mid){
         fetch(API_URL + '/modules/' + mid + '/activate', { method: 'POST' })
