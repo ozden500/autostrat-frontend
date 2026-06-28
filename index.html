@@ -8389,12 +8389,17 @@ async function loadModulePipeline() {
     const allocMap    = {};
     if (hasPriority) {
       const byPri=[...allocInput].sort((a,b)=>a.pri-b.pri);
-      let rem=cap;
-      byPri.forEach(x=>{
-        const alloc=Math.min(x.fte, Math.max(0,rem)); rem-=alloc;
-        const mult=x.fte>0?alloc/x.fte:1.0;
-        allocMap[x.id]={mult, status:mult>=0.99?'FULL':mult>0?'THROTTLED':'FROZEN'};
-      });
+      let rem=cap, i=0;
+      while(i<byPri.length) {
+        const tierPri=byPri[i].pri;
+        const tier=[];
+        while(i<byPri.length && byPri[i].pri===tierPri) { tier.push(byPri[i]); i++; }
+        const tierTotal=tier.reduce((s,x)=>s+x.fte,0);
+        const tierAlloc=Math.min(tierTotal, Math.max(0,rem));
+        rem-=tierAlloc;
+        const ratio=tierTotal>0?tierAlloc/tierTotal:1.0;
+        tier.forEach(x=>{ allocMap[x.id]={mult:ratio, status:ratio>=0.99?'FULL':ratio>0?'THROTTLED':'FROZEN'}; });
+      }
     } else {
       const ratio=(cap>0&&totalFte>0)?Math.min(1.0,cap/totalFte):(totalFte===0?1.0:0.0);
       allocInput.forEach(x=>{ allocMap[x.id]={mult:ratio, status:ratio>=0.99?'FULL':'PRO-RATA'}; });
@@ -8449,8 +8454,8 @@ async function loadModulePipeline() {
           <div style="font-family:'DM Mono',monospace;font-size:8px;color:var(--muted2);">${m.module_type||''} · ${m.config_key||''} · €${rdReq.toFixed(1)}M/qtr req · ${readyLabel}</div>
           <div style="display:flex;align-items:center;gap:4px;">
             <span style="font-family:'DM Mono',monospace;font-size:8px;color:var(--muted2);">Pri:${priLabel}</span>
-            <button onclick="setModulePriority('${m.id}',${idx+1})" title="Increase priority" style="background:rgba(255,255,255,.06);border:1px solid var(--border);border-radius:3px;color:var(--muted);font-size:9px;padding:1px 5px;cursor:pointer;">▲</button>
-            <button onclick="setModulePriority('${m.id}',${idx+101})" title="Decrease priority" style="background:rgba(255,255,255,.06);border:1px solid var(--border);border-radius:3px;color:var(--muted);font-size:9px;padding:1px 5px;cursor:pointer;">▼</button>
+            <button onclick="setModulePriority('${m.id}',${idx>0 ? Math.max(1,(sorted[idx-1].priority_order??999)-1) : 1})" title="Increase priority" style="background:rgba(255,255,255,.06);border:1px solid var(--border);border-radius:3px;color:var(--muted);font-size:9px;padding:1px 5px;cursor:pointer;">▲</button>
+            <button onclick="setModulePriority('${m.id}',${idx<sorted.length-1 ? (sorted[idx+1].priority_order??999)+1 : 999})" title="Decrease priority" style="background:rgba(255,255,255,.06);border:1px solid var(--border);border-radius:3px;color:var(--muted);font-size:9px;padding:1px 5px;cursor:pointer;">▼</button>
             <button onclick="clearModulePriority('${m.id}')" title="Remove priority (proportional allocation)" style="background:rgba(255,255,255,.04);border:1px solid var(--border);border-radius:3px;color:var(--muted2);font-size:9px;padding:1px 5px;cursor:pointer;">✕</button>
           </div>
         </div>
