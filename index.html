@@ -7303,6 +7303,72 @@ function buildEngCapacityTab() {
   }
   h += '</div>';
 
+  // Per-module allocation preview — simulates backend waterfall/pro-rata for this round
+  (function() {
+    var cap = m.qtrCapFteMo;
+    var pf  = _prodFactor();
+    var inDevMods = (teamModuleLibrary||[]).filter(function(x){ return x.development_status==='in_development'; });
+    if (inDevMods.length === 0) return;
+    var modAlloc = inDevMods.map(function(x) {
+      var lt  = Math.max(1, parseFloat(x.lead_time_quarters||4));
+      var fte = Math.round(parseFloat(x.total_rd_spend_m||0) * 0.60 * 1e6 / 13333 / lt * pf);
+      return { id:x.id, name:x.name||'—', type:x.module_type||'', pri:x.priority_order??999, fte:fte };
+    });
+    var totalFte     = modAlloc.reduce(function(s,x){ return s+x.fte; }, 0);
+    var hasPriority  = modAlloc.some(function(x){ return x.pri < 999; });
+    var modeLabel    = hasPriority ? 'PRIORITY ORDER' : 'PRO-RATA';
+    var modeColor    = hasPriority ? 'var(--purple)' : 'var(--gold)';
+    if (hasPriority) {
+      modAlloc.sort(function(a,b){ return a.pri!==b.pri ? a.pri-b.pri : (a.name).localeCompare(b.name); });
+      var rem = cap;
+      modAlloc.forEach(function(x) {
+        var alloc = Math.min(x.fte, Math.max(0, rem));
+        rem -= alloc;
+        x._alloc = alloc;
+        x._mult  = x.fte > 0 ? alloc / x.fte : 1.0;
+        x._status = x._mult >= 0.99 ? 'FULL' : x._mult > 0 ? 'THROTTLED' : 'FROZEN';
+      });
+    } else {
+      var ratio = (cap > 0 && totalFte > 0) ? Math.min(1.0, cap / totalFte) : (totalFte === 0 ? 1.0 : 0.0);
+      modAlloc.forEach(function(x) {
+        x._alloc  = Math.round(x.fte * ratio);
+        x._mult   = ratio;
+        x._status = ratio >= 0.99 ? 'FULL' : 'PRO-RATA';
+      });
+    }
+    h += '<div style="background:var(--s2);border:1px solid var(--border2);border-radius:6px;padding:14px;margin-bottom:16px;">';
+    h += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">';
+    h += '<span style="font-family:DM Mono,monospace;font-size:9px;color:var(--muted2);text-transform:uppercase;letter-spacing:1px;">This Round — Per-Module Allocation</span>';
+    h += '<span style="font-family:DM Mono,monospace;font-size:8px;color:'+modeColor+';letter-spacing:1px;">'+modeLabel+'</span>';
+    h += '</div>';
+    modAlloc.forEach(function(x) {
+      var sc = x._status==='FULL'      ? 'var(--green)'
+             : x._status==='FROZEN'    ? 'var(--red)'
+             : x._status==='THROTTLED' ? '#f97316'
+             : 'var(--gold)';
+      var priTag = x.pri < 999
+        ? '<span style="background:rgba(139,92,246,.15);color:#c4b5fd;font-family:DM Mono,monospace;font-size:7px;padding:1px 5px;border-radius:3px;margin-right:5px;">P'+x.pri+'</span>'
+        : '<span style="background:rgba(255,255,255,.05);color:var(--muted2);font-family:DM Mono,monospace;font-size:7px;padding:1px 5px;border-radius:3px;margin-right:5px;">—</span>';
+      var pct = x._status==='FULL' ? 100 : x._status==='FROZEN' ? 0 : Math.round(x._mult*100);
+      var allocLabel = x._status==='FROZEN' ? '0 / '+x.fte+' FTE-mo' : x._alloc+' / '+x.fte+' FTE-mo';
+      h += '<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border);">';
+      h += '<span style="'+( x._status==='FROZEN' ? 'opacity:.45;' : '')+'">' + priTag + '</span>';
+      h += '<div style="flex:1;min-width:0;">';
+      h += '<div style="font-size:10px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">'+x.name+'</div>';
+      h += '<div style="font-family:DM Mono,monospace;font-size:8px;color:var(--muted2);">'+x.type+'</div>';
+      h += '</div>';
+      h += '<div style="text-align:right;min-width:120px;">';
+      h += '<div style="font-family:DM Mono,monospace;font-size:8px;color:var(--muted2);">'+allocLabel+'</div>';
+      h += '<div style="display:flex;align-items:center;gap:5px;justify-content:flex-end;margin-top:3px;">';
+      h += '<div style="width:60px;background:var(--s3);border-radius:2px;height:4px;overflow:hidden;">';
+      h += '<div style="height:100%;width:'+pct+'%;background:'+sc+';border-radius:2px;"></div>';
+      h += '</div>';
+      h += '<span style="font-family:DM Mono,monospace;font-size:8px;color:'+sc+';font-weight:700;">'+x._status+'</span>';
+      h += '</div></div></div>';
+    });
+    h += '</div>';
+  })();
+
   // Forward-looking forecast chips — next 6 quarters, so teams see overload before they hit it
   var todayQabsCap = (currentRoundYear - 2025) * 4 + (currentRoundQuarter - 1);
   var fteByQ = _calcFteDemandByQuarter(teamModuleLibrary||[]);
