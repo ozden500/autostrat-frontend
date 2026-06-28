@@ -2467,19 +2467,19 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:4px;">
       <div>
         <label style="font-size:12px;color:#94a3b8;display:block;margin-bottom:6px;">Build new plant <span style="color:var(--muted2)">(rounds)</span></label>
-        <input id="cfg-lt-plant-build" type="number" min="1" max="20" placeholder="4 (default)"
+        <input id="cfg-lt-plant-build" type="number" min="1" max="20" placeholder="1 (default)"
           style="width:100%;background:var(--s2);border:1px solid var(--border);border-radius:6px;color:#f1f5f9;padding:9px 12px;font-size:14px;font-family:'DM Mono',monospace"/>
         <div style="font-size:10px;color:var(--muted2);margin-top:4px;">Time from decision to plant becoming operational.</div>
       </div>
       <div>
         <label style="font-size:12px;color:#94a3b8;display:block;margin-bottom:6px;">Expand existing plant <span style="color:var(--muted2)">(rounds)</span></label>
-        <input id="cfg-lt-plant-expand" type="number" min="1" max="20" placeholder="2 (default)"
+        <input id="cfg-lt-plant-expand" type="number" min="1" max="20" placeholder="1 (default)"
           style="width:100%;background:var(--s2);border:1px solid var(--border);border-radius:6px;color:#f1f5f9;padding:9px 12px;font-size:14px;font-family:'DM Mono',monospace"/>
         <div style="font-size:10px;color:var(--muted2);margin-top:4px;">Time from decision to expanded capacity coming online.</div>
       </div>
       <div>
         <label style="font-size:12px;color:#94a3b8;display:block;margin-bottom:6px;">Component sourcing capacity <span style="color:var(--muted2)">(rounds)</span></label>
-        <input id="cfg-lt-module-capacity" type="number" min="1" max="12" placeholder="2 (default)"
+        <input id="cfg-lt-module-capacity" type="number" min="1" max="12" placeholder="1 (default)"
           style="width:100%;background:var(--s2);border:1px solid var(--border);border-radius:6px;color:#f1f5f9;padding:9px 12px;font-size:14px;font-family:'DM Mono',monospace"/>
         <div style="font-size:10px;color:var(--muted2);margin-top:4px;">Time from a §8 supplier-capacity investment to that capacity becoming usable for production.</div>
       </div>
@@ -12342,20 +12342,20 @@ async function loadSettingsPage() {
     const ltEl  = document.getElementById('cfg-min-lt');
     const rdEl  = document.getElementById('cfg-rd-budget');
     const fteEl = document.getElementById('cfg-max-fte');
-    if (ltEl)  ltEl.value  = cfg.min_lead_time_quarters ?? 2;
+    if (ltEl)  ltEl.value  = cfg.min_lead_time_quarters ?? 1;
     if (rdEl)  rdEl.value  = cfg.rd_budget_per_team_per_qtr_m != null ? cfg.rd_budget_per_team_per_qtr_m : '';
     if (fteEl) fteEl.value = cfg.max_eng_fte_per_team != null ? cfg.max_eng_fte_per_team : '';
     ['platform','ice-pwt','epwt','tophat','eands'].forEach(t => {
       const el = document.getElementById(`cfg-lt-${t}`);
       const key = `lt_${t.replace('-','_')}_q`;
-      if (el) el.value = cfg[key] != null ? cfg[key] : '';
+      if (el) el.value = cfg[key] != null ? cfg[key] : 1;
     });
     const pbEl = document.getElementById('cfg-lt-plant-build');
     const peEl = document.getElementById('cfg-lt-plant-expand');
-    if (pbEl) pbEl.value = cfg.lt_plant_build_q  != null ? cfg.lt_plant_build_q  : '';
-    if (peEl) peEl.value = cfg.lt_plant_expand_q != null ? cfg.lt_plant_expand_q : '';
+    if (pbEl) pbEl.value = cfg.lt_plant_build_q  != null ? cfg.lt_plant_build_q  : 1;
+    if (peEl) peEl.value = cfg.lt_plant_expand_q != null ? cfg.lt_plant_expand_q : 1;
     const mcEl = document.getElementById('cfg-lt-module-capacity');
-    if (mcEl) mcEl.value = cfg.lt_module_capacity_q != null ? cfg.lt_module_capacity_q : '';
+    if (mcEl) mcEl.value = cfg.lt_module_capacity_q != null ? cfg.lt_module_capacity_q : 1;
   } catch(e) { console.warn('loadSettingsPage:', e); }
 }
 
