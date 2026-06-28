@@ -2949,6 +2949,20 @@ function nav(page, el) {
   }
 }
 
+// Refresh engineering pipeline if it is currently the visible sub-tab
+function _refreshEngLabIfVisible() {
+  var engPage = document.getElementById('page-engineering');
+  var labView = document.getElementById('eng-lab-view');
+  if (engPage && engPage.classList.contains('active') &&
+      labView && labView.style.display !== 'none' && teamId) {
+    loadModulePipeline();
+  }
+}
+// Refresh stale engineering data whenever the user returns to this browser tab
+document.addEventListener('visibilitychange', function() {
+  if (document.visibilityState === 'visible') _refreshEngLabIfVisible();
+});
+
 // ══════════════════════════════════════════
 // FORM HELPERS
 // ══════════════════════════════════════════
@@ -6958,7 +6972,7 @@ function resetModuleForm() {
 async function loadModuleLibrary() {
   if (!teamId) return;
   try {
-    const res = await fetch(`${API_URL}/teams/${teamId}/modules`);
+    const res = await fetch(`${API_URL}/teams/${teamId}/modules`, {cache:'no-store'});
     const data = await res.json();
     teamModuleLibrary = data.modules||[];
     const libEl=document.getElementById('mod-library-list');
@@ -8404,7 +8418,7 @@ async function _pipeDrop(e, targetIdx) {
 async function loadModulePipeline() {
   if (!teamId) return;
   try {
-    const res=await fetch(`${API_URL}/teams/${teamId}/modules/pipeline`);
+    const res=await fetch(`${API_URL}/teams/${teamId}/modules/pipeline`, {cache:'no-store'});
     const data=await res.json();
     const pipeline=data.pipeline||[];
     const pipeEl=document.getElementById('mod-pipeline-list');
@@ -13039,6 +13053,7 @@ async function mcAdvanceRound() {
     if (data.ai_sim_teams && data.ai_sim_teams.length) aiNote = ' · AI ran for ' + data.ai_sim_teams.length + ' team(s)';
     toast('✓ Round ' + rnd.round_number + ' · Y'+(rnd.year-2024)+'Q'+rnd.quarter + (data.market_clearing?' · market cleared':'') + aiNote);
     await refreshInstructorHub();
+    _refreshEngLabIfVisible();
   } catch(e) {
     toast('⚠ ' + e.message);
   } finally {
