@@ -7303,72 +7303,6 @@ function buildEngCapacityTab() {
   }
   h += '</div>';
 
-  // Per-module allocation preview — simulates backend waterfall/pro-rata for this round
-  (function() {
-    var cap = m.qtrCapFteMo;
-    var pf  = _prodFactor();
-    var inDevMods = (teamModuleLibrary||[]).filter(function(x){ return x.development_status==='in_development'; });
-    if (inDevMods.length === 0) return;
-    var modAlloc = inDevMods.map(function(x) {
-      var lt  = Math.max(1, parseFloat(x.lead_time_quarters||4));
-      var fte = Math.round(parseFloat(x.total_rd_spend_m||0) * 0.60 * 1e6 / 13333 / lt * pf);
-      return { id:x.id, name:x.name||'—', type:x.module_type||'', pri:x.priority_order??999, fte:fte };
-    });
-    var totalFte     = modAlloc.reduce(function(s,x){ return s+x.fte; }, 0);
-    var hasPriority  = modAlloc.some(function(x){ return x.pri < 999; });
-    var modeLabel    = hasPriority ? 'PRIORITY ORDER' : 'PRO-RATA';
-    var modeColor    = hasPriority ? 'var(--purple)' : 'var(--gold)';
-    if (hasPriority) {
-      modAlloc.sort(function(a,b){ return a.pri!==b.pri ? a.pri-b.pri : (a.name).localeCompare(b.name); });
-      var rem = cap;
-      modAlloc.forEach(function(x) {
-        var alloc = Math.min(x.fte, Math.max(0, rem));
-        rem -= alloc;
-        x._alloc = alloc;
-        x._mult  = x.fte > 0 ? alloc / x.fte : 1.0;
-        x._status = x._mult >= 0.99 ? 'FULL' : x._mult > 0 ? 'THROTTLED' : 'FROZEN';
-      });
-    } else {
-      var ratio = (cap > 0 && totalFte > 0) ? Math.min(1.0, cap / totalFte) : (totalFte === 0 ? 1.0 : 0.0);
-      modAlloc.forEach(function(x) {
-        x._alloc  = Math.round(x.fte * ratio);
-        x._mult   = ratio;
-        x._status = ratio >= 0.99 ? 'FULL' : 'PRO-RATA';
-      });
-    }
-    h += '<div style="background:var(--s2);border:1px solid var(--border2);border-radius:6px;padding:14px;margin-bottom:16px;">';
-    h += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">';
-    h += '<span style="font-family:DM Mono,monospace;font-size:9px;color:var(--muted2);text-transform:uppercase;letter-spacing:1px;">This Round — Per-Module Allocation</span>';
-    h += '<span style="font-family:DM Mono,monospace;font-size:8px;color:'+modeColor+';letter-spacing:1px;">'+modeLabel+'</span>';
-    h += '</div>';
-    modAlloc.forEach(function(x) {
-      var sc = x._status==='FULL'      ? 'var(--green)'
-             : x._status==='FROZEN'    ? 'var(--red)'
-             : x._status==='THROTTLED' ? '#f97316'
-             : 'var(--gold)';
-      var priTag = x.pri < 999
-        ? '<span style="background:rgba(139,92,246,.15);color:#c4b5fd;font-family:DM Mono,monospace;font-size:7px;padding:1px 5px;border-radius:3px;margin-right:5px;">P'+x.pri+'</span>'
-        : '<span style="background:rgba(255,255,255,.05);color:var(--muted2);font-family:DM Mono,monospace;font-size:7px;padding:1px 5px;border-radius:3px;margin-right:5px;">—</span>';
-      var pct = x._status==='FULL' ? 100 : x._status==='FROZEN' ? 0 : Math.round(x._mult*100);
-      var allocLabel = x._status==='FROZEN' ? '0 / '+x.fte+' FTE-mo' : x._alloc+' / '+x.fte+' FTE-mo';
-      h += '<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border);">';
-      h += '<span style="'+( x._status==='FROZEN' ? 'opacity:.45;' : '')+'">' + priTag + '</span>';
-      h += '<div style="flex:1;min-width:0;">';
-      h += '<div style="font-size:10px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">'+x.name+'</div>';
-      h += '<div style="font-family:DM Mono,monospace;font-size:8px;color:var(--muted2);">'+x.type+'</div>';
-      h += '</div>';
-      h += '<div style="text-align:right;min-width:120px;">';
-      h += '<div style="font-family:DM Mono,monospace;font-size:8px;color:var(--muted2);">'+allocLabel+'</div>';
-      h += '<div style="display:flex;align-items:center;gap:5px;justify-content:flex-end;margin-top:3px;">';
-      h += '<div style="width:60px;background:var(--s3);border-radius:2px;height:4px;overflow:hidden;">';
-      h += '<div style="height:100%;width:'+pct+'%;background:'+sc+';border-radius:2px;"></div>';
-      h += '</div>';
-      h += '<span style="font-family:DM Mono,monospace;font-size:8px;color:'+sc+';font-weight:700;">'+x._status+'</span>';
-      h += '</div></div></div>';
-    });
-    h += '</div>';
-  })();
-
   // Forward-looking forecast chips — next 6 quarters, so teams see overload before they hit it
   var todayQabsCap = (currentRoundYear - 2025) * 4 + (currentRoundQuarter - 1);
   var fteByQ = _calcFteDemandByQuarter(teamModuleLibrary||[]);
@@ -8441,36 +8375,75 @@ async function loadModulePipeline() {
     const emptyEl=document.getElementById('mod-pipeline-empty');
     if(pipeline.length===0){ emptyEl.style.display='block'; pipeEl.innerHTML=''; return; }
     emptyEl.style.display='none';
+
+    // Simulate next-round allocation (mirrors backend waterfall/pro-rata logic)
+    const cap = _calcCapacityMetrics().qtrCapFteMo;
+    const pf  = _prodFactor();
+    const allocInput = pipeline.map(m => {
+      const lt  = Math.max(1, parseFloat(m.lead_time_quarters||4));
+      const fte = Math.round(parseFloat(m.total_rd_spend_m||0) * 0.60 * 1e6 / 13333 / lt * pf);
+      return { id:m.id, fte, lt, pri:m.priority_order??999 };
+    });
+    const totalFte    = allocInput.reduce((s,x)=>s+x.fte, 0);
+    const hasPriority = allocInput.some(x=>x.pri<999);
+    const allocMap    = {};
+    if (hasPriority) {
+      const byPri=[...allocInput].sort((a,b)=>a.pri-b.pri);
+      let rem=cap;
+      byPri.forEach(x=>{
+        const alloc=Math.min(x.fte, Math.max(0,rem)); rem-=alloc;
+        const mult=x.fte>0?alloc/x.fte:1.0;
+        allocMap[x.id]={mult, status:mult>=0.99?'FULL':mult>0?'THROTTLED':'FROZEN'};
+      });
+    } else {
+      const ratio=(cap>0&&totalFte>0)?Math.min(1.0,cap/totalFte):(totalFte===0?1.0:0.0);
+      allocInput.forEach(x=>{ allocMap[x.id]={mult:ratio, status:ratio>=0.99?'FULL':'PRO-RATA'}; });
+    }
+    const modeLabel=hasPriority?'PRIORITY ORDER':'PRO-RATA';
+    const modeColor=hasPriority?'#c4b5fd':'var(--gold)';
+
     // Sort by priority_order ascending, then by name
     const sorted=[...pipeline].sort((a,b)=>{
       const pa=(a.priority_order??999), pb=(b.priority_order??999);
       return pa!==pb?pa-pb:(a.name||'').localeCompare(b.name||'');
     });
-    pipeEl.innerHTML=sorted.map((m,idx)=>{
+
+    let html=`<div style="display:flex;justify-content:space-between;align-items:center;padding-bottom:8px;margin-bottom:4px;border-bottom:1px solid var(--border2);">
+      <span style="font-family:'DM Mono',monospace;font-size:8px;color:var(--muted2);text-transform:uppercase;letter-spacing:1px;">Next Round Allocation</span>
+      <span style="font-family:'DM Mono',monospace;font-size:8px;color:${modeColor};letter-spacing:1px;">${modeLabel}</span>
+    </div>`;
+
+    html+=sorted.map((m,idx)=>{
       const pip=m.pipeline||{};
       const pct=Math.min(100,Math.round(parseFloat(pip.progress_pct||0)));
       const remaining=pip.quarters_remaining??'?';
       const rdReq=parseFloat(pip.rd_budget_required_per_qtr_m||0);
-      const rdAlloc=parseFloat(pip.rd_budget_allocated_per_qtr_m||0);
-      const underfunded=rdReq>0&&rdAlloc<rdReq*0.99;
-      const allocPct=rdReq>0?Math.round(rdAlloc/rdReq*100):100;
       const readyLabel=m.ready_year?`Est. ready Y${m.ready_year-2024}Q${m.ready_quarter}`:'—';
       const priOrder=m.priority_order??999;
       const priLabel=priOrder<999?`P${priOrder}`:'—';
-      const fundBadge=underfunded
-        ?`<span style="background:#7f1d1d;color:#fca5a5;font-size:8px;padding:1px 5px;border-radius:3px;margin-left:4px;">⚠ ${allocPct}% funded</span>`
-        :'';
+
+      const alloc=allocMap[m.id]||{mult:1.0,status:'FULL'};
+      const lt=Math.max(1,parseFloat(m.lead_time_quarters||4));
+      const incrPct=Math.min(Math.round(100/lt*alloc.mult), 100-pct);
+      const sc=alloc.status==='FULL'?'#22c55e':alloc.status==='FROZEN'?'#ef4444':'#f97316';
+      const allocLabel=alloc.status==='THROTTLED'||alloc.status==='PRO-RATA'
+        ?`▶ ${Math.round(alloc.mult*100)}%`
+        :alloc.status==='FROZEN'?'▶ FROZEN':'▶ FULL';
+      const allocBg=alloc.status==='FULL'?'rgba(34,197,94,.12)':alloc.status==='FROZEN'?'rgba(239,68,68,.12)':'rgba(249,115,22,.12)';
+      const allocBadge=`<span style="background:${allocBg};color:${sc};font-family:'DM Mono',monospace;font-size:8px;padding:1px 6px;border-radius:3px;letter-spacing:.5px;">${allocLabel}</span>`;
+
       return `<div style="padding:10px 0;border-bottom:1px solid var(--border);" id="pipe-row-${m.id}">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px;">
           <span style="font-size:11px;font-weight:600;">${m.name||'—'}${m.development_type==='modify'?' <span style="color:var(--purple);font-size:8px;">MOD</span>':''}</span>
           <div style="display:flex;align-items:center;gap:6px;">
-            ${fundBadge}
+            ${allocBadge}
             <span style="font-family:'DM Mono',monospace;font-size:9px;color:var(--gold);">${pct}%</span>
             <span style="font-family:'DM Mono',monospace;font-size:9px;color:var(--muted2);">${remaining} qtrs left</span>
           </div>
         </div>
-        <div style="height:4px;background:var(--border2);border-radius:2px;overflow:hidden;margin-bottom:4px;">
-          <div style="height:100%;width:${pct}%;background:${underfunded?'#f97316':'var(--gold)'};border-radius:2px;transition:width 0.3s;"></div>
+        <div style="height:5px;background:var(--border2);border-radius:2px;overflow:hidden;margin-bottom:5px;display:flex;">
+          <div style="height:100%;width:${pct}%;background:var(--gold);flex-shrink:0;"></div>
+          <div style="height:100%;width:${incrPct}%;background:${sc};opacity:0.65;flex-shrink:0;"></div>
         </div>
         <div style="display:flex;justify-content:space-between;align-items:center;">
           <div style="font-family:'DM Mono',monospace;font-size:8px;color:var(--muted2);">${m.module_type||''} · ${m.config_key||''} · €${rdReq.toFixed(1)}M/qtr req · ${readyLabel}</div>
@@ -8483,6 +8456,8 @@ async function loadModulePipeline() {
         </div>
       </div>`;
     }).join('');
+
+    pipeEl.innerHTML=html;
   } catch(e){ console.warn('loadModulePipeline:',e); }
 }
 
