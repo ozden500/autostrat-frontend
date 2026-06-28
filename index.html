@@ -7260,9 +7260,9 @@ function buildEngCapacityTab() {
   var demand = _calcModuleDemandFteMo();
   var covPct = m.qtrCapFteMo > 0 ? Math.round(demand / m.qtrCapFteMo * 100) : (demand > 0 ? 200 : 0);
   var covStatus = (m.qtrCapFteMo===0 && demand===0) ? 'NO MODULES'
-                : covPct <= 90  ? 'OVERLOADED'
+                : covPct <= 90  ? 'HEALTHY'
                 : covPct <= 110 ? 'TIGHT'
-                : 'HEALTHY';
+                : 'OVERLOADED';
   var statusColor = covStatus==='HEALTHY' ? 'var(--green)'
                   : covStatus==='TIGHT'   ? 'var(--gold)'
                   : covStatus==='NO MODULES' ? 'var(--muted2)'
@@ -7313,9 +7313,9 @@ function buildEngCapacityTab() {
     var qDemand = _ENG_MOD_ORDER.reduce(function(s,t){ return s+(fteByQ[fq]&&fteByQ[fq][t]||0); }, 0);
     var qCovPct = m.qtrCapFteMo > 0 ? Math.round(qDemand / m.qtrCapFteMo * 100) : (qDemand > 0 ? 200 : 0);
     var qStatus = (m.qtrCapFteMo===0 && qDemand===0) ? 'IDLE'
-                : qCovPct <= 90  ? 'OVERLOADED'
+                : qCovPct <= 90  ? 'OK'
                 : qCovPct <= 110 ? 'TIGHT'
-                : 'OK';
+                : 'OVERLOADED';
     var qColor = qStatus==='OK' ? 'var(--green)'
                : qStatus==='TIGHT' ? 'var(--gold)'
                : qStatus==='IDLE' ? 'var(--muted2)'
