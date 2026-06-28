@@ -2453,6 +2453,13 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
           style="width:100%;background:var(--s2);border:1px solid var(--border);border-radius:6px;color:#f1f5f9;padding:9px 12px;font-size:14px;font-family:'DM Mono',monospace"/>
         <div style="font-size:10px;color:var(--muted2);margin-top:4px;">Optional extra ceiling on top of each team's real tech-center capacity (Engineering &gt; Capacity tab) — most modules need 300–3,000+ FTE-months/quarter, so a small number here will silently stall all development. Leave blank unless you specifically want a tighter session-wide cap.</div>
       </div>
+      <div>
+        <label style="font-size:12px;color:#94a3b8;display:block;margin-bottom:6px;">Engineering productivity factor <span style="color:var(--muted2)">(0.75 – 1.0)</span></label>
+        <input id="cfg-eng-prod-factor" type="number" min="0.75" max="1.0" step="0.05" placeholder="1.0 (default)"
+          style="width:100%;background:var(--s2);border:1px solid var(--border);border-radius:6px;color:#f1f5f9;padding:9px 12px;font-size:14px;font-family:'DM Mono',monospace"/>
+        <div style="font-size:10px;color:var(--muted2);margin-top:4px;">Reduces effective FTE demand for all teams. 1.0 = no boost (standard). 0.75 = 25% less FTE-months consumed (fully onroll engineers). Applied uniformly across the session.</div>
+      </div>
+      <div></div>
     </div>
     <div style="display:flex;align-items:center;gap:12px;">
       <button onclick="settingsSave()" style="background:#4c1d95;color:#c4b5fd;border:1px solid #7c3aed;border-radius:7px;padding:9px 22px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;">💾 Save Settings</button>
@@ -7066,6 +7073,7 @@ function _calcModuleDemandFteMo() {
 }
 
 function _prodFactor() {
+  if (_sessionEngProdFactor !== null) return _sessionEngProdFactor;
   var totalOnroll = _engState.centers.reduce(function(s,c){ return s+(c.onroll||0); }, 0);
   var totalHC     = _engState.centers.reduce(function(s,c){ return s+(c.onroll||0)+(c.contractor||0); }, 0);
   return totalHC > 0 ? (1 - 0.25 * (totalOnroll / totalHC)) : 1.0;
@@ -7886,6 +7894,7 @@ async function buildEngineeringDashboard() {
     } catch(pe){ /* non-critical */ }
     var sessionCfg = {};
     if (cfgR && cfgR.ok) { try { var cd = await cfgR.json(); sessionCfg = cd.config||{}; } catch(e){} }
+    _sessionEngProdFactor = (sessionCfg.eng_prod_factor != null) ? parseFloat(sessionCfg.eng_prod_factor) : null;
 
     var todayQabs = (currentRoundYear - 2025) * 4 + (currentRoundQuarter - 1);
     _renderEngineeringDashboard(mods, vehicles, todayQabs, sessionCfg);
@@ -8382,6 +8391,7 @@ function _buildVehicleModuleMatrix(mods, vehicles) {
 // ── Pipeline drag-and-drop state ──────────────────────────────
 var _pipeSorted = [];
 var _pipeDragIdx = null;
+var _sessionEngProdFactor = null; // null = use per-team calc; set from session config
 
 function _pipeDragStart(e, idx) {
   _pipeDragIdx = idx;
@@ -8418,6 +8428,17 @@ async function _pipeDrop(e, targetIdx) {
 async function loadModulePipeline() {
   if (!teamId) return;
   try {
+    // Refresh session prod factor so pipeline simulation matches backend behaviour
+    if (sessionId) {
+      try {
+        const cfgR = await fetch(`${API_URL}/sessions/${sessionId}/config`, {cache:'no-store'});
+        if (cfgR.ok) {
+          const cd = await cfgR.json();
+          const pf = (cd.config||{}).eng_prod_factor;
+          _sessionEngProdFactor = (pf != null) ? parseFloat(pf) : null;
+        }
+      } catch(e) {}
+    }
     const res=await fetch(`${API_URL}/teams/${teamId}/modules/pipeline`, {cache:'no-store'});
     const data=await res.json();
     const pipeline=data.pipeline||[];
@@ -12417,6 +12438,9 @@ async function loadSettingsPage() {
     if (peEl) peEl.value = cfg.lt_plant_expand_q != null ? cfg.lt_plant_expand_q : 1;
     const mcEl = document.getElementById('cfg-lt-module-capacity');
     if (mcEl) mcEl.value = cfg.lt_module_capacity_q != null ? cfg.lt_module_capacity_q : 1;
+    const pfEl = document.getElementById('cfg-eng-prod-factor');
+    if (pfEl) pfEl.value = cfg.eng_prod_factor != null ? cfg.eng_prod_factor : 1.0;
+    _sessionEngProdFactor = cfg.eng_prod_factor != null ? parseFloat(cfg.eng_prod_factor) : null;
   } catch(e) { console.warn('loadSettingsPage:', e); }
 }
 
@@ -12442,6 +12466,8 @@ async function settingsSave() {
   body.lt_plant_expand_q = peVal ? parseInt(peVal) : null;
   const mcVal = document.getElementById('cfg-lt-module-capacity')?.value?.trim();
   body.lt_module_capacity_q = mcVal ? parseInt(mcVal) : null;
+  const pfVal = document.getElementById('cfg-eng-prod-factor')?.value?.trim();
+  body.eng_prod_factor = pfVal ? Math.min(1.0, Math.max(0.75, parseFloat(pfVal))) : 1.0;
   try {
     const res = await fetch(`${API_URL}/sessions/${sessionId}/config`, {
       method: 'PATCH', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body)
