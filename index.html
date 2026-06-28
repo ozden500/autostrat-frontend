@@ -8365,6 +8365,42 @@ function _buildVehicleModuleMatrix(mods, vehicles) {
   return h;
 }
 
+// ── Pipeline drag-and-drop state ──────────────────────────────
+var _pipeSorted = [];
+var _pipeDragIdx = null;
+
+function _pipeDragStart(e, idx) {
+  _pipeDragIdx = idx;
+  e.dataTransfer.effectAllowed = 'move';
+}
+function _pipeDragOver(e, idx) {
+  e.preventDefault();
+  e.dataTransfer.dropEffect = 'move';
+  document.querySelectorAll('[data-pipe-idx]').forEach(function(el) {
+    el.style.outline = '';
+  });
+  var el = document.querySelector('[data-pipe-idx="'+idx+'"]');
+  if (el) el.style.outline = '1px solid rgba(139,92,246,.6)';
+}
+function _pipeDragLeave() {
+  document.querySelectorAll('[data-pipe-idx]').forEach(function(el) { el.style.outline = ''; });
+}
+async function _pipeDrop(e, targetIdx) {
+  e.preventDefault();
+  document.querySelectorAll('[data-pipe-idx]').forEach(function(el) { el.style.outline = ''; });
+  if (_pipeDragIdx === null || _pipeDragIdx === targetIdx) { _pipeDragIdx = null; return; }
+  var moved = _pipeSorted.splice(_pipeDragIdx, 1)[0];
+  _pipeSorted.splice(targetIdx, 0, moved);
+  _pipeDragIdx = null;
+  var updates = _pipeSorted.map(function(m, i) { return { id: m.id, priority_order: i + 1 }; });
+  try {
+    await fetch(API_URL+'/teams/'+teamId+'/modules/priorities', {
+      method:'PATCH', headers:{'Content-Type':'application/json'}, body:JSON.stringify(updates)
+    });
+  } catch(err) { console.warn('_pipeDrop save:', err); }
+  await loadModulePipeline();
+}
+
 async function loadModulePipeline() {
   if (!teamId) return;
   try {
@@ -8376,88 +8412,72 @@ async function loadModulePipeline() {
     if(pipeline.length===0){ emptyEl.style.display='block'; pipeEl.innerHTML=''; return; }
     emptyEl.style.display='none';
 
-    // Simulate next-round allocation (mirrors backend waterfall/pro-rata logic)
-    const cap = _calcCapacityMetrics().qtrCapFteMo;
-    const pf  = _prodFactor();
-    const allocInput = pipeline.map(m => {
-      const lt  = Math.max(1, parseFloat(m.lead_time_quarters||4));
-      const fte = Math.round(parseFloat(m.total_rd_spend_m||0) * 0.60 * 1e6 / 13333 / lt * pf);
-      return { id:m.id, fte, lt, pri:m.priority_order??999 };
-    });
-    const totalFte    = allocInput.reduce((s,x)=>s+x.fte, 0);
-    const hasPriority = allocInput.some(x=>x.pri<999);
-    const allocMap    = {};
-    if (hasPriority) {
-      const byPri=[...allocInput].sort((a,b)=>a.pri-b.pri);
-      let rem=cap, i=0;
-      while(i<byPri.length) {
-        const tierPri=byPri[i].pri;
-        const tier=[];
-        while(i<byPri.length && byPri[i].pri===tierPri) { tier.push(byPri[i]); i++; }
-        const tierTotal=tier.reduce((s,x)=>s+x.fte,0);
-        const tierAlloc=Math.min(tierTotal, Math.max(0,rem));
-        rem-=tierAlloc;
-        const ratio=tierTotal>0?tierAlloc/tierTotal:1.0;
-        tier.forEach(x=>{ allocMap[x.id]={mult:ratio, status:ratio>=0.99?'FULL':ratio>0?'THROTTLED':'FROZEN'}; });
-      }
-    } else {
-      const ratio=(cap>0&&totalFte>0)?Math.min(1.0,cap/totalFte):(totalFte===0?1.0:0.0);
-      allocInput.forEach(x=>{ allocMap[x.id]={mult:ratio, status:ratio>=0.99?'FULL':'PRO-RATA'}; });
-    }
-    const modeLabel=hasPriority?'PRIORITY ORDER':'PRO-RATA';
-    const modeColor=hasPriority?'#c4b5fd':'var(--gold)';
-
-    // Sort by priority_order ascending, then by name
-    const sorted=[...pipeline].sort((a,b)=>{
+    // Sort by priority_order ascending, then by name — this IS the allocation order
+    _pipeSorted=[...pipeline].sort((a,b)=>{
       const pa=(a.priority_order??999), pb=(b.priority_order??999);
       return pa!==pb?pa-pb:(a.name||'').localeCompare(b.name||'');
     });
 
-    let html=`<div style="display:flex;justify-content:space-between;align-items:center;padding-bottom:8px;margin-bottom:4px;border-bottom:1px solid var(--border2);">
-      <span style="font-family:'DM Mono',monospace;font-size:8px;color:var(--muted2);text-transform:uppercase;letter-spacing:1px;">Next Round Allocation</span>
-      <span style="font-family:'DM Mono',monospace;font-size:8px;color:${modeColor};letter-spacing:1px;">${modeLabel}</span>
+    // Simulate next-round allocation: strict waterfall in rank order
+    const cap = _calcCapacityMetrics().qtrCapFteMo;
+    const pf  = _prodFactor();
+    const allocMap = {};
+    let rem = cap;
+    _pipeSorted.forEach(function(m) {
+      const lt  = Math.max(1, parseFloat(m.lead_time_quarters||4));
+      const fte = Math.round(parseFloat(m.total_rd_spend_m||0) * 0.60 * 1e6 / 13333 / lt * pf);
+      const alloc = Math.min(fte, Math.max(0, rem)); rem -= alloc;
+      const mult  = fte > 0 ? alloc / fte : 1.0;
+      allocMap[m.id] = { mult, fte, status: mult>=0.99?'FULL':mult>0?'THROTTLED':'FROZEN' };
+    });
+
+    let html = `<div style="display:flex;justify-content:space-between;align-items:center;padding-bottom:8px;margin-bottom:4px;border-bottom:1px solid var(--border2);">
+      <span style="font-family:'DM Mono',monospace;font-size:8px;color:var(--muted2);text-transform:uppercase;letter-spacing:1px;">Drag to reprioritize · top gets resources first</span>
+      <span style="font-family:'DM Mono',monospace;font-size:8px;color:var(--muted2);">Capacity: ${cap} FTE-mo/qtr</span>
     </div>`;
 
-    html+=sorted.map((m,idx)=>{
+    html += _pipeSorted.map(function(m, idx) {
       const pip=m.pipeline||{};
       const pct=Math.min(100,Math.round(parseFloat(pip.progress_pct||0)));
       const remaining=pip.quarters_remaining??'?';
       const rdReq=parseFloat(pip.rd_budget_required_per_qtr_m||0);
       const readyLabel=m.ready_year?`Est. ready Y${m.ready_year-2024}Q${m.ready_quarter}`:'—';
-      const priOrder=m.priority_order??999;
-      const priLabel=priOrder<999?`P${priOrder}`:'—';
 
-      const alloc=allocMap[m.id]||{mult:1.0,status:'FULL'};
+      const alloc=allocMap[m.id]||{mult:1.0,fte:0,status:'FULL'};
       const lt=Math.max(1,parseFloat(m.lead_time_quarters||4));
       const incrPct=Math.min(Math.round(100/lt*alloc.mult), 100-pct);
       const sc=alloc.status==='FULL'?'#22c55e':alloc.status==='FROZEN'?'#ef4444':'#f97316';
-      const allocLabel=alloc.status==='THROTTLED'||alloc.status==='PRO-RATA'
-        ?`▶ ${Math.round(alloc.mult*100)}%`
-        :alloc.status==='FROZEN'?'▶ FROZEN':'▶ FULL';
+      const allocLabel=alloc.status==='THROTTLED'?`▶ ${Math.round(alloc.mult*100)}%`
+                      :alloc.status==='FROZEN'?'▶ FROZEN':'▶ FULL';
       const allocBg=alloc.status==='FULL'?'rgba(34,197,94,.12)':alloc.status==='FROZEN'?'rgba(239,68,68,.12)':'rgba(249,115,22,.12)';
+      const rankLabel=`<span style="font-family:'DM Mono',monospace;font-size:8px;color:var(--muted2);min-width:18px;text-align:center;">#${idx+1}</span>`;
       const allocBadge=`<span style="background:${allocBg};color:${sc};font-family:'DM Mono',monospace;font-size:8px;padding:1px 6px;border-radius:3px;letter-spacing:.5px;">${allocLabel}</span>`;
 
-      return `<div style="padding:10px 0;border-bottom:1px solid var(--border);" id="pipe-row-${m.id}">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px;">
-          <span style="font-size:11px;font-weight:600;">${m.name||'—'}${m.development_type==='modify'?' <span style="color:var(--purple);font-size:8px;">MOD</span>':''}</span>
-          <div style="display:flex;align-items:center;gap:6px;">
-            ${allocBadge}
-            <span style="font-family:'DM Mono',monospace;font-size:9px;color:var(--gold);">${pct}%</span>
-            <span style="font-family:'DM Mono',monospace;font-size:9px;color:var(--muted2);">${remaining} qtrs left</span>
+      return `<div data-pipe-idx="${idx}"
+          draggable="true"
+          ondragstart="_pipeDragStart(event,${idx})"
+          ondragover="_pipeDragOver(event,${idx})"
+          ondragleave="_pipeDragLeave()"
+          ondrop="_pipeDrop(event,${idx})"
+          style="padding:10px 0;border-bottom:1px solid var(--border);display:flex;gap:8px;align-items:flex-start;cursor:grab;" id="pipe-row-${m.id}">
+        <div style="color:var(--muted2);font-size:14px;padding-top:2px;user-select:none;cursor:grab;" title="Drag to reorder">⠿</div>
+        <div style="flex:1;min-width:0;">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px;">
+            <span style="display:flex;align-items:center;gap:6px;">
+              ${rankLabel}
+              <span style="font-size:11px;font-weight:600;">${m.name||'—'}${m.development_type==='modify'?' <span style="color:var(--purple);font-size:8px;">MOD</span>':''}</span>
+            </span>
+            <div style="display:flex;align-items:center;gap:6px;">
+              ${allocBadge}
+              <span style="font-family:'DM Mono',monospace;font-size:9px;color:var(--gold);">${pct}%</span>
+              <span style="font-family:'DM Mono',monospace;font-size:9px;color:var(--muted2);">${remaining} qtrs left</span>
+            </div>
           </div>
-        </div>
-        <div style="height:5px;background:var(--border2);border-radius:2px;overflow:hidden;margin-bottom:5px;display:flex;">
-          <div style="height:100%;width:${pct}%;background:var(--gold);flex-shrink:0;"></div>
-          <div style="height:100%;width:${incrPct}%;background:${sc};opacity:0.65;flex-shrink:0;"></div>
-        </div>
-        <div style="display:flex;justify-content:space-between;align-items:center;">
-          <div style="font-family:'DM Mono',monospace;font-size:8px;color:var(--muted2);">${m.module_type||''} · ${m.config_key||''} · €${rdReq.toFixed(1)}M/qtr req · ${readyLabel}</div>
-          <div style="display:flex;align-items:center;gap:4px;">
-            <span style="font-family:'DM Mono',monospace;font-size:8px;color:var(--muted2);">Pri:${priLabel}</span>
-            <button onclick="setModulePriority('${m.id}',${idx>0 ? Math.max(1,(sorted[idx-1].priority_order??999)-1) : 1})" title="Increase priority" style="background:rgba(255,255,255,.06);border:1px solid var(--border);border-radius:3px;color:var(--muted);font-size:9px;padding:1px 5px;cursor:pointer;">▲</button>
-            <button onclick="setModulePriority('${m.id}',${idx<sorted.length-1 ? (sorted[idx+1].priority_order??999)+1 : 999})" title="Decrease priority" style="background:rgba(255,255,255,.06);border:1px solid var(--border);border-radius:3px;color:var(--muted);font-size:9px;padding:1px 5px;cursor:pointer;">▼</button>
-            <button onclick="clearModulePriority('${m.id}')" title="Remove priority (proportional allocation)" style="background:rgba(255,255,255,.04);border:1px solid var(--border);border-radius:3px;color:var(--muted2);font-size:9px;padding:1px 5px;cursor:pointer;">✕</button>
+          <div style="height:5px;background:var(--border2);border-radius:2px;overflow:hidden;margin-bottom:5px;display:flex;">
+            <div style="height:100%;width:${pct}%;background:var(--gold);flex-shrink:0;"></div>
+            <div style="height:100%;width:${incrPct}%;background:${sc};opacity:0.65;flex-shrink:0;"></div>
           </div>
+          <div style="font-family:'DM Mono',monospace;font-size:8px;color:var(--muted2);">${m.module_type||''} · ${m.config_key||''} · €${rdReq.toFixed(1)}M/qtr req · ${alloc.fte} FTE-mo needed · ${readyLabel}</div>
         </div>
       </div>`;
     }).join('');
@@ -8466,25 +8486,6 @@ async function loadModulePipeline() {
   } catch(e){ console.warn('loadModulePipeline:',e); }
 }
 
-async function setModulePriority(moduleId, order) {
-  try {
-    await fetch(`${API_URL}/modules/${moduleId}/priority`, {
-      method:'PATCH', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({priority_order: order})
-    });
-    await loadModulePipeline();
-  } catch(e){ console.warn('setModulePriority:',e); }
-}
-
-async function clearModulePriority(moduleId) {
-  try {
-    await fetch(`${API_URL}/modules/${moduleId}/priority`, {
-      method:'PATCH', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({priority_order: 999})
-    });
-    await loadModulePipeline();
-  } catch(e){ console.warn('clearModulePriority:',e); }
-}
 
 // ── VEHICLE PLAN ──────────────────────────────────────────────
 async function loadVehiclePlan() {
