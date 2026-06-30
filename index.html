@@ -23719,7 +23719,14 @@ async function saveStartCond(teamId) {
     });
     const data = await res.json();
     if (data.success) {
-      toast('✓ Starting conditions saved');
+      // Saving disruptor conditions (skip vehicles) auto-purges historical results.
+      if (data.history_reset && data.history_reset.status === 'ok') {
+        toast('✓ Saved — history reset (' + data.history_reset.vehicles_removed + ' vehicles removed)');
+      } else if (data.history_reset && data.history_reset.status === 'error') {
+        toast('✓ Saved, but history reset failed: ' + (data.history_reset.detail || 'unknown'));
+      } else {
+        toast('✓ Starting conditions saved');
+      }
       await loadInstrHistory();
     } else toast('⚠ ' + (data.detail || 'Save failed'));
   } catch(e) { toast('⚠ ' + e.message); }
