@@ -15545,12 +15545,22 @@ async function loadPerformanceData() {
         Object.keys(mktSeries).forEach(function(tid) {
           var ro = ros_for_round.find(function(r){ return r.team_id === tid; });
           var fh = (finHist[tid] || {})[rnd.id] || null;  // real financial statement
-          var rev  = parseFloat(ro && ro.revenue_m || 0);
-          var cogs = parseFloat(ro && ro.cogs_m || 0);
-          var gp   = parseFloat(ro && ro.gross_profit_m || rev - cogs);
+          // Use null for rounds where a team has no outcome (new entrant / disrupter); avoids
+          // plotting a misleading flat-zero line during the pre-entry historical period.
+          if (!ro) {
+            mktSeries[tid].revenue.push(null);
+            mktSeries[tid].ebit.push(null);
+            mktSeries[tid].share.push(null);
+            mktSeries[tid].units.push(null);
+            mktSeries[tid].score.push(null);
+            return;
+          }
+          var rev  = parseFloat(ro.revenue_m || 0);
+          var cogs = parseFloat(ro.cogs_m || 0);
+          var gp   = parseFloat(ro.gross_profit_m || rev - cogs);
           // Use real accrual EBIT from financial engine; fall back to clearing proxy
-          var ebit = fh ? parseFloat(fh.ebit_m || 0) : parseFloat(ro && ro.ebit_m || gp * 0.7);
-          var units = parseInt(ro && ro.total_units_sold || 0);
+          var ebit = fh ? parseFloat(fh.ebit_m || 0) : parseFloat(ro.ebit_m || gp * 0.7);
+          var units = parseInt(ro.total_units_sold || 0);
           var ebitPct = rev > 0 ? ebit / rev * 100 : 0;
           var myVos = vos_for_round.filter(function(v){ return v.team_id === tid; });
           var totalSharePct = myVos.reduce(function(s,v){ return s + parseFloat(v.market_share_pct||0); }, 0);
@@ -15904,9 +15914,10 @@ function drawLineChart(chartId, legendId, labels, teams, teamMap, teamSeries, me
   const ch = H - pad.top - pad.bottom;
   const n  = labels.length;
 
-  // Gather all values to find min/max
+  // Gather all non-null values to find min/max (null = team not yet active that round)
   let allVals = [];
-  teams.forEach(t => { allVals = allVals.concat(teamSeries[t.id][metric]); });
+  teams.forEach(t => { allVals = allVals.concat((teamSeries[t.id][metric] || []).filter(v => v != null)); });
+  if (!allVals.length) { el.innerHTML = '<div class="perf-no-data">No data yet</div>'; return; }
   const minV = Math.min(...allVals) * 0.95;
   const maxV = Math.max(...allVals) * 1.05 || 1;
   const range = maxV - minV || 1;
@@ -15929,17 +15940,24 @@ function drawLineChart(chartId, legendId, labels, teams, teamMap, teamSeries, me
     svg += `<text x="${xPos(i)}" y="${H-4}" text-anchor="middle" font-size="8" fill="#475569">${lbl}</text>`;
   });
 
-  // Lines per team
+  // Lines per team — null gaps break the path (new entrants invisible before first outcome)
   teams.forEach(t => {
     const color = teamMap[t.id]?.color || '#4a8ce0';
     const vals  = teamSeries[t.id][metric];
-    if (vals.length < 1) return;
+    if (!vals || !vals.length) return;
+    if (vals.every(v => v == null)) return; // team has no data at all — skip entirely
 
-    let path = vals.map((v, i) => `${i===0?'M':'L'}${xPos(i).toFixed(1)},${yPos(v).toFixed(1)}`).join(' ');
-    svg += `<path d="${path}" fill="none" stroke="${color}" stroke-width="2" stroke-linejoin="round" opacity="0.9"/>`;
-
-    // Dots
+    let path = '', penDown = false;
     vals.forEach((v, i) => {
+      if (v == null) { penDown = false; return; }
+      path += (penDown ? 'L' : 'M') + xPos(i).toFixed(1) + ',' + yPos(v).toFixed(1) + ' ';
+      penDown = true;
+    });
+    if (path) svg += `<path d="${path.trim()}" fill="none" stroke="${color}" stroke-width="2" stroke-linejoin="round" opacity="0.9"/>`;
+
+    // Dots — skip null positions
+    vals.forEach((v, i) => {
+      if (v == null) return;
       svg += `<circle cx="${xPos(i).toFixed(1)}" cy="${yPos(v).toFixed(1)}" r="3" fill="${color}" stroke="#07080d" stroke-width="1.5"/>`;
     });
   });
@@ -15947,10 +15965,11 @@ function drawLineChart(chartId, legendId, labels, teams, teamMap, teamSeries, me
   svg += '</svg>';
   el.innerHTML = svg;
 
-  // Legend — highlight current user's team
+  // Legend — only include teams that have at least one data point
   const legendEl = document.getElementById(legendId);
   if (legendEl) {
-    legendEl.innerHTML = teams.map(t => {
+    const activeTeams = teams.filter(t => (teamSeries[t.id][metric] || []).some(v => v != null));
+    legendEl.innerHTML = activeTeams.map(t => {
       const color  = teamMap[t.id]?.color || '#4a8ce0';
       const isYou  = currentUser && t.name === currentUser.team_name;
       const style  = isYou ? 'font-weight:700;color:#fff' : '';
