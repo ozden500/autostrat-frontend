@@ -946,7 +946,7 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
     <div class="kpi kk-c"><div class="kl">Revenue (Qtr)</div><div class="kv" id="kpi-revenue" style="color:var(--cyan)">€10,585</div><div class="kd up" id="kpi-revenue-delta">▲ +8.2%</div></div>
     <div class="kpi kk-g"><div class="kl">EBIT Margin</div><div class="kv" id="kpi-ebit" style="color:var(--gold)">7.4%</div><div class="kd up" id="kpi-ebit-delta">▲ +0.8pp</div></div>
     <div class="kpi kk-b"><div class="kl">Market Share</div><div class="kv" id="kpi-share">14.2%</div><div class="kd up" id="kpi-share-delta">▲ +0.4pp</div></div>
-    <div class="kpi kk-r"><div class="kl">Net Debt</div><div class="kv" id="kpi-debt" style="color:var(--red)">€6,240</div><div class="kd dn">1.5× EBITDA</div></div>
+    <div class="kpi kk-r"><div class="kl">Net Debt</div><div class="kv" id="kpi-debt" style="color:var(--red)">€6,240</div><div class="kd dn" id="kpi-debt-sub">1.5× EBITDA</div></div>
     <div class="kpi kk-p"><div class="kl">Score Rank</div><div class="kv" id="kpi-rank" style="color:var(--blue)">#1</div><div class="kd neu" id="kpi-rank-sub">of 12 OEMs</div></div>
   </div>
   <div class="kpi-grid g2" style="margin-bottom:10px;">
@@ -2944,7 +2944,7 @@ function nav(page, el) {
   if(page==='market') buildMktBars();
   if(page==='plan') loadVehiclePlan();
   if(page==='proposal') loadVehicleProposal();
-  if(page==='dashboard') loadTeamHistoricalSummary();
+  if(page==='dashboard') { loadTeamHistoricalSummary(); loadCommandCenterKPIs(); }
   if(page==='commercial') loadCommercialPage();
   if(page==='market-intel') loadMarketIntel();
   if(page==='brands') loadBrandsPage();
@@ -11651,6 +11651,9 @@ async function teamJoinSession() {
 function enterSimulator() {
   applyUserContext(currentUser);
   document.getElementById('login-overlay').classList.add('hidden');
+  // Dashboard is the default active page — replace its hard-coded prototype KPI
+  // tiles with this team's real (or empty) baseline on first paint.
+  if (currentUser.role !== 'instructor') loadCommandCenterKPIs();
   if (currentUser.role !== 'instructor') startRoundStatePolling();
   sessionStorage.setItem('as_sessionId', sessionId || '');
   sessionStorage.setItem('as_teamId',    teamId    || '');
@@ -23980,6 +23983,72 @@ async function loadTeamHistoricalSummary() {
   } catch(e) { console.warn('loadTeamHistoricalSummary:', e); }
 }
 
+// Reset the Command Center KPI strip to a clean "no results yet" baseline so a
+// team that has not been market-cleared never shows the static prototype numbers
+// that are hard-coded in the page markup (€10,585 / 7.4% / 14.2% / €6,240 / #1).
+function _resetCommandCenterKPIs() {
+  var set = function(id, val){ var e=document.getElementById(id); if(e) e.textContent=val; };
+  set('kpi-revenue', '€0');
+  set('kpi-revenue-delta', 'No results yet');
+  set('kpi-ebit', '—');
+  set('kpi-ebit-delta', 'No results yet');
+  set('kpi-share', '0.0%');
+  set('kpi-share-delta', 'No results yet');
+  set('kpi-debt', '—');
+  set('kpi-debt-sub', '');
+  set('kpi-rank', '#—');
+  set('kpi-rank-sub', 'of 12 OEMs');
+  ['kpi-revenue-delta','kpi-ebit-delta','kpi-share-delta'].forEach(function(id){
+    var e=document.getElementById(id); if(e) e.className='kd neu';
+  });
+}
+
+// Populate the Command Center KPI strip from this team's real market-clearing
+// results. Always starts from a clean baseline, so if no round has cleared (e.g.
+// Round 1 Decision Phase, or a disruptor starting from zero) the tiles show an
+// empty baseline rather than the prototype placeholder values.
+async function loadCommandCenterKPIs() {
+  _resetCommandCenterKPIs();              // never leave prototype values on screen
+  if (!sessionId || !teamId) return;
+  try {
+    var res  = await fetch(API_URL + '/sessions/' + sessionId + '/performance-dashboard?team_id=' + teamId);
+    var dash = await res.json();
+    var kpis = dash.kpis || {};
+    if (kpis.revenue_m == null) return;   // no cleared round yet → keep baseline
+    var set = function(id, val){ var e=document.getElementById(id); if(e) e.textContent=val; };
+
+    set('kpi-revenue', '€' + Math.round(kpis.revenue_m).toLocaleString());
+    var ebitMargin = kpis.revenue_m > 0 ? (kpis.ebit_m / kpis.revenue_m * 100) : 0;
+    set('kpi-ebit', ebitMargin.toFixed(1) + '%');
+    set('kpi-ebit-delta', 'EBIT margin');
+    set('kpi-rank', kpis.revenue_rank ? '#' + kpis.revenue_rank : '#—');
+    set('kpi-rank-sub', 'of ' + (kpis.total_teams || 12) + ' OEMs');
+
+    // Market share = sum of this team's vehicle shares in the latest round
+    var latestId = (dash.latest_round || {}).id;
+    var share = (dash.vehicle_outcomes || [])
+      .filter(function(v){ return v.team_id === teamId && v.round_id === latestId; })
+      .reduce(function(s,v){ return s + parseFloat(v.market_share_pct || 0); }, 0);
+    set('kpi-share', share.toFixed(1) + '%');
+    set('kpi-share-delta', 'Total market share');
+
+    // Revenue delta vs previous quarter (provided by the dashboard endpoint)
+    var rd = document.getElementById('kpi-revenue-delta');
+    if (rd) {
+      if (kpis.revenue_delta_pct != null) {
+        var dp = kpis.revenue_delta_pct;
+        rd.textContent = (dp >= 0 ? '▲ +' : '▼ ') + Math.abs(dp) + '% vs prev Q';
+        rd.className = 'kd ' + (dp >= 0 ? 'up' : 'dn');
+      } else {
+        rd.textContent = 'Last round result';
+        rd.className = 'kd neu';
+      }
+    }
+    // Net debt is not part of the clearing KPIs — leave it at the '—' baseline
+    // rather than showing the prototype €6,240.
+  } catch(e) { console.warn('loadCommandCenterKPIs:', e); /* baseline already shown */ }
+}
+
 function renderTeamHistoricalKPIs(data) {
   // Find this team's historical outcomes
   var myOutcomes = (data.outcomes || []).filter(function(o){ return o.team_id === teamId; })
@@ -25565,6 +25634,8 @@ function drawRadar() {
       currentUser = { role, team_name: tname || 'Instructor', color_hex: color || '#7c3aed' };
     }
     console.log('Restored session:', sid.substring(0,8), 'role:', role);
+    // Replace the dashboard's hard-coded prototype KPI tiles on reload.
+    if (role !== 'instructor' && typeof loadCommandCenterKPIs === 'function') loadCommandCenterKPIs();
   }
 })();
 </script>
