@@ -19351,7 +19351,26 @@ var _MODINV_E = (function() {
     return Math.round(base * m * labF);
   }
 
-  return {investment:investment, workContent:workContent, capScale:capScale,
+  // Supplier-park greenfield capex (€M) for one module: tooling the suppliers install for the
+  // bought content of this module. A fraction of the module's own base, scaled by volume only —
+  // NO plant-automation multiplier (supplier tooling doesn't track the OEM's automation level).
+  // BUY modules carry more supplier capex (supplier makes the whole part). Target: a medium ICE
+  // vehicle (platform+tophat+eands) ≈ €40M.
+  function isBuy(s){ var ck=((s||{}).config_key||'').toUpperCase(); return ck.slice(-4)==='_BUY' || (s||{}).make_buy==='BUY'; }
+  function supplierInvestment(mod, o){
+    o=o||{}; var s=o.specs||{}, capK=o.cap_k||1;
+    var seg=o.segment_code||'c_segment', sz=o.platform_size||'medium', cs=capScale(capK), base=0;
+    if(mod==='platform')      base = (PLAT_INV[sz]||67) * 0.18;                       // bought stampings/sub-assemblies
+    else if(mod==='tophat')   base = (TH_INV[seg]||47) * 0.38;                        // seats/interior/trim (heavily outsourced)
+    else if(mod==='eands')    base = (TH_INV[seg]||47) * 0.20 * (isBuy(s)?1.30:1.00); // electronics/ADAS — mostly bought
+    else if(mod==='epwt')     base = epwtBase(s.config_key).inv * 0.30 * (isBuy(s)?1.50:1.00);
+    else if(mod==='battery'){ var kwh=parseFloat(s.target_kwh)||60;
+      var chem=(s.chemistry||'NMC').toUpperCase().replace(/[^A-Z_]/g,'');
+      base = (18+0.70*kwh) * 0.20 * (BAT_CHEM[chem]||1.00) * (isBuy(s)?2.00:1.00); }
+    return Math.round(base * cs * 10)/10;
+  }
+
+  return {investment:investment, workContent:workContent, supplierInvestment:supplierInvestment, capScale:capScale,
           V_REF:V_REF, AUTO_INV:AUTO_INV, AUTO_LAB:AUTO_LAB, MULTI_ENERGY_STEP:MULTI_ENERGY_STEP};
 })();
 
@@ -19776,18 +19795,16 @@ function _calcFacilityInv(type,fac){
     if(hasIce)gf.pwt={inv_m:_MODINV_E.investment('pwt',_mCtx('pwt',pCapK,pAl,false)),cap_k:pCapK};
     if(hasBev){gf.epwt={inv_m:_MODINV_E.investment('epwt',_mCtx('epwt',pCapK,pAl,false)),cap_k:pCapK};gf.battery={inv_m:_MODINV_E.investment('battery',_mCtx('battery',pCapK,pAl,false)),cap_k:pCapK};}
   } else if(type==='supplier_parks'){
-    var epwtCk=(_prop.epwt&&_prop.epwt.module&&_prop.epwt.module.config_key)||'';
-    var batCk=(_prop.battery&&_prop.battery.module&&_prop.battery.module.config_key)||(_prop.battery&&_prop.battery.specs&&_prop.battery.specs.make_buy==='BUY'?'_BUY':'');
-    var eandsCk=(_prop.eands&&_prop.eands.module&&_prop.eands.module.config_key)||'';
-    var epwtBuy=epwtCk.toUpperCase().endsWith('_BUY'),batBuy=batCk.toUpperCase().endsWith('_BUY'),eandsBuy=eandsCk.toUpperCase().endsWith('_BUY');
+    // Per-module supplier-park capex (bottom-up, no plant-automation scaling). Mirrors the plant
+    // engine so §8 supplier capex stays proportionate to §7 plant capex.
     if(!fac._computed)fac._computed={};fac._computed.eff_capacity_yr=refCapK*1000;
-    gf.platform={inv_m:Math.max(1,Math.round(0.18*ib)),cap_k:refCapK};
-    gf.tophat={inv_m:Math.max(1,Math.round(0.30*0.40*ia)),cap_k:refCapK};
-    gf.eands={inv_m:Math.max(1,Math.round((eandsBuy?0.55:0.25)*(ia-Math.round(0.40*ia)))),cap_k:refCapK};
+    var _sctx=function(k){return {specs:_msp(k),segment_code:seg,body_type:bt,platform_size:psz,pwt_type:pk,cap_k:refCapK};};
+    gf.platform={inv_m:_MODINV_E.supplierInvestment('platform',_sctx('platform')),cap_k:refCapK};
+    gf.tophat  ={inv_m:_MODINV_E.supplierInvestment('tophat',  _sctx('tophat')),cap_k:refCapK};
+    gf.eands   ={inv_m:_MODINV_E.supplierInvestment('eands',   _sctx('eands')),cap_k:refCapK};
     if(hasBev){
-      var epwtBase=Math.round(38*0.5),batBase=Math.round(15+Math.ceil(targetKwh/20)*1.5);
-      gf.epwt={inv_m:Math.max(1,Math.round((epwtBuy?0.50:0.22)*epwtBase)),cap_k:refCapK};
-      gf.battery={inv_m:Math.max(1,Math.round((batBuy?0.65:0.35)*batBase)),cap_k:refCapK};
+      gf.epwt   ={inv_m:_MODINV_E.supplierInvestment('epwt',   _sctx('epwt')),cap_k:refCapK};
+      gf.battery={inv_m:_MODINV_E.supplierInvestment('battery',_sctx('battery')),cap_k:refCapK};
     }
   }
 
