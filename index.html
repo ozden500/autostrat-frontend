@@ -19498,6 +19498,9 @@ function _computeStandardModuleCosts() {
     var cx=capex[k]||{plant:0,supplier:0};
     var plantCx=cx.plant||0, supCx=cx.supplier||0;
     var ck=(p.specs&&p.specs.config_key)||p.module.config_key||'';
+    // Platform has no config_key — it's identified by size + powertrain type (mirrors §6 Review).
+    if(!ck && k==='platform' && p.specs && p.specs.size)
+      ck = p.specs.pwt ? (p.specs.size+'_'+p.specs.pwt).toUpperCase() : String(p.specs.size).toUpperCase();
     totDmp+=dmp; totMake+=make; totTpc+=tpc; totRd+=rd; totPlantCx+=plantCx; totSupCx+=supCx;
     rows += '<div style="display:grid;grid-template-columns:130px minmax(0,1fr) 60px 62px 62px 58px 58px 62px;gap:8px;align-items:center;padding:4px 0;border-bottom:1px solid rgba(255,255,255,.04);font-family:DM Mono,monospace;font-size:8px;">'+
       '<div style="display:flex;align-items:center;gap:5px;color:var(--white);overflow:hidden;"><span style="width:6px;height:6px;border-radius:1px;background:'+meta.color+';flex-shrink:0;"></span>'+meta.label+'</div>'+
