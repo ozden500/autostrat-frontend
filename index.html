@@ -13913,7 +13913,7 @@ function _renderTcModCostTab() {
         if (typeof _s0 === 'number') _s0 = _s0>=70?'HIGH':_s0>=50?'MEDIUM':'LOW';
         var _r0 = _p0.region||'EU';
         var _cO = ((INDUSTRIAL_COUNTRIES[_r0]||INDUSTRIAL_COUNTRIES['EU'])||[]).find(function(c){ return c.code===_p0.country_code; })||{labor_eur_hr:52,elec_eur_kwh:0.18};
-        _p0._manuf = _MANUF_E.calc({
+        _p0._manuf = _newVehManuf({
           platform_size:(v.rolled_up_specs||{}).platform_size||'medium',
           body_type:(v.rolled_up_specs||{}).body_type||'HB',
           segment_code:v.segment_code||'c_segment',
@@ -14009,7 +14009,7 @@ function _renderTcModCostTab() {
         var _cList = (INDUSTRIAL_COUNTRIES[_rgn] || INDUSTRIAL_COUNTRIES['EU'] || []);
         var _cObj  = _cList.find(function(c){ return c.code === plant.country_code; }) || {labor_eur_hr:52, elec_eur_kwh:0.18};
         var _tpc   = v.total_unit_tpc_eur || 0;
-        mfr = _MANUF_E.calc({
+        mfr = _newVehManuf({
           platform_size:       (v.rolled_up_specs||{}).platform_size || 'medium',
           body_type:           (v.rolled_up_specs||{}).body_type || 'HB',
           segment_code:        v.segment_code || 'c_segment',
@@ -19464,6 +19464,47 @@ var _MANUF_E = (function() {
   return {calc:calc, JPH_MAX:JPH_MAX, AUTO_JPH:AUTO_JPH, MAINT_RATE:MAINT_RATE};
 })();
 
+// Module specs map from the current in-progress proposal (for _newVehManuf on _prop paths).
+function _propModuleSpecs(){
+  var out={};
+  ['platform','tophat','pwt','epwt','battery','eands'].forEach(function(k){
+    var p=_prop[k]||{}; out[k]=p.specs||(p.module&&p.module.specs)||{};
+  });
+  return out;
+}
+
+// Single-plant manuf result via the new per-module engine (bottom-up investment + work-content
+// var cost), for the legacy fallback call sites that don't go through _calcFacilityInv. Mirrors
+// the vehicle-plant branch of _calcFacilityInv but takes an explicit spec context so it works on
+// DB vehicles (rolled_up_specs, neutral module specs) as well as the current _prop. ctx:
+//   {platform_size, body_type, segment_code, pwt_type, automation_level, platform_shared,
+//    country, jph, supplier_automation, tpc_buy_eur, specs:{platform,tophat,pwt,epwt,battery,eands}}
+function _newVehManuf(ctx){
+  ctx=ctx||{};
+  var pk=ctx.pwt_type||'ice_only', hasIce=pk!=='bev_only', hasBev=(pk==='bev_only'||pk==='ice_and_bev');
+  var al=ctx.automation_level!=null?ctx.automation_level:2;
+  if(typeof al==='string') al=parseInt(String(al).replace(/^L/i,''))||2;
+  var shr=ctx.platform_shared||false, specs=ctx.specs||{};
+  function mc(k,capK){return {specs:specs[k]||{},segment_code:ctx.segment_code||'c_segment',body_type:(ctx.body_type||'HB').toUpperCase(),platform_size:ctx.platform_size||'medium',pwt_type:pk,automation_level:al,platform_shared:shr,cap_k:capK};}
+  var wcTot=_MODINV_E.workContent('platform',mc('platform',0))
+           +_MODINV_E.workContent('tophat',  mc('tophat',0))
+           +_MODINV_E.workContent('eands',   mc('eands',0))
+           +(hasIce?_MODINV_E.workContent('pwt',mc('pwt',0)):0)
+           +(hasBev?(_MODINV_E.workContent('epwt',mc('epwt',0))+_MODINV_E.workContent('battery',mc('battery',0))):0);
+  var m=_MANUF_E.calc({platform_size:ctx.platform_size||'medium',body_type:(ctx.body_type||'HB').toUpperCase(),segment_code:ctx.segment_code||'c_segment',pwt_type:pk,jph:ctx.jph||40,automation_level:al,platform_shared:shr,supplier_automation:ctx.supplier_automation||'MEDIUM',country:ctx.country||{labor_eur_hr:52,elec_eur_kwh:0.18},tpc_buy_eur:ctx.tpc_buy_eur||0,work_content_s:wcTot});
+  var capK=(m.eff_capacity_yr||1)/1000;
+  // Single-plant fallback bundles all modules (incl. powertrain), matching legacy total capex.
+  var gfTot=_MODINV_E.investment('platform',mc('platform',capK))
+           +_MODINV_E.investment('tophat',  mc('tophat',capK))
+           +(hasIce?(_MODINV_E.investment('pwt',mc('pwt',capK))+_MODINV_E.investment('marriage',mc('marriage',capK))):0)
+           +(hasBev?(_MODINV_E.investment('epwt',mc('epwt',capK))+_MODINV_E.investment('battery',mc('battery',capK))):0);
+  var mpu=Math.round(gfTot*1e6*_MANUF_E.MAINT_RATE/(m.eff_capacity_yr||1));
+  m.maint_per_unit=mpu;
+  m.manuf_var_total=(m.labour_per_unit||0)+(m.energy_per_unit||0)+mpu;
+  m.total_investment_m=Math.round(gfTot); m.grand_total_inv_m=Math.round(gfTot);
+  return m;
+}
+
 function advanceToCommercialPlan() {
   var s8 = document.getElementById('prop-sec-8-status');
   if (s8) {
@@ -22325,7 +22366,7 @@ function renderPropOpsCostSummary() {
   var matFrac = (tpcNum > 0 && _bom.matEur > 0) ? _bom.matEur / tpcNum : 0.50;
   var srcAdj  = (_spObj&&typeof _spObj._total_piece_adj_eur==='number') ? _spObj._total_piece_adj_eur : tpcNum*matFrac*srcTier.mat_adj;
 
-  var m = _MANUF_E.calc({
+  var m = _newVehManuf({
     platform_size:      _getPlatformSize(),
     body_type:          _getBodyType(),
     segment_code:       (_prop.study && _prop.study.segment_code) || 'c_segment',
@@ -22336,6 +22377,7 @@ function renderPropOpsCostSummary() {
     supplier_automation:ops.supplier_automation || 'MEDIUM',
     country:            ctry,
     tpc_buy_eur:        tpcBuy,
+    specs:              _propModuleSpecs(),
   });
   ops._manuf = m;
 
@@ -22438,7 +22480,7 @@ function calcPropBizCase() {
       var _r   = (_prop.operations && _prop.operations.assembly_region) || 'EU';
       var _c   = (_prop.operations && _prop.operations.assembly_country_code) || 'DE';
       var _ctr = (INDUSTRIAL_COUNTRIES[_r]||[]).find(function(c){return c.code===_c;}) || {labor_eur_hr:52,elec_eur_kwh:0.18};
-      _m = _MANUF_E.calc({
+      _m = _newVehManuf({
         platform_size:    _getPlatformSize(),
         body_type:        _getBodyType(),
         segment_code:     (_prop.study&&_prop.study.segment_code)||'c_segment',
@@ -22449,6 +22491,7 @@ function calcPropBizCase() {
         supplier_automation:(_prop.operations&&_prop.operations.supplier_automation)||'MEDIUM',
         country:          _ctr,
         tpc_buy_eur:      _dmpMake.dmp,
+        specs:            _propModuleSpecs(),
       });
     }
   }
