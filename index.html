@@ -19260,7 +19260,7 @@ var SHIFT_STRUCTURES = [
 // V_REF=200k/yr, automation L2. MUST stay in sync with cost_engines.py (parity rule).
 var _MODINV_E = (function() {
   var V_REF = 280;                                  // k/yr reference volume (= standard jph40/L2 plant capacity, so panel values = base tables)
-  var AUTO_INV = {1:0.85, 2:1.00, 3:1.25, 4:1.55};  // more automation → more capex
+  var AUTO_INV = {1:0.70, 2:1.00, 3:1.25, 4:1.65};  // more automation → more capex (L1 manual saves ~30% on robotics)
   var AUTO_LAB = {1:1.30, 2:1.00, 3:0.70, 4:0.45};  // more automation → less labour
   var MULTI_ENERGY_STEP = 1.35;                     // platform investment step if ice_and_bev (packages both)
   var BEV_PLATFORM_STEP = 1.15;                     // BEV-only platform vs ICE: battery-floor structure + larger
