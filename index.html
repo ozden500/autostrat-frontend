@@ -1294,16 +1294,16 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
   <div class="card" style="margin-bottom:12px;">
     <div class="card-title" id="pl-title">Quarterly P&L — Q2 2025</div>
     <table class="tbl">
-      <thead><tr><th>Line Item</th><th>Q2 2025</th><th>Q1 2025</th><th>Δ %</th></tr></thead>
+      <thead><tr><th>Line Item</th><th id="pl-cur-hdr">Q2 2025</th><th id="pl-prev-hdr">Q1 2025</th><th>Δ %</th></tr></thead>
       <tbody>
-        <tr><td>Revenue</td><td id="pl-rev">10,585</td><td>9,782</td><td class="pos" id="pl-rev-delta">+8.2%</td></tr>
-        <tr><td>Cost of Goods Sold</td><td class="neg" id="pl-cogs">-7,860</td><td class="neg">-7,280</td><td class="neg" id="pl-cogs-delta">-8.0%</td></tr>
-        <tr><td>Gross Profit</td><td id="pl-gp">2,725</td><td>2,502</td><td class="pos" id="pl-gp-delta">+8.9%</td></tr>
-        <tr><td>R&D Expense</td><td class="neg" id="pl-rd">-820</td><td class="neg">-750</td><td class="neg">-9.3%</td></tr>
-        <tr><td>SG&A + Marketing</td><td class="neg" id="pl-mktg">-1,370</td><td class="neg">-1,280</td><td class="neg">-7.0%</td></tr>
-        <tr class="tot"><td>EBIT</td><td id="pl-ebit">784</td><td>658</td><td class="pos" id="pl-ebit-delta">+19.1%</td></tr>
-        <tr><td>Tax & Financing</td><td class="neg" id="pl-tax">-286</td><td class="neg">-241</td><td class="neg">-18.7%</td></tr>
-        <tr class="tot"><td>Net Income</td><td id="pl-ni">498</td><td>417</td><td class="pos" id="pl-ni-delta">+19.4%</td></tr>
+        <tr><td>Revenue</td><td id="pl-rev">—</td><td id="pl-rev-prev">—</td><td id="pl-rev-delta">—</td></tr>
+        <tr><td>Cost of Goods Sold</td><td class="neg" id="pl-cogs">—</td><td class="neg" id="pl-cogs-prev">—</td><td id="pl-cogs-delta">—</td></tr>
+        <tr><td>Gross Profit</td><td id="pl-gp">—</td><td id="pl-gp-prev">—</td><td id="pl-gp-delta">—</td></tr>
+        <tr><td>R&D Expense</td><td class="neg" id="pl-rd">—</td><td class="neg" id="pl-rd-prev">—</td><td id="pl-rd-delta">—</td></tr>
+        <tr><td>SG&A + Marketing</td><td class="neg" id="pl-mktg">—</td><td class="neg" id="pl-mktg-prev">—</td><td id="pl-mktg-delta">—</td></tr>
+        <tr class="tot"><td>EBIT</td><td id="pl-ebit">—</td><td id="pl-ebit-prev">—</td><td id="pl-ebit-delta">—</td></tr>
+        <tr><td>Tax & Financing</td><td class="neg" id="pl-tax">—</td><td class="neg" id="pl-tax-prev">—</td><td id="pl-tax-delta">—</td></tr>
+        <tr class="tot"><td>Net Income</td><td id="pl-ni">—</td><td id="pl-ni-prev">—</td><td id="pl-ni-delta">—</td></tr>
       </tbody>
     </table>
   </div>
@@ -13436,6 +13436,55 @@ async function loadFinancePanel() {
       var taxFin = ebit - ni;
       document.getElementById('pl-tax').textContent  = '-'+fmt2(taxFin);
       document.getElementById('pl-ni').textContent   = fmt2(ni);
+
+      // ── Prior-quarter column + Δ% (real data, not demo placeholders) ──
+      var setTxt = function(id, t){ var c=document.getElementById(id); if(c) c.textContent=t; };
+      var curHdr  = (data.round)      ? ('Q'+data.round.quarter+' '+data.round.year)           : 'Current';
+      var prevHdr = (data.prev_round) ? ('Q'+data.prev_round.quarter+' '+data.prev_round.year)  : 'Prev';
+      setTxt('pl-cur-hdr', curHdr);
+      setTxt('pl-prev-hdr', prevHdr);
+
+      var prev  = myStmt.prev || null;
+      var pRev  = prev ? (parseFloat(prev.net_revenue_m)||0) : 0;
+      var pCogs = prev ? (parseFloat(prev.cogs_m)||0)        : 0;
+      var pGp   = prev ? (parseFloat(prev.gross_profit_m)||0): 0;
+      var pRd   = prev ? (parseFloat(prev.rd_expense_m)||0)  : 0;
+      var pSga  = prev ? (parseFloat(prev.sga_m)||0)         : 0;
+      var pEbit = prev ? (parseFloat(prev.ebit_m)||0)        : 0;
+      var pNi   = prev ? (parseFloat(prev.net_income_m)||0)  : 0;
+      var pTax  = pEbit - pNi;
+
+      if (!prev) {
+        ['rev','cogs','gp','rd','mktg','ebit','tax','ni'].forEach(function(k){
+          setTxt('pl-'+k+'-prev','—');
+          var d=document.getElementById('pl-'+k+'-delta'); if(d){ d.textContent='—'; d.className=''; }
+        });
+      } else {
+        setTxt('pl-rev-prev',  fmt2(pRev));
+        setTxt('pl-cogs-prev', '-'+fmt2(pCogs));
+        setTxt('pl-gp-prev',   fmt2(pGp));
+        setTxt('pl-rd-prev',   '-'+fmt2(pRd));
+        setTxt('pl-mktg-prev', '-'+fmt2(pSga));
+        setTxt('pl-ebit-prev', fmt2(pEbit));
+        setTxt('pl-tax-prev',  '-'+fmt2(pTax));
+        setTxt('pl-ni-prev',   fmt2(pNi));
+        // Δ% on signed P&L values (expenses negative) → growth in an expense reads as a negative Δ
+        var setDelta = function(id, curV, prevV){
+          var c=document.getElementById(id); if(!c) return;
+          if (Math.abs(prevV) < 1e-9){ c.textContent='—'; c.className=''; return; }
+          var pct=(curV-prevV)/Math.abs(prevV)*100;
+          c.textContent=(pct>=0?'+':'')+pct.toFixed(1)+'%';
+          c.className=pct>=0?'pos':'neg';
+        };
+        setDelta('pl-rev-delta',  rev,      pRev);
+        setDelta('pl-cogs-delta', -cogs,    -pCogs);
+        setDelta('pl-gp-delta',   gp,       pGp);
+        setDelta('pl-rd-delta',   -rd,      -pRd);
+        setDelta('pl-mktg-delta', -sga,     -pSga);
+        setDelta('pl-ebit-delta', ebit,     pEbit);
+        setDelta('pl-tax-delta',  -taxFin,  -pTax);
+        setDelta('pl-ni-delta',   ni,       pNi);
+      }
     }
 
     // Check for pending decisions
@@ -17536,6 +17585,7 @@ function buildReviewSection() {
         p.module.per_unit_tpc_eur = m.tpc;
         p.module.dmp  = m.dmp;
         p.module.make = m.make;
+        p.module.total_rd_spend_m = m.rd;
       }
     } else if (p.module) {
       var mod=p.module;
@@ -19399,7 +19449,7 @@ var OEM_COST_MOD_META = {
 // static baseline panel and the plant-impact panel below.
 function _computeStandardModuleCosts() {
   var rows = '';
-  var totDmp=0, totMake=0, totTpc=0;
+  var totDmp=0, totMake=0, totTpc=0, totRd=0;
   Object.keys(OEM_COST_MOD_META).forEach(function(k){
     var p=_prop[k];
     if(!p||!p.mode||!p.module) return;
@@ -19407,17 +19457,19 @@ function _computeStandardModuleCosts() {
     var tpc=parseFloat(p.module.per_unit_tpc_eur||0);
     var dmp=p.module.dmp?parseFloat(p.module.dmp.total_eur||0):tpc*0.85;
     var make=p.module.make?parseFloat(p.module.make.total_eur||0):tpc*0.15;
+    var rd=parseFloat(p.module.total_rd_spend_m||0);
     var ck=(p.specs&&p.specs.config_key)||p.module.config_key||'';
-    totDmp+=dmp; totMake+=make; totTpc+=tpc;
-    rows += '<div style="display:grid;grid-template-columns:140px 1fr 70px 70px 70px;gap:8px;align-items:center;padding:4px 0;border-bottom:1px solid rgba(255,255,255,.04);font-family:DM Mono,monospace;font-size:8px;">'+
+    totDmp+=dmp; totMake+=make; totTpc+=tpc; totRd+=rd;
+    rows += '<div style="display:grid;grid-template-columns:140px 1fr 70px 70px 70px 70px;gap:8px;align-items:center;padding:4px 0;border-bottom:1px solid rgba(255,255,255,.04);font-family:DM Mono,monospace;font-size:8px;">'+
       '<div style="display:flex;align-items:center;gap:5px;color:var(--white);"><span style="width:6px;height:6px;border-radius:1px;background:'+meta.color+';flex-shrink:0;"></span>'+meta.label+'</div>'+
       '<div style="color:var(--muted2);">'+ck+'</div>'+
+      '<div style="text-align:right;color:var(--muted2);">€'+Math.round(rd).toLocaleString()+'M</div>'+
       '<div style="text-align:right;color:var(--muted2);">€'+Math.round(dmp).toLocaleString()+'</div>'+
       '<div style="text-align:right;color:var(--muted2);">€'+Math.round(make).toLocaleString()+'</div>'+
       '<div style="text-align:right;color:'+meta.color+';font-weight:700;">€'+Math.round(tpc).toLocaleString()+'</div>'+
     '</div>';
   });
-  return {rows:rows, totDmp:totDmp, totMake:totMake, totTpc:totTpc};
+  return {rows:rows, totDmp:totDmp, totMake:totMake, totTpc:totTpc, totRd:totRd};
 }
 
 // Section 7, top of page: static OEM standard manufacturing cost baseline carried over
@@ -19428,11 +19480,12 @@ function _renderStandardCostSummary() {
   if (!c.rows) return '';
   var h = '<div style="border:1px solid var(--border2);border-radius:4px;padding:12px;margin-bottom:18px;background:var(--s2);">';
   h += '<div style="font-family:DM Mono,monospace;font-size:8px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:10px;">OEM Standard Manufacturing Cost — from Sections 2-5 (reference rates)</div>';
-  h += '<div style="display:grid;grid-template-columns:140px 1fr 70px 70px 70px;gap:8px;padding:0 0 4px 0;font-family:DM Mono,monospace;font-size:7px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;">'+
-       '<div>Module</div><div>Config</div><div style="text-align:right;">DMP €</div><div style="text-align:right;">Make €</div><div style="text-align:right;">TPC €</div></div>';
+  h += '<div style="display:grid;grid-template-columns:140px 1fr 70px 70px 70px 70px;gap:8px;padding:0 0 4px 0;font-family:DM Mono,monospace;font-size:7px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;">'+
+       '<div>Module</div><div>Config</div><div style="text-align:right;">R&amp;D €M</div><div style="text-align:right;">DMP €</div><div style="text-align:right;">Make €</div><div style="text-align:right;">TPC €</div></div>';
   h += c.rows;
-  h += '<div style="display:grid;grid-template-columns:140px 1fr 70px 70px 70px;gap:8px;padding:6px 0 0 0;margin-top:4px;border-top:1px solid rgba(200,164,60,.3);font-family:DM Mono,monospace;font-size:9px;font-weight:700;">'+
+  h += '<div style="display:grid;grid-template-columns:140px 1fr 70px 70px 70px 70px;gap:8px;padding:6px 0 0 0;margin-top:4px;border-top:1px solid rgba(200,164,60,.3);font-family:DM Mono,monospace;font-size:9px;font-weight:700;">'+
        '<div style="color:var(--gold);">TOTAL</div><div></div>'+
+       '<div style="text-align:right;color:var(--white);">€'+Math.round(c.totRd).toLocaleString()+'M</div>'+
        '<div style="text-align:right;color:var(--white);">€'+Math.round(c.totDmp).toLocaleString()+'</div>'+
        '<div style="text-align:right;color:var(--white);">€'+Math.round(c.totMake).toLocaleString()+'</div>'+
        '<div style="text-align:right;color:var(--gold);">€'+Math.round(c.totTpc).toLocaleString()+'</div></div>';
