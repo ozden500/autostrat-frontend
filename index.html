@@ -19253,6 +19253,106 @@ var SHIFT_STRUCTURES = [
 ];
 
 // ── MANUFACTURING ENGINE ────────────────────────────────────────────────────
+// ── PER-MODULE INVESTMENT & WORK-CONTENT ENGINE ─────────────────────────────
+// Bottom-up replacement for the workshop→module % split. Each module owns its
+// greenfield investment (€M) and direct work content (labour s/veh), driven by its
+// own attributes. Spec: docs/PLANT_INVESTMENT_REDESIGN_SPEC.md. Bases quoted at
+// V_REF=200k/yr, automation L2. MUST stay in sync with cost_engines.py (parity rule).
+var _MODINV_E = (function() {
+  var V_REF = 200;                                  // k/yr reference volume
+  var AUTO_INV = {1:0.85, 2:1.00, 3:1.25, 4:1.55};  // more automation → more capex
+  var AUTO_LAB = {1:1.30, 2:1.00, 3:0.70, 4:0.45};  // more automation → less labour
+  var MULTI_ENERGY_STEP = 1.35;                     // platform investment step if ice_and_bev
+  var MARRIAGE_INV_M = 20;                           // ICE powertrain marriage on vehicle line, @V_REF
+
+  var PLAT_INV = {micro:190,small:260,medium:340,large:430,frame:380,performance:500,commercial:320};
+  var PLAT_WC  = {micro:2400,small:3000,medium:3600,large:4200,frame:4000,performance:4600,commercial:3400};
+  var PLAT_BODY= {HB:1.00,SEDAN:1.05,SUV:1.12,COUPE:1.10,VAN:0.95,PICKUP:1.08};
+
+  var TH_INV = {a_segment:95,b_segment:115,c_segment:150,d_segment:180,e_segment:210,f_segment:260,
+                sports:235,mpv:190,pickup:160,c_van:110,d_van:130,e_van:150};
+  var TH_WC  = {a_segment:3600,b_segment:4200,c_segment:5000,d_segment:5800,e_segment:6600,f_segment:7800,
+                sports:6200,mpv:6400,pickup:4800,c_van:4000,d_van:4600,e_van:5200};
+  var TH_BODY= {HB:1.00,SEDAN:1.03,SUV:1.08,COUPE:1.05,VAN:0.95};
+
+  var BAT_CHEM = {NMC:1.00,LFP:0.90,SOLID:1.35,SOLIDSTATE:1.35,SOLID_STATE:1.35};
+
+  function d01(v){ v=parseFloat(v)||0; return v>1 ? v/100 : v; }          // 0-100 or 0-1 → 0-1
+  function nr(v,lo,hi){ v=parseFloat(v)||0; return hi<=lo?0:Math.max(0,Math.min(1,(v-lo)/(hi-lo))); }
+  function capScale(capK){ capK=parseFloat(capK)||1; return Math.pow(Math.max(1,capK)/V_REF, 0.6); }
+
+  function iceBase(ck){ ck=(ck||'').toUpperCase();
+    if(ck.indexOf('8CYL')>=0||ck.indexOf('V8')>=0) return {inv:300,wc:2400};
+    if(ck.indexOf('6CYL')>=0||ck.indexOf('V6')>=0) return {inv:230,wc:2100};
+    if(ck.indexOf('3CYL')>=0) return ck.indexOf('TURBO')>=0?{inv:140,wc:1500}:{inv:120,wc:1500};
+    return ck.indexOf('TURBO')>=0?{inv:175,wc:1800}:{inv:150,wc:1800};   // default 4CYL
+  }
+  function epwtBase(ck){ ck=(ck||'').toUpperCase();
+    if(ck.indexOf('TRI')>=0)  return {inv:160,wc:1150};
+    if(ck.indexOf('DUAL')>=0) return {inv:120,wc:950};
+    return {inv:70,wc:700};                                              // default single
+  }
+
+  // Greenfield investment (€M) for one module at capacity o.cap_k, automation o.automation_level.
+  function investment(mod, o){
+    o=o||{}; var s=o.specs||{}, capK=o.cap_k||1, al=o.automation_level||2;
+    var bt=o.body_type||'HB', seg=o.segment_code||'c_segment', pk=o.pwt_type||'ice_only';
+    var base=0, m=1;
+    if(mod==='platform'){
+      base = PLAT_INV[o.platform_size||'medium']||340;
+      m = (PLAT_BODY[bt]||1.00)
+        * (1+0.25*d01(s.weight_opt)) * (1+0.08*d01(s.safety)) * (1+0.05*d01(s.reliability))
+        * (pk==='ice_and_bev'?MULTI_ENERGY_STEP:1.00)
+        * (o.platform_shared?0.60:1.00);
+    } else if(mod==='tophat'){
+      base = TH_INV[seg]||150;
+      m = (TH_BODY[bt]||1.00) * (1+0.40*d01(s.premiumness)) * (1+0.20*d01(s.comfort)) * (1+0.06*d01(s.safety));
+    } else if(mod==='pwt'){
+      base = iceBase(s.config_key).inv;
+      m = (1+0.10*nr(s.power,80,300)) * (1+0.15*d01(s.emission_tech));
+    } else if(mod==='epwt'){
+      base = epwtBase(s.config_key).inv;
+      m = (1+0.12*nr(s.power_kw,70,300)) * (1+0.08*d01(s.efficiency));
+    } else if(mod==='battery'){
+      base = 30 + 0.60*(parseFloat(s.target_kwh)||60);
+      var chem=(s.chemistry||'NMC').toUpperCase().replace(/[^A-Z_]/g,'');
+      m = (BAT_CHEM[chem]||1.00) * ((s.make_buy==='BUY')?0.25:1.00);
+    } else if(mod==='marriage'){
+      base = MARRIAGE_INV_M; m = 1;                                       // ICE final-drive install on veh line
+    } else if(mod==='eands'){
+      return 0;                                                          // Option A: zero plant capex
+    }
+    return Math.round(base * m * (AUTO_INV[al]||1.00) * capScale(capK) * 10)/10;
+  }
+
+  // Direct labour content (s/veh) for one module.
+  function workContent(mod, o){
+    o=o||{}; var s=o.specs||{}, al=o.automation_level||2, labF=AUTO_LAB[al]||1.00;
+    var bt=o.body_type||'HB', seg=o.segment_code||'c_segment';
+    var base=0, m=1;
+    if(mod==='platform'){
+      base = PLAT_WC[o.platform_size||'medium']||3600;
+      m = (PLAT_BODY[bt]||1.00) * (1+0.10*d01(s.weight_opt)) * (1+0.04*d01(s.safety));
+    } else if(mod==='tophat'){
+      base = TH_WC[seg]||5000;
+      m = (TH_BODY[bt]||1.00) * (1+0.30*d01(s.premiumness)) * (1+0.20*d01(s.comfort))
+        * (1+0.08*nr(s.roominess,1,5)) * (1+0.03*d01(s.safety));
+    } else if(mod==='pwt'){
+      base = iceBase(s.config_key).wc; m = (1+0.05*nr(s.power,80,300)) * (1+0.05*d01(s.emission_tech));
+    } else if(mod==='epwt'){
+      base = epwtBase(s.config_key).wc; m = (1+0.05*nr(s.power_kw,70,300));
+    } else if(mod==='battery'){
+      base = 400 + 4*(parseFloat(s.target_kwh)||60); m = ((s.make_buy==='BUY')?0.40:1.00);
+    } else if(mod==='eands'){
+      base = 320; m = 1;
+    }
+    return Math.round(base * m * labF);
+  }
+
+  return {investment:investment, workContent:workContent, capScale:capScale,
+          V_REF:V_REF, AUTO_INV:AUTO_INV, AUTO_LAB:AUTO_LAB, MULTI_ENERGY_STEP:MULTI_ENERGY_STEP};
+})();
+
 var _MANUF_E = (function() {
   // Work content bases (seconds) at 100% make — scaled by fixed 15% in-house fraction
   var ASSY_WC = {micro:72000,small:96000,medium:144000,large:192000,frame:168000,performance:216000,commercial:120000};
@@ -19330,10 +19430,16 @@ var _MANUF_E = (function() {
     var mxc = Math.round(jph*24*365);
     var efc = Math.round(mxc*_oe);
     var evk = o.eff_volume_k || (efc/1000);
-    var lpu = Math.round(ogr*ctr.labor_eur_hr*1700/efc);
+    // Phase 2: if per-module work content is supplied, derive direct labour from it
+    // (gross-up for indirect/absenteeism/line-balance); else fall back to operator math.
+    var lpu = (o.work_content_s!=null)
+      ? Math.round((o.work_content_s/3600)*ctr.labor_eur_hr*(1+INDIRECT)/(1-ABSENT)/_lb)
+      : Math.round(ogr*ctr.labor_eur_hr*1700/efc);
     var kvu = (ASSY_KWH[sz]||520)+PAINT_KWH+BODY_KWH;
     var epu = Math.round(kvu*ctr.elec_eur_kwh);
-    var mpu = Math.round(inv*1e6*MAINT_RATE/efc);
+    // Maintenance uses per-module total investment when supplied (Phase 1), else workshop total.
+    var invForMaint = (o.override_investment_m!=null)?o.override_investment_m:inv;
+    var mpu = Math.round(invForMaint*1e6*MAINT_RATE/efc);
     var mvt = lpu+epu+mpu;
     var sca = tBuy*(SUPPL_COST[sAu]-1.0);
     var vdi = Math.max(-0.10,-0.05*Math.log10(Math.max(1,evk/10)));
@@ -19355,7 +19461,7 @@ var _MANUF_E = (function() {
       lbe:_lb, oee:_oe, ftr:_ft, robots:rb,
     };
   }
-  return {calc:calc, JPH_MAX:JPH_MAX, AUTO_JPH:AUTO_JPH};
+  return {calc:calc, JPH_MAX:JPH_MAX, AUTO_JPH:AUTO_JPH, MAINT_RATE:MAINT_RATE};
 })();
 
 function advanceToCommercialPlan() {
@@ -19594,23 +19700,38 @@ function _calcFacilityInv(type,fac){
   var ia=ref.workshops.assembly.investment_m,ib=ref.workshops.body_shop.investment_m,ipt=ref.workshops.paint_shop.investment_m,ipw=ref.workshops.powertrain.investment_m;
   var refCapK=Math.round(ref.eff_capacity_yr/1000)||1;
   var gf={};
+  // Per-module investment/work-content context (shared by all branches). Bottom-up model —
+  // see docs/PLANT_INVESTMENT_REDESIGN_SPEC.md.
+  var seg=(_prop.study&&_prop.study.segment_code)||'c_segment', bt=_getBodyType(), psz=_getPlatformSize();
+  function _msp(k){var p=_prop[k]||{};return p.specs||(p.module&&p.module.specs)||{};}
+  function _mCtx(k,capK,al,shr){return {specs:_msp(k),segment_code:seg,body_type:bt,platform_size:psz,pwt_type:pk,automation_level:al,platform_shared:shr,cap_k:capK};}
 
   if(type==='vehicle_plants'){
     var cl2=INDUSTRIAL_COUNTRIES[fac.region||'EU']||[],c2=cl2.find(function(x){return x.code===fac.country_code;})||cl2[0]||{labor_eur_hr:52,elec_eur_kwh:0.18};
-    var m2=_MANUF_E.calc({platform_size:_getPlatformSize(),body_type:_getBodyType(),segment_code:(_prop.study&&_prop.study.segment_code)||'c_segment',pwt_type:pk,jph:fac.jph||40,automation_level:fac.automation_level||2,platform_shared:fac.platform_shared||false,supplier_automation:'MEDIUM',country:c2,tpc_buy_eur:_computeDmpMake().dmp});
+    var _al2=fac.automation_level||2, _shr2=fac.platform_shared||false;
+    // Phase 2: total transformation labour = all modules this vehicle needs, bundled into the
+    // vehicle-plant var cost (as the old single-plant model did, so landed cost still carries
+    // powertrain transformation).
+    var wcTot=_MODINV_E.workContent('platform',_mCtx('platform',0,_al2,_shr2))
+             +_MODINV_E.workContent('tophat',  _mCtx('tophat',0,_al2,_shr2))
+             +_MODINV_E.workContent('eands',   _mCtx('eands',0,_al2,_shr2))
+             +(hasIce?_MODINV_E.workContent('pwt',_mCtx('pwt',0,_al2,_shr2)):0)
+             +(hasBev?(_MODINV_E.workContent('epwt',_mCtx('epwt',0,_al2,_shr2))+_MODINV_E.workContent('battery',_mCtx('battery',0,_al2,_shr2))):0);
+    var m2=_MANUF_E.calc({platform_size:psz,body_type:bt,segment_code:seg,pwt_type:pk,jph:fac.jph||40,automation_level:_al2,platform_shared:_shr2,supplier_automation:'MEDIUM',country:c2,tpc_buy_eur:_computeDmpMake().dmp,work_content_s:wcTot});
     if(!fac._computed)fac._computed={};
     fac._computed.manuf_result=m2;fac._computed.manuf_var_total=m2.manuf_var_total;fac._computed.eff_capacity_yr=m2.eff_capacity_yr;
-    var ia2=m2.workshops.assembly.investment_m,ib2=m2.workshops.body_shop.investment_m,ipt2=m2.workshops.paint_shop.investment_m,ipw2=m2.workshops.powertrain.investment_m;
     var cap2=Math.round(m2.eff_capacity_yr/1000)||1;
-    gf.platform={inv_m:ib2+ipt2,cap_k:cap2};gf.tophat={inv_m:Math.round(0.40*ia2),cap_k:cap2};gf.eands={inv_m:ia2-Math.round(0.40*ia2),cap_k:cap2};
-    if(hasIce)gf.pwt_assy={inv_m:Math.max(1,Math.round(0.15*ipw2)),cap_k:cap2};
+    gf.platform={inv_m:_MODINV_E.investment('platform',_mCtx('platform',cap2,_al2,_shr2)),cap_k:cap2};
+    gf.tophat  ={inv_m:_MODINV_E.investment('tophat',  _mCtx('tophat',cap2,_al2,_shr2)),cap_k:cap2};
+    gf.eands   ={inv_m:0,cap_k:cap2};                                    // Option A: E&S = zero plant capex
+    if(hasIce)gf.pwt_assy={inv_m:_MODINV_E.investment('marriage',_mCtx('marriage',cap2,_al2,_shr2)),cap_k:cap2};
   } else if(type==='powertrain_plants'){
     var pAl=fac.automation_level||2,pJph=Math.min(40,_MANUF_E.AUTO_JPH[pAl]||55);
     var pOee={1:0.75,2:0.80,3:0.85,4:0.88}[pAl]||0.80;
-    var pCapK=Math.round(pJph*24*365*pOee/1000)||1,takt_p=3600/pJph,lbe_p=pJph<30?0.82:pJph<50?0.85:0.88;
+    var pCapK=Math.round(pJph*24*365*pOee/1000)||1;
     if(!fac._computed)fac._computed={};fac._computed.eff_capacity_yr=pCapK*1000;
-    if(hasIce){var sp_i=Math.ceil(18000*0.15/(takt_p*lbe_p));gf.pwt={inv_m:Math.max(5,Math.round(20+sp_i*0.60)),cap_k:pCapK};}
-    if(hasBev){var sp_b=Math.ceil(26400*0.15/(takt_p*lbe_p));gf.epwt={inv_m:Math.max(5,Math.round(38+sp_b*0.60)),cap_k:pCapK};gf.battery={inv_m:Math.max(5,Math.round(15+Math.ceil(targetKwh/20)*1.5)),cap_k:pCapK};}
+    if(hasIce)gf.pwt={inv_m:_MODINV_E.investment('pwt',_mCtx('pwt',pCapK,pAl,false)),cap_k:pCapK};
+    if(hasBev){gf.epwt={inv_m:_MODINV_E.investment('epwt',_mCtx('epwt',pCapK,pAl,false)),cap_k:pCapK};gf.battery={inv_m:_MODINV_E.investment('battery',_mCtx('battery',pCapK,pAl,false)),cap_k:pCapK};}
   } else if(type==='supplier_parks'){
     var epwtCk=(_prop.epwt&&_prop.epwt.module&&_prop.epwt.module.config_key)||'';
     var batCk=(_prop.battery&&_prop.battery.module&&_prop.battery.module.config_key)||(_prop.battery&&_prop.battery.specs&&_prop.battery.specs.make_buy==='BUY'?'_BUY':'');
@@ -19625,6 +19746,18 @@ function _calcFacilityInv(type,fac){
       gf.epwt={inv_m:Math.max(1,Math.round((epwtBuy?0.50:0.22)*epwtBase)),cap_k:refCapK};
       gf.battery={inv_m:Math.max(1,Math.round((batBuy?0.65:0.35)*batBase)),cap_k:refCapK};
     }
+  }
+
+  // Phase 2: recompute vehicle-plant maintenance + var total from the per-module greenfield
+  // investment (the workshop investment base is retired). Labour + energy already set from
+  // work content / kWh in _MANUF_E.calc above.
+  if(type==='vehicle_plants' && fac._computed && fac._computed.manuf_result){
+    var _gfTot=0; Object.keys(gf).forEach(function(k){_gfTot+=(gf[k].inv_m||0);});
+    var _m2=fac._computed.manuf_result, _efc=_m2.eff_capacity_yr||1;
+    var _mpu=Math.round(_gfTot*1e6*_MANUF_E.MAINT_RATE/_efc);
+    _m2.maint_per_unit=_mpu; _m2.total_investment_m=Math.round(_gfTot);
+    _m2.manuf_var_total=(_m2.labour_per_unit||0)+(_m2.energy_per_unit||0)+_mpu;
+    fac._computed.manuf_var_total=_m2.manuf_var_total;
   }
 
   var defs=_getModuleDefsForType(type),locKey=type==='supplier_parks'?fac.region:(fac.region+'_'+fac.country_code);
