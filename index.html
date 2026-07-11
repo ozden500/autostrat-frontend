@@ -19262,7 +19262,9 @@ var _MODINV_E = (function() {
   var V_REF = 280;                                  // k/yr reference volume (= standard jph40/L2 plant capacity, so panel values = base tables)
   var AUTO_INV = {1:0.85, 2:1.00, 3:1.25, 4:1.55};  // more automation → more capex
   var AUTO_LAB = {1:1.30, 2:1.00, 3:0.70, 4:0.45};  // more automation → less labour
-  var MULTI_ENERGY_STEP = 1.35;                     // platform investment step if ice_and_bev
+  var MULTI_ENERGY_STEP = 1.35;                     // platform investment step if ice_and_bev (packages both)
+  var BEV_PLATFORM_STEP = 1.15;                     // BEV-only platform vs ICE: battery-floor structure + larger
+                                                    // paint cooling (~10-15% real-world line premium; McKinsey/AMS 2026)
   var MARRIAGE_INV_M = 8;                            // ICE powertrain marriage on vehicle line, @V_REF
 
   // Calibrated 2026-07-12: medium veh-plant (platform+tophat+marriage) ≈ €200M @280k/yr.
@@ -19303,8 +19305,7 @@ var _MODINV_E = (function() {
       base = PLAT_INV[o.platform_size||'medium']||340;
       m = (PLAT_BODY[bt]||1.00)
         * (1+0.25*d01(s.weight_opt)) * (1+0.08*d01(s.safety)) * (1+0.05*d01(s.reliability))
-        * (pk==='ice_and_bev'?MULTI_ENERGY_STEP:1.00)
-        * (o.platform_shared?0.60:1.00);
+        * (pk==='ice_and_bev'?MULTI_ENERGY_STEP:(pk==='bev_only'?BEV_PLATFORM_STEP:1.00));
     } else if(mod==='tophat'){
       base = TH_INV[seg]||150;
       m = (TH_BODY[bt]||1.00) * (1+0.20*d01(s.premiumness)) * (1+0.20*d01(s.comfort)) * (1+0.06*d01(s.safety));  // premium capped at ×1.20
