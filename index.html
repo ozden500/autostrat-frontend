@@ -19445,11 +19445,48 @@ var OEM_COST_MOD_META = {
   eands:    {label:'E&S / ADAS',      color:'var(--blue)'},
 };
 
+// Directional greenfield capex per module (€M) assuming these modules are industrialised
+// for the first time, at standard assumptions: US vehicle plant, medium automation, ref
+// powertrain / supplier-park lines. Reuses the same _calcFacilityInv() engine teams drive
+// in §7, but on throwaway facility objects so no real _prop.operations state is touched.
+// greenfield_inv_m = full new-line investment (independent of any existing spare capacity).
+// Mapping per panel module → { plant, supplier } capex:
+//   platform  plant=vehicle body+paint      supplier=platform supplier content
+//   pwt (ICE) plant=PWT plant + marriage     supplier=— (no PWT supplier park module)
+//   epwt      plant=e-PWT plant              supplier=e-PWT supplier content
+//   battery   plant=battery plant            supplier=battery supplier content
+//   tophat    plant=trim/final (0.40 assy)   supplier=tophat supplier content
+//   eands     plant=E&S integration          supplier=E&S supplier content
+function _computeStandardModuleCapex() {
+  var out={platform:{plant:0,supplier:0},pwt:{plant:0,supplier:0},epwt:{plant:0,supplier:0},
+           battery:{plant:0,supplier:0},tophat:{plant:0,supplier:0},eands:{plant:0,supplier:0}};
+  try{
+    var vp=_calcFacilityInv('vehicle_plants',   {id:'_std_vp',region:'NA',country_code:'US',jph:40,automation_level:2,platform_shared:false});
+    var pp=_calcFacilityInv('powertrain_plants',{id:'_std_pp',region:'NA',country_code:'US',automation_level:2});
+    var sp=_calcFacilityInv('supplier_parks',   {id:'_std_sp',region:'NA',country_code:'US',automation_level:'MEDIUM'});
+    var gm=function(comp,key){var mi=comp&&comp.module_investments;return (mi&&mi[key])?(parseFloat(mi[key].greenfield_inv_m)||0):0;};
+    out.platform.plant = gm(vp,'platform');
+    out.tophat.plant   = gm(vp,'tophat');
+    out.eands.plant    = gm(vp,'eands');
+    out.pwt.plant      = gm(pp,'pwt') + gm(vp,'pwt_assy');
+    out.epwt.plant     = gm(pp,'epwt');
+    out.battery.plant  = gm(pp,'battery');
+    out.platform.supplier = gm(sp,'platform');
+    out.tophat.supplier   = gm(sp,'tophat');
+    out.eands.supplier    = gm(sp,'eands');
+    out.epwt.supplier     = gm(sp,'epwt');
+    out.battery.supplier  = gm(sp,'battery');
+  }catch(e){console.warn('std module capex',e);}
+  return out;
+}
+
 // Per-module standard cost breakdown from §2-5 (cached DMP/Make/TPC). Shared by the
 // static baseline panel and the plant-impact panel below.
 function _computeStandardModuleCosts() {
   var rows = '';
-  var totDmp=0, totMake=0, totTpc=0, totRd=0;
+  var totDmp=0, totMake=0, totTpc=0, totRd=0, totPlantCx=0, totSupCx=0;
+  var capex=_computeStandardModuleCapex();
+  var capexCell=function(v){return '<div style="text-align:right;color:var(--muted2);">'+(v>0?'€'+Math.round(v).toLocaleString()+'M':'—')+'</div>';};
   Object.keys(OEM_COST_MOD_META).forEach(function(k){
     var p=_prop[k];
     if(!p||!p.mode||!p.module) return;
@@ -19458,18 +19495,22 @@ function _computeStandardModuleCosts() {
     var dmp=p.module.dmp?parseFloat(p.module.dmp.total_eur||0):tpc*0.85;
     var make=p.module.make?parseFloat(p.module.make.total_eur||0):tpc*0.15;
     var rd=parseFloat(p.module.total_rd_spend_m||0);
+    var cx=capex[k]||{plant:0,supplier:0};
+    var plantCx=cx.plant||0, supCx=cx.supplier||0;
     var ck=(p.specs&&p.specs.config_key)||p.module.config_key||'';
-    totDmp+=dmp; totMake+=make; totTpc+=tpc; totRd+=rd;
-    rows += '<div style="display:grid;grid-template-columns:140px 1fr 70px 70px 70px 70px;gap:8px;align-items:center;padding:4px 0;border-bottom:1px solid rgba(255,255,255,.04);font-family:DM Mono,monospace;font-size:8px;">'+
+    totDmp+=dmp; totMake+=make; totTpc+=tpc; totRd+=rd; totPlantCx+=plantCx; totSupCx+=supCx;
+    rows += '<div style="display:grid;grid-template-columns:135px 1fr 56px 80px 92px 56px 56px 64px;gap:8px;align-items:center;padding:4px 0;border-bottom:1px solid rgba(255,255,255,.04);font-family:DM Mono,monospace;font-size:8px;">'+
       '<div style="display:flex;align-items:center;gap:5px;color:var(--white);"><span style="width:6px;height:6px;border-radius:1px;background:'+meta.color+';flex-shrink:0;"></span>'+meta.label+'</div>'+
       '<div style="color:var(--muted2);">'+ck+'</div>'+
       '<div style="text-align:right;color:var(--muted2);">€'+Math.round(rd).toLocaleString()+'M</div>'+
+      capexCell(plantCx)+
+      capexCell(supCx)+
       '<div style="text-align:right;color:var(--muted2);">€'+Math.round(dmp).toLocaleString()+'</div>'+
       '<div style="text-align:right;color:var(--muted2);">€'+Math.round(make).toLocaleString()+'</div>'+
       '<div style="text-align:right;color:'+meta.color+';font-weight:700;">€'+Math.round(tpc).toLocaleString()+'</div>'+
     '</div>';
   });
-  return {rows:rows, totDmp:totDmp, totMake:totMake, totTpc:totTpc, totRd:totRd};
+  return {rows:rows, totDmp:totDmp, totMake:totMake, totTpc:totTpc, totRd:totRd, totPlantCx:totPlantCx, totSupCx:totSupCx};
 }
 
 // Section 7, top of page: static OEM standard manufacturing cost baseline carried over
@@ -19479,13 +19520,16 @@ function _renderStandardCostSummary() {
   var c = _computeStandardModuleCosts();
   if (!c.rows) return '';
   var h = '<div style="border:1px solid var(--border2);border-radius:4px;padding:12px;margin-bottom:18px;background:var(--s2);">';
-  h += '<div style="font-family:DM Mono,monospace;font-size:8px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:10px;">OEM Standard Manufacturing Cost — from Sections 2-5 (reference rates)</div>';
-  h += '<div style="display:grid;grid-template-columns:140px 1fr 70px 70px 70px 70px;gap:8px;padding:0 0 4px 0;font-family:DM Mono,monospace;font-size:7px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;">'+
-       '<div>Module</div><div>Config</div><div style="text-align:right;">R&amp;D €M</div><div style="text-align:right;">DMP €</div><div style="text-align:right;">Make €</div><div style="text-align:right;">TPC €</div></div>';
+  h += '<div style="font-family:DM Mono,monospace;font-size:8px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:4px;">OEM Standard Manufacturing Cost — from Sections 2-5 (reference rates)</div>';
+  h += '<div style="font-family:DM Mono,monospace;font-size:7px;color:var(--muted2);font-style:italic;line-height:1.5;margin-bottom:10px;">R&amp;D = standard development spend per module. Plant &amp; Supplier Capex = directional greenfield estimate assuming these modules are industrialised for the first time (standard US plant · medium automation) — indicative of the investment required before you configure your plan in §7 below.</div>';
+  h += '<div style="display:grid;grid-template-columns:135px 1fr 56px 80px 92px 56px 56px 64px;gap:8px;padding:0 0 4px 0;font-family:DM Mono,monospace;font-size:7px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;">'+
+       '<div>Module</div><div>Config</div><div style="text-align:right;">R&amp;D €M</div><div style="text-align:right;">Plant Capex €M</div><div style="text-align:right;">Supplier Capex €M</div><div style="text-align:right;">DMP €</div><div style="text-align:right;">Make €</div><div style="text-align:right;">TPC €</div></div>';
   h += c.rows;
-  h += '<div style="display:grid;grid-template-columns:140px 1fr 70px 70px 70px 70px;gap:8px;padding:6px 0 0 0;margin-top:4px;border-top:1px solid rgba(200,164,60,.3);font-family:DM Mono,monospace;font-size:9px;font-weight:700;">'+
+  h += '<div style="display:grid;grid-template-columns:135px 1fr 56px 80px 92px 56px 56px 64px;gap:8px;padding:6px 0 0 0;margin-top:4px;border-top:1px solid rgba(200,164,60,.3);font-family:DM Mono,monospace;font-size:9px;font-weight:700;">'+
        '<div style="color:var(--gold);">TOTAL</div><div></div>'+
        '<div style="text-align:right;color:var(--white);">€'+Math.round(c.totRd).toLocaleString()+'M</div>'+
+       '<div style="text-align:right;color:var(--white);">€'+Math.round(c.totPlantCx).toLocaleString()+'M</div>'+
+       '<div style="text-align:right;color:var(--white);">€'+Math.round(c.totSupCx).toLocaleString()+'M</div>'+
        '<div style="text-align:right;color:var(--white);">€'+Math.round(c.totDmp).toLocaleString()+'</div>'+
        '<div style="text-align:right;color:var(--white);">€'+Math.round(c.totMake).toLocaleString()+'</div>'+
        '<div style="text-align:right;color:var(--gold);">€'+Math.round(c.totTpc).toLocaleString()+'</div></div>';
