@@ -19284,16 +19284,16 @@ var _MODINV_E = (function() {
   function nr(v,lo,hi){ v=parseFloat(v)||0; return hi<=lo?0:Math.max(0,Math.min(1,(v-lo)/(hi-lo))); }
   function capScale(capK){ capK=parseFloat(capK)||1; return Math.pow(Math.max(1,capK)/V_REF, 0.6); }
 
-  function iceBase(ck){ ck=(ck||'').toUpperCase();                       // inv calibrated: 4CYL ≈ €70M @280k
-    if(ck.indexOf('8CYL')>=0||ck.indexOf('V8')>=0) return {inv:140,wc:2400};
-    if(ck.indexOf('6CYL')>=0||ck.indexOf('V6')>=0) return {inv:107,wc:2100};
-    if(ck.indexOf('3CYL')>=0) return ck.indexOf('TURBO')>=0?{inv:65,wc:1500}:{inv:56,wc:1500};
-    return ck.indexOf('TURBO')>=0?{inv:82,wc:1800}:{inv:70,wc:1800};     // default 4CYL
+  function iceBase(ck){ ck=(ck||'').toUpperCase();                       // inv trimmed -35%: 4CYL ≈ €46M @280k
+    if(ck.indexOf('8CYL')>=0||ck.indexOf('V8')>=0) return {inv:91,wc:2400};
+    if(ck.indexOf('6CYL')>=0||ck.indexOf('V6')>=0) return {inv:70,wc:2100};
+    if(ck.indexOf('3CYL')>=0) return ck.indexOf('TURBO')>=0?{inv:42,wc:1500}:{inv:36,wc:1500};
+    return ck.indexOf('TURBO')>=0?{inv:53,wc:1800}:{inv:46,wc:1800};     // default 4CYL
   }
-  function epwtBase(ck){ ck=(ck||'').toUpperCase();
-    if(ck.indexOf('TRI')>=0)  return {inv:75,wc:1150};
-    if(ck.indexOf('DUAL')>=0) return {inv:56,wc:950};
-    return {inv:33,wc:700};                                              // default single
+  function epwtBase(ck){ ck=(ck||'').toUpperCase();                       // inv trimmed -35%
+    if(ck.indexOf('TRI')>=0)  return {inv:49,wc:1150};
+    if(ck.indexOf('DUAL')>=0) return {inv:36,wc:950};
+    return {inv:21,wc:700};                                              // default single
   }
 
   // Greenfield investment (€M) for one module at capacity o.cap_k, automation o.automation_level.
