@@ -19267,13 +19267,13 @@ var _MODINV_E = (function() {
                                                     // paint cooling (~10-15% real-world line premium; McKinsey/AMS 2026)
   var MARRIAGE_INV_M = 8;                            // ICE powertrain marriage on vehicle line, @V_REF
 
-  // Calibrated 2026-07-12: medium veh-plant (platform+tophat+marriage) ≈ €200M @280k/yr.
-  var PLAT_INV = {micro:74,small:102,medium:133,large:168,frame:149,performance:196,commercial:125};
+  // Calibrated 2026-07-12; platform base -50% & tophat base -20% (medium veh-plant ≈ €122M @280k/yr).
+  var PLAT_INV = {micro:37,small:51,medium:67,large:84,frame:75,performance:98,commercial:63};
   var PLAT_WC  = {micro:2400,small:3000,medium:3600,large:4200,frame:4000,performance:4600,commercial:3400};
   var PLAT_BODY= {HB:1.00,SEDAN:1.05,SUV:1.12,COUPE:1.10,VAN:0.95,PICKUP:1.08};
 
-  var TH_INV = {a_segment:37,b_segment:45,c_segment:59,d_segment:71,e_segment:83,f_segment:102,
-                sports:92,mpv:75,pickup:63,c_van:43,d_van:51,e_van:59};
+  var TH_INV = {a_segment:30,b_segment:36,c_segment:47,d_segment:57,e_segment:66,f_segment:82,
+                sports:74,mpv:60,pickup:50,c_van:34,d_van:41,e_van:47};
   var TH_WC  = {a_segment:3600,b_segment:4200,c_segment:5000,d_segment:5800,e_segment:6600,f_segment:7800,
                 sports:6200,mpv:6400,pickup:4800,c_van:4000,d_van:4600,e_van:5200};
   var TH_BODY= {HB:1.00,SEDAN:1.03,SUV:1.08,COUPE:1.05,VAN:0.95};
