@@ -19307,7 +19307,7 @@ var _MODINV_E = (function() {
         * (o.platform_shared?0.60:1.00);
     } else if(mod==='tophat'){
       base = TH_INV[seg]||150;
-      m = (TH_BODY[bt]||1.00) * (1+0.40*d01(s.premiumness)) * (1+0.20*d01(s.comfort)) * (1+0.06*d01(s.safety));
+      m = (TH_BODY[bt]||1.00) * (1+0.20*d01(s.premiumness)) * (1+0.20*d01(s.comfort)) * (1+0.06*d01(s.safety));  // premium capped at ×1.20
     } else if(mod==='pwt'){
       base = iceBase(s.config_key).inv;
       m = (1+0.10*nr(s.power,80,300)) * (1+0.15*d01(s.emission_tech));
