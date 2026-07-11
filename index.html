@@ -19259,18 +19259,19 @@ var SHIFT_STRUCTURES = [
 // own attributes. Spec: docs/PLANT_INVESTMENT_REDESIGN_SPEC.md. Bases quoted at
 // V_REF=200k/yr, automation L2. MUST stay in sync with cost_engines.py (parity rule).
 var _MODINV_E = (function() {
-  var V_REF = 200;                                  // k/yr reference volume
+  var V_REF = 280;                                  // k/yr reference volume (= standard jph40/L2 plant capacity, so panel values = base tables)
   var AUTO_INV = {1:0.85, 2:1.00, 3:1.25, 4:1.55};  // more automation → more capex
   var AUTO_LAB = {1:1.30, 2:1.00, 3:0.70, 4:0.45};  // more automation → less labour
   var MULTI_ENERGY_STEP = 1.35;                     // platform investment step if ice_and_bev
-  var MARRIAGE_INV_M = 20;                           // ICE powertrain marriage on vehicle line, @V_REF
+  var MARRIAGE_INV_M = 8;                            // ICE powertrain marriage on vehicle line, @V_REF
 
-  var PLAT_INV = {micro:190,small:260,medium:340,large:430,frame:380,performance:500,commercial:320};
+  // Calibrated 2026-07-12: medium veh-plant (platform+tophat+marriage) ≈ €200M @280k/yr.
+  var PLAT_INV = {micro:74,small:102,medium:133,large:168,frame:149,performance:196,commercial:125};
   var PLAT_WC  = {micro:2400,small:3000,medium:3600,large:4200,frame:4000,performance:4600,commercial:3400};
   var PLAT_BODY= {HB:1.00,SEDAN:1.05,SUV:1.12,COUPE:1.10,VAN:0.95,PICKUP:1.08};
 
-  var TH_INV = {a_segment:95,b_segment:115,c_segment:150,d_segment:180,e_segment:210,f_segment:260,
-                sports:235,mpv:190,pickup:160,c_van:110,d_van:130,e_van:150};
+  var TH_INV = {a_segment:37,b_segment:45,c_segment:59,d_segment:71,e_segment:83,f_segment:102,
+                sports:92,mpv:75,pickup:63,c_van:43,d_van:51,e_van:59};
   var TH_WC  = {a_segment:3600,b_segment:4200,c_segment:5000,d_segment:5800,e_segment:6600,f_segment:7800,
                 sports:6200,mpv:6400,pickup:4800,c_van:4000,d_van:4600,e_van:5200};
   var TH_BODY= {HB:1.00,SEDAN:1.03,SUV:1.08,COUPE:1.05,VAN:0.95};
@@ -19281,16 +19282,16 @@ var _MODINV_E = (function() {
   function nr(v,lo,hi){ v=parseFloat(v)||0; return hi<=lo?0:Math.max(0,Math.min(1,(v-lo)/(hi-lo))); }
   function capScale(capK){ capK=parseFloat(capK)||1; return Math.pow(Math.max(1,capK)/V_REF, 0.6); }
 
-  function iceBase(ck){ ck=(ck||'').toUpperCase();
-    if(ck.indexOf('8CYL')>=0||ck.indexOf('V8')>=0) return {inv:300,wc:2400};
-    if(ck.indexOf('6CYL')>=0||ck.indexOf('V6')>=0) return {inv:230,wc:2100};
-    if(ck.indexOf('3CYL')>=0) return ck.indexOf('TURBO')>=0?{inv:140,wc:1500}:{inv:120,wc:1500};
-    return ck.indexOf('TURBO')>=0?{inv:175,wc:1800}:{inv:150,wc:1800};   // default 4CYL
+  function iceBase(ck){ ck=(ck||'').toUpperCase();                       // inv calibrated: 4CYL ≈ €70M @280k
+    if(ck.indexOf('8CYL')>=0||ck.indexOf('V8')>=0) return {inv:140,wc:2400};
+    if(ck.indexOf('6CYL')>=0||ck.indexOf('V6')>=0) return {inv:107,wc:2100};
+    if(ck.indexOf('3CYL')>=0) return ck.indexOf('TURBO')>=0?{inv:65,wc:1500}:{inv:56,wc:1500};
+    return ck.indexOf('TURBO')>=0?{inv:82,wc:1800}:{inv:70,wc:1800};     // default 4CYL
   }
   function epwtBase(ck){ ck=(ck||'').toUpperCase();
-    if(ck.indexOf('TRI')>=0)  return {inv:160,wc:1150};
-    if(ck.indexOf('DUAL')>=0) return {inv:120,wc:950};
-    return {inv:70,wc:700};                                              // default single
+    if(ck.indexOf('TRI')>=0)  return {inv:75,wc:1150};
+    if(ck.indexOf('DUAL')>=0) return {inv:56,wc:950};
+    return {inv:33,wc:700};                                              // default single
   }
 
   // Greenfield investment (€M) for one module at capacity o.cap_k, automation o.automation_level.
@@ -19314,7 +19315,7 @@ var _MODINV_E = (function() {
       base = epwtBase(s.config_key).inv;
       m = (1+0.12*nr(s.power_kw,70,300)) * (1+0.08*d01(s.efficiency));
     } else if(mod==='battery'){
-      base = 30 + 0.60*(parseFloat(s.target_kwh)||60);
+      base = 18 + 0.70*(parseFloat(s.target_kwh)||60);                   // calibrated: 60 kWh ≈ €60M @280k
       var chem=(s.chemistry||'NMC').toUpperCase().replace(/[^A-Z_]/g,'');
       m = (BAT_CHEM[chem]||1.00) * ((s.make_buy==='BUY')?0.25:1.00);
     } else if(mod==='marriage'){
