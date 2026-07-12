@@ -4015,15 +4015,18 @@ function _rdCard(r) {
   return h;
 }
 
-function _bomDetail(matLines, procLines, r, collapsible) {
+function _bomDetail(matLines, procLines, r, collapseKey) {
   var h   = '';
   var tpc = r.std_platform_tpc_eur || r.total_std_direct_eur || 0;
   var dmp = r.dmp, mk = r.make;
   var MO  = 'font-family:DM Mono,monospace;';
   var DIV = 'border-top:1px solid var(--border2);margin:5px 0;';
-  // §2 Platform passes collapsible=true so the two cost-detail cards default to collapsed.
-  var supExp = !collapsible || _platBomExpanded.supplier;   // false → detail body hidden
-  var oemExp = !collapsible || _platBomExpanded.oem;
+  // Proposal §2–§5 pass a collapseKey ('plat','ice','epwt','bat','th','eands') so the two
+  // cost-detail cards default to collapsed. Keyed IDs/state keep each module's cards
+  // independent even when several BOMs coexist in the DOM (e.g. ICE+ePWT+Battery in §3).
+  var collapsible = !!collapseKey;
+  var supExp = collapsible && !!_bomCardExpanded[collapseKey+'-supplier'];   // false → detail body hidden
+  var oemExp = collapsible && !!_bomCardExpanded[collapseKey+'-oem'];
   var supChev = supExp ? '▼' : '▶';
   var oemChev = oemExp ? '▼' : '▶';
 
@@ -4131,10 +4134,10 @@ function _bomDetail(matLines, procLines, r, collapsible) {
   h += '<div style="background:var(--s2);border-radius:5px;padding:10px 12px;margin-bottom:8px;">';
   if (collapsible) {
     // Clickable header — title + total always visible; detail collapses.
-    h += '<div onclick="togglePlatBomCard(\'supplier\')" style="cursor:pointer;display:flex;justify-content:space-between;align-items:center;'+MO+'font-size:8px;text-transform:uppercase;letter-spacing:1px;color:var(--orange);'+(supExp?'margin-bottom:8px;':'')+'">' +
-      '<span><span id="plat-bom-supplier-chev" style="display:inline-block;width:10px;">'+supChev+'</span> ① Supplier Purchased Cost</span>' +
+    h += '<div onclick="toggleBomCard(\''+collapseKey+'\',\'supplier\')" style="cursor:pointer;display:flex;justify-content:space-between;align-items:center;'+MO+'font-size:8px;text-transform:uppercase;letter-spacing:1px;color:var(--orange);'+(supExp?'margin-bottom:8px;':'')+'">' +
+      '<span><span id="bom-'+collapseKey+'-supplier-chev" style="display:inline-block;width:10px;">'+supChev+'</span> ① Supplier Purchased Cost</span>' +
       '<span style="font-weight:700;">€'+Math.round(dmp.total_eur).toLocaleString()+'/veh</span></div>';
-    h += '<div id="plat-bom-supplier-body" style="display:'+(supExp?'block':'none')+';">';
+    h += '<div id="bom-'+collapseKey+'-supplier-body" style="display:'+(supExp?'block':'none')+';">';
   } else {
     h += '<div style="'+MO+'font-size:8px;text-transform:uppercase;letter-spacing:1px;color:var(--orange);margin-bottom:8px;">① Supplier Purchased Cost</div>';
   }
@@ -4168,16 +4171,16 @@ function _bomDetail(matLines, procLines, r, collapsible) {
   h += '<div style="display:flex;justify-content:space-between;font-size:9px;padding:1px 0;"><span style="color:var(--muted2);">+ Profit 8%</span><span style="'+MO+';color:var(--muted2);">€'+Math.round(dmp.profit_eur).toLocaleString()+'</span></div>';
   h += '<div style="'+DIV+'"></div>';
   h += '<div style="display:flex;justify-content:space-between;font-size:10px;font-weight:600;"><span style="color:var(--orange);">Supplier DMP Total</span><span style="'+MO+';color:var(--orange);">€'+Math.round(dmp.total_eur).toLocaleString()+'/veh</span></div>';
-  if (collapsible) h += '</div>';   // close #plat-bom-supplier-body
+  if (collapsible) h += '</div>';   // close #bom-<key>-supplier-body
   h += '</div>';
 
   // ── ② OEM TRANSFORMATION ──────────────────────────────────────────
   h += '<div style="background:var(--s2);border-radius:5px;padding:10px 12px;margin-bottom:8px;">';
   if (collapsible) {
-    h += '<div onclick="togglePlatBomCard(\'oem\')" style="cursor:pointer;display:flex;justify-content:space-between;align-items:center;'+MO+'font-size:8px;text-transform:uppercase;letter-spacing:1px;color:var(--cyan);'+(oemExp?'margin-bottom:8px;':'')+'">' +
-      '<span><span id="plat-bom-oem-chev" style="display:inline-block;width:10px;">'+oemChev+'</span> ② OEM Transformation</span>' +
+    h += '<div onclick="toggleBomCard(\''+collapseKey+'\',\'oem\')" style="cursor:pointer;display:flex;justify-content:space-between;align-items:center;'+MO+'font-size:8px;text-transform:uppercase;letter-spacing:1px;color:var(--cyan);'+(oemExp?'margin-bottom:8px;':'')+'">' +
+      '<span><span id="bom-'+collapseKey+'-oem-chev" style="display:inline-block;width:10px;">'+oemChev+'</span> ② OEM Transformation</span>' +
       '<span style="font-weight:700;">€'+Math.round(mk.total_eur).toLocaleString()+'/veh</span></div>';
-    h += '<div id="plat-bom-oem-body" style="display:'+(oemExp?'block':'none')+';">';
+    h += '<div id="bom-'+collapseKey+'-oem-body" style="display:'+(oemExp?'block':'none')+';">';
   } else {
     h += '<div style="'+MO+'font-size:8px;text-transform:uppercase;letter-spacing:1px;color:var(--cyan);margin-bottom:8px;">② OEM Transformation</div>';
   }
@@ -4197,7 +4200,7 @@ function _bomDetail(matLines, procLines, r, collapsible) {
   h += '<div style="display:flex;justify-content:space-between;font-size:9px;padding:1px 0;"><span style="color:var(--muted2);">+ OEM Overhead 20%</span><span style="'+MO+';color:var(--muted2);">€'+Math.round(mk.overhead_eur).toLocaleString()+'</span></div>';
   h += '<div style="'+DIV+'"></div>';
   h += '<div style="display:flex;justify-content:space-between;font-size:10px;font-weight:600;"><span style="color:var(--cyan);">OEM Make Total</span><span style="'+MO+';color:var(--cyan);">€'+Math.round(mk.total_eur).toLocaleString()+'/veh</span></div>';
-  if (collapsible) h += '</div>';   // close #plat-bom-oem-body
+  if (collapsible) h += '</div>';   // close #bom-<key>-oem-body
   h += '</div>';
 
   // ── TOTAL TPC ──────────────────────────────────────────────────────
@@ -10219,14 +10222,16 @@ function toggleRegionExpand(vid, region) {
   if (btnEl) btnEl.textContent   = _regionExpanded[key] ? '▼ Collapse' : '▶ Countries';
 }
 
-// §2 Platform BOM: collapse state for the two cost-detail cards (default collapsed).
-// Module-level so the choice survives the debounced re-renders of onPropPlatformChange().
-var _platBomExpanded = {supplier:false, oem:false};
-function togglePlatBomCard(which) {
-  _platBomExpanded[which] = !_platBomExpanded[which];
-  var exp    = _platBomExpanded[which];
-  var bodyEl = document.getElementById('plat-bom-'+which+'-body');
-  var chevEl = document.getElementById('plat-bom-'+which+'-chev');
+// Proposal §2–§5 BOM: collapse state for the Supplier/OEM cost-detail cards (default
+// collapsed). Keyed by '<module>-supplier' / '<module>-oem' and module-level so the choice
+// survives the debounced re-renders of the onProp*Change handlers.
+var _bomCardExpanded = {};
+function toggleBomCard(key, which) {
+  var k = key + '-' + which;
+  _bomCardExpanded[k] = !_bomCardExpanded[k];
+  var exp    = _bomCardExpanded[k];
+  var bodyEl = document.getElementById('bom-'+key+'-'+which+'-body');
+  var chevEl = document.getElementById('bom-'+key+'-'+which+'-chev');
   if (bodyEl) bodyEl.style.display = exp ? 'block' : 'none';
   if (chevEl) chevEl.textContent   = exp ? '▼' : '▶';
 }
@@ -17118,7 +17123,7 @@ function onPropPlatformChange() {
     h += _summaryCard(r.std_platform_tpc_eur, r.total_net_weight_kg,
           r.total_material_cost_eur, r.total_process_cost_eur, 0, col, lbl, null);
     h += _rdCard(r);
-    h += _bomDetail(r.material_lines, r.process_lines, r, true);   // §2: collapsible cost cards
+    h += _bomDetail(r.material_lines, r.process_lines, r, 'plat');   // §2: collapsible cost cards
   }
   bomEl.innerHTML = h;
   if (msgEl) msgEl.textContent = '✓ Platform configured — ready to continue';
@@ -17154,7 +17159,7 @@ function _renderPropMultiSummary(r) {
   h += '</div>';
   h += _rdCard(r);
   var v = iceSel ? ice : bev;
-  h += _bomDetail(v.material_lines, v.process_lines, v, true);   // §2: collapsible cost cards
+  h += _bomDetail(v.material_lines, v.process_lines, v, 'plat');   // §2: collapsible cost cards
   return h;
 }
 function onPropSpecSlide(input) {
@@ -17370,7 +17375,7 @@ function onPropTopHatChange() {
     if (!bomDiv) return;
     bomDiv.innerHTML = _summaryCard(r.std_platform_tpc_eur, r.total_net_weight_kg,
       r.total_material_cost_eur, r.total_process_cost_eur, 0, 'var(--purple)', 'Top Hat', null)
-      + _rdCard(r) + _bomDetail(r.material_lines, r.process_lines, r);
+      + _rdCard(r) + _bomDetail(r.material_lines, r.process_lines, r, 'th');   // §4: collapsible cost cards
     // Update section status
     var s4 = document.getElementById('prop-sec-4-status');
     if (s4) s4.textContent = '✎ ' + ck + ' configured';
@@ -17416,7 +17421,7 @@ function onPropICEPWTChange() {
     if (!bomDiv) return;
     bomDiv.innerHTML = _summaryCard(r.std_platform_tpc_eur, r.total_net_weight_kg,
       r.total_material_cost_eur, r.total_process_cost_eur, 0, 'var(--orange)', 'ICE Powertrain', null)
-      + _rdCard(r) + _bomDetail(r.material_lines, r.process_lines, r);
+      + _rdCard(r) + _bomDetail(r.material_lines, r.process_lines, r, 'ice');   // §3: collapsible cost cards
     var s3 = document.getElementById('prop-sec-3-status');
     if (s3) s3.textContent = '✎ ICE ' + ck;
   } catch(e) { console.warn('ICE PWT proposal BOM error:', e); }
@@ -17449,7 +17454,7 @@ function onPropEPWTChange() {
     var label = mb === 'BUY' ? 'e-Motor (Sourced)' : 'e-Motor (Make)';
     bomDiv.innerHTML = _summaryCard(r.std_platform_tpc_eur, r.total_net_weight_kg,
       r.total_material_cost_eur, r.total_process_cost_eur, 0, color, label, null)
-      + _rdCard(r) + _bomDetail(r.material_lines, r.process_lines, r);
+      + _rdCard(r) + _bomDetail(r.material_lines, r.process_lines, r, 'epwt');   // §3: collapsible cost cards
     var s3 = document.getElementById('prop-sec-3-status');
     if (s3) s3.textContent = '✎ ' + label + ' ' + cls;
   } catch(e) { console.warn('ePWT proposal BOM error:', e); }
@@ -17482,7 +17487,7 @@ function onPropEandsChange() {
     var label = mb === 'BUY' ? 'E&S (Sourced)' : 'E&S · ' + arch;
     bomDiv.innerHTML = _summaryCard(r.std_platform_tpc_eur, r.total_net_weight_kg,
       r.total_material_cost_eur, r.total_process_cost_eur, 0, color, label, null)
-      + _rdCard(r) + _bomDetail(r.material_lines, r.process_lines, r);
+      + _rdCard(r) + _bomDetail(r.material_lines, r.process_lines, r, 'eands');   // §5: collapsible cost cards
     var s5 = document.getElementById('prop-sec-5-status');
     if (s5) s5.textContent = '✎ ' + label;
   } catch(e) { console.warn('E&S proposal BOM error:', e); }
@@ -17539,7 +17544,7 @@ function onPropBatteryChange() {
       + '⚡ ' + r.target_kwh + ' kWh · 📦 ' + r.pack_volume_l + ' L · '
       + '€' + Math.round(r.std_platform_tpc_eur / r.target_kwh) + '/kWh'
       + '</div>'
-      + _rdCard(r) + _bomDetail(r.material_lines, r.process_lines, r);
+      + _rdCard(r) + _bomDetail(r.material_lines, r.process_lines, r, 'bat');   // §3: collapsible cost cards
     var s3 = document.getElementById('prop-sec-3-status');
     if (s3) s3.textContent = '✎ Battery ' + r.target_kwh + 'kWh · ' + r.chemistry_name;
   } catch(e) { console.warn('Battery proposal BOM error:', e); }
