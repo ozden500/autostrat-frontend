@@ -17650,10 +17650,12 @@ function buildReviewSection() {
           (s.cost_opt||0)/100, (s.weight_opt||0)/100,
           (s.safety||50)/100, (s.reliability||50)/100, (s.comfort||50)/100);
       }
-      if (propKey==='pwt')     { if(!s.config_key) return null; return _ICE_PC.calc(s.config_key,s.power||100,s.emission_tech||0.1,(s.reliability||50)/100,(s.cost_opt||0)/100,(s.weight_opt||0)/100); }
+      // Specs are stored 0-100 (see onProp*Change); each engine expects 0-1 for the ratio-style
+      // drivers — normalise here (matching the platform branch above and the §4 config cards).
+      if (propKey==='pwt')     { if(!s.config_key) return null; return _ICE_PC.calc(s.config_key,s.power||100,(s.emission_tech||10)/100,(s.reliability||50)/100,(s.cost_opt||0)/100,(s.weight_opt||0)/100); }
       if (propKey==='epwt')    { if(!s.config_key) return null; return _EPWT_PC.calc(s.config_key,s.power_kw||150,s.efficiency||0.7,(s.reliability||50)/100,(s.cost_opt||0)/100,(s.weight_opt||0)/100); }
       if (propKey==='battery') { if(!s.chemistry||!s.make_buy) return null; return _BATTERY_PC.calc(s.chemistry+'_'+s.make_buy,s.target_kwh||60,(s.cost_opt||0)/100); }
-      if (propKey==='tophat')  { if(!s.config_key) return null; return _TOPHAT_PC.calc(s.config_key,s.reliability||0.5,s.comfort||0.5,s.safety||0.5,s.roominess||2.5,s.premiumness||0.3,(s.cost_opt||0)/100,(s.weight_opt||0)/100); }
+      if (propKey==='tophat')  { if(!s.config_key) return null; return _TOPHAT_PC.calc(s.config_key,(s.reliability||50)/100,(s.comfort||50)/100,(s.safety||50)/100,s.roominess||2.5,s.premiumness||0.3,(s.cost_opt||0)/100,(s.weight_opt||0)/100); }
       if (propKey==='eands')   { if(!s.config_key) return null; return _EANDS_PC.calc(s.config_key,s.adas_level||1,s.sensor_suite||30,s.connectivity||30,s.infotainment||30,s.cybersecurity||20,(s.cost_opt||0)/100,(s.weight_opt||0)/100); }
     } catch(e) { console.warn('Review recalc',propKey,e); }
     return null;
