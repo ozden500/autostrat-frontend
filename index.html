@@ -4015,6 +4015,47 @@ function _rdCard(r) {
   return h;
 }
 
+// Standard greenfield CAPEX card for the Platform module (§2) — mirrors _rdCard's look but
+// summarises the one-time investment to build the platform: OEM plant capex + supplier-park
+// capex. Amounts are the STANDARD/reference figures from _MODINV_E at reference volume
+// (V_REF k/yr) and standard automation (L2), so they respond to the platform's spec choices
+// (size, body, safety, weight-opt, reliability, energy type) but not to plant decisions —
+// those are refined per-plant in §7 Industrial Operations and §8 Components Sourcing.
+function _platInvestCard(size, pwtKey) {
+  var specs = (_prop.platform && _prop.platform.specs) || {};
+  size   = size   || specs.size || _getPlatformSize();
+  pwtKey = pwtKey || _pwtToManufKey(specs.pwt || 'ice_only');
+  var seg = (_prop.study && _prop.study.segment_code) || 'c_segment';
+  var bt  = _getBodyType();
+  var o = { specs: specs, segment_code: seg, body_type: bt,
+            platform_size: size, pwt_type: pwtKey,
+            automation_level: 2, platform_shared: false, cap_k: _MODINV_E.V_REF };
+  // Round each component to whole €M for display, and derive TOTAL from those same integers so
+  // the three tiles always reconcile visually (plant + supplier = total).
+  var plantInv = Math.round(_MODINV_E.investment('platform', o));
+  var suppInv  = Math.round(_MODINV_E.supplierInvestment('platform', o));
+  var total    = plantInv + suppInv;
+  var GRN = '#34d399';
+  var h = '<div style="background:rgba(52,211,153,0.08);border:1px solid rgba(52,211,153,0.2);border-radius:6px;padding:10px;margin-bottom:10px;">';
+  h += '<div style="font-family:DM Mono,monospace;font-size:8px;color:var(--muted);margin-bottom:6px;text-transform:uppercase;letter-spacing:2px;">STANDARD CAPEX INVESTMENT · PLATFORM</div>';
+  h += '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;">';
+  h += _statCell('TOTAL', '€'+total+'M', GRN);
+  h += _statCell('OEM PLANT', '€'+plantInv+'M', GRN);
+  h += _statCell('SUPPLIER PARK', '€'+suppInv+'M', GRN);
+  h += '</div>';
+  h += '<div style="border-top:0.5px solid rgba(52,211,153,0.2);margin-top:6px;padding-top:6px;">';
+  h += '<div style="font-size:8px;color:var(--muted2);display:flex;flex-wrap:wrap;gap:6px;margin-bottom:3px;">' +
+    '<span>'+size+' platform</span><span>'+bt+' body</span>' +
+    (pwtKey==='ice_and_bev' ? '<span>multi-energy ×'+_MODINV_E.MULTI_ENERGY_STEP+'</span>' :
+     pwtKey==='bev_only'    ? '<span>BEV platform</span>' : '<span>ICE platform</span>') +
+    '</div>';
+  h += '<div style="font-size:8px;color:var(--muted2);">Greenfield reference capex @ '+_MODINV_E.V_REF+'k/yr · L2 automation. ' +
+    'Plant capex is refined per-plant in §7 Industrial Operations; supplier capex in §8 Components Sourcing.</div>';
+  h += '</div>';
+  h += '</div>';
+  return h;
+}
+
 function _bomDetail(matLines, procLines, r, collapseKey) {
   var h   = '';
   var tpc = r.std_platform_tpc_eur || r.total_std_direct_eur || 0;
@@ -17123,6 +17164,7 @@ function onPropPlatformChange() {
     h += _summaryCard(r.std_platform_tpc_eur, r.total_net_weight_kg,
           r.total_material_cost_eur, r.total_process_cost_eur, 0, col, lbl, null);
     h += _rdCard(r);
+    h += _platInvestCard(size, _pwtToManufKey(pwt));   // §2: standard plant + supplier capex
     h += _bomDetail(r.material_lines, r.process_lines, r, 'plat');   // §2: collapsible cost cards
   }
   bomEl.innerHTML = h;
@@ -17158,6 +17200,7 @@ function _renderPropMultiSummary(r) {
 
   h += '</div>';
   h += _rdCard(r);
+  h += _platInvestCard(_getPlatformSize(), 'ice_and_bev');   // §2: standard plant + supplier capex (multi-energy)
   var v = iceSel ? ice : bev;
   h += _bomDetail(v.material_lines, v.process_lines, v, 'plat');   // §2: collapsible cost cards
   return h;
