@@ -4044,8 +4044,10 @@ function _platInvestCard(size, pwtKey) {
   h += _statCell('SUPPLIER PARK', '€'+suppInv+'M', GRN);
   h += '</div>';
   h += '<div style="border-top:0.5px solid rgba(52,211,153,0.2);margin-top:6px;padding-top:6px;">';
+  // Body type is intentionally NOT shown — platform capex is body-agnostic (one platform serves
+  // multiple body styles); body-driven investment lives in the TopHat module.
   h += '<div style="font-size:8px;color:var(--muted2);display:flex;flex-wrap:wrap;gap:6px;margin-bottom:3px;">' +
-    '<span>'+size+' platform</span><span>'+bt+' body</span>' +
+    '<span>'+size+' platform</span>' +
     (pwtKey==='ice_and_bev' ? '<span>multi-energy ×'+_MODINV_E.MULTI_ENERGY_STEP+'</span>' :
      pwtKey==='bev_only'    ? '<span>BEV platform</span>' : '<span>ICE platform</span>') +
     '</div>';
@@ -19369,6 +19371,9 @@ var _MODINV_E = (function() {
   // Calibrated 2026-07-12; platform base -50% & tophat base -20% (medium veh-plant ≈ €122M @280k/yr).
   var PLAT_INV = {micro:37,small:51,medium:67,large:84,frame:75,performance:98,commercial:63};
   var PLAT_WC  = {micro:2400,small:3000,medium:3600,large:4200,frame:4000,performance:4600,commercial:3400};
+  // PLAT_BODY retired 2026-07-12 — a platform is body-agnostic (one platform serves HB/SUV/etc.),
+  // so no body multiplier is applied to platform investment/work content. Body-driven cost is in
+  // the TopHat (TH_BODY). Kept here for reference/history only; not referenced by any formula.
   var PLAT_BODY= {HB:1.00,SEDAN:1.05,SUV:1.12,COUPE:1.10,VAN:0.95,PICKUP:1.08};
 
   var TH_INV = {a_segment:30,b_segment:36,c_segment:47,d_segment:57,e_segment:66,f_segment:82,
@@ -19415,8 +19420,9 @@ var _MODINV_E = (function() {
     var base=0, m=1;
     if(mod==='platform'){
       base = PLAT_INV[o.platform_size||'medium']||340;
-      m = (PLAT_BODY[bt]||1.00)
-        * (1+0.25*d01(s.weight_opt)) * (1+0.08*d01(s.safety)) * (1+0.05*d01(s.reliability))
+      // No body-type multiplier: a platform (underbody/structure) is shared across body styles
+      // (an HB and an SUV can reuse the same platform). Body-driven capex lives in the TopHat.
+      m = (1+0.25*d01(s.weight_opt)) * (1+0.08*d01(s.safety)) * (1+0.05*d01(s.reliability))
         * (pk==='ice_and_bev'?MULTI_ENERGY_STEP:(pk==='bev_only'?BEV_PLATFORM_STEP:1.00));
     } else if(mod==='tophat'){
       base = TH_INV[seg]||150;
@@ -19446,7 +19452,8 @@ var _MODINV_E = (function() {
     var base=0, m=1;
     if(mod==='platform'){
       base = PLAT_WC[o.platform_size||'medium']||3600;
-      m = (PLAT_BODY[bt]||1.00) * (1+0.10*d01(s.weight_opt)) * (1+0.04*d01(s.safety));
+      // Body-agnostic (see investment()): platform work content does not vary by body style.
+      m = (1+0.10*d01(s.weight_opt)) * (1+0.04*d01(s.safety));
     } else if(mod==='tophat'){
       base = TH_WC[seg]||5000;
       m = (TH_BODY[bt]||1.00) * (1+0.30*d01(s.premiumness)) * (1+0.20*d01(s.comfort))
