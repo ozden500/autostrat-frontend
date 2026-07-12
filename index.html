@@ -19362,7 +19362,7 @@ var _MODINV_E = (function() {
   // as the plant. Ratios differentiated per real-world OEM-vs-supplier split (body OEM-core;
   // interior/electronics/cells supplier-heavy). E&S (plant≈0, ~90% supplier) and battery
   // (make/buy inverts — cells are supplier-dominated) use their own parametric basis.
-  var SUPPLIER_RATIO = {platform:0.20, tophat:0.45, pwt:0.55, epwt:0.45};  // supplier ÷ plant
+  var SUPPLIER_RATIO = {platform:1.00, tophat:1.00, pwt:0.55, epwt:0.45};  // supplier ÷ plant (platform/tophat matched to plant)
   function supplierInvestment(mod, o){
     o=o||{}; var s=o.specs||{}, al=o.automation_level||2, seg=o.segment_code||'c_segment';
     if(SUPPLIER_RATIO[mod]!=null)
