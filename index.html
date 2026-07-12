@@ -19280,15 +19280,28 @@ var _MODINV_E = (function() {
 
   var BAT_CHEM = {NMC:1.00,LFP:0.90,SOLID:1.35,SOLIDSTATE:1.35,SOLID_STATE:1.35};
 
+  // ICE-plant hybrid intensity: extra motor/inverter tooling + assembly labour on the engine line.
+  // Mirrors the BOM (HYBRID_BOM motor+magnet mass) and R&D premium ordering: ICE < HEV < REEV < PHEV.
+  var HYBRID_MULT = {ICE:{inv:1.00,wc:1.00}, HEV:{inv:1.12,wc:1.10}, PHEV:{inv:1.30,wc:1.22}, REEV:{inv:1.25,wc:1.20}};
+  function hybTech(ck){ ck=(ck||'').toUpperCase();
+    if(ck.indexOf('PHEV')>=0) return 'PHEV';       // check PHEV before HEV (substring)
+    if(ck.indexOf('REEV')>=0) return 'REEV';
+    if(ck.indexOf('HEV')>=0)  return 'HEV';
+    return 'ICE';
+  }
+
   function d01(v){ v=parseFloat(v)||0; return v>1 ? v/100 : v; }          // 0-100 or 0-1 → 0-1
   function nr(v,lo,hi){ v=parseFloat(v)||0; return hi<=lo?0:Math.max(0,Math.min(1,(v-lo)/(hi-lo))); }
   function capScale(capK){ capK=parseFloat(capK)||1; return Math.pow(Math.max(1,capK)/V_REF, 0.6); }
 
   function iceBase(ck){ ck=(ck||'').toUpperCase();                       // inv trimmed -35%: 4CYL ≈ €46M @280k
-    if(ck.indexOf('8CYL')>=0||ck.indexOf('V8')>=0) return {inv:91,wc:2400};
-    if(ck.indexOf('6CYL')>=0||ck.indexOf('V6')>=0) return {inv:70,wc:2100};
-    if(ck.indexOf('3CYL')>=0) return ck.indexOf('TURBO')>=0?{inv:42,wc:1500}:{inv:36,wc:1500};
-    return ck.indexOf('TURBO')>=0?{inv:53,wc:1800}:{inv:46,wc:1800};     // default 4CYL
+    var b;
+    if(ck.indexOf('8CYL')>=0||ck.indexOf('V8')>=0) b={inv:91,wc:2400};
+    else if(ck.indexOf('6CYL')>=0||ck.indexOf('V6')>=0) b={inv:70,wc:2100};
+    else if(ck.indexOf('3CYL')>=0) b=ck.indexOf('TURBO')>=0?{inv:42,wc:1500}:{inv:36,wc:1500};
+    else b=ck.indexOf('TURBO')>=0?{inv:53,wc:1800}:{inv:46,wc:1800};     // default 4CYL
+    var h=HYBRID_MULT[hybTech(ck)]||HYBRID_MULT.ICE;                     // hybrid motor/inverter tooling+labour
+    return {inv:b.inv*h.inv, wc:b.wc*h.wc};
   }
   function epwtBase(ck){ ck=(ck||'').toUpperCase();                       // inv trimmed -35%
     if(ck.indexOf('TRI')>=0)  return {inv:49,wc:1150};
