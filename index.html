@@ -4015,47 +4015,63 @@ function _rdCard(r) {
   return h;
 }
 
-// Standard greenfield CAPEX card for the Platform module (§2) — mirrors _rdCard's look but
-// summarises the one-time investment to build the platform: OEM plant capex + supplier-park
-// capex. Amounts are the STANDARD/reference figures from _MODINV_E at reference volume
-// (V_REF k/yr) and standard automation (L2), so they respond to the platform's spec choices
-// (size, body, safety, weight-opt, reliability, energy type) but not to plant decisions —
-// those are refined per-plant in §7 Industrial Operations and §8 Components Sourcing.
-function _platInvestCard(size, pwtKey) {
-  var specs = (_prop.platform && _prop.platform.specs) || {};
-  size   = size   || specs.size || _getPlatformSize();
-  pwtKey = pwtKey || _pwtToManufKey(specs.pwt || 'ice_only');
-  var seg = (_prop.study && _prop.study.segment_code) || 'c_segment';
-  var bt  = _getBodyType();
+// Standard greenfield CAPEX card for any proposal module (§2 platform … §5 E&S) — mirrors
+// _rdCard's look but summarises the one-time investment to build the module: OEM plant capex +
+// supplier-park capex. Amounts are the STANDARD/reference figures from _MODINV_E at reference
+// volume (V_REF k/yr) and standard automation (L2), so they respond to the module's spec choices
+// but not to plant decisions — those are refined per-plant in §7 Industrial Operations and §8
+// Components Sourcing. `mod` is a _MODINV_E key: 'platform'|'pwt'|'epwt'|'battery'|'tophat'|'eands'.
+// `pwtOverride` (platform only) forces the energy type; other modules ignore pwt_type.
+var _MODINV_LABELS = {platform:'PLATFORM', pwt:'ICE POWERTRAIN', epwt:'e-MOTOR (EDM)',
+                      battery:'BATTERY', tophat:'TOP HAT', eands:'ELECTRONICS & SOFTWARE'};
+var _MODINV_PROPKEY = {platform:'platform', pwt:'pwt', epwt:'epwt', battery:'battery', tophat:'tophat', eands:'eands'};
+function _moduleInvestCard(mod, pwtOverride) {
+  var specs = (_prop[_MODINV_PROPKEY[mod]] && _prop[_MODINV_PROPKEY[mod]].specs) || {};
+  var seg   = (_prop.study && _prop.study.segment_code) || 'c_segment';
+  var bt    = _getBodyType();
+  var size  = specs.size || _getPlatformSize();
+  var pwtKey = pwtOverride || _pwtToManufKey((_prop.platform && _prop.platform.specs && _prop.platform.specs.pwt) || 'ice_only');
   var o = { specs: specs, segment_code: seg, body_type: bt,
             platform_size: size, pwt_type: pwtKey,
             automation_level: 2, platform_shared: false, cap_k: _MODINV_E.V_REF };
   // Round each component to whole €M for display, and derive TOTAL from those same integers so
   // the three tiles always reconcile visually (plant + supplier = total).
-  var plantInv = Math.round(_MODINV_E.investment('platform', o));
-  var suppInv  = Math.round(_MODINV_E.supplierInvestment('platform', o));
+  var plantInv = Math.round(_MODINV_E.investment(mod, o));
+  var suppInv  = Math.round(_MODINV_E.supplierInvestment(mod, o));
   var total    = plantInv + suppInv;
   var GRN = '#34d399';
   var h = '<div style="background:rgba(52,211,153,0.08);border:1px solid rgba(52,211,153,0.2);border-radius:6px;padding:10px;margin-bottom:10px;">';
-  h += '<div style="font-family:DM Mono,monospace;font-size:8px;color:var(--muted);margin-bottom:6px;text-transform:uppercase;letter-spacing:2px;">STANDARD CAPEX INVESTMENT · PLATFORM</div>';
+  h += '<div style="font-family:DM Mono,monospace;font-size:8px;color:var(--muted);margin-bottom:6px;text-transform:uppercase;letter-spacing:2px;">STANDARD CAPEX INVESTMENT · '+(_MODINV_LABELS[mod]||mod.toUpperCase())+'</div>';
   h += '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;">';
   h += _statCell('TOTAL', '€'+total+'M', GRN);
   h += _statCell('OEM PLANT', '€'+plantInv+'M', GRN);
   h += _statCell('SUPPLIER PARK', '€'+suppInv+'M', GRN);
   h += '</div>';
   h += '<div style="border-top:0.5px solid rgba(52,211,153,0.2);margin-top:6px;padding-top:6px;">';
-  // Body type is intentionally NOT shown — platform capex is body-agnostic (one platform serves
-  // multiple body styles); body-driven investment lives in the TopHat module.
-  h += '<div style="font-size:8px;color:var(--muted2);display:flex;flex-wrap:wrap;gap:6px;margin-bottom:3px;">' +
-    '<span>'+size+' platform</span>' +
-    (pwtKey==='ice_and_bev' ? '<span>multi-energy ×'+_MODINV_E.MULTI_ENERGY_STEP+'</span>' :
-     pwtKey==='bev_only'    ? '<span>BEV platform</span>' : '<span>ICE platform</span>') +
-    '</div>';
+  var chips = _modInvChips(mod, o, size, seg, bt, pwtKey);
+  if (chips) h += '<div style="font-size:8px;color:var(--muted2);display:flex;flex-wrap:wrap;gap:6px;margin-bottom:3px;">'+chips+'</div>';
   h += '<div style="font-size:8px;color:var(--muted2);">Greenfield reference capex @ '+_MODINV_E.V_REF+'k/yr · L2 automation. ' +
-    'Plant capex is refined per-plant in §7 Industrial Operations; supplier capex in §8 Components Sourcing.</div>';
+    'Plant capex is refined per-plant in §7 Industrial Operations; supplier capex in §8 Components Sourcing.' +
+    (mod==='eands' ? ' E&S carries ~zero plant capex by design — it is near-fully supplier-sourced.' : '') + '</div>';
   h += '</div>';
   h += '</div>';
   return h;
+}
+
+// Small per-module descriptor chips shown under the capex tiles (what drives the figures).
+function _modInvChips(mod, o, size, seg, bt, pwtKey) {
+  var s = o.specs || {};
+  function chip(t){ return '<span>'+t+'</span>'; }
+  if (mod==='platform')
+    // Body type intentionally omitted — platform capex is body-agnostic (see _MODINV_E.investment).
+    return chip(size+' platform') + (pwtKey==='ice_and_bev' ? chip('multi-energy ×'+_MODINV_E.MULTI_ENERGY_STEP)
+                                    : pwtKey==='bev_only' ? chip('BEV platform') : chip('ICE platform'));
+  if (mod==='pwt')     return chip((s.config_key||'ICE').replace(/_/g,' ')) + (s.power?chip(Math.round(s.power)+' hp'):'');
+  if (mod==='epwt')    return chip(s.epwt_class||'e-motor') + (s.power_kw?chip(Math.round(s.power_kw)+' kW'):'') + (s.make_buy==='BUY'?chip('sourced'):'');
+  if (mod==='battery') return chip(s.chemistry||'NMC') + (s.target_kwh?chip(Math.round(s.target_kwh)+' kWh'):'') + (s.make_buy==='BUY'?chip('sourced'):'');
+  if (mod==='tophat')  return chip(seg.replace(/_/g,' ')) + chip(bt+' body');   // TopHat legitimately depends on body/segment
+  if (mod==='eands')   return chip(s.ee_arch||'E/E arch') + (s.adas_level?chip('ADAS L'+s.adas_level):'') + (s.make_buy==='BUY'?chip('sourced'):'');
+  return '';
 }
 
 function _bomDetail(matLines, procLines, r, collapseKey) {
@@ -17166,7 +17182,7 @@ function onPropPlatformChange() {
     h += _summaryCard(r.std_platform_tpc_eur, r.total_net_weight_kg,
           r.total_material_cost_eur, r.total_process_cost_eur, 0, col, lbl, null);
     h += _rdCard(r);
-    h += _platInvestCard(size, _pwtToManufKey(pwt));   // §2: standard plant + supplier capex
+    h += _moduleInvestCard('platform', _pwtToManufKey(pwt));   // §2: standard plant + supplier capex
     h += _bomDetail(r.material_lines, r.process_lines, r, 'plat');   // §2: collapsible cost cards
   }
   bomEl.innerHTML = h;
@@ -17202,7 +17218,7 @@ function _renderPropMultiSummary(r) {
 
   h += '</div>';
   h += _rdCard(r);
-  h += _platInvestCard(_getPlatformSize(), 'ice_and_bev');   // §2: standard plant + supplier capex (multi-energy)
+  h += _moduleInvestCard('platform', 'ice_and_bev');   // §2: standard plant + supplier capex (multi-energy)
   var v = iceSel ? ice : bev;
   h += _bomDetail(v.material_lines, v.process_lines, v, 'plat');   // §2: collapsible cost cards
   return h;
@@ -17420,7 +17436,7 @@ function onPropTopHatChange() {
     if (!bomDiv) return;
     bomDiv.innerHTML = _summaryCard(r.std_platform_tpc_eur, r.total_net_weight_kg,
       r.total_material_cost_eur, r.total_process_cost_eur, 0, 'var(--purple)', 'Top Hat', null)
-      + _rdCard(r) + _bomDetail(r.material_lines, r.process_lines, r, 'th');   // §4: collapsible cost cards
+      + _rdCard(r) + _moduleInvestCard('tophat') + _bomDetail(r.material_lines, r.process_lines, r, 'th');   // §4: capex + collapsible cost cards
     // Update section status
     var s4 = document.getElementById('prop-sec-4-status');
     if (s4) s4.textContent = '✎ ' + ck + ' configured';
@@ -17466,7 +17482,7 @@ function onPropICEPWTChange() {
     if (!bomDiv) return;
     bomDiv.innerHTML = _summaryCard(r.std_platform_tpc_eur, r.total_net_weight_kg,
       r.total_material_cost_eur, r.total_process_cost_eur, 0, 'var(--orange)', 'ICE Powertrain', null)
-      + _rdCard(r) + _bomDetail(r.material_lines, r.process_lines, r, 'ice');   // §3: collapsible cost cards
+      + _rdCard(r) + _moduleInvestCard('pwt') + _bomDetail(r.material_lines, r.process_lines, r, 'ice');   // §3: capex + collapsible cost cards
     var s3 = document.getElementById('prop-sec-3-status');
     if (s3) s3.textContent = '✎ ICE ' + ck;
   } catch(e) { console.warn('ICE PWT proposal BOM error:', e); }
@@ -17499,7 +17515,7 @@ function onPropEPWTChange() {
     var label = mb === 'BUY' ? 'e-Motor (Sourced)' : 'e-Motor (Make)';
     bomDiv.innerHTML = _summaryCard(r.std_platform_tpc_eur, r.total_net_weight_kg,
       r.total_material_cost_eur, r.total_process_cost_eur, 0, color, label, null)
-      + _rdCard(r) + _bomDetail(r.material_lines, r.process_lines, r, 'epwt');   // §3: collapsible cost cards
+      + _rdCard(r) + _moduleInvestCard('epwt') + _bomDetail(r.material_lines, r.process_lines, r, 'epwt');   // §3: capex + collapsible cost cards
     var s3 = document.getElementById('prop-sec-3-status');
     if (s3) s3.textContent = '✎ ' + label + ' ' + cls;
   } catch(e) { console.warn('ePWT proposal BOM error:', e); }
@@ -17532,7 +17548,7 @@ function onPropEandsChange() {
     var label = mb === 'BUY' ? 'E&S (Sourced)' : 'E&S · ' + arch;
     bomDiv.innerHTML = _summaryCard(r.std_platform_tpc_eur, r.total_net_weight_kg,
       r.total_material_cost_eur, r.total_process_cost_eur, 0, color, label, null)
-      + _rdCard(r) + _bomDetail(r.material_lines, r.process_lines, r, 'eands');   // §5: collapsible cost cards
+      + _rdCard(r) + _moduleInvestCard('eands') + _bomDetail(r.material_lines, r.process_lines, r, 'eands');   // §5: capex + collapsible cost cards
     var s5 = document.getElementById('prop-sec-5-status');
     if (s5) s5.textContent = '✎ ' + label;
   } catch(e) { console.warn('E&S proposal BOM error:', e); }
@@ -17589,7 +17605,7 @@ function onPropBatteryChange() {
       + '⚡ ' + r.target_kwh + ' kWh · 📦 ' + r.pack_volume_l + ' L · '
       + '€' + Math.round(r.std_platform_tpc_eur / r.target_kwh) + '/kWh'
       + '</div>'
-      + _rdCard(r) + _bomDetail(r.material_lines, r.process_lines, r, 'bat');   // §3: collapsible cost cards
+      + _rdCard(r) + _moduleInvestCard('battery') + _bomDetail(r.material_lines, r.process_lines, r, 'bat');   // §3: capex + collapsible cost cards
     var s3 = document.getElementById('prop-sec-3-status');
     if (s3) s3.textContent = '✎ Battery ' + r.target_kwh + 'kWh · ' + r.chemistry_name;
   } catch(e) { console.warn('Battery proposal BOM error:', e); }
