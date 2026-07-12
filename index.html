@@ -16747,12 +16747,13 @@ function buildModuleOptions(modType, propKey, nextFn) {
       var iceSpecs = currentSel.specs;
 
       // Build cylinder + hybrid dropdowns from loaded configs
-      var cylinders = [...new Set((_propICEPWTConfigs||[]).map(function(c){return String(c.cylinders);}))];
+      var cylinders = [...new Set((_propICEPWTConfigs||[]).map(function(c){return String(c.cylinders);}))].sort(function(a,b){return Number(a)-Number(b);});
       var selCyl = iceSpecs.cylinders || '';
       var cylOpts = cylinders.map(function(v){return '<option value="'+v+'"'+(selCyl===v?' selected':'')+'>'+v+'-Cylinder</option>';}).join('');
-      var hybridConfigs = selCyl ? (_propICEPWTConfigs||[]).filter(function(c){return String(c.cylinders)===selCyl;}) : [];
+      var hybridConfigs = (selCyl ? (_propICEPWTConfigs||[]).filter(function(c){return String(c.cylinders)===selCyl;}) : [])
+        .sort(function(a,b){return (_ICE_ENGINE_TYPE_ORDER[a.hybrid_tech]??99)-(_ICE_ENGINE_TYPE_ORDER[b.hybrid_tech]??99);});
       var selCfg = iceSpecs.config_key || '';
-      var hybOpts = hybridConfigs.map(function(c){return '<option value="'+c.config_key+'"'+(selCfg===c.config_key?' selected':'')+'>'+c.hybrid_tech+'</option>';}).join('');
+      var hybOpts = hybridConfigs.map(function(c){return '<option value="'+c.config_key+'"'+(selCfg===c.config_key?' selected':'')+'>'+(_ICE_ENGINE_TYPE_LABEL[c.hybrid_tech]||c.hybrid_tech)+'</option>';}).join('');
 
       html += '<div style="margin-top:10px;">';
       // Config selectors
@@ -17347,9 +17348,10 @@ function onPropICECylChange() {
   var cyl = document.getElementById('prop-ice-cyl')?.value;
   var sel = document.getElementById('prop-ice-config');
   if (!sel) return;
-  var opts = cyl ? (_propICEPWTConfigs||[]).filter(function(c){return String(c.cylinders)===cyl;}) : [];
+  var opts = cyl ? (_propICEPWTConfigs||[]).filter(function(c){return String(c.cylinders)===cyl;})
+      .sort(function(a,b){return (_ICE_ENGINE_TYPE_ORDER[a.hybrid_tech]??99)-(_ICE_ENGINE_TYPE_ORDER[b.hybrid_tech]??99);}) : [];
   sel.innerHTML = '<option value="">— type —</option>' +
-    opts.map(function(c){return '<option value="'+c.config_key+'">'+c.hybrid_tech+'</option>';}).join('');
+    opts.map(function(c){return '<option value="'+c.config_key+'">'+(_ICE_ENGINE_TYPE_LABEL[c.hybrid_tech]||c.hybrid_tech)+'</option>';}).join('');
   if (!_prop.pwt) _prop.pwt = {mode:'new', specs:{}};
   if (!_prop.pwt.specs) _prop.pwt.specs = {};
   _prop.pwt.specs.cylinders = cyl;
