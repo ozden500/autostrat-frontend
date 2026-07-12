@@ -19357,18 +19357,26 @@ var _MODINV_E = (function() {
   // BUY modules carry more supplier capex (supplier makes the whole part). Target: a medium ICE
   // vehicle (platform+tophat+eands) ≈ €40M.
   function isBuy(s){ var ck=((s||{}).config_key||'').toUpperCase(); return ck.slice(-4)==='_BUY' || (s||{}).make_buy==='BUY'; }
+  // Supplier-park capex per module = supplier ratio × the module's FULL parametric plant capex,
+  // so it inherits the same dependency (body, attributes, automation, volume, BEV/multi-energy)
+  // as the plant. Ratios differentiated per real-world OEM-vs-supplier split (body OEM-core;
+  // interior/electronics/cells supplier-heavy). E&S (plant≈0, ~90% supplier) and battery
+  // (make/buy inverts — cells are supplier-dominated) use their own parametric basis.
+  var SUPPLIER_RATIO = {platform:0.20, tophat:0.45, pwt:0.55, epwt:0.45};  // supplier ÷ plant
   function supplierInvestment(mod, o){
-    o=o||{}; var s=o.specs||{}, capK=o.cap_k||1;
-    var seg=o.segment_code||'c_segment', sz=o.platform_size||'medium', cs=capScale(capK), base=0;
-    if(mod==='platform')      base = (PLAT_INV[sz]||67) * 0.18;                       // bought stampings/sub-assemblies
-    else if(mod==='tophat')   base = (TH_INV[seg]||47) * 0.38;                        // seats/interior/trim (heavily outsourced)
-    else if(mod==='eands')    base = (TH_INV[seg]||47) * 0.20 * (isBuy(s)?1.30:1.00); // electronics/ADAS — mostly bought
-    else if(mod==='pwt')      base = iceBase(s.config_key).inv * 0.55 * (isBuy(s)?1.30:1.00); // engine: turbo/injection/castings/aftertreatment (~35% of PWT ecosystem)
-    else if(mod==='epwt')     base = epwtBase(s.config_key).inv * 0.30 * (isBuy(s)?1.50:1.00);
-    else if(mod==='battery'){ var kwh=parseFloat(s.target_kwh)||60;
-      var chem=(s.chemistry||'NMC').toUpperCase().replace(/[^A-Z_]/g,'');
-      base = (18+0.70*kwh) * 0.20 * (BAT_CHEM[chem]||1.00) * (isBuy(s)?2.00:1.00); }
-    return Math.round(base * cs * 10)/10;
+    o=o||{}; var s=o.specs||{}, al=o.automation_level||2, seg=o.segment_code||'c_segment';
+    if(SUPPLIER_RATIO[mod]!=null)
+      return Math.round(investment(mod,o) * SUPPLIER_RATIO[mod] * 10)/10;
+    if(mod==='battery'){
+      var kwh=parseFloat(s.target_kwh)||60, chem=(s.chemistry||'NMC').toUpperCase().replace(/[^A-Z_]/g,'');
+      var fullBase=(18+0.70*kwh)*(BAT_CHEM[chem]||1.00);                            // cell+pack ecosystem (make basis)
+      return Math.round(fullBase * (isBuy(s)?0.90:0.35) * (AUTO_INV[al]||1.00) * capScale(o.cap_k) * 10)/10;
+    }
+    if(mod==='eands'){
+      var base=(TH_INV[seg]||47) * 0.28 * (1+0.30*nr(s.adas_level,1,4));            // electronics/ADAS content (plant≈0, ~90% supplier)
+      return Math.round(base * (AUTO_INV[al]||1.00) * capScale(o.cap_k) * (isBuy(s)?1.15:1.00) * 10)/10;
+    }
+    return 0;
   }
 
   return {investment:investment, workContent:workContent, supplierInvestment:supplierInvestment, capScale:capScale,
