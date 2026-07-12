@@ -3090,6 +3090,8 @@ const _ICE_ENGINE_TYPE_LABEL = {
   PHEV: 'PHEV (Turbo)',
   REEV: 'REEV (NA)',
 };
+// Logical display order (ascending electrification): ICE NA -> ICE TURBO -> HEV -> PHEV -> REEV
+const _ICE_ENGINE_TYPE_ORDER = { ICE:0, TURBO:1, HEV:2, PHEV:3, REEV:4 };
 
 // Unique primary values per type (extracted from configs)
 function getPrimaryOptions(type, configs) {
@@ -3104,7 +3106,9 @@ function getPrimaryOptions(type, configs) {
 
 function getSecondaryOptions(type, configs, primaryVal) {
   if (type==='platform') return configs.filter(c=>c.size_code===primaryVal).map(c=>({val:c.config_key, label:c.energy_type}));
-  if (type==='ice_pwt')  return configs.filter(c=>String(c.cylinders)===primaryVal).map(c=>({val:c.config_key, label:(_ICE_ENGINE_TYPE_LABEL[c.hybrid_tech]||c.hybrid_tech)}));
+  if (type==='ice_pwt')  return configs.filter(c=>String(c.cylinders)===primaryVal)
+      .sort((a,b)=>(_ICE_ENGINE_TYPE_ORDER[a.hybrid_tech]??99)-(_ICE_ENGINE_TYPE_ORDER[b.hybrid_tech]??99))
+      .map(c=>({val:c.config_key, label:(_ICE_ENGINE_TYPE_LABEL[c.hybrid_tech]||c.hybrid_tech)}));
   if (type==='tophat')   return configs.filter(c=>c.segment_code===primaryVal).map(c=>({val:c.config_key, label:c.body_type}));
   if (type==='epwt')     return [{val:primaryVal+'_MAKE',label:'Make (Own Development)'},{val:primaryVal+'_BUY',label:'Buy (Sourced from Supplier)'}];
   if (type==='eands')    return [{val:primaryVal+'_MAKE',label:'Make (Own Development)'},{val:primaryVal+'_BUY',label:'Buy (Tier-1 Sourced)'}];
