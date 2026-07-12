@@ -3073,11 +3073,22 @@ async function modTab(type, el) {
 // Primary/secondary labels per module type
 const MOD_STEP_LABELS = {
   platform: {a:'Platform Size',    b:'PWT Compatibility'},
-  ice_pwt:  {a:'Cylinder Count',   b:'Hybrid Technology'},
+  ice_pwt:  {a:'Cylinder Count',   b:'Engine Type'},
   epwt:     {a:'Performance Class',b:'Make or Buy'},
   tophat:   {a:'Vehicle Segment',  b:'Body Type'},
   eands:    {a:'E/E Architecture', b:'Make or Buy'},
   battery:  {a:'Chemistry',        b:'Make or Buy'},
+};
+
+// ICE "Engine Type" secondary-axis labels. Induction is enumerated (NA vs Turbo) rather than a
+// separate variable; hybrids bundle their typical induction: HEV/PHEV are turbocharged, REEV runs a
+// naturally-aspirated efficiency engine. Turbo detection downstream keys off the config_key '_TURBO'.
+const _ICE_ENGINE_TYPE_LABEL = {
+  ICE:  'ICE — Naturally Aspirated',
+  TURBO:'ICE — Turbocharged',
+  HEV:  'HEV — Full Hybrid (turbo)',
+  PHEV: 'PHEV — Plug-in Hybrid (turbo)',
+  REEV: 'REEV — Range Extender (NA)',
 };
 
 // Unique primary values per type (extracted from configs)
@@ -3093,7 +3104,7 @@ function getPrimaryOptions(type, configs) {
 
 function getSecondaryOptions(type, configs, primaryVal) {
   if (type==='platform') return configs.filter(c=>c.size_code===primaryVal).map(c=>({val:c.config_key, label:c.energy_type}));
-  if (type==='ice_pwt')  return configs.filter(c=>String(c.cylinders)===primaryVal).map(c=>({val:c.config_key, label:c.hybrid_tech}));
+  if (type==='ice_pwt')  return configs.filter(c=>String(c.cylinders)===primaryVal).map(c=>({val:c.config_key, label:(_ICE_ENGINE_TYPE_LABEL[c.hybrid_tech]||c.hybrid_tech)}));
   if (type==='tophat')   return configs.filter(c=>c.segment_code===primaryVal).map(c=>({val:c.config_key, label:c.body_type}));
   if (type==='epwt')     return [{val:primaryVal+'_MAKE',label:'Make (Own Development)'},{val:primaryVal+'_BUY',label:'Buy (Sourced from Supplier)'}];
   if (type==='eands')    return [{val:primaryVal+'_MAKE',label:'Make (Own Development)'},{val:primaryVal+'_BUY',label:'Buy (Tier-1 Sourced)'}];
@@ -4487,7 +4498,7 @@ var _ICE_PC = {
         ["ENGINE_MACHINING",27],["ENGINE_ASSEMBLY",169],["DYNO_TEST",169]],
   },
   BASE_RD: {
-    "3CYL_ICE":120, "4CYL_ICE":160, "4CYL_TURBO":175,
+    "3CYL_ICE":120, "3CYL_TURBO":135, "4CYL_ICE":160, "4CYL_TURBO":175,
     "4CYL_HEV":220, "4CYL_PHEV":280, "4CYL_REEV":260,
     "6CYL_ICE":220, "6CYL_TURBO":240, "6CYL_HEV":300,
     "8CYL_ICE":280, "8CYL_TURBO":300, "12CYL_ICE":400,
@@ -6041,7 +6052,7 @@ var _CONS_E = {
 
   // ICE engine config delta vs 4CYL_ICE baseline (L/100km)
   ICE_DELTA: {
-    '3CYL_ICE':-0.5, '4CYL_ICE':0.0,   '4CYL_TURBO':-0.3,
+    '3CYL_ICE':-0.5, '3CYL_TURBO':-0.7, '4CYL_ICE':0.0,   '4CYL_TURBO':-0.3,
     '4CYL_HEV':-1.8, '4CYL_PHEV':-0.8, '4CYL_REEV':-0.5,
     '6CYL_ICE':0.9,  '6CYL_TURBO':0.6, '6CYL_HEV':-0.8,
     '8CYL_ICE':2.0,  '8CYL_TURBO':1.6, '12CYL_ICE':3.5
@@ -6234,7 +6245,7 @@ var _PERF_E = {
   // Launch/delivery factor per engine config (vs 4CYL_ICE baseline = 1.00)
   // < 1.00 = faster; values < 1 reflect better torque delivery or additive power
   ICE_CONFIG_FACTOR: {
-    '3CYL_ICE': 1.04,   '4CYL_ICE': 1.00,   '4CYL_TURBO': 0.94,
+    '3CYL_ICE': 1.04,   '3CYL_TURBO': 0.98, '4CYL_ICE': 1.00,   '4CYL_TURBO': 0.94,
     '4CYL_HEV': 0.89,   '4CYL_PHEV': 0.84,  '4CYL_REEV': 0.91,
     '6CYL_ICE': 0.97,   '6CYL_TURBO': 0.92, '6CYL_HEV': 0.88,
     '8CYL_ICE': 0.95,   '8CYL_TURBO': 0.90, '12CYL_ICE': 0.88
