@@ -8945,7 +8945,7 @@ function _buildBizCasePanels(byYear,mktEcon,modTpc,modRd,mktsBC,plants,tpcNum,rd
   var avgPlantManuf=0, avgBuyAdj=0;
   if (plants&&plants.length) {
     var totCap=plants.reduce(function(s,p){return s+(p._manuf?p._manuf.eff_capacity_yr:0);},0)||1;
-    plants.forEach(function(p){if(!p._manuf)return;var w=p._manuf.eff_capacity_yr/totCap;avgPlantManuf+=p._manuf.manuf_var_total*w;avgBuyAdj+=p._manuf.buy_cost_adj*w;});
+    plants.forEach(function(p){if(!p._manuf)return;var w=p._manuf.eff_capacity_yr/totCap;avgPlantManuf+=_manufVarDelta(p._manuf)*w;avgBuyAdj+=p._manuf.buy_cost_adj*w;});
   }
   var avgLogistics=mktEcon.length>0?mktEcon.reduce(function(s,m){return s+m.logistics*m.totalVol;},0)/Math.max(1,mktEcon.reduce(function(s,m){return s+m.totalVol;},0)):0;
   var avgTariff=mktEcon.length>0?mktEcon.reduce(function(s,m){return s+m.tariff*m.totalVol;},0)/Math.max(1,mktEcon.reduce(function(s,m){return s+m.totalVol;},0)):0;
@@ -8968,10 +8968,10 @@ function _buildBizCasePanels(byYear,mktEcon,modTpc,modRd,mktsBC,plants,tpcNum,rd
   html += costRow('Total Module TPC (materials)', tpcNum, 'var(--text)', false, true);
   modTpc.forEach(function(m){ html += costRow(m.name, m.tpc, 'var(--muted2)', true, false); });
   html += costRow('Purchased Material Cost (DMP, suppliers)', dmpMake.dmp, 'var(--gold)', true, false);
-  html += costRow('OEM Make Cost (in-house BOM)', dmpMake.make, 'var(--muted2)', true, false);
+  html += costRow('OEM Make Cost (in-house BOM, standard plant)', dmpMake.make, 'var(--muted2)', true, false);
   if (srcAdj!==0) html += costRow('Sourcing & logistics adj (§8 Components Sourcing)', srcAdj, srcAdj<0?'var(--green)':'var(--orange)', false, false);
-  html += costRow('Manufacturing transformation', avgPlantManuf, 'var(--cyan)', false, true);
-  html += costRow('Labour + energy + maintenance', avgPlantManuf, 'var(--muted2)', true, false);
+  html += costRow('Plant transformation Δ (vs standard make)', avgPlantManuf, 'var(--cyan)', false, true);
+  html += costRow('Your plant labour + energy + maint vs standard', avgPlantManuf, 'var(--muted2)', true, false);
   if (avgBuyAdj!==0) html += costRow('Buy-side adj (supplier/volume)', avgBuyAdj, avgBuyAdj<0?'var(--green)':'var(--red)', true, false);
   if (avgLogistics>0) html += costRow('Outbound logistics (wtd avg)', avgLogistics, 'var(--orange)', false, false);
   if (avgTariff>0) html += costRow('Import tariff (wtd avg)', avgTariff, 'var(--orange)', false, false);
@@ -19889,15 +19889,15 @@ function _renderPlantTransformationImpact() {
 // standard Make total. Shared by _renderPlantTransformationImpact() and
 // renderOpsAggregateSummary() (for live updates).
 function _computePlantTransformationImpact(standardMake, vehiclePlants) {
-  var totCap=0, weighted=0;
+  var totCap=0, weightedDelta=0;
   (vehiclePlants||[]).forEach(function(p){
     var mfr=_ensureVehiclePlantManuf(p);
     if(!mfr) return;
     var cap=mfr.eff_capacity_yr||0;
-    totCap+=cap; weighted+=(mfr.manuf_var_total||0)*cap;
+    totCap+=cap; weightedDelta+=_manufVarDelta(mfr)*cap;   // plant deviation vs the standard-plant make
   });
-  var actualMake = totCap>0 ? weighted/totCap : 0;
-  var delta = actualMake - standardMake;
+  var delta = totCap>0 ? weightedDelta/totCap : 0;
+  var actualMake = standardMake + delta;                    // effective transformation carried in landed cost
   var deltaColor = delta<=0 ? 'var(--green)' : 'var(--red)';
   var deltaStr = (delta>=0?'+':'')+'€'+Math.round(delta).toLocaleString();
   return {actualMake:actualMake, delta:delta, deltaColor:deltaColor, deltaStr:deltaStr};
@@ -19917,7 +19917,7 @@ function _calcFacilityInv(type,fac){
   function _mCtx(k,capK,al,shr){return {specs:_msp(k),segment_code:seg,body_type:bt,platform_size:psz,pwt_type:pk,automation_level:al,platform_shared:shr,cap_k:capK};}
 
   if(type==='vehicle_plants'){
-    var cl2=INDUSTRIAL_COUNTRIES[fac.region||'EU']||[],c2=cl2.find(function(x){return x.code===fac.country_code;})||cl2[0]||{labor_eur_hr:52,elec_eur_kwh:0.18};
+    var cl2=INDUSTRIAL_COUNTRIES[fac.region||'EU']||[],c2=fac._countryOverride||cl2.find(function(x){return x.code===fac.country_code;})||cl2[0]||{labor_eur_hr:52,elec_eur_kwh:0.18};
     var _al2=fac.automation_level||2, _shr2=fac.platform_shared||false;
     // Phase 2: total transformation labour = all modules this vehicle needs, bundled into the
     // vehicle-plant var cost (as the old single-plant model did, so landed cost still carries
@@ -19967,6 +19967,15 @@ function _calcFacilityInv(type,fac){
     _m2.maint_per_unit=_mpu; _m2.total_investment_m=Math.round(_gfTot);
     _m2.manuf_var_total=(_m2.labour_per_unit||0)+(_m2.energy_per_unit||0)+_mpu;
     fac._computed.manuf_var_total=_m2.manuf_var_total;
+    // OEM transformation is already carried at standard-plant rates inside the BOM 'make' (part of
+    // tpcNum), so store the DELTA vs that standard plant — this (not the absolute manuf_var_total)
+    // is what landed cost charges, and it is persisted for the backend parity (financial_engine.py).
+    if(!fac._isRef){
+      var _ref=_getManufVarRefTotal();
+      _m2.manuf_var_ref=_ref;
+      _m2.manuf_var_delta=Math.round(_m2.manuf_var_total-_ref);
+      fac._computed.manuf_var_delta=_m2.manuf_var_delta;
+    }
   }
 
   var defs=_getModuleDefsForType(type),locKey=type==='supplier_parks'?fac.region:(fac.region+'_'+fac.country_code);
@@ -19999,15 +20008,45 @@ function _ensureVehiclePlantManuf(plant) {
   return plant._manuf || null;
 }
 
+// Reference-plant OEM transformation cost (€/unit) for the current proposal vehicle, priced at
+// the STANDARD plant the BOM 'make' total is quoted at: US labour/elec rates (€58/hr, €0.08/kWh —
+// the same rates the BOM cost engines price in-house process labour at), jph40, automation L2,
+// MEDIUM supplier. Cached; invalidated alongside _refManufResult. The BOM 'make' (inside tpcNum)
+// already carries OEM transformation at these standard rates, so _MANUF_E's manuf_var_total must
+// contribute only the DELTA vs this reference — otherwise transformation is double-counted.
+var _manufVarRefTotal = null;
+function _getManufVarRefTotal() {
+  if (_manufVarRefTotal != null) return _manufVarRefTotal;
+  // Computed through the SAME path as an actual vehicle plant (_calcFacilityInv) so the delta is
+  // exactly 0 for a standard US/jph40/L2 plant. _isRef prevents recursion back into this helper.
+  var refPlant = {id:'__manuf_ref__', region:'EU', country_code:'DE', jph:40,
+                  automation_level:2, platform_shared:false, _isRef:true,
+                  _countryOverride:{labor_eur_hr:(_PC&&_PC.US_LABOR)||58, elec_eur_kwh:(_PC&&_PC.US_ELEC)||0.08}};
+  var comp = _calcFacilityInv('vehicle_plants', refPlant);
+  _manufVarRefTotal = (comp && comp.manuf_result && comp.manuf_result.manuf_var_total) || 0;
+  return _manufVarRefTotal;
+}
+// Plant OEM-transformation contribution to landed cost = manuf_var_total − reference. 0 for a
+// standard US/jph40/L2 plant; negative for cheaper/more-automated plants, positive otherwise.
+// Keeps the rich, spec-sensitive BOM 'make' as the transformation baseline (already in tpcNum) and
+// lets the plant model adjust it — mirroring how buy_cost_adj adjusts the supplier DMP baseline.
+function _manufVarDelta(mfr) {
+  if (!mfr || mfr.manuf_var_total == null) return 0;
+  if (mfr.manuf_var_delta != null) return mfr.manuf_var_delta;
+  return Math.round(mfr.manuf_var_total - _getManufVarRefTotal());
+}
+
 // Single source of truth for per-unit landed-cost-before-logistics, used by both
 // §9 (Commercial Plan) and §10 (Business Case) so they never disagree.
 function _computeUnitEconCost(plant) {
   var tpcNum = _computeBaseTpc();
-  var mfr = plant ? _ensureVehiclePlantManuf(plant) : _getRefManuf();
+  var mfr = plant ? _ensureVehiclePlantManuf(plant) : null;
   var srcAdj = (_prop.operations && _prop.operations.supply_plan &&
                 typeof _prop.operations.supply_plan._total_piece_adj_eur === 'number')
                 ? _prop.operations.supply_plan._total_piece_adj_eur : 0;
-  var baseC = tpcNum + (mfr ? (mfr.buy_cost_adj + mfr.manuf_var_total) : 0) + srcAdj;
+  // OEM transformation already in tpcNum via BOM 'make'; add only the plant delta (not the
+  // full manuf_var_total) so it is not double-counted.
+  var baseC = tpcNum + (mfr ? mfr.buy_cost_adj : 0) + _manufVarDelta(mfr) + srcAdj;
   return {tpcNum: tpcNum, mfr: mfr, srcAdj: srcAdj, baseC: baseC};
 }
 
@@ -20132,7 +20171,7 @@ function _renderFacilityModTable(type,fac){
 
 function renderFacilityCostSummary(type,fid){
   var fac=_getFacility(type,fid);if(!fac)return;
-  _refManufResult=null;
+  _refManufResult=null; _manufVarRefTotal=null;
   var defs=_getModuleDefsForType(type),locKey=type==='supplier_parks'?fac.region:(fac.region+'_'+fac.country_code);
   if(!fac.module_capacity)fac.module_capacity={};
   defs.forEach(function(d){
@@ -21381,7 +21420,7 @@ async function buildMfgPlantSection() {
   } else {
     _spSyncPlanWithPlants();
   }
-  _refManufResult = null;
+  _refManufResult = null; _manufVarRefTotal = null;
   _deployedModules = null;
   if (teamId && sessionId) {
     try {
@@ -22549,7 +22588,11 @@ function renderPropOpsCostSummary() {
   });
   ops._manuf = m;
 
-  var finalTpc = tpcNum + labAdj + srcAdj + m.buy_cost_adj + m.manuf_var_total;
+  // OEM transformation (BOM 'make') is already in tpcNum at standard-plant rates; charge only the
+  // plant delta vs that standard plant (not the full manuf_var_total) so it is not double-counted.
+  // labAdj (a partial make-labour country reprice) is subsumed by the delta and dropped here.
+  var _manufDelta = _manufVarDelta(m);
+  var finalTpc = tpcNum + srcAdj + m.buy_cost_adj + _manufDelta;
 
   function _st(id, txt, col) {
     var el = document.getElementById(id);
@@ -22561,7 +22604,7 @@ function renderPropOpsCostSummary() {
   _st('prop-ops-sum-tpc',      tpcNum > 0 ? '€' + Math.round(tpcNum) : '—');
   _st('prop-ops-sum-tpc-buy',  tpcNum > 0 ? '€' + Math.round(tpcBuy)  + ' (' + Math.round(tpcBuy/tpcNum*100) + '%)' : '—');
   _st('prop-ops-sum-tpc-make', tpcNum > 0 ? '€' + Math.round(tpcMake) + ' (' + Math.round(tpcMake/tpcNum*100) + '%)' : '—');
-  _st('prop-ops-sum-labour',   _fmtAdj(labAdj), labAdj<=0?'var(--green)':'var(--orange)');
+  _st('prop-ops-sum-labour',   _fmtAdj(_manufDelta), _manufDelta<=0?'var(--green)':'var(--orange)');
   _st('prop-ops-sum-src',      _fmtAdj(srcAdj), srcAdj<=0?'var(--green)':'var(--orange)');
   _st('prop-ops-sum-suppl-adj',_fmtAdj(m.suppl_cost_adj), m.suppl_cost_adj<=0?'var(--green)':'var(--orange)');
   _st('prop-ops-sum-vol-adj',  '−€' + Math.abs(m.vol_adj), 'var(--green)');
@@ -22663,7 +22706,7 @@ function calcPropBizCase() {
       });
     }
   }
-  var finalTpcNum = tpcNum + _srcAdj + (_m ? (_m.buy_cost_adj + _m.manuf_var_total) : 0);
+  var finalTpcNum = tpcNum + _srcAdj + (_m ? _m.buy_cost_adj : 0) + _manufVarDelta(_m);
 
   // Build quarterly FCF (per-market-year model)
   var _fcfMk=((_prop.commercial&&_prop.commercial.markets)||[]).filter(function(m){return m.selected;});
@@ -22683,7 +22726,7 @@ function calcPropBizCase() {
           var uQ=Math.round(yd.volume/4);
           var nR=(mkt.msrp_eur_k||0)*1000*(1-yd.discount/100);
           var lo=plant?(((MARKET_LOGISTICS_COST[plant.region]||{})[mkt.region])||{l:200,t:0}):{l:200,t:0};
-          var landed=tpcNum+_srcAdj+mfr.buy_cost_adj+mfr.manuf_var_total+lo.l+nR*lo.t;
+          var landed=tpcNum+_srcAdj+mfr.buy_cost_adj+_manufVarDelta(mfr)+lo.l+nR*lo.t;
           revM+=uQ*nR/1e6; cogsM+=uQ*landed/1e6;
         });
         if(tpcNum===0)cogsM=revM*0.70;
@@ -22750,7 +22793,7 @@ function calcPropBizCase() {
     var plant=_bcPlants.find(function(p){return p.id===mkt.plant_id;})||_bcPlants[0]||null;
     var lo=plant?(((MARKET_LOGISTICS_COST[plant.region]||{})[mkt.region])||{l:200,t:0}):{l:200,t:0};
     var mfr=plant?plant._manuf:_m;
-    var baseC=tpcNum+_srcAdj+(mfr?(mfr.buy_cost_adj+mfr.manuf_var_total):0);
+    var baseC=tpcNum+_srcAdj+(mfr?mfr.buy_cost_adj:0)+_manufVarDelta(mfr);
     var avgDisc=(mkt.years||[]).reduce(function(s,y){return s+y.discount;},0)/Math.max(1,(mkt.years||[]).length);
     var nR=(mkt.msrp_eur_k||0)*1000*(1-avgDisc/100);
     var tE=nR*lo.t, lnd=baseC+lo.l+tE, mg=nR-lnd;
@@ -22976,7 +23019,9 @@ async function confirmProposal(acceptedSop) {
       _opPlants.forEach(function(p) {
         if (!p._manuf) return;
         var w = p._manuf.eff_capacity_yr / _totCap;
-        _manufVar += p._manuf.manuf_var_total * w;
+        // OEM transformation already in _baseTpc via BOM 'make'; add only the plant delta so the
+        // COGS saved to total_unit_tpc_eur (used by market clearing) is not double-counted.
+        _manufVar += _manufVarDelta(p._manuf) * w;
         _buyAdj   += p._manuf.buy_cost_adj * w;
       });
     }
