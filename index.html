@@ -19365,11 +19365,15 @@ var SP_AUTO_LEVELS = [
   {key:4, label:'Lights-out',labor_factor:0.45, capacity_mult:2.00},
 ];
 
+// Shift structure trades capex vs labour: more shifts spread the same annual output over more hours,
+// so the PHYSICAL line (and its capex) shrinks by cap_factor, but night/weekend hours carry a labour
+// premium (labour_mult). Drives the capacity/shift manufacturing model (_MANUF_E, 2026-07-14).
 var SHIFT_STRUCTURES = [
-  {key:'SINGLE',      label:'Single Shift', desc:'8h / 5 days',  cap_factor:1.00},
-  {key:'DOUBLE',      label:'Double Shift', desc:'16h / 6 days', cap_factor:1.80},
-  {key:'CONTINENTAL', label:'Continental',  desc:'24h / 7 days', cap_factor:2.60},
+  {key:'SINGLE',      label:'Single Shift', desc:'8h / 5 days',  cap_factor:1.00, labour_mult:1.00},
+  {key:'DOUBLE',      label:'Double Shift', desc:'16h / 6 days', cap_factor:1.80, labour_mult:1.06},
+  {key:'CONTINENTAL', label:'Continental',  desc:'24h / 7 days', cap_factor:2.60, labour_mult:1.15},
 ];
+function _shiftDef(k){ for(var i=0;i<SHIFT_STRUCTURES.length;i++){ if(SHIFT_STRUCTURES[i].key===k) return SHIFT_STRUCTURES[i]; } return SHIFT_STRUCTURES[1]; }
 
 // ── MANUFACTURING ENGINE ────────────────────────────────────────────────────
 // ── PER-MODULE INVESTMENT & WORK-CONTENT ENGINE ─────────────────────────────
@@ -19520,115 +19524,76 @@ var _MODINV_E = (function() {
           V_REF:V_REF, AUTO_INV:AUTO_INV, AUTO_LAB:AUTO_LAB, MULTI_ENERGY_STEP:MULTI_ENERGY_STEP};
 })();
 
+// ── CAPACITY / SHIFT MANUFACTURING MODEL (JPH · takt · stations retired 2026-07-14) ──────────
+// A plant line is sized by TARGET ANNUAL CAPACITY + SHIFT STRUCTURE + AUTOMATION, not line speed:
+//   • eff_capacity_yr = target_capacity_k×1000 — the volume the line delivers (the team's allocation).
+//   • invest_cap_k    = single-shift-equivalent PHYSICAL line = target / (shift.cap_factor × OEE);
+//                       more shifts / higher uptime → smaller physical line → less capex (this cap_k
+//                       is what the call sites feed to _MODINV_E.investment).
+//   • labour €/unit   = work_content → € with a shift premium (night/weekend); energy & maint unchanged.
+// Legacy `jph` inputs (old data / AI configs) are shimmed to a capacity: jph×24×365×OEE. MUST match
+// _calc_manuf in backend/financial_engine.py (Engine Parity Rule).
+// Retained ONLY as UI slider/label bounds (max feasible line speed per platform size / automation).
+// The cost & capacity model no longer uses line speed — a plant is sized by capacity + shifts.
+var JPH_MIN = 1;
 var _MANUF_E = (function() {
-  // Work content bases (seconds) at 100% make — scaled by fixed 15% in-house fraction
-  var ASSY_WC = {micro:72000,small:96000,medium:144000,large:192000,frame:168000,performance:216000,commercial:120000};
-  var BODY_WC = {micro:9600, small:14400,medium:20000, large:24000, frame:18000, performance:26400, commercial:14400};
-  var PWT_WC  = {ice_only:18000, bev_only:26400, ice_and_bev:28800};
-  var BODY_MULT = {HB:1.00,SEDAN:1.08,SUV:1.12,COUPE:1.10,VAN:0.92};
-  var SEG_MULT  = {a_segment:0.85,b_segment:0.88,c_segment:1.00,d_segment:1.05,e_segment:1.10,
-                   f_segment:1.15,sports:1.20,mpv:1.10,pickup:1.00,c_van:0.90,d_van:0.93,e_van:0.95};
-  var JPH_MAX  = {micro:80,small:70,medium:65,large:55,frame:45,performance:40,commercial:35};
-  var AUTO_JPH = {1:35,2:55,3:70,4:80};
-  function lbe(jph) { return jph < 30 ? 0.82 : jph < 50 ? 0.85 : 0.88; }
-  var OEE = {1:0.75,2:0.80,3:0.85,4:0.88};
-  var FTR = {1:0.75,2:0.85,3:0.92,4:0.95};
-  function jphMult(jph) { return jph <= 35 ? 1.0 : jph <= 55 ? 1.3 : 1.8; }
-  var ROBOTS_STA   = {1:0.1, 2:1.5, 3:3.5, 4:5.5};
-  var ASSY_OPS_STA = {1:2.5, 2:1.8, 3:1.0, 4:0.5};
-  var BODY_OPS_STA = {1:1.5, 2:0.6, 3:0.25,4:0.12};
-  var PWT_OPS_STA  = {1:2.0, 2:2.0, 3:0.9, 4:0.9};
-  function shiftMult(jph) { return jph < 30 ? 1.5 : jph < 50 ? 2.0 : 3.0; }
-  var ASSY_BASE_M = 12;
-  var ASSY_STA_M  = {1:0.35,2:0.70,3:1.50,4:2.80};
-  var BODY_BASE_M = 12;  var BODY_STA_M = 0.90;
-  var ROBOT_K = 300;     var ROBOT_INTG = 0.15;
-  var PAINT_BASE_M = 50; var PAINT_JPH_M = 1.0;
-  var PAINT_BODY = {HB:1.00,SEDAN:1.05,SUV:1.10,COUPE:1.05,VAN:0.90};
-  var PWT_BASE_M = {ice_only:20,bev_only:38,ice_and_bev:52};
-  var PWT_STA_M  = 0.60;
-  var SUPPL_NRE  = {LOW:0,MEDIUM:5,HIGH:15};
-  var SUPPL_COST = {LOW:1.10,MEDIUM:1.00,HIGH:0.93};
   var ASSY_KWH   = {micro:300,small:400,medium:520,large:650,frame:580,performance:700,commercial:450};
   var PAINT_KWH  = 150; var BODY_KWH = 80;
+  var OEE = {1:0.75,2:0.80,3:0.85,4:0.88};
+  var JPH_MAX  = {micro:80,small:70,medium:65,large:55,frame:45,performance:40,commercial:35};  // UI bound only
+  var AUTO_JPH = {1:35,2:55,3:70,4:80};                                                          // UI bound only
+  var SUPPL_COST = {LOW:1.10,MEDIUM:1.00,HIGH:0.93};
+  var LINE_EFF = 0.85;            // flat line-balance efficiency (replaces the old jph-based lbe)
+  var ANNUAL_OP_HOURS = 1700;     // productive hours per operator per year (headcount display only)
   var MAINT_RATE = 0.05; var ABSENT = 0.06; var INDIRECT = 0.25;
 
   function calc(o) {
     var sz  = o.platform_size    || 'medium';
-    var bt  = o.body_type        || 'HB';
-    var seg = o.segment_code     || 'c_segment';
-    var pwt = o.pwt_type         || 'ice_only';
     var al  = o.automation_level || 2;
-    var shr = o.platform_shared  === true;
-    var mkp = 0.15;
     var sAu = o.supplier_automation || 'MEDIUM';
     var ctr = o.country || {labor_eur_hr:52, elec_eur_kwh:0.18};
     var tBuy= o.tpc_buy_eur || 0;
-    var jRaw= o.jph || 40;
-    var jCap= Math.min(JPH_MAX[sz]||65, AUTO_JPH[al]||55);
-    var jph = Math.max(15, Math.min(jRaw, jCap));
-    var bm  = BODY_MULT[bt]  || 1.00;
-    var sm  = SEG_MULT[seg]  || 1.00;
-    var takt= 3600 / jph;
-    var _lb = lbe(jph); var _oe = OEE[al]||0.80; var _ft = FTR[al]||0.85;
-    var jm  = jphMult(jph);  var shm = shiftMult(jph);
-    var wca = Math.round((ASSY_WC[sz]||144000) * bm * sm * mkp);
-    var wcb = Math.round((BODY_WC[sz]||20000)  * bm * sm * mkp);
-    var wcp = Math.round((PWT_WC[pwt]||18000)  * mkp);
-    var sa  = Math.ceil(wca/(takt*_lb));
-    var sb  = Math.ceil(wcb/(takt*_lb));
-    var sp  = Math.ceil(wcp/(takt*_lb));
-    var sr  = Math.max(1, Math.ceil(sa*(1-_ft)*0.25));
-    var oa  = Math.round(sa*(ASSY_OPS_STA[al]||1.8)*shm);
-    var ol  = Math.round(sa/(al<=2?8:25)*shm);
-    var ore = sr*2;
-    var ob  = Math.round(sb*(BODY_OPS_STA[al]||0.6)*shm);
-    var op  = Math.round(25+jph*0.8);
-    var opw = Math.round(sp*(PWT_OPS_STA[al]||2.0)*shm);
-    var odt = oa+ol+ore+ob+op+opw;
-    var ogr = Math.round(odt/(1-ABSENT)*(1+INDIRECT));
-    var ia  = Math.round(ASSY_BASE_M + sa*(ASSY_STA_M[al]||0.70)*jm + (al>=3?4+Math.ceil(sa/25)*2:0));
-    var rb  = Math.round(sb*(ROBOTS_STA[al]||1.5));
-    var ib  = Math.round((BODY_BASE_M+sb*BODY_STA_M+rb*(ROBOT_K/1000)*(1+ROBOT_INTG))*(shr?0.50:1.0));
-    var ipt = Math.round((PAINT_BASE_M+Math.max(0,jph-20)*PAINT_JPH_M)*(PAINT_BODY[bt]||1.0));
-    var ipw = Math.round((PWT_BASE_M[pwt]||20)+sp*PWT_STA_M);
-    var isn = SUPPL_NRE[sAu]||0;
-    var inv = ia+ib+ipt+ipw+isn;
-    var mxc = Math.round(jph*24*365);
-    var efc = Math.round(mxc*_oe);
-    var evk = o.eff_volume_k || (efc/1000);
-    // Phase 2: if per-module work content is supplied, derive direct labour from it
-    // (gross-up for indirect/absenteeism/line-balance); else fall back to operator math.
+    var _oe = OEE[al]||0.80;
+    var sh  = _shiftDef(o.shift_structure);
+    var sf  = sh.cap_factor  || 1.8;
+    var slm = sh.labour_mult || 1.0;
+    // Target annual capacity (k/yr). Prefer explicit target; legacy shim from jph = jph×24×365×OEE.
+    var capK = (o.target_capacity_k!=null) ? o.target_capacity_k
+             : (o.jph!=null ? Math.round(o.jph*24*365*_oe/1000) : 50);
+    capK = Math.max(1, Math.round(capK));
+    var efc = capK*1000;
+    var investCapK = Math.max(1, capK/(sf*_oe));   // single-shift-equiv physical line → capex scaling
+    // Labour €/unit from per-module work content (with shift premium); 0 if not supplied (callers
+    // that pass work_content get the real value; reference calls that don't only carry energy).
     var lpu = (o.work_content_s!=null)
-      ? Math.round((o.work_content_s/3600)*ctr.labor_eur_hr*(1+INDIRECT)/(1-ABSENT)/_lb)
-      : Math.round(ogr*ctr.labor_eur_hr*1700/efc);
+      ? Math.round((o.work_content_s/3600)*ctr.labor_eur_hr*(1+INDIRECT)/(1-ABSENT)*slm/LINE_EFF)
+      : 0;
     var kvu = (ASSY_KWH[sz]||520)+PAINT_KWH+BODY_KWH;
     var epu = Math.round(kvu*ctr.elec_eur_kwh);
-    // Maintenance uses per-module total investment when supplied (Phase 1), else workshop total.
-    var invForMaint = (o.override_investment_m!=null)?o.override_investment_m:inv;
-    var mpu = Math.round(invForMaint*1e6*MAINT_RATE/efc);
+    // Maintenance from per-module greenfield investment when supplied; callers recompute it in
+    // Phase 2 from the actual gfTot, so this is only a placeholder when no override is given.
+    var invForMaint = (o.override_investment_m!=null)?o.override_investment_m:0;
+    var mpu = invForMaint>0 ? Math.round(invForMaint*1e6*MAINT_RATE/efc) : 0;
     var mvt = lpu+epu+mpu;
     var sca = tBuy*(SUPPL_COST[sAu]-1.0);
-    var vdi = Math.max(-0.10,-0.05*Math.log10(Math.max(1,evk/10)));
+    var vdi = Math.max(-0.10,-0.05*Math.log10(Math.max(1,capK/10)));   // volume discount on buy cost
     var vad = tBuy*vdi;
-    var mks = 0;
-    var bca = Math.round(sca+vad-mks);
+    var bca = Math.round(sca+vad);
+    var ops = (o.work_content_s!=null)
+      ? Math.round((o.work_content_s/3600)*efc/ANNUAL_OP_HOURS*(1+INDIRECT)/(1-ABSENT))
+      : 0;
     return {
-      jph:jph, jph_capped:jRaw>jCap, takt:Math.round(takt),
-      max_capacity_yr:mxc, eff_capacity_yr:efc, make_pct:mkp,
-      workshops:{
-        assembly:  {wc_s:wca,stations:sa,rework:sr,investment_m:ia,operators:oa+ol+ore},
-        body_shop: {wc_s:wcb,stations:sb,robots:rb,investment_m:ib,operators:ob},
-        paint_shop:{investment_m:ipt,operators:op},
-        powertrain:{wc_s:wcp,stations:sp,investment_m:ipw,operators:opw},
-      },
-      total_investment_m:inv, total_operators:ogr,
+      shift_structure:sh.key, shift_factor:sf,
+      eff_capacity_yr:efc, invest_cap_k:Math.round(investCapK), make_pct:0.15, oee:_oe,
       labour_per_unit:lpu, energy_per_unit:epu, maint_per_unit:mpu, manuf_var_total:mvt,
-      buy_cost_adj:bca, suppl_cost_adj:Math.round(sca), vol_adj:Math.round(vad), make_saving:Math.round(mks),
-      lbe:_lb, oee:_oe, ftr:_ft, robots:rb,
+      buy_cost_adj:bca, suppl_cost_adj:Math.round(sca), vol_adj:Math.round(vad), make_saving:0,
+      total_investment_m:0, total_operators:ops,
+      // workshops retired — empty shells so any guarded reader ((x||{}).investment_m||0) degrades to 0.
+      workshops:{assembly:{investment_m:0,operators:ops},body_shop:{investment_m:0,operators:0},
+                 paint_shop:{investment_m:0,operators:0},powertrain:{investment_m:0,operators:0}},
     };
   }
-  return {calc:calc, JPH_MAX:JPH_MAX, AUTO_JPH:AUTO_JPH, MAINT_RATE:MAINT_RATE};
+  return {calc:calc, MAINT_RATE:MAINT_RATE, OEE:OEE, JPH_MAX:JPH_MAX, AUTO_JPH:AUTO_JPH};
 })();
 
 // Module specs map from the current in-progress proposal (for _newVehManuf on _prop paths).
@@ -19658,8 +19623,8 @@ function _newVehManuf(ctx){
            +_MODINV_E.workContent('eands',   mc('eands',0))
            +(hasIce?_MODINV_E.workContent('pwt',mc('pwt',0)):0)
            +(hasBev?(_MODINV_E.workContent('epwt',mc('epwt',0))+_MODINV_E.workContent('battery',mc('battery',0))):0);
-  var m=_MANUF_E.calc({platform_size:ctx.platform_size||'medium',body_type:(ctx.body_type||'HB').toUpperCase(),segment_code:ctx.segment_code||'c_segment',pwt_type:pk,jph:ctx.jph||40,automation_level:al,platform_shared:shr,supplier_automation:ctx.supplier_automation||'MEDIUM',country:ctx.country||{labor_eur_hr:52,elec_eur_kwh:0.18},tpc_buy_eur:ctx.tpc_buy_eur||0,work_content_s:wcTot});
-  var capK=(m.eff_capacity_yr||1)/1000;
+  var m=_MANUF_E.calc({platform_size:ctx.platform_size||'medium',body_type:(ctx.body_type||'HB').toUpperCase(),segment_code:ctx.segment_code||'c_segment',pwt_type:pk,shift_structure:ctx.shift_structure,target_capacity_k:ctx.target_capacity_k,jph:ctx.jph,automation_level:al,platform_shared:shr,supplier_automation:ctx.supplier_automation||'MEDIUM',country:ctx.country||{labor_eur_hr:52,elec_eur_kwh:0.18},tpc_buy_eur:ctx.tpc_buy_eur||0,work_content_s:wcTot});
+  var capK=m.invest_cap_k||1;   // physical single-shift-equiv line size drives per-module capex
   // Single-plant fallback bundles all modules (incl. powertrain), matching legacy total capex.
   var gfTot=_MODINV_E.investment('platform',mc('platform',capK))
            +_MODINV_E.investment('tophat',  mc('tophat',capK))
@@ -19907,7 +19872,6 @@ function _calcFacilityInv(type,fac){
   var pk=_pwtKeyFromProp(),isEv=pk==='bev_only',isHybrid=pk==='ice_and_bev',hasIce=!isEv,hasBev=isEv||isHybrid;
   var targetKwh=((_prop.battery&&_prop.battery.module&&_prop.battery.module.specs&&_prop.battery.module.specs.target_kwh)||(_prop.battery&&_prop.battery.specs&&_prop.battery.specs.target_kwh))||60;
   var ref=_getRefManuf();
-  var ia=ref.workshops.assembly.investment_m,ib=ref.workshops.body_shop.investment_m,ipt=ref.workshops.paint_shop.investment_m,ipw=ref.workshops.powertrain.investment_m;
   var refCapK=Math.round(ref.eff_capacity_yr/1000)||1;
   var gf={};
   // Per-module investment/work-content context (shared by all branches). Bottom-up model —
@@ -19927,10 +19891,10 @@ function _calcFacilityInv(type,fac){
              +_MODINV_E.workContent('eands',   _mCtx('eands',0,_al2,_shr2))
              +(hasIce?_MODINV_E.workContent('pwt',_mCtx('pwt',0,_al2,_shr2)):0)
              +(hasBev?(_MODINV_E.workContent('epwt',_mCtx('epwt',0,_al2,_shr2))+_MODINV_E.workContent('battery',_mCtx('battery',0,_al2,_shr2))):0);
-    var m2=_MANUF_E.calc({platform_size:psz,body_type:bt,segment_code:seg,pwt_type:pk,jph:fac.jph||40,automation_level:_al2,platform_shared:_shr2,supplier_automation:'MEDIUM',country:c2,tpc_buy_eur:_computeDmpMake().dmp,work_content_s:wcTot});
+    var m2=_MANUF_E.calc({platform_size:psz,body_type:bt,segment_code:seg,pwt_type:pk,shift_structure:fac.shift_structure,target_capacity_k:fac.target_capacity_k,jph:fac.jph,automation_level:_al2,platform_shared:_shr2,supplier_automation:'MEDIUM',country:c2,tpc_buy_eur:_computeDmpMake().dmp,work_content_s:wcTot});
     if(!fac._computed)fac._computed={};
     fac._computed.manuf_result=m2;fac._computed.manuf_var_total=m2.manuf_var_total;fac._computed.eff_capacity_yr=m2.eff_capacity_yr;
-    var cap2=Math.round(m2.eff_capacity_yr/1000)||1;
+    var cap2=Math.round(m2.invest_cap_k)||1;   // physical single-shift-equiv line size → per-module capex
     gf.platform={inv_m:_MODINV_E.investment('platform',_mCtx('platform',cap2,_al2,_shr2)),cap_k:cap2};
     gf.tophat  ={inv_m:_MODINV_E.investment('tophat',  _mCtx('tophat',cap2,_al2,_shr2)),cap_k:cap2};
     gf.eands   ={inv_m:0,cap_k:cap2};                                    // Option A: E&S = zero plant capex
@@ -20109,14 +20073,18 @@ function _renderFacilityCard(type,fac,idx,total){
     });
     h+='</div>';
     if(isVP){
+      var _shiftK=fac.shift_structure||'DOUBLE';
+      var _tgtCapK=fac.target_capacity_k||_suggestedVolK()||50;
       h+='<div style="background:var(--s2);border-radius:3px;padding:9px;margin-top:8px;margin-bottom:10px;">';
-      h+='<div style="font-size:9px;color:var(--muted2);margin-bottom:5px;">Jobs Per Hour (JPH)</div>';
-      h+='<div style="display:flex;align-items:center;gap:10px;margin-bottom:4px;">';
-      h+='<input type="range" id="prop-ops-fac-'+fid+'-jph" min="15" max="'+jMax+'" step="1" value="'+j0+'" oninput="onPropOpsFacilityJph(\''+fid+'\',this)" style="width:140px;height:4px;-webkit-appearance:none;background:var(--border2);border-radius:2px;cursor:pointer;">';
-      h+='<span style="font-family:DM Mono,monospace;font-size:14px;color:var(--cyan);" id="prop-ops-fac-'+fid+'-jph-val">'+j0+' JPH</span>';
+      h+='<div style="font-size:9px;color:var(--muted2);margin-bottom:5px;">Shift Structure <span style="color:var(--muted2);font-size:8px;">— more shifts spread output over more hours (smaller line/less capex, night-shift labour premium)</span></div>';
+      h+='<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:6px;">';
+      SHIFT_STRUCTURES.forEach(function(sh){var _ss=sh.key===_shiftK;
+        h+='<div style="border-radius:3px;padding:6px 4px;cursor:pointer;text-align:center;border:'+(_ss?'1px solid var(--gold)':'1px solid var(--border2)')+';background:'+(_ss?'var(--s2)':'var(--s1)')+';" onclick="onPropOpsFacilityShift(\''+fid+'\',\''+sh.key+'\')">';
+        h+='<div style="font-family:DM Mono,monospace;font-weight:600;font-size:9px;color:var(--white);">'+sh.label+'</div>';
+        h+='<div style="color:var(--muted2);font-size:7px;">'+sh.desc+'</div></div>';
+      });
       h+='</div>';
-      h+='<div style="font-size:9px;"><span style="color:var(--muted2);">Takt </span><span style="font-family:DM Mono,monospace;" id="prop-ops-fac-'+fid+'-takt">'+Math.round(3600/j0)+'s</span>';
-      h+='  <span style="color:var(--muted2);">Capacity </span><span style="font-family:DM Mono,monospace;color:var(--cyan);" id="prop-ops-fac-'+fid+'-effcap">—</span></div>';
+      h+='<div style="font-size:9px;"><span style="color:var(--muted2);">Target capacity </span><span style="font-family:DM Mono,monospace;color:var(--cyan);" id="prop-ops-fac-'+fid+'-effcap">'+_tgtCapK+'k/yr</span></div>';
       h+='</div>';
     }
   }
@@ -20194,14 +20162,10 @@ function renderFacilityCostSummary(type,fid){
   if(comp.eff_capacity_yr){var capK=Math.round(comp.eff_capacity_yr/1000);_s('prop-ops-fac-'+fid+'-cap',capK+'k/yr');_s('prop-ops-fac-'+fid+'-effcap',capK+'k/yr');}
   // Per-module investment + labor cells in allocation panel
   if(comp.module_investments&&type==='vehicle_plants'&&comp.manuf_result){
-    var _mr=comp.manuf_result;
-    var _shm=_mr.jph<30?1.5:_mr.jph<50?2.0:3.0;
-    var _wsMap={platform:_mr.workshops.body_shop,tophat:_mr.workshops.assembly};
     ['platform','tophat'].forEach(function(sl){
       var mi=comp.module_investments[sl];
-      var ws=_wsMap[sl];
       _s('alloc-mod-inv-'+sl,mi&&mi.incremental_inv_m>0?'€'+mi.incremental_inv_m+'M':'—');
-      _s('alloc-mod-lbr-'+sl,ws?Math.round(ws.operators*3/_shm):'—');
+      _s('alloc-mod-lbr-'+sl,'—');   // per-module operator split retired with the station model
     });
   }
   if(comp.module_investments&&type==='powertrain_plants'){
@@ -20246,19 +20210,12 @@ function onPropOpsFacilityCountry(type,fid,sel){
 }
 function onPropOpsFacilityAuto(type,fid,level){
   var fac=_getFacility(type,fid);if(!fac)return;
-  fac.automation_level=typeof level==='number'?level:level;
-  if(type==='vehicle_plants'){
-    var nm=Math.min(_MANUF_E.JPH_MAX[_getPlatformSize()]||65,_MANUF_E.AUTO_JPH[parseInt(level)]||55);
-    var jEl=document.getElementById('prop-ops-fac-'+fid+'-jph');
-    if(jEl){jEl.max=nm;if(parseInt(jEl.value)>nm){jEl.value=nm;fac.jph=nm;}}
-  }
+  fac.automation_level=level;
   renderFacilityCostSummary(type,fid);
 }
-function onPropOpsFacilityJph(fid,input){
+function onPropOpsFacilityShift(fid,shiftKey){
   var fac=_getFacility('vehicle_plants',fid);if(!fac)return;
-  fac.jph=parseInt(input.value);var jph=fac.jph;
-  function _s(id,v){var e=document.getElementById(id);if(e)e.textContent=v;}
-  _s('prop-ops-fac-'+fid+'-jph-val',jph+' JPH');_s('prop-ops-fac-'+fid+'-takt',Math.round(3600/jph)+'s');
+  fac.shift_structure=shiftKey;
   renderFacilityCostSummary('vehicle_plants',fid);
 }
 function onPropOpsIncrementalChange(type,fid,mk,val){
@@ -20491,9 +20448,18 @@ function _renderPlantAllocationPanel(lk){
   h+='<span style="'+MN+'font-size:9px;color:var(--muted2);">k/yr</span>';
   if(sugK)h+='<span style="'+MN+'font-size:8px;color:var(--muted2);margin-left:4px;">(plan: '+sugK+'k)</span>';
   h+='</div></div>';
-  var _vpForJph=(ops.vehicle_plants||[]).find(function(p){return p.id==='vp_'+lk;})||{};
-  var _jphNote=_vpForJph.jph||'—';
-  h+='<div style="padding:3px 10px 8px;'+MN+'font-size:8px;color:var(--muted2);">Line speed: ~<span style="color:var(--text);">'+_jphNote+' JPH</span> (auto-calculated from '+capK+'k target)</div>';
+  var _vpForShift=(ops.vehicle_plants||[]).find(function(p){return p.id==='vp_'+lk;})||{};
+  var _shiftK=_vpForShift.shift_structure||'DOUBLE';
+  h+='<div style="padding:4px 10px 6px;">';
+  h+='<div style="'+MN+'font-size:8px;color:var(--muted2);margin-bottom:4px;">Shift structure <span style="font-size:7px;">— more shifts → smaller line / less capex, night-shift labour premium</span></div>';
+  h+='<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;">';
+  SHIFT_STRUCTURES.forEach(function(sh){var _ss=sh.key===_shiftK;
+    h+='<div onclick="onPropOpsVehicleShift(\''+lk+'\',\''+sh.key+'\')" style="border-radius:3px;padding:5px 4px;cursor:pointer;text-align:center;border:'+(_ss?'1px solid var(--gold)':'1px solid var(--border2)')+';background:'+(_ss?'var(--s2)':'var(--s1)')+';">';
+    h+='<div style="'+MN+'font-weight:600;font-size:8px;color:var(--white);">'+sh.label+'</div>';
+    h+='<div style="color:var(--muted2);font-size:7px;">'+sh.desc+'</div></div>';
+  });
+  h+='</div></div>';
+  h+='<div style="padding:0 10px 8px;'+MN+'font-size:8px;color:var(--muted2);">Line sized for <span style="color:var(--text);">'+capK+'k/yr</span> · '+_shiftDef(_shiftK).label+'</div>';
   // ── Module Tooling collapse toggle ──
   var _propPlatCK=(_prop.platform&&_prop.platform.module)?_prop.platform.module.config_key:null;
   var _propThCK=(_prop.tophat&&_prop.tophat.module)?_prop.tophat.module.config_key:null;
@@ -20695,10 +20661,10 @@ function _renderPlantSelector(facType){
     [1,2,3,4].forEach(function(l){h+='<option value="'+l+'"'+(curAuto===l?' selected':'')+'>L'+l+' – '+AUTO_LABELS[l]+'</option>';});
     h+='</select></div>';
     if(isVeh){
-      var jphMax=_MANUF_E.JPH_MAX[_getPlatformSize()]||65;
-      var curJph=ops._existing_jph||40;
-      h+='<div><div style="font-family:DM Mono,monospace;font-size:8px;color:var(--muted2);margin-bottom:5px;text-transform:uppercase;letter-spacing:0.5px;">Jobs Per Hour (JPH)</div>';
-      h+='<input type="number" min="15" max="'+jphMax+'" value="'+curJph+'" onchange="onPropOpsJphInput(parseInt(this.value)||40)" style="font-family:DM Mono,monospace;font-size:10px;padding:7px 10px;border-radius:3px;border:1px solid var(--border2);background:var(--s2);color:var(--text);width:100%;box-sizing:border-box;"></div>';
+      h+='<div><div style="font-family:DM Mono,monospace;font-size:8px;color:var(--muted2);margin-bottom:5px;text-transform:uppercase;letter-spacing:0.5px;">Shift Structure</div>';
+      h+='<select onchange="onPropOpsShiftInput(this.value)" style="font-family:DM Mono,monospace;font-size:10px;padding:7px 10px;border-radius:3px;border:1px solid var(--border2);background:var(--s2);color:var(--text);width:100%;">';
+      SHIFT_STRUCTURES.forEach(function(sh){h+='<option value="'+sh.key+'"'+((((ops.vehicle_plants||[])[0]||{}).shift_structure||ops._plant_shift||'DOUBLE')===sh.key?' selected':'')+'>'+sh.label+'</option>';});
+      h+='</select></div>';
     }
     h+='</div>';
     if(isVeh){
@@ -20766,6 +20732,14 @@ function onPropOpsVehicleCapYr(k){
   _prop.operations.vehicle_capacity_yr=Math.max(1,k||1);
   _prop.operations.capacity_target_k=_prop.operations.vehicle_capacity_yr;
   _buildPlantFromDecision();
+}
+function onPropOpsVehicleShift(lk,key){
+  if(!_prop.operations)return;
+  var vp=(_prop.operations.vehicle_plants||[]).find(function(p){return p.id==='vp_'+lk;});
+  if(!vp)return;
+  vp.shift_structure=key; vp._computed=null;   // recompute capex/labour under the new shift
+  var aEl=document.getElementById('prop-ops-alloc-area');
+  if(aEl){aEl.innerHTML=_renderPlantAllocationPanel(lk);renderFacilityCostSummary('vehicle_plants','vp_'+lk);}
 }
 function onPropOpsConfirmAllocation(lk){
   var ops=_prop.operations||{};
@@ -21180,9 +21154,10 @@ function _renderAllocationDecision(){
     h+='<select onchange="onPropOpsAutoLevel(parseInt(this.value))" style="font-family:DM Mono,monospace;font-size:10px;padding:7px 10px;border-radius:3px;border:1px solid var(--border2);background:var(--s2);color:var(--text);width:100%;">';
     [1,2,3,4].forEach(function(l){h+='<option value="'+l+'"'+(curAuto===l?' selected':'')+'>L'+l+' – '+AUTO_LABELS[l]+'</option>';});
     h+='</select></div>';
-    var jphMax=_MANUF_E.JPH_MAX[_getPlatformSize()]||65;
-    h+='<div><div style="font-family:DM Mono,monospace;font-size:8px;color:var(--muted2);margin-bottom:5px;text-transform:uppercase;letter-spacing:0.5px;">Jobs Per Hour (JPH)</div>';
-    h+='<input type="number" min="15" max="'+jphMax+'" value="'+curJph+'" onchange="onPropOpsJphInput(parseInt(this.value)||40)" style="font-family:DM Mono,monospace;font-size:10px;padding:7px 10px;border-radius:3px;border:1px solid var(--border2);background:var(--s2);color:var(--text);width:100%;box-sizing:border-box;"></div>';
+    h+='<div><div style="font-family:DM Mono,monospace;font-size:8px;color:var(--muted2);margin-bottom:5px;text-transform:uppercase;letter-spacing:0.5px;">Shift Structure</div>';
+    h+='<select onchange="onPropOpsShiftInput(this.value)" style="font-family:DM Mono,monospace;font-size:10px;padding:7px 10px;border-radius:3px;border:1px solid var(--border2);background:var(--s2);color:var(--text);width:100%;">';
+    SHIFT_STRUCTURES.forEach(function(sh){h+='<option value="'+sh.key+'"'+((((ops.vehicle_plants||[])[0]||{}).shift_structure||ops._plant_shift||'DOUBLE')===sh.key?' selected':'')+'>'+sh.label+'</option>';});
+    h+='</select></div>';
     h+='</div>';
     h+='<div style="font-family:DM Mono,monospace;font-size:9px;color:var(--green);padding:6px 8px;border-radius:3px;background:rgba(50,180,100,0.08);border:1px solid rgba(50,180,100,0.2);">✓ Platform shared — body shop investment halved</div>';
 
@@ -21199,15 +21174,16 @@ function _renderAllocationDecision(){
     (INDUSTRIAL_COUNTRIES[curReg]||INDUSTRIAL_COUNTRIES['EU']).forEach(function(c){h+='<option value="'+c.code+'"'+(curCC===c.code?' selected':'')+'>'+c.name+'</option>';});
     h+='</select></div></div>';
 
-    var curAuto2=vp.automation_level||2,curJph2=vp.jph||40;
-    var jphMax2=_MANUF_E.JPH_MAX[_getPlatformSize()]||65;
+    var curAuto2=vp.automation_level||2;
     h+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px;">';
     h+='<div><div style="font-family:DM Mono,monospace;font-size:8px;color:var(--muted2);margin-bottom:5px;text-transform:uppercase;letter-spacing:0.5px;">Automation Level</div>';
     h+='<select onchange="onPropOpsAutoLevel(parseInt(this.value))" style="font-family:DM Mono,monospace;font-size:10px;padding:7px 10px;border-radius:3px;border:1px solid var(--border2);background:var(--s2);color:var(--text);width:100%;">';
     [1,2,3,4].forEach(function(l){h+='<option value="'+l+'"'+(curAuto2===l?' selected':'')+'>L'+l+' – '+AUTO_LABELS[l]+'</option>';});
     h+='</select></div>';
-    h+='<div><div style="font-family:DM Mono,monospace;font-size:8px;color:var(--muted2);margin-bottom:5px;text-transform:uppercase;letter-spacing:0.5px;">Jobs Per Hour (JPH)</div>';
-    h+='<input type="number" min="15" max="'+jphMax2+'" value="'+curJph2+'" onchange="onPropOpsJphInput(parseInt(this.value)||40)" style="font-family:DM Mono,monospace;font-size:10px;padding:7px 10px;border-radius:3px;border:1px solid var(--border2);background:var(--s2);color:var(--text);width:100%;box-sizing:border-box;"></div>';
+    h+='<div><div style="font-family:DM Mono,monospace;font-size:8px;color:var(--muted2);margin-bottom:5px;text-transform:uppercase;letter-spacing:0.5px;">Shift Structure</div>';
+    h+='<select onchange="onPropOpsShiftInput(this.value)" style="font-family:DM Mono,monospace;font-size:10px;padding:7px 10px;border-radius:3px;border:1px solid var(--border2);background:var(--s2);color:var(--text);width:100%;">';
+    SHIFT_STRUCTURES.forEach(function(sh){h+='<option value="'+sh.key+'"'+((vp.shift_structure||ops._plant_shift||'DOUBLE')===sh.key?' selected':'')+'>'+sh.label+'</option>';});
+    h+='</select></div>';
     h+='</div>';
   }
 
@@ -22353,13 +22329,10 @@ function _buildPlantFromDecision(){
     var _platAuto=ops.platform_auto_level||2;
     var _thAuto=ops.tophat_auto_level||2;
     vp.automation_level=Math.round((_platAuto+_thAuto)/2);
-    // Auto-derive JPH from target volume and line automation level
-    var _oeeMap={1:0.75,2:0.80,3:0.85,4:0.88};
-    var _al=vp.automation_level;
-    var _oee=_oeeMap[_al]||0.80;
-    var _rawJph=Math.ceil(capK*1000/(_oee*24*365));
-    var _jphMax2=Math.min(_MANUF_E.JPH_MAX[_getPlatformSize()]||65,_MANUF_E.AUTO_JPH[_al]||55);
-    vp.jph=Math.max(15,Math.min(_rawJph,_jphMax2));
+    // Capacity/shift model: the line is sized directly to the target volume (capK); the shift
+    // structure (default DOUBLE) is the capex↔labour lever. No line-speed (JPH) derivation.
+    vp.target_capacity_k=Math.max(1,Math.round(capK));
+    if(!vp.shift_structure)vp.shift_structure='DOUBLE';
   }
   var defs=_getModuleDefsForType('vehicle_plants');
   if(!vp.module_capacity)vp.module_capacity={};
@@ -22453,11 +22426,11 @@ function onPropOpsCapTarget(k){
   _buildPlantFromDecision();
 }
 
-function onPropOpsJphInput(v){
+function onPropOpsShiftInput(key){
   if(!_prop.operations)return;
   var vp=(_prop.operations.vehicle_plants||[])[0];
-  if(vp)vp.jph=Math.max(15,v||15);
-  if(_prop.operations.allocation_mode==='existing'&&vp)_prop.operations._existing_jph=vp.jph;
+  if(vp)vp.shift_structure=key;
+  _prop.operations._plant_shift=key;
   _buildPlantFromDecision();
 }
 
