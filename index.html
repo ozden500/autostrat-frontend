@@ -19368,13 +19368,14 @@ var SP_AUTO_LEVELS = [
 // Shift structure trades capex vs labour: more shifts spread the same annual output over more hours,
 // so the PHYSICAL line (and its capex) shrinks by cap_factor, but night/weekend hours carry a labour
 // premium (labour_mult). Drives the capacity/shift manufacturing model (_MANUF_E, 2026-07-14).
+// As of 2026-07-14 the shift is NOT a §7 UI decision: vehicle investment is always submitted at the
+// CONTINENTAL (3-shift, max-capacity) assumption. SINGLE/DOUBLE remain in the model for future use
+// but no control sets them. (Real-life shift choice is an operating decision made during production.)
 var SHIFT_STRUCTURES = [
   {key:'SINGLE',      label:'Single Shift', desc:'8h / 5 days',  cap_factor:1.00, labour_mult:1.00},
   {key:'DOUBLE',      label:'Double Shift', desc:'16h / 6 days', cap_factor:1.80, labour_mult:1.06},
   {key:'CONTINENTAL', label:'Continental',  desc:'24h / 7 days', cap_factor:2.60, labour_mult:1.15},
 ];
-// Default = CONTINENTAL (3-shift / 24×7): the standard capacity-planning rule of thumb. Teams can
-// still choose SINGLE / DOUBLE per plant.
 function _shiftDef(k){ for(var i=0;i<SHIFT_STRUCTURES.length;i++){ if(SHIFT_STRUCTURES[i].key===k) return SHIFT_STRUCTURES[i]; } return SHIFT_STRUCTURES[2]; }
 
 // ── MANUFACTURING ENGINE ────────────────────────────────────────────────────
@@ -19896,11 +19897,16 @@ function _calcFacilityInv(type,fac){
     var m2=_MANUF_E.calc({platform_size:psz,body_type:bt,segment_code:seg,pwt_type:pk,shift_structure:fac.shift_structure,target_capacity_k:fac.target_capacity_k,jph:fac.jph,automation_level:_al2,platform_shared:_shr2,supplier_automation:'MEDIUM',country:c2,tpc_buy_eur:_computeDmpMake().dmp,work_content_s:wcTot});
     if(!fac._computed)fac._computed={};
     fac._computed.manuf_result=m2;fac._computed.manuf_var_total=m2.manuf_var_total;fac._computed.eff_capacity_yr=m2.eff_capacity_yr;
-    var cap2=Math.round(m2.invest_cap_k)||1;   // physical single-shift-equiv line size → per-module capex
-    gf.platform={inv_m:_MODINV_E.investment('platform',_mCtx('platform',cap2,_al2,_shr2)),cap_k:cap2};
-    gf.tophat  ={inv_m:_MODINV_E.investment('tophat',  _mCtx('tophat',cap2,_al2,_shr2)),cap_k:cap2};
-    gf.eands   ={inv_m:0,cap_k:cap2};                                    // Option A: E&S = zero plant capex
-    if(hasIce)gf.pwt_assy={inv_m:_MODINV_E.investment('marriage',_mCtx('marriage',cap2,_al2,_shr2)),cap_k:cap2};
+    // inv_m is the greenfield capex for the PHYSICAL line (invest_cap_k, shift-adjusted); cap_k is the
+    // TARGET annual capacity so the incremental formula (newCapNeeded × inv_m/cap_k, both in capacity
+    // units) doesn't re-inflate by the shift factor. Greenfield capex = inv_m; a full greenfield
+    // allocation then yields incremental_inv_m == inv_m == the §2-5 greenfield estimate.
+    var cap2=Math.round(m2.invest_cap_k)||1;             // physical single-shift-equiv line → capex magnitude
+    var tgtCap2=Math.round(m2.eff_capacity_yr/1000)||1;  // target annual capacity → incremental rate denominator
+    gf.platform={inv_m:_MODINV_E.investment('platform',_mCtx('platform',cap2,_al2,_shr2)),cap_k:tgtCap2};
+    gf.tophat  ={inv_m:_MODINV_E.investment('tophat',  _mCtx('tophat',cap2,_al2,_shr2)),cap_k:tgtCap2};
+    gf.eands   ={inv_m:0,cap_k:tgtCap2};                                 // Option A: E&S = zero plant capex
+    if(hasIce)gf.pwt_assy={inv_m:_MODINV_E.investment('marriage',_mCtx('marriage',cap2,_al2,_shr2)),cap_k:tgtCap2};
   } else if(type==='powertrain_plants'){
     var pAl=fac.automation_level||2,pJph=Math.min(40,_MANUF_E.AUTO_JPH[pAl]||55);
     var pOee={1:0.75,2:0.80,3:0.85,4:0.88}[pAl]||0.80;
@@ -20075,18 +20081,9 @@ function _renderFacilityCard(type,fac,idx,total){
     });
     h+='</div>';
     if(isVP){
-      var _shiftK=fac.shift_structure||'CONTINENTAL';
       var _tgtCapK=fac.target_capacity_k||_suggestedVolK()||50;
       h+='<div style="background:var(--s2);border-radius:3px;padding:9px;margin-top:8px;margin-bottom:10px;">';
-      h+='<div style="font-size:9px;color:var(--muted2);margin-bottom:5px;">Shift Structure <span style="color:var(--muted2);font-size:8px;">— more shifts spread output over more hours (smaller line/less capex, night-shift labour premium)</span></div>';
-      h+='<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:6px;">';
-      SHIFT_STRUCTURES.forEach(function(sh){var _ss=sh.key===_shiftK;
-        h+='<div style="border-radius:3px;padding:6px 4px;cursor:pointer;text-align:center;border:'+(_ss?'1px solid var(--gold)':'1px solid var(--border2)')+';background:'+(_ss?'var(--s2)':'var(--s1)')+';" onclick="onPropOpsFacilityShift(\''+fid+'\',\''+sh.key+'\')">';
-        h+='<div style="font-family:DM Mono,monospace;font-weight:600;font-size:9px;color:var(--white);">'+sh.label+'</div>';
-        h+='<div style="color:var(--muted2);font-size:7px;">'+sh.desc+'</div></div>';
-      });
-      h+='</div>';
-      h+='<div style="font-size:9px;"><span style="color:var(--muted2);">Target capacity </span><span style="font-family:DM Mono,monospace;color:var(--cyan);" id="prop-ops-fac-'+fid+'-effcap">'+_tgtCapK+'k/yr</span></div>';
+      h+='<div style="font-size:9px;"><span style="color:var(--muted2);">Target capacity </span><span style="font-family:DM Mono,monospace;color:var(--cyan);" id="prop-ops-fac-'+fid+'-effcap">'+_tgtCapK+'k/yr</span> <span style="color:var(--muted2);font-size:8px;">at 3-shift (24×7)</span></div>';
       h+='</div>';
     }
   }
@@ -20214,11 +20211,6 @@ function onPropOpsFacilityAuto(type,fid,level){
   var fac=_getFacility(type,fid);if(!fac)return;
   fac.automation_level=level;
   renderFacilityCostSummary(type,fid);
-}
-function onPropOpsFacilityShift(fid,shiftKey){
-  var fac=_getFacility('vehicle_plants',fid);if(!fac)return;
-  fac.shift_structure=shiftKey;
-  renderFacilityCostSummary('vehicle_plants',fid);
 }
 function onPropOpsIncrementalChange(type,fid,mk,val){
   var fac=_getFacility(type,fid);if(!fac)return;
@@ -20450,18 +20442,7 @@ function _renderPlantAllocationPanel(lk){
   h+='<span style="'+MN+'font-size:9px;color:var(--muted2);">k/yr</span>';
   if(sugK)h+='<span style="'+MN+'font-size:8px;color:var(--muted2);margin-left:4px;">(plan: '+sugK+'k)</span>';
   h+='</div></div>';
-  var _vpForShift=(ops.vehicle_plants||[]).find(function(p){return p.id==='vp_'+lk;})||{};
-  var _shiftK=_vpForShift.shift_structure||'CONTINENTAL';
-  h+='<div style="padding:4px 10px 6px;">';
-  h+='<div style="'+MN+'font-size:8px;color:var(--muted2);margin-bottom:4px;">Shift structure <span style="font-size:7px;">— more shifts → smaller line / less capex, night-shift labour premium</span></div>';
-  h+='<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;">';
-  SHIFT_STRUCTURES.forEach(function(sh){var _ss=sh.key===_shiftK;
-    h+='<div onclick="onPropOpsVehicleShift(\''+lk+'\',\''+sh.key+'\')" style="border-radius:3px;padding:5px 4px;cursor:pointer;text-align:center;border:'+(_ss?'1px solid var(--gold)':'1px solid var(--border2)')+';background:'+(_ss?'var(--s2)':'var(--s1)')+';">';
-    h+='<div style="'+MN+'font-weight:600;font-size:8px;color:var(--white);">'+sh.label+'</div>';
-    h+='<div style="color:var(--muted2);font-size:7px;">'+sh.desc+'</div></div>';
-  });
-  h+='</div></div>';
-  h+='<div style="padding:0 10px 8px;'+MN+'font-size:8px;color:var(--muted2);">Line sized for <span style="color:var(--text);">'+capK+'k/yr</span> · '+_shiftDef(_shiftK).label+'</div>';
+  h+='<div style="padding:3px 10px 8px;'+MN+'font-size:8px;color:var(--muted2);">Line sized for <span style="color:var(--text);">'+capK+'k/yr</span> at 3-shift (24×7) capacity</div>';
   // ── Module Tooling collapse toggle ──
   var _propPlatCK=(_prop.platform&&_prop.platform.module)?_prop.platform.module.config_key:null;
   var _propThCK=(_prop.tophat&&_prop.tophat.module)?_prop.tophat.module.config_key:null;
@@ -20662,12 +20643,6 @@ function _renderPlantSelector(facType){
     h+='<select onchange="onPropOpsPlantAuto(\''+facType+'\',parseInt(this.value))" style="font-family:DM Mono,monospace;font-size:10px;padding:7px 10px;border-radius:3px;border:1px solid var(--border2);background:var(--s2);color:var(--text);width:100%;">';
     [1,2,3,4].forEach(function(l){h+='<option value="'+l+'"'+(curAuto===l?' selected':'')+'>L'+l+' – '+AUTO_LABELS[l]+'</option>';});
     h+='</select></div>';
-    if(isVeh){
-      h+='<div><div style="font-family:DM Mono,monospace;font-size:8px;color:var(--muted2);margin-bottom:5px;text-transform:uppercase;letter-spacing:0.5px;">Shift Structure</div>';
-      h+='<select onchange="onPropOpsShiftInput(this.value)" style="font-family:DM Mono,monospace;font-size:10px;padding:7px 10px;border-radius:3px;border:1px solid var(--border2);background:var(--s2);color:var(--text);width:100%;">';
-      SHIFT_STRUCTURES.forEach(function(sh){h+='<option value="'+sh.key+'"'+((((ops.vehicle_plants||[])[0]||{}).shift_structure||ops._plant_shift||'CONTINENTAL')===sh.key?' selected':'')+'>'+sh.label+'</option>';});
-      h+='</select></div>';
-    }
     h+='</div>';
     if(isVeh){
       var sugK=_suggestedVolK();
@@ -20734,14 +20709,6 @@ function onPropOpsVehicleCapYr(k){
   _prop.operations.vehicle_capacity_yr=Math.max(1,k||1);
   _prop.operations.capacity_target_k=_prop.operations.vehicle_capacity_yr;
   _buildPlantFromDecision();
-}
-function onPropOpsVehicleShift(lk,key){
-  if(!_prop.operations)return;
-  var vp=(_prop.operations.vehicle_plants||[]).find(function(p){return p.id==='vp_'+lk;});
-  if(!vp)return;
-  vp.shift_structure=key; vp._computed=null;   // recompute capex/labour under the new shift
-  var aEl=document.getElementById('prop-ops-alloc-area');
-  if(aEl){aEl.innerHTML=_renderPlantAllocationPanel(lk);renderFacilityCostSummary('vehicle_plants','vp_'+lk);}
 }
 function onPropOpsConfirmAllocation(lk){
   var ops=_prop.operations||{};
@@ -21151,14 +21118,10 @@ function _renderAllocationDecision(){
     var eld=selKey?locMap[selKey]:null;
     var curJph=ops._existing_jph||(eld?eld.jph:40);
     var curAuto=ops._existing_auto||(eld?eld.automation_level:2);
-    h+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px;">';
+    h+='<div style="margin-bottom:12px;">';
     h+='<div><div style="font-family:DM Mono,monospace;font-size:8px;color:var(--muted2);margin-bottom:5px;text-transform:uppercase;letter-spacing:0.5px;">Automation Level</div>';
     h+='<select onchange="onPropOpsAutoLevel(parseInt(this.value))" style="font-family:DM Mono,monospace;font-size:10px;padding:7px 10px;border-radius:3px;border:1px solid var(--border2);background:var(--s2);color:var(--text);width:100%;">';
     [1,2,3,4].forEach(function(l){h+='<option value="'+l+'"'+(curAuto===l?' selected':'')+'>L'+l+' – '+AUTO_LABELS[l]+'</option>';});
-    h+='</select></div>';
-    h+='<div><div style="font-family:DM Mono,monospace;font-size:8px;color:var(--muted2);margin-bottom:5px;text-transform:uppercase;letter-spacing:0.5px;">Shift Structure</div>';
-    h+='<select onchange="onPropOpsShiftInput(this.value)" style="font-family:DM Mono,monospace;font-size:10px;padding:7px 10px;border-radius:3px;border:1px solid var(--border2);background:var(--s2);color:var(--text);width:100%;">';
-    SHIFT_STRUCTURES.forEach(function(sh){h+='<option value="'+sh.key+'"'+((((ops.vehicle_plants||[])[0]||{}).shift_structure||ops._plant_shift||'CONTINENTAL')===sh.key?' selected':'')+'>'+sh.label+'</option>';});
     h+='</select></div>';
     h+='</div>';
     h+='<div style="font-family:DM Mono,monospace;font-size:9px;color:var(--green);padding:6px 8px;border-radius:3px;background:rgba(50,180,100,0.08);border:1px solid rgba(50,180,100,0.2);">✓ Platform shared — body shop investment halved</div>';
@@ -21177,14 +21140,10 @@ function _renderAllocationDecision(){
     h+='</select></div></div>';
 
     var curAuto2=vp.automation_level||2;
-    h+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px;">';
+    h+='<div style="margin-bottom:12px;">';
     h+='<div><div style="font-family:DM Mono,monospace;font-size:8px;color:var(--muted2);margin-bottom:5px;text-transform:uppercase;letter-spacing:0.5px;">Automation Level</div>';
     h+='<select onchange="onPropOpsAutoLevel(parseInt(this.value))" style="font-family:DM Mono,monospace;font-size:10px;padding:7px 10px;border-radius:3px;border:1px solid var(--border2);background:var(--s2);color:var(--text);width:100%;">';
     [1,2,3,4].forEach(function(l){h+='<option value="'+l+'"'+(curAuto2===l?' selected':'')+'>L'+l+' – '+AUTO_LABELS[l]+'</option>';});
-    h+='</select></div>';
-    h+='<div><div style="font-family:DM Mono,monospace;font-size:8px;color:var(--muted2);margin-bottom:5px;text-transform:uppercase;letter-spacing:0.5px;">Shift Structure</div>';
-    h+='<select onchange="onPropOpsShiftInput(this.value)" style="font-family:DM Mono,monospace;font-size:10px;padding:7px 10px;border-radius:3px;border:1px solid var(--border2);background:var(--s2);color:var(--text);width:100%;">';
-    SHIFT_STRUCTURES.forEach(function(sh){h+='<option value="'+sh.key+'"'+((vp.shift_structure||ops._plant_shift||'CONTINENTAL')===sh.key?' selected':'')+'>'+sh.label+'</option>';});
     h+='</select></div>';
     h+='</div>';
   }
@@ -22428,13 +22387,6 @@ function onPropOpsCapTarget(k){
   _buildPlantFromDecision();
 }
 
-function onPropOpsShiftInput(key){
-  if(!_prop.operations)return;
-  var vp=(_prop.operations.vehicle_plants||[])[0];
-  if(vp)vp.shift_structure=key;
-  _prop.operations._plant_shift=key;
-  _buildPlantFromDecision();
-}
 
 
 function _getPlatformSize() {
