@@ -4017,10 +4017,12 @@ function _rdCard(r) {
 
 // Standard greenfield CAPEX card for any proposal module (§2 platform … §5 E&S) — mirrors
 // _rdCard's look but summarises the one-time investment to build the module: OEM plant capex +
-// supplier-park capex. Amounts are the STANDARD/reference figures from _MODINV_E at reference
-// volume (V_REF k/yr) and standard automation (L2), so they respond to the module's spec choices
-// but not to plant decisions — those are refined per-plant in §7 Industrial Operations and §8
-// Components Sourcing. `mod` is a _MODINV_E key: 'platform'|'pwt'|'epwt'|'battery'|'tophat'|'eands'.
+// supplier-park capex. Amounts are the STANDARD/reference figures from _MODINV_E delivering V_REF
+// k/yr at standard automation (L2), so they respond to the module's spec choices but not to plant
+// decisions — those are refined per-plant in §7 Industrial Operations and §8 Components Sourcing.
+// cap_k goes through _investCapK so this card quotes the SAME greenfield capex §7's table shows for
+// the same module (both price the shift-compressed physical line). `mod` is a _MODINV_E key:
+// 'platform'|'pwt'|'epwt'|'battery'|'tophat'|'eands'.
 // `pwtOverride` (platform only) forces the energy type; other modules ignore pwt_type.
 var _MODINV_LABELS = {platform:'PLATFORM', pwt:'ICE POWERTRAIN', epwt:'e-MOTOR (EDM)',
                       battery:'BATTERY', tophat:'TOP HAT', eands:'ELECTRONICS & SOFTWARE'};
@@ -4031,9 +4033,13 @@ function _moduleInvestCard(mod, pwtOverride) {
   var bt    = _getBodyType();
   var size  = specs.size || _getPlatformSize();
   var pwtKey = pwtOverride || _pwtToManufKey((_prop.platform && _prop.platform.specs && _prop.platform.specs.pwt) || 'ice_only');
+  // Math.round matches the integer invest_cap_k §7 gets from _MANUF_E.calc (which rounds internally),
+  // so this card and §7's table price the identical physical line and can never disagree by a whole €M
+  // on the rounding boundary. §8 deliberately keeps _investCapK unrounded — its marginal capex walks
+  // the curve continuously, and rounding there would zero out small capacity deltas.
   var o = { specs: specs, segment_code: seg, body_type: bt,
             platform_size: size, pwt_type: pwtKey,
-            automation_level: 2, platform_shared: false, cap_k: _MODINV_E.V_REF };
+            automation_level: 2, platform_shared: false, cap_k: Math.round(_investCapK(_MODINV_E.V_REF)) };
   // Round each component to whole €M for display, and derive TOTAL from those same integers so
   // the three tiles always reconcile visually (plant + supplier = total).
   var plantInv = Math.round(_MODINV_E.investment(mod, o));
@@ -4050,7 +4056,7 @@ function _moduleInvestCard(mod, pwtOverride) {
   h += '<div style="border-top:0.5px solid rgba(52,211,153,0.2);margin-top:6px;padding-top:6px;">';
   var chips = _modInvChips(mod, o, size, seg, bt, pwtKey);
   if (chips) h += '<div style="font-size:8px;color:var(--muted2);display:flex;flex-wrap:wrap;gap:6px;margin-bottom:3px;">'+chips+'</div>';
-  h += '<div style="font-size:8px;color:var(--muted2);">Greenfield reference capex @ '+_MODINV_E.V_REF+'k/yr · L2 automation. ' +
+  h += '<div style="font-size:8px;color:var(--muted2);">Greenfield reference capex @ '+_MODINV_E.V_REF+'k/yr · L2 automation · 3-shift (24×7). ' +
     'Plant capex is refined per-plant in §7 Industrial Operations; supplier capex in §8 Components Sourcing.' +
     (mod==='eands' ? ' E&S carries ~zero plant capex by design — it is near-fully supplier-sourced.' : '') + '</div>';
   h += '</div>';
@@ -19287,19 +19293,10 @@ var SP_MODULE_TYPES = {
   tophat:   {buy_fraction:0.75, labor_intensity:0.65},
   eands:    {buy_fraction:0.88, labor_intensity:0.15},
 };
-// Reference supplier-investment library — per module type, the two cost drivers
-// behind a supplier's investment to build/qualify a (module_slot, zone_key) contract:
-//   tooling_base_m   × zone.labor_index        → one-time qualification/tooling capex (region-driven)
-//   capacity_rate_m  × autoLevel.capacity_mult → ongoing capacity-expansion capex (volume + automation-driven)
-// Mirrors backend MODULE_INVEST_LIB (backend/main.py) — keep these in sync.
-var SP_MODULE_INVEST_LIB = {
-  platform: {tooling_base_m:6.0, capacity_rate_m:0.13},
-  pwt:      {tooling_base_m:4.5, capacity_rate_m:0.10},
-  epwt:     {tooling_base_m:5.0, capacity_rate_m:0.12},
-  battery:  {tooling_base_m:4.5, capacity_rate_m:0.16},
-  tophat:   {tooling_base_m:5.5, capacity_rate_m:0.11},
-  eands:    {tooling_base_m:3.0, capacity_rate_m:0.07},
-};
+// Supplier-investment cost drivers (tooling_base_m / capacity_rate_m per module type) retired
+// 2026-07-15: they were a flat lookup, insensitive to everything the team designed in §2-5, so §8's
+// supplier capex could never reconcile to §7's spec-driven greenfield. Both sections now run on
+// _MODINV_E.supplierInvestment — see _mzcSupplierGfM / _mzcEstimateInvestment below.
 // 11 economic zones: zone-to-zone duty (HS 8708 component rates) + container-freight matrices
 // duty{} and logistics{} are both keyed by DESTINATION ZONE (EW/EE/ND/MX/CN/JP/KR/SEA/IN/LA/ME)
 // — diagonal = domestic shipment (0% duty, cheapest €25/m³ freight tier)
@@ -19377,6 +19374,21 @@ var SHIFT_STRUCTURES = [
   {key:'CONTINENTAL', label:'Continental',  desc:'24h / 7 days', cap_factor:2.60, labour_mult:1.15},
 ];
 function _shiftDef(k){ for(var i=0;i<SHIFT_STRUCTURES.length;i++){ if(SHIFT_STRUCTURES[i].key===k) return SHIFT_STRUCTURES[i]; } return SHIFT_STRUCTURES[2]; }
+
+// Target annual capacity → the shift-compressed PHYSICAL line that delivers it.
+// Capacity always means MAX capacity (CONTINENTAL 3-shift / 24×7), so a line delivering capK/yr
+// round-the-clock is only a capK/(cap_factor×OEE)-sized physical line — and it is the physical line
+// that costs money. THE single capex-capacity convention: every capex call site passes cap_k through
+// here (or through _MANUF_E.calc's equivalent invest_cap_k), so the same module shows the same €M in
+// §2-5's module lab, §7's table and §8's brownfield. Never pass a raw target capacity to a capex
+// engine — that is what made §7's Suppl column render 1.55× its Plant column (fixed 2026-07-15).
+// `oee` overrides the L2 default for callers whose line carries its own automation level.
+// Python mirror: main._mzc_invest_cap_k (engine parity rule).
+function _investCapK(capK, oee){
+  var sh = _shiftDef('CONTINENTAL');
+  var oe = oee || (_MANUF_E.OEE && _MANUF_E.OEE[2]) || 0.80;
+  return Math.max(1, (capK || 0) / ((sh.cap_factor || 2.60) * oe));
+}
 
 // ── MANUFACTURING ENGINE ────────────────────────────────────────────────────
 // ── PER-MODULE INVESTMENT & WORK-CONTENT ENGINE ─────────────────────────────
@@ -19506,6 +19518,9 @@ var _MODINV_E = (function() {
   // as the plant. Ratios differentiated per real-world OEM-vs-supplier split (body OEM-core;
   // interior/electronics/cells supplier-heavy). E&S (plant≈0, ~90% supplier) and battery
   // (make/buy inverts — cells are supplier-dominated) use their own parametric basis.
+  // The ratio is against investment() at the SAME cap_k — callers must pass the shift-compressed
+  // physical line (invest_cap_k), not a raw target capacity, or platform/tophat won't come out equal
+  // to the plant column despite the 1.00 ratio. See the supplier_parks branch of _calcFacilityInv.
   var SUPPLIER_RATIO = {platform:1.00, tophat:1.00, pwt:0.55, epwt:0.45};  // supplier ÷ plant (platform/tophat matched to plant)
   function supplierInvestment(mod, o){
     o=o||{}; var s=o.specs||{}, al=o.automation_level||2, seg=o.segment_code||'c_segment';
@@ -19734,8 +19749,8 @@ var OEM_COST_MOD_META = {
 // in §7, but on throwaway facility objects so no real _prop.operations state is touched.
 // greenfield_inv_m = full new-line investment (independent of any existing spare capacity).
 // Mapping per panel module → { plant, supplier } capex:
-//   platform  plant=vehicle body+paint      supplier=platform supplier content
-//   pwt (ICE) plant=PWT plant + marriage     supplier=— (no PWT supplier park module)
+//   platform  plant=vehicle body+paint      supplier=platform supplier content (= plant, ratio 1.00)
+//   pwt (ICE) plant=PWT plant + marriage     supplier=PWT supplier content (ratio 0.55)
 //   epwt      plant=e-PWT plant              supplier=e-PWT supplier content
 //   battery   plant=battery plant            supplier=battery supplier content
 //   tophat    plant=trim/final (0.40 assy)   supplier=tophat supplier content
@@ -19804,13 +19819,15 @@ function _computeStandardModuleCosts() {
 
 // Section 7, top of page: static OEM standard manufacturing cost baseline carried over
 // from Sections 2-5 (DMP/Make/TPC per module, at the engines' fixed reference rates).
-// This does not depend on any §7 plant decision.
+// This does not depend on any §7 plant decision. Its Suppl column is the GREENFIELD supplier capex;
+// §8 shows the BROWNFIELD counterpart on the same curve (see _mzcEstimateInvestment).
 function _renderStandardCostSummary() {
   var c = _computeStandardModuleCosts();
   if (!c.rows) return '';
+  var _refK = Math.round((_getRefManuf().eff_capacity_yr || 280000) / 1000) || 280;
   var h = '<div style="border:1px solid var(--border2);border-radius:4px;padding:12px;margin-bottom:18px;background:var(--s2);">';
   h += '<div style="font-family:DM Mono,monospace;font-size:8px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:4px;">OEM Standard Manufacturing Cost — from Sections 2-5 (reference rates)</div>';
-  h += '<div style="font-family:DM Mono,monospace;font-size:7px;color:var(--muted2);font-style:italic;line-height:1.5;margin-bottom:10px;">R&amp;D = standard development spend per module. Plant &amp; Supplier Capex = directional greenfield estimate assuming these modules are industrialised for the first time (standard US plant · medium automation) — indicative of the investment required before you configure your plan in §7 below. Total Inv = R&amp;D + Plant + Supplier capex per module.</div>';
+  h += '<div style="font-family:DM Mono,monospace;font-size:7px;color:var(--muted2);font-style:italic;line-height:1.5;margin-bottom:10px;">R&amp;D = standard development spend per module. Plant &amp; Suppl Capex = <b style="color:var(--gold);">GREENFIELD</b> — what it costs to industrialise this design from scratch, driven by your §2-5 specs alone, at a reference footprint (standard US plant · medium automation · '+_refK+'k/yr). Your <b style="color:var(--cyan);">BROWNFIELD</b> investment — the same design priced against the volume, sourcing zones, automation and already-contracted capacity you actually choose — is in <b>§8 Components Sourcing</b>. Total Inv = R&amp;D + Plant + Suppl capex per module.</div>';
   h += '<div style="display:grid;grid-template-columns:130px minmax(0,1fr) 60px 60px 60px 68px 56px 56px 60px;gap:8px;padding:0 0 4px 0;font-family:DM Mono,monospace;font-size:7px;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;">'+
        '<div>Module</div><div>Config</div><div style="text-align:right;">R&amp;D €M</div><div style="text-align:right;">Plant €M</div><div style="text-align:right;">Suppl €M</div><div style="text-align:right;">Total Inv €M</div><div style="text-align:right;">DMP €</div><div style="text-align:right;">Make €</div><div style="text-align:right;">TPC €</div></div>';
   h += c.rows;
@@ -19910,15 +19927,29 @@ function _calcFacilityInv(type,fac){
   } else if(type==='powertrain_plants'){
     var pAl=fac.automation_level||2,pJph=Math.min(40,_MANUF_E.AUTO_JPH[pAl]||55);
     var pOee={1:0.75,2:0.80,3:0.85,4:0.88}[pAl]||0.80;
-    var pCapK=Math.round(pJph*24*365*pOee/1000)||1;
+    var pCapK=Math.round(pJph*24*365*pOee/1000)||1;      // target annual capacity
+    // Same capacity convention as the vehicle plant above (fixed 2026-07-15 — this branch computes
+    // pCapK itself instead of going through _MANUF_E.calc, so it never got the 2026-07-14 shift
+    // treatment and was pricing PWT/ePWT/battery lines uncompressed): capacity always means MAX
+    // capacity, so a PWT line delivering pCapK/yr round-the-clock is only a pCapK/(cap_factor×OEE)
+    // physical line. inv_m scales off that physical line; cap_k stays the TARGET so the incremental
+    // rate (newCapNeeded × inv_m/cap_k, both in capacity units) doesn't re-inflate by the shift factor.
+    var pInvCapK=Math.round(_investCapK(pCapK,pOee))||1;
     if(!fac._computed)fac._computed={};fac._computed.eff_capacity_yr=pCapK*1000;
-    if(hasIce)gf.pwt={inv_m:_MODINV_E.investment('pwt',_mCtx('pwt',pCapK,pAl,false)),cap_k:pCapK};
-    if(hasBev){gf.epwt={inv_m:_MODINV_E.investment('epwt',_mCtx('epwt',pCapK,pAl,false)),cap_k:pCapK};gf.battery={inv_m:_MODINV_E.investment('battery',_mCtx('battery',pCapK,pAl,false)),cap_k:pCapK};}
+    if(hasIce)gf.pwt={inv_m:_MODINV_E.investment('pwt',_mCtx('pwt',pInvCapK,pAl,false)),cap_k:pCapK};
+    if(hasBev){gf.epwt={inv_m:_MODINV_E.investment('epwt',_mCtx('epwt',pInvCapK,pAl,false)),cap_k:pCapK};gf.battery={inv_m:_MODINV_E.investment('battery',_mCtx('battery',pInvCapK,pAl,false)),cap_k:pCapK};}
   } else if(type==='supplier_parks'){
-    // Per-module supplier-park capex (bottom-up, no plant-automation scaling). Mirrors the plant
-    // engine so §8 supplier capex stays proportionate to §7 plant capex.
+    // Per-module supplier-park capex (bottom-up, no plant-automation scaling), on the same
+    // spec-driven greenfield curve as the plant branch and at the same shift-compressed physical
+    // line. Capacity always means MAX capacity (CONTINENTAL 3-shift / 24×7) — that convention applies
+    // to the supplier's line as much as to ours, so a supplier delivering refCapK/yr round-the-clock
+    // only builds a refInvCapK-sized line. This is what makes SUPPLIER_RATIO=1.00 render as true
+    // parity with the plant column. inv_m scales off the physical line; cap_k stays the TARGET annual
+    // capacity so the incremental rate (newCapNeeded × inv_m/cap_k, both in capacity units) doesn't
+    // re-inflate by the shift factor — mirrors the vehicle_plants branch above.
     if(!fac._computed)fac._computed={};fac._computed.eff_capacity_yr=refCapK*1000;
-    var _sctx=function(k){return {specs:_msp(k),segment_code:seg,body_type:bt,platform_size:psz,pwt_type:pk,cap_k:refCapK};};
+    var refInvCapK=Math.round(ref.invest_cap_k)||1;
+    var _sctx=function(k){return {specs:_msp(k),segment_code:seg,body_type:bt,platform_size:psz,pwt_type:pk,cap_k:refInvCapK};};
     gf.platform={inv_m:_MODINV_E.supplierInvestment('platform',_sctx('platform')),cap_k:refCapK};
     gf.tophat  ={inv_m:_MODINV_E.supplierInvestment('tophat',  _sctx('tophat')),cap_k:refCapK};
     gf.eands   ={inv_m:_MODINV_E.supplierInvestment('eands',   _sctx('eands')),cap_k:refCapK};
@@ -21815,18 +21846,44 @@ async function _mzcLoadCapacity() {
   _mzcLoading = false;
 }
 
-// Capacity-expansion capex (€M) for a module: scaled by the module's reference
-// rate, the chosen automation level's capex multiplier (more automated lines cost
-// more capex per unit of throughput, less labor to run), and a diminishing-returns
-// scale discount on top of capacity already contracted. Mirrors backend
-// _mzc_capex_for_delta (backend/main.py) — keep these in sync.
+// §8 BROWNFIELD SUPPLIER CAPEX — spec-driven, reconciles to §7's greenfield.
+//
+// §7 shows GREENFIELD supplier capex from the §2-5 specs alone (at a reference volume). §8 shows the
+// BROWNFIELD number: those same specs PLUS the industrial footprint (volume, sourcing zone, supplier
+// automation, capacity already contracted). Both run on the one spec-driven curve below, so at a
+// virgin footprint §8's capacity term collapses to exactly §7's greenfield and every difference from
+// it is a footprint decision the team made.
+//
+// Shift compression is the shared _investCapK convention (see _shiftDef): a supplier delivering
+// capK/yr round-the-clock only builds a capK/(cap_factor×OEE)-sized physical line, exactly as §2-5's
+// module lab and §7's table assume. Supplier automation enters via auto.capacity_mult, so tracking it
+// through OEE as well would double-count it.
+var _MZC_TOOLING_SHARE = 0.15;   // one-time qualification/tooling share of a greenfield supplier line
+// Spec-driven supplier greenfield capex (€M) for one module slot at a given TARGET annual capacity.
+// Same _MODINV_E engine §7 uses — segment, body, platform size, ADAS level, kWh, chemistry all move it.
+function _mzcSupplierGfM(sk, capK) {
+  if (!(capK > 0)) return 0;
+  var specs = _propModuleSpecs();
+  return _MODINV_E.supplierInvestment(sk, {
+    specs:         specs[sk] || {},
+    segment_code:  (_prop.study && _prop.study.segment_code) || 'c_segment',
+    body_type:     _getBodyType(),
+    platform_size: _getPlatformSize(),
+    pwt_type:      _pwtKeyFromProp(),
+    cap_k:         _investCapK(capK)
+  });
+}
+
+// Capacity-expansion capex (€M): the TRUE MARGINAL cost of moving along the spec-driven greenfield
+// curve from currentK to currentK+additionalK, times the automation level's capex multiplier (more
+// automated lines cost more capex per unit of throughput, less labor to run). capScale's 0.6 power
+// law inside _MODINV_E supplies the diminishing return at scale, so the old ad-hoc scaleDiscount /
+// REF_K constants are retired. Mirrors backend _mzc_capex_for_delta (backend/main.py) — keep in sync.
 function _mzcEstimateCapexM(sk, autoLevel, currentK, additionalK) {
   if (additionalK <= 0) return 0;
-  var lib = SP_MODULE_INVEST_LIB[sk] || { capacity_rate_m: 0.10 };
   var auto = SP_AUTO_LEVELS.find(function(a){return a.key===autoLevel;}) || SP_AUTO_LEVELS[1];
-  var REF_K = 25.0;
-  var scaleDiscount = Math.max(0.5, 1.0 - 0.08 * Math.log2(1 + currentK / REF_K));
-  return additionalK * lib.capacity_rate_m * auto.capacity_mult * scaleDiscount;
+  var marginal = _mzcSupplierGfM(sk, currentK + additionalK) - _mzcSupplierGfM(sk, currentK);
+  return Math.max(0, marginal) * (auto.capacity_mult || 1.0);
 }
 
 // Estimates the supplier investment a (module_slot, zone_key, needed capacity)
@@ -21840,9 +21897,12 @@ function _mzcEstimateInvestment(sk, moduleId, zoneKey, autoLevel, needK) {
   var freeK = Math.max(0, c.free_k || 0);
   var shortfall = Math.max(0, (needK || 0) - freeK);
   var isFirstTime = (c.contracted_k || 0) <= 0 && shortfall > 0;
-  var lib = SP_MODULE_INVEST_LIB[sk] || { tooling_base_m: 4.0 };
   var zone = SP_ZONES.find(function(z){return z.key===zoneKey;}) || SP_ZONES[0];
-  var toolingM = isFirstTime ? lib.tooling_base_m * zone.labor_index : 0;
+  // Tooling is spec-driven but volume-independent (priced at the reference line — a one-time
+  // qualification cost that doesn't depend on how many you order), scaled by the zone's local labour.
+  // Capacity above is deliberately NOT zone-scaled: production equipment is globally traded, so
+  // labor_index (Mexico 0.13 vs W. Europe 1.10) applies to local qualification/installation only.
+  var toolingM = isFirstTime ? _mzcSupplierGfM(sk, _MODINV_E.V_REF) * _MZC_TOOLING_SHARE * zone.labor_index : 0;
   var capacityM = _mzcEstimateCapexM(sk, autoLevel, c.contracted_k || 0, shortfall);
   return { shortfall: shortfall, isFirstTime: isFirstTime, toolingM: toolingM, capacityM: capacityM, totalM: toolingM + capacityM };
 }
@@ -21998,6 +22058,40 @@ function _renderSourcingInvestmentSummary(){
   // and break row alignment with the neighboring columns, producing a jumbled look.
   var h='<div style="margin-bottom:12px;padding:10px 12px;background:var(--s2);border-radius:4px;border:1px solid var(--border2);">';
   h+='<div style="'+MO+'font-size:8px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:7px;">💰 Required Supplier Investment — based on Section 7 reservation amounts</div>';
+
+  // GREENFIELD → BROWNFIELD BRIDGE — the teaching payoff. §7 shows the greenfield capex this design
+  // implies; §8 shows what the team's actual footprint costs. The terms are exact and additive:
+  //   greenfield @ your volume  (§7's curve at needK — auto L2, nothing contracted)
+  //   + already-contracted credit (marginal cost further along the 0.6 curve; ≤ 0)
+  //   + supplier automation       (auto.capacity_mult vs L2)
+  //   + first-time tooling        (zone.labor_index — local qualification)
+  //   = brownfield charged
+  // and sum to totalTooling+totalCapacity by construction, so the bridge can never disagree with the
+  // breakdown below or with what confirmSourcingPlan() bills.
+  var bGf=0,bCapNoAuto=0;
+  lines.forEach(function(l){
+    var c=_mzcCapacity[(l.moduleId||l.sk)+'__'+l.zone]||{};
+    var cur=c.contracted_k||0;
+    bGf        += _mzcSupplierGfM(l.sk,l.needK);
+    bCapNoAuto += Math.max(0,_mzcSupplierGfM(l.sk,cur+l.inv.shortfall)-_mzcSupplierGfM(l.sk,cur));
+  });
+  var bExist=bCapNoAuto-bGf, bAuto=totalCapacity-bCapNoAuto, bTotal=totalTooling+totalCapacity;
+  var _bSign=function(v,col){return '<span style="color:'+col+';">'+(v<0?'−':'+')+'€'+Math.abs(v).toFixed(2)+'M</span>';};
+  var _bRow=function(label,val,strong){
+    return '<div style="display:flex;justify-content:space-between;gap:10px;'+MO+'font-size:7.5px;padding:2px 0;'+(strong?'font-weight:700;':'')+'">'
+      +'<span style="color:'+(strong?'var(--text)':'var(--muted2)')+';">'+label+'</span>'
+      +'<span style="text-align:right;white-space:nowrap;">'+val+'</span></div>';
+  };
+  h+='<div style="margin-bottom:9px;padding:8px 10px;background:var(--s1);border-radius:3px;border:1px dashed var(--border2);">';
+  h+='<div style="'+MO+'font-size:7px;text-transform:uppercase;letter-spacing:0.5px;color:var(--muted);margin-bottom:4px;">Greenfield (§7) → Brownfield bridge</div>';
+  h+=_bRow('Greenfield @ your volume — from your §2-5 design','<span style="color:var(--gold);">€'+bGf.toFixed(2)+'M</span>');
+  if(Math.abs(bExist)>=0.005)   h+=_bRow('Already-contracted capacity',_bSign(bExist,'var(--green)'));
+  if(Math.abs(bAuto)>=0.005)    h+=_bRow('Supplier automation',_bSign(bAuto,bAuto<0?'var(--green)':'var(--orange)'));
+  if(totalTooling>=0.005)       h+=_bRow('First-time tooling — sourcing zone',_bSign(totalTooling,'var(--orange)'));
+  h+='<div style="border-top:1px solid var(--border2);margin:4px 0 3px;"></div>';
+  h+=_bRow('Brownfield — charged on confirm','<span style="color:var(--cyan);">€'+bTotal.toFixed(2)+'M</span>',true);
+  h+='</div>';
+
   TYPE_ORDER.forEach(function(sk){
     var zoneMap=groups[sk];
     if(!zoneMap)return;
@@ -22676,7 +22770,12 @@ function calcPropBizCase() {
   });
   var toolingM=0;
   var _ops=_prop.operations||{};
-  ['vehicle_plants','powertrain_plants','supplier_parks'].forEach(function(t){(_ops[t]||[]).forEach(function(f){toolingM+=f._computed?f._computed.total_inv_m||0:0;});});
+  // OEM plant capex only. supplier_parks is deliberately NOT summed here: nothing ever pushes into
+  // that array (it's only ever initialised to []), so it always contributed €0 while §7's SUPPL
+  // column implied otherwise. Supplier capex reaches the business case exactly once, below, via
+  // _sourcingCapexM — the brownfield figure §8 charges (see confirmSourcingPlan). Re-adding
+  // supplier_parks here would double-count it.
+  ['vehicle_plants','powertrain_plants'].forEach(function(t){(_ops[t]||[]).forEach(function(f){toolingM+=f._computed?f._computed.total_inv_m||0:0;});});
   if(toolingM===0&&_m)toolingM=(_m.grand_total_inv_m||_m.total_investment_m||0);
   if(_ops._sourcingCapexM)toolingM+=_ops._sourcingCapexM;
   var totalInvM=rdM+toolingM;
