@@ -17955,6 +17955,17 @@ function buildReviewSection() {
   h += '<div style="font-family:DM Mono,monospace;font-size:8px;color:var(--muted2);">'+_f(totalFte/1000,1)+'k FTE-months · shared across '+(dualVariant?'2 variants':'program')+'</div>';
   h += '</div></div>';
 
+  // ── GREENFIELD COST & INVESTMENT SUMMARY (same table §7 leads with) ──
+  // Surfaced at review time so the team sees the full per-module R&D + greenfield capex +
+  // DMP/Make/TPC picture before committing. It reads the same cached _prop[k].module values that
+  // this section's hero R&D total and per-module cards already use (per_unit_tpc_eur / dmp / make /
+  // total_rd_spend_m, populated by _getInfo above), so the figures reconcile by construction:
+  // the table's R&D total equals the "Common R&D Investment" hero above, and — for a single-energy
+  // program — its TPC total equals the per-vehicle TPC shown in the module cards below. (For a
+  // multi-energy program the table sums ICE + BEV powertrains into one TPC column, matching §7;
+  // the per-variant split is in the ICE/BEV cards below.)
+  h += _renderStandardCostSummary();
+
   // ── DUAL VARIANT COMPARISON ──────────────────────────────────
   if (dualVariant) {
     // ICE and BEV specs for display
