@@ -17752,7 +17752,6 @@ function buildReviewSection() {
 
   var allMods   = [M.platform, M.pwt, M.tophat, M.epwt, M.battery, M.eands];
   var totalRd   = allMods.reduce(function(s,m){return s+m.rd;},0);
-  var totalFte  = allMods.reduce(function(s,m){return s+m.fte;},0);
 
   // ── Readiness banner: show ready dates for reuse/modify modules ──
   var sopYear = _prop.study&&_prop.study.start_year;
@@ -17941,6 +17940,13 @@ function buildReviewSection() {
   // ── Compose HTML ──
   var h = '';
 
+  // Program-level cost/investment aggregates for the hero tiles below. Idempotent — reads the
+  // already-populated _prop[k].module cache (dmp/make/per_unit_tpc_eur/total_rd_spend_m) that
+  // _getInfo() filled above, so the hero reconciles with _renderStandardCostSummary() (line 19835)
+  // and the per-module cards by construction.
+  var _sc      = _computeStandardModuleCosts();
+  var _totInv  = _sc.totRd + _sc.totPlantCx + _sc.totSupCx;
+
   // Header banner
   if (readinessBanner) h += readinessBanner;
   h += '<div style="background:linear-gradient(135deg,rgba(200,164,60,.10) 0%,rgba(0,0,0,0) 55%);border:1px solid rgba(200,164,60,.22);border-radius:6px;padding:14px 20px;margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;">';
@@ -17949,10 +17955,22 @@ function buildReviewSection() {
   h += '<div style="font-family:Orbitron,sans-serif;font-size:20px;font-weight:800;color:var(--white);letter-spacing:1px;">'+(studyBrand?studyBrand.toUpperCase()+' ':'')+studySeg.toUpperCase()+'</div>';
   h += '<div style="font-family:DM Mono,monospace;font-size:9px;color:var(--muted2);margin-top:4px;">'+progBadge+' · '+(plS.size?sizeL[plS.size]||plS.size:'TBD').toUpperCase()+' Platform'+(plS.pwt?' · '+(pwtL[plS.pwt]||plS.pwt):'')+'</div>';
   h += '</div>';
-  h += '<div style="text-align:right;">';
-  h += '<div style="font-family:DM Mono,monospace;font-size:7px;letter-spacing:1px;color:var(--muted);text-transform:uppercase;margin-bottom:2px;">Common R&D Investment</div>';
-  h += '<div style="font-family:Orbitron,sans-serif;font-size:26px;font-weight:800;color:var(--gold);">€'+_f(totalRd)+'<span style="font-size:13px;font-weight:400;color:var(--muted2);"> M</span></div>';
-  h += '<div style="font-family:DM Mono,monospace;font-size:8px;color:var(--muted2);">'+_f(totalFte/1000,1)+'k FTE-months · shared across '+(dualVariant?'2 variants':'program')+'</div>';
+  // Two headline program tiles: Total Investment (R&D + plant + supplier greenfield capex)
+  // and Total TPC/vehicle (DMP material purchase + Make transformation). Both reuse the same
+  // aggregates the standard-cost table below shows, so they reconcile by construction.
+  h += '<div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:flex-end;">';
+  // Tile 1 — Total Investment
+  h += '<div style="background:var(--s3);border-radius:4px;border-top:2px solid var(--gold);padding:8px 12px;min-width:180px;text-align:left;">';
+  h += '<div style="font-family:DM Mono,monospace;font-size:7px;letter-spacing:1px;color:var(--muted);text-transform:uppercase;margin-bottom:2px;">Total Investment</div>';
+  h += '<div style="font-family:Orbitron,sans-serif;font-size:26px;font-weight:800;color:var(--gold);line-height:1;">€'+Math.round(_totInv).toLocaleString()+'<span style="font-size:13px;font-weight:400;color:var(--muted2);"> M</span></div>';
+  h += '<div style="font-family:DM Mono,monospace;font-size:8px;color:var(--muted2);margin-top:3px;">R&D €'+Math.round(_sc.totRd).toLocaleString()+' · Plant €'+Math.round(_sc.totPlantCx).toLocaleString()+' · Suppl €'+Math.round(_sc.totSupCx).toLocaleString()+'M · greenfield</div>';
+  h += '</div>';
+  // Tile 2 — Total TPC / vehicle
+  h += '<div style="background:var(--s3);border-radius:4px;border-top:2px solid var(--cyan);padding:8px 12px;min-width:180px;text-align:left;">';
+  h += '<div style="font-family:DM Mono,monospace;font-size:7px;letter-spacing:1px;color:var(--muted);text-transform:uppercase;margin-bottom:2px;">Total TPC / Vehicle</div>';
+  h += '<div style="font-family:Orbitron,sans-serif;font-size:26px;font-weight:800;color:var(--white);line-height:1;">€'+Math.round(_sc.totTpc).toLocaleString()+'</div>';
+  h += '<div style="font-family:DM Mono,monospace;font-size:8px;color:var(--muted2);margin-top:3px;">DMP €'+Math.round(_sc.totDmp).toLocaleString()+' + Transformation €'+Math.round(_sc.totMake).toLocaleString()+'</div>';
+  h += '</div>';
   h += '</div></div>';
 
   // ── GREENFIELD COST & INVESTMENT SUMMARY (same table §7 leads with) ──
@@ -17960,7 +17978,8 @@ function buildReviewSection() {
   // DMP/Make/TPC picture before committing. It reads the same cached _prop[k].module values that
   // this section's hero R&D total and per-module cards already use (per_unit_tpc_eur / dmp / make /
   // total_rd_spend_m, populated by _getInfo above), so the figures reconcile by construction:
-  // the table's R&D total equals the "Common R&D Investment" hero above, and — for a single-energy
+  // the table's TOTAL row equals the hero's "Total Investment" / "Total TPC" tiles above (both
+  // read _computeStandardModuleCosts()), and — for a single-energy
   // program — its TPC total equals the per-vehicle TPC shown in the module cards below. (For a
   // multi-energy program the table sums ICE + BEV powertrains into one TPC column, matching §7;
   // the per-variant split is in the ICE/BEV cards below.)
