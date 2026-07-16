@@ -17839,40 +17839,6 @@ function buildReviewSection() {
       '<span style="flex:1;height:1px;background:var(--border2);display:inline-block;"></span></div>';
   }
 
-  function modCard(mod, refTpc, compact) {
-    if (!mod.mode) return '';
-    var pct = refTpc>0?Math.min(100,Math.round(mod.tpc/refTpc*100)):0;
-    var barW = Math.min(100,pct*1.8);
-    var mTag = mod.mode==='new'?'NEW DEV':mod.mode==='reuse'?'REUSE':'MODIFY';
-    var mCol = mod.mode==='new'?mod.color:'var(--green)';
-    var ck   = mod.configKey||(mod.name||'');
-    return '<div style="border:1px solid var(--border2);border-left:3px solid '+mod.color+';border-radius:3px;padding:'+(compact?'7px 10px':'10px 12px')+';margin-bottom:6px;background:var(--s2);">'+
-      '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px;">'+
-        '<div style="display:flex;align-items:center;gap:5px;">'+
-          '<span style="width:6px;height:6px;border-radius:1px;background:'+mod.color+';flex-shrink:0;"></span>'+
-          '<span style="font-family:DM Mono,monospace;font-size:'+(compact?'8':'9')+'px;font-weight:700;color:var(--white);">'+mod.label.toUpperCase()+'</span>'+
-        '</div>'+
-        '<div style="display:flex;align-items:center;gap:5px;">'+
-          (ck?'<span style="font-family:DM Mono,monospace;font-size:7px;color:var(--muted2);">'+ck+'</span>':'')+
-          '<span style="font-family:DM Mono,monospace;font-size:6px;padding:1px 4px;border-radius:2px;border:1px solid '+mCol+';color:'+mCol+';">'+mTag+'</span>'+
-        '</div>'+
-      '</div>'+
-      '<div style="display:flex;align-items:center;gap:7px;margin-bottom:5px;">'+
-        '<div style="flex:1;height:3px;background:var(--border);border-radius:2px;overflow:hidden;">'+
-          '<div style="height:100%;width:'+barW+'%;background:'+mod.color+';border-radius:2px;"></div>'+
-        '</div>'+
-        '<span style="font-family:Orbitron,sans-serif;font-size:'+(compact?'11':'12')+'px;color:'+mod.color+';white-space:nowrap;">€'+_f(mod.tpc).toLocaleString()+'/veh</span>'+
-        '<span style="font-family:DM Mono,monospace;font-size:8px;color:var(--muted2);">'+pct+'%</span>'+
-      '</div>'+
-      (!compact?'<div style="display:flex;gap:12px;flex-wrap:wrap;font-family:DM Mono,monospace;font-size:8px;color:var(--muted2);">'+
-        (mod.weight>0?'<span>⚤ '+_f(mod.weight)+' kg</span>':'')+
-        (mod.rd>0?'<span>R&D €'+_f(mod.rd)+'M</span>':'')+
-        (mod.fte>0?'<span>FTE '+_f(mod.fte/1000,1)+'k mos</span>':'')+
-        (mod.mat_cost>0?'<span>Mat €'+_f(mod.mat_cost).toLocaleString()+'</span>':'')+
-      '</div>':'')+
-    '</div>';
-  }
-
   function specRow(lbl,val) {
     if (val==null||val==='') return '';
     return '<div style="display:flex;justify-content:space-between;padding:2px 0;border-bottom:1px solid rgba(255,255,255,.04);">'+
@@ -17884,40 +17850,6 @@ function buildReviewSection() {
     return '<div style="margin-bottom:8px;">'+
       '<div style="font-family:DM Mono,monospace;font-size:7px;color:'+col+';letter-spacing:1.5px;text-transform:uppercase;padding:2px 0;border-bottom:1px solid rgba(255,255,255,.07);margin-bottom:4px;">'+title+'</div>'+
       inner+'</div>';
-  }
-
-  // Variant column (for dual view)
-  function variantCol(varLabel, varColor, varHex, varTpc, varSharedTpc, varDelta, varModCards, varSpecBlocks) {
-    var deltaStr = varDelta.map(function(d){
-      return '<div style="display:flex;justify-content:space-between;padding:2px 0;">'+
-        '<span style="font-family:DM Mono,monospace;font-size:8px;color:var(--muted2);">'+d.label+'</span>'+
-        '<span style="font-family:DM Mono,monospace;font-size:8px;color:'+d.color+';">+€'+_f(d.val).toLocaleString()+'</span></div>';
-    }).join('');
-    return '<div style="border:1px solid rgba('+varHex.slice(1).match(/../g).map(function(x){return parseInt(x,16);}).join(',')+',.3);border-top:3px solid '+varColor+';border-radius:4px;padding:14px;background:var(--s2);">'+
-      // Variant header
-      '<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">'+
-        '<span style="font-family:DM Mono,monospace;font-size:7px;letter-spacing:2px;color:'+varColor+';text-transform:uppercase;">'+varLabel+'</span>'+
-      '</div>'+
-      // Big TPC
-      '<div style="font-family:Orbitron,sans-serif;font-size:24px;font-weight:800;color:'+varColor+';line-height:1;margin-bottom:4px;">€'+_f(varTpc).toLocaleString()+'</div>'+
-      '<div style="font-family:DM Mono,monospace;font-size:8px;color:var(--muted2);margin-bottom:10px;">per vehicle (direct TPC)</div>'+
-      // Cost stack
-      '<div style="background:var(--s3);border-radius:3px;padding:8px 10px;margin-bottom:10px;">'+
-        '<div style="font-family:DM Mono,monospace;font-size:7px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:5px;">Cost Composition</div>'+
-        '<div style="display:flex;justify-content:space-between;padding:2px 0;">'+
-          '<span style="font-family:DM Mono,monospace;font-size:8px;color:var(--muted2);">Shared Architecture</span>'+
-          '<span style="font-family:DM Mono,monospace;font-size:8px;color:var(--gold);">€'+_f(varSharedTpc).toLocaleString()+'</span></div>'+
-        deltaStr+
-        '<div style="border-top:1px solid var(--border2);margin-top:4px;padding-top:4px;display:flex;justify-content:space-between;">'+
-          '<span style="font-family:DM Mono,monospace;font-size:8px;color:var(--muted);text-transform:uppercase;">Total TPC</span>'+
-          '<span style="font-family:DM Mono,monospace;font-size:9px;font-weight:700;color:'+varColor+';">€'+_f(varTpc).toLocaleString()+'</span></div>'+
-      '</div>'+
-      // Module cards
-      '<div style="font-family:DM Mono,monospace;font-size:7px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;">Variant Modules</div>'+
-      varModCards+
-      // Specs
-      varSpecBlocks+
-    '</div>';
   }
 
   // BOM section (grouped by shared / ICE / BEV)
