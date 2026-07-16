@@ -17639,6 +17639,16 @@ function advanceToReview() {
   buildReviewSection();
 }
 
+// §6 collapsible toggle — pure DOM show/hide + chevron swap, no re-render (keeps the
+// already-drawn radar canvas intact). Detail panels render with inline display:none and a
+// matching '<id>-chev' chevron span.
+function _s6Toggle(id) {
+  var t = document.getElementById(id); if (!t) return;
+  var open = (t.style.display === 'none' || t.style.display === '');
+  t.style.display = open ? 'block' : 'none';
+  var c = document.getElementById(id + '-chev'); if (c) c.textContent = open ? '▾' : '▸';
+}
+
 // ── Step 6: Review + Confirm — Dual Variant ──────────────────
 function buildReviewSection() {
   var el = document.getElementById('prop-review-content');
@@ -17820,6 +17830,15 @@ function buildReviewSection() {
       '<span style="flex:1;height:1px;background:var(--border2);display:inline-block;"></span></div>';
   }
 
+  // Clickable collapsible section header (chevron + rule) — pairs with a '<id>' detail div that
+  // renders with display:none; _s6Toggle(id) flips it. Collapsed by default.
+  function collapseHdr(id, lbl) {
+    return '<div onclick="_s6Toggle(\''+id+'\')" style="cursor:pointer;user-select:none;font-family:DM Mono,monospace;font-size:7px;letter-spacing:2px;color:var(--muted);text-transform:uppercase;margin-bottom:8px;display:flex;align-items:center;gap:8px;">'+
+      '<span id="'+id+'-chev" style="font-size:9px;color:var(--muted2);">▸</span>'+
+      '<span style="flex:1;height:1px;background:var(--border2);display:inline-block;"></span>'+lbl+' · show'+
+      '<span style="flex:1;height:1px;background:var(--border2);display:inline-block;"></span></div>';
+  }
+
   function modCard(mod, refTpc, compact) {
     if (!mod.mode) return '';
     var pct = refTpc>0?Math.min(100,Math.round(mod.tpc/refTpc*100)):0;
@@ -17937,6 +17956,101 @@ function buildReviewSection() {
     return h;
   }
 
+  // Per-slot specification rows for the consolidated module table's expand panel.
+  function moduleSpecRows(k, m) {
+    var s = m.specs || {};
+    if (k === 'platform') return ''
+      + specRow('Config',      m.configKey || null)
+      + specRow('Size',        s.size ? (sizeL[s.size] || s.size) : null)
+      + specRow('PWT Type',    s.pwt ? (pwtL[s.pwt] || s.pwt.replace(/_/g,'-')) : null)
+      + specRow('Reliability', s.reliability != null ? _f(s.reliability) + '%' : null)
+      + specRow('Comfort',     s.comfort != null ? _f(s.comfort) + '%' : null)
+      + specRow('Safety',      s.safety != null ? _f(s.safety) + '%' : null);
+    if (k === 'pwt') return ''
+      + specRow('Engine Config', s.config_key ? s.config_key.replace(/_/g,' ') : null)
+      + specRow('Peak Power',    s.power != null ? _f(s.power) + ' hp' : null)
+      + specRow('Emission Tech', s.emission_tech != null ? _f(parseFloat(s.emission_tech)*100) + '%' : null)
+      + specRow('Sourcing',      s.make_buy || null);
+    if (k === 'epwt') return ''
+      + specRow('Motor Class', s.epwt_class ? s.epwt_class.replace(/_/g,' ') : (s.config_key ? s.config_key.replace(/_/g,' ') : null))
+      + specRow('Peak Power',  s.power_kw != null ? _f(s.power_kw) + ' kW' : null)
+      + specRow('Efficiency',  s.efficiency != null ? _f(parseFloat(s.efficiency)*100) + '%' : null)
+      + specRow('Sourcing',    s.make_buy || null);
+    if (k === 'battery') return ''
+      + specRow('Chemistry', s.chemistry ? (chemN[s.chemistry] ? chemN[s.chemistry].n : s.chemistry.replace(/_/g,'-')) : null)
+      + specRow('Cell Mfg.', s.make_buy === 'MAKE' ? 'Gigafactory' : s.make_buy === 'BUY' ? 'Cell Supplier' : s.make_buy || null)
+      + specRow('Capacity',  s.target_kwh != null ? s.target_kwh + ' kWh' : null);
+    if (k === 'tophat') return ''
+      + specRow('Body Config', s.config_key ? s.config_key.replace(/_/g,' ') : null)
+      + specRow('Roominess',   s.roominess != null ? parseFloat(s.roominess).toFixed(1) + ' m³' : null)
+      + specRow('Premiumness', s.premiumness != null ? _f(parseFloat(s.premiumness)*100) + '%' : null)
+      + specRow('Comfort',     s.comfort != null ? _f(parseFloat(s.comfort)*100) + '%' : null)
+      + specRow('Safety',      s.safety != null ? _f(parseFloat(s.safety)*100) + '%' : null);
+    if (k === 'eands') return ''
+      + specRow('E/E Architecture', s.ee_arch ? archL[s.ee_arch] || s.ee_arch : null)
+      + specRow('Sourcing',         s.make_buy === 'MAKE' ? 'Make (Own Dev)' : s.make_buy === 'BUY' ? 'Buy (Tier-1)' : s.make_buy || null)
+      + specRow('ADAS Level',       s.adas_level != null ? 'SAE Level ' + s.adas_level : null)
+      + specRow('Sensor Suite',     s.sensor_suite != null ? s.sensor_suite + '%' : null)
+      + specRow('Connectivity',     s.connectivity != null ? s.connectivity + '%' : null)
+      + specRow('Infotainment',     s.infotainment != null ? s.infotainment + '%' : null)
+      + specRow('Cybersecurity',    s.cybersecurity != null ? s.cybersecurity + '%' : null);
+    return '';
+  }
+
+  // Consolidated module table — one clickable row per module (spec + cost/capex on expand).
+  // Replaces the old standard-cost table + variant card + shared-architecture grid.
+  function moduleTable() {
+    var capex = (typeof _computeStandardModuleCapex === 'function') ? _computeStandardModuleCapex() : {};
+    var slots = [['platform',M.platform],['pwt',M.pwt],['epwt',M.epwt],['battery',M.battery],['tophat',M.tophat],['eands',M.eands]];
+    var COLS = 'minmax(0,1fr) 96px 66px 70px 82px 16px';
+    var HDR = 'font-family:DM Mono,monospace;font-size:7px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;';
+    var out = '<div style="display:grid;grid-template-columns:'+COLS+';gap:8px;padding:0 10px 5px;'+HDR+'">'
+      + '<div>Module</div><div>Config</div><div style="text-align:right;">R&D €M</div><div style="text-align:right;">Capex €M</div><div style="text-align:right;">TPC €</div><div></div></div>';
+    slots.forEach(function(pair){
+      var k = pair[0], m = pair[1];
+      if (!m || !m.mode) return;
+      var cx = capex[k] || {plant:0, supplier:0};
+      var capM = (cx.plant||0) + (cx.supplier||0);
+      var mTag = m.mode === 'new' ? 'NEW' : m.mode === 'reuse' ? 'REUSE' : 'MODIFY';
+      var mCol = m.mode === 'new' ? m.color : 'var(--green)';
+      var did = 's6-mod-' + k;
+      out += '<div onclick="_s6Toggle(\''+did+'\')" style="cursor:pointer;display:grid;grid-template-columns:'+COLS+';gap:8px;align-items:center;padding:7px 10px;border-bottom:1px solid rgba(255,255,255,.04);background:var(--s2);border-left:3px solid '+m.color+';">'
+        + '<div style="display:flex;align-items:center;gap:6px;overflow:hidden;"><span style="width:6px;height:6px;border-radius:1px;background:'+m.color+';flex-shrink:0;"></span>'
+          + '<span style="font-family:DM Mono,monospace;font-size:9px;font-weight:700;color:var(--white);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">'+m.label+'</span>'
+          + '<span style="font-family:DM Mono,monospace;font-size:6px;padding:1px 3px;border-radius:2px;border:1px solid '+mCol+';color:'+mCol+';flex-shrink:0;">'+mTag+'</span></div>'
+        + '<div style="font-family:DM Mono,monospace;font-size:7px;color:var(--muted2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">'+(m.configKey||'—')+'</div>'
+        + '<div style="text-align:right;font-family:DM Mono,monospace;font-size:8px;color:var(--muted2);">€'+_f(m.rd)+'M</div>'
+        + '<div style="text-align:right;font-family:DM Mono,monospace;font-size:8px;color:var(--muted2);">'+(capM>0?'€'+_f(capM)+'M':'—')+'</div>'
+        + '<div style="text-align:right;font-family:Orbitron,sans-serif;font-size:11px;font-weight:700;color:'+m.color+';">€'+_f(m.tpc).toLocaleString()+'</div>'
+        + '<div style="text-align:center;font-size:8px;color:var(--muted);"><span id="'+did+'-chev">▸</span></div>'
+        + '</div>';
+      var dmpV  = m.dmp  ? parseFloat(m.dmp.total_eur||0)  : m.tpc*0.85;
+      var makeV = m.make ? parseFloat(m.make.total_eur||0) : m.tpc*0.15;
+      var costRows = [
+        specRow('R&D Investment',            '€'+_f(m.rd)+'M'),
+        specRow('Plant Capex (greenfield)',  cx.plant>0 ? '€'+_f(cx.plant)+'M' : '—'),
+        specRow('Supplier Capex (greenfield)', cx.supplier>0 ? '€'+_f(cx.supplier)+'M' : '—'),
+        specRow('DMP (material purchase)',   '€'+_f(dmpV).toLocaleString()),
+        specRow('Make (transformation)',     '€'+_f(makeV).toLocaleString()),
+        specRow('TPC / vehicle',             '€'+_f(m.tpc).toLocaleString()),
+        (m.weight>0   ? specRow('Net Weight', _f(m.weight)+' kg') : ''),
+        (m.fte>0      ? specRow('R&D FTE',    _f(m.fte/1000,1)+'k months') : ''),
+        (m.mat_cost>0 ? specRow('Raw Material','€'+_f(m.mat_cost).toLocaleString()) : '')
+      ];
+      out += '<div id="'+did+'" style="display:none;padding:8px 12px 10px 16px;background:var(--s1);border-bottom:1px solid rgba(255,255,255,.04);">'
+        + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">'
+        + '<div>'+specSec('SPECIFICATION','var(--muted)',[moduleSpecRows(k,m)])+'</div>'
+        + '<div>'+specSec('COST & INVESTMENT','var(--gold)',costRows)+'</div>'
+        + '</div></div>';
+    });
+    out += '<div style="display:grid;grid-template-columns:'+COLS+';gap:8px;align-items:center;padding:8px 10px;background:var(--s3);border-top:1px solid rgba(200,164,60,.3);">'
+      + '<div style="font-family:DM Mono,monospace;font-size:9px;font-weight:700;color:var(--gold);">TOTAL</div><div></div>'
+      + '<div style="text-align:right;font-family:DM Mono,monospace;font-size:8px;font-weight:700;color:var(--white);">€'+_f(_sc.totRd)+'M</div>'
+      + '<div style="text-align:right;font-family:DM Mono,monospace;font-size:8px;font-weight:700;color:var(--white);">€'+_f(_sc.totPlantCx+_sc.totSupCx)+'M</div>'
+      + '<div style="text-align:right;font-family:Orbitron,sans-serif;font-size:12px;font-weight:800;color:var(--gold);">€'+_f(_sc.totTpc).toLocaleString()+'</div><div></div></div>';
+    return '<div style="border:1px solid var(--border2);border-radius:4px;overflow:hidden;margin-bottom:14px;">'+out+'</div>';
+  }
+
   // ── Compose HTML ──
   var h = '';
 
@@ -17946,6 +18060,83 @@ function buildReviewSection() {
   // and the per-module cards by construction.
   var _sc      = _computeStandardModuleCosts();
   var _totInv  = _sc.totRd + _sc.totPlantCx + _sc.totSupCx;
+
+  // ── Compute performance / consumption / market ONCE (hoisted from the detail sections
+  // below so the hero KPI strip can show them). _propCons/_propPerf feed the WLTP,
+  // acceleration, market renderers and the radar; each detail block now just consumes these. ──
+  var _propCons = null, _propPerf = null, _propMkt = null;
+  if (typeof _CONS_E !== 'undefined') {
+    var _consBody = thS.config_key ? thS.config_key.split('_').slice(1).join('_') : 'HB';
+    var _consOpts = {
+      platform_size:    plS.size || 'medium',
+      segment_code:     _prop.study ? _prop.study.segment_code : 'c_segment',
+      body_type:        _consBody,
+      pwt_type:         plS.pwt || (hasIce ? 'ice_only' : hasBev ? 'bev_only' : 'ice_only'),
+      ice_config_key:   pwtS.config_key || null,
+      power_hp:         pwtS.power || null,
+      emission_tech:    pwtS.emission_tech != null ? pwtS.emission_tech : null,
+      epwt_class:       edmS.epwt_class || null,
+      power_kw:         edmS.power_kw || null,
+      motor_efficiency: edmS.efficiency != null ? parseFloat(edmS.efficiency) : null,
+      battery_kwh:      batS.target_kwh || null,
+      battery_chemistry:batS.chemistry || null,
+      weight_opt:       Math.max(plS.weight_opt || 0, thS.weight_opt || 0),
+      safety:           thS.safety != null ? thS.safety : (plS.safety || 50),
+      adas_level:       esS.adas_level || 0
+    };
+    try { _propCons = _CONS_E.calc(_consOpts); } catch(e) { console.warn('Consumption engine error:', e); }
+  }
+  if (typeof _PERF_E !== 'undefined') {
+    try {
+      _propPerf = _PERF_E.calc({
+        pwt_type:         plS.pwt || (hasIce ? 'ice_only' : hasBev ? 'bev_only' : 'ice_only'),
+        platform_size:    plS.size || 'medium',
+        body_type:        thS.config_key ? thS.config_key.split('_').slice(1).join('_') : 'HB',
+        ice_config_key:   pwtS.config_key || null,
+        power_hp:         pwtS.power || null,
+        epwt_class:       edmS.epwt_class || null,
+        power_kw:         edmS.power_kw || null,
+        motor_efficiency: edmS.efficiency != null ? parseFloat(edmS.efficiency) : null,
+        battery_kwh:      batS.target_kwh || null,
+        battery_chemistry:batS.chemistry || null,
+        weight_opt:       plS.weight_opt || 0,
+        safety:           thS.safety != null ? thS.safety : (plS.safety || 50),
+        kerb_mass_kg:     _propCons ? _propCons.kerb_mass_kg : null,
+        CdA:              _propCons ? _propCons.CdA : null
+      });
+    } catch(e) { console.warn('Acceleration engine error:', e); }
+  }
+  if (typeof _MARKET_E !== 'undefined') {
+    var _comPrice = (_prop.commercial && _prop.commercial.years && _prop.commercial.years.length > 0)
+      ? _prop.commercial.years[0].price : null;
+    try {
+      _propMkt = _MARKET_E.calc({
+        segment_code:   _prop.study ? _prop.study.segment_code : 'c_segment',
+        price_eur_k:    _comPrice,
+        pwt_type:       plS.pwt || (hasIce ? 'ice_only' : hasBev ? 'bev_only' : 'ice_only'),
+        ice_fuel_L100km:(_propCons && _propCons.ice) ? _propCons.ice.fuel_L100km : null,
+        bev_kwh_100km:  (_propCons && _propCons.bev) ? _propCons.bev.kwh_100km  : null,
+        co2_g_km:       (_propCons && _propCons.ice) ? _propCons.ice.co2_g_km   : 0,
+        t_0_100_s:      _propPerf ? _propPerf.t_0_100_s : null,
+        safety:         thS.safety     != null ? thS.safety     : (plS.safety     || 50),
+        comfort:        thS.comfort    != null ? thS.comfort    : (plS.comfort    || 50),
+        premiumness:    thS.premiumness != null ? thS.premiumness : 0.3,
+        reliability:    thS.reliability!= null ? thS.reliability : (plS.reliability || 50),
+        adas_level:     esS.adas_level  || 1,
+        connectivity:   esS.connectivity|| 30,
+        brand_code:     _prop.study ? (_prop.study.brand_code || '') : '',
+        brand_scores:   _brandScores || null
+      });
+    } catch(e) { console.warn('Market engine error:', e); }
+  }
+
+  // Shared KPI-tile builder (used by the hero strip and the collapsed detail sections).
+  function kpiTile(val, lbl, col) {
+    return '<div style="background:var(--s3);border-radius:3px;padding:7px 10px;text-align:center;min-width:78px;">'
+      + '<div style="font-family:Orbitron,sans-serif;font-size:13px;font-weight:700;color:'+(col||'var(--white)')+';margin-bottom:2px;">'+val+'</div>'
+      + '<div style="font-family:DM Mono,monospace;font-size:7px;color:var(--muted2);text-transform:uppercase;letter-spacing:.5px;">'+lbl+'</div>'
+      + '</div>';
+  }
 
   // Header banner
   if (readinessBanner) h += readinessBanner;
@@ -17973,177 +18164,53 @@ function buildReviewSection() {
   h += '</div>';
   h += '</div></div>';
 
-  // ── GREENFIELD COST & INVESTMENT SUMMARY (same table §7 leads with) ──
-  // Surfaced at review time so the team sees the full per-module R&D + greenfield capex +
-  // DMP/Make/TPC picture before committing. It reads the same cached _prop[k].module values that
-  // this section's hero R&D total and per-module cards already use (per_unit_tpc_eur / dmp / make /
-  // total_rd_spend_m, populated by _getInfo above), so the figures reconcile by construction:
-  // the table's TOTAL row equals the hero's "Total Investment" / "Total TPC" tiles above (both
-  // read _computeStandardModuleCosts()), and — for a single-energy
-  // program — its TPC total equals the per-vehicle TPC shown in the module cards below. (For a
-  // multi-energy program the table sums ICE + BEV powertrains into one TPC column, matching §7;
-  // the per-variant split is in the ICE/BEV cards below.)
-  h += _renderStandardCostSummary();
+  // ── At-a-glance KPI strip (performance + market; full detail in the collapsibles below) ──
+  (function(){
+    var tiles = '';
+    if (_propPerf) {
+      tiles += kpiTile(_propPerf.t_0_100_s + 's', '0–100 km/h', _propPerf.perf_color);
+      tiles += kpiTile(_propPerf.top_speed_kmh + ' km/h', 'Top Speed', 'var(--white)');
+    }
+    if (_propCons) {
+      if (_propCons.bev)      tiles += kpiTile('' + _propCons.bev.kwh_100km, 'kWh / 100km', 'var(--cyan)');
+      else if (_propCons.ice) tiles += kpiTile('' + _propCons.ice.fuel_L100km, 'L / 100km', 'var(--orange)');
+      if (_propCons.bev && _propCons.bev.range_km) tiles += kpiTile('' + _propCons.bev.range_km, 'Range km', 'var(--muted2)');
+      var _co2 = _propCons.ice ? _propCons.ice.co2_g_km : 0;
+      tiles += kpiTile('' + _co2, 'CO₂ g/km', _co2 === 0 ? 'var(--green)' : 'var(--muted2)');
+    }
+    if (_propMkt) {
+      var _uc = _propMkt.utility_score >= 70 ? '#4ade80' : _propMkt.utility_score >= 50 ? '#fbbf24' : '#f87171';
+      tiles += kpiTile('' + _propMkt.utility_score, 'Utility', _uc);
+      tiles += kpiTile(_propMkt.market.est_share_pct + '%', 'Est. Share', 'var(--white)');
+      tiles += kpiTile(_propMkt.positioning, 'Positioning', _propMkt.positioning_color);
+    }
+    if (tiles) h += '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;">' + tiles + '</div>';
+  })();
 
-  // ── DUAL VARIANT COMPARISON ──────────────────────────────────
+  // ── MODULE COST & SPECIFICATION (consolidated: tap a row for full spec + capex detail) ──
+  // Replaces the former standard-cost table + variant cards + shared-architecture grid. Reads the
+  // same cached _prop[k].module values, so its TOTAL row equals the hero's Total Investment /
+  // Total TPC tiles by construction.
+  h += sRule('MODULE COST & SPECIFICATION — TAP A ROW FOR DETAIL');
+  h += '<div style="font-family:DM Mono,monospace;font-size:7px;color:var(--muted2);font-style:italic;margin:-4px 0 8px;">R&amp;D + Plant + Suppl capex are GREENFIELD (this design industrialised from scratch at a reference footprint); your brownfield investment is in §8 Components Sourcing. TPC = DMP (material) + Make (transformation).</div>';
   if (dualVariant) {
-    // ICE and BEV specs for display
-    var batPVdual = null;
-    try{ if(batS.chemistry&&batS.make_buy&&batS.target_kwh&&typeof _BATTERY_PC!=='undefined'){var _br=_BATTERY_PC.calc(batS.chemistry+'_'+batS.make_buy,batS.target_kwh,0);if(_br)batPVdual=_br.pack_volume_l;} }catch(e){}
-
-    var iceSpecBlocks =
-      specSec('POWERTRAIN PERFORMANCE','var(--orange)',[
-        specRow('Engine Config', pwtS.config_key?pwtS.config_key.replace(/_/g,' '):null),
-        specRow('Peak Power',    pwtS.power!=null?_f(pwtS.power)+' hp':null),
-        specRow('Emission Tech', pwtS.emission_tech!=null?_f(parseFloat(pwtS.emission_tech)*100)+'%':null),
-        specRow('Sourcing',      pwtS.make_buy||null),
-      ])+
-      specSec('SHARED ATTRIBUTES','var(--muted)',[
-        specRow('Body Config',   thS.config_key?thS.config_key.replace(/_/g,' '):null),
-        specRow('Roominess',     thS.roominess!=null?parseFloat(thS.roominess).toFixed(1)+' m³':null),
-        specRow('Premiumness',   thS.premiumness!=null?_f(parseFloat(thS.premiumness)*100)+'%':null),
-        specRow('ADAS Level',    esS.adas_level!=null?'SAE L'+esS.adas_level:null),
-        specRow('E/E Arch.',     esS.ee_arch?archL[esS.ee_arch]||esS.ee_arch:null),
-      ]);
-
-    var bevSpecBlocks =
-      specSec('DRIVETRAIN PERFORMANCE','var(--cyan)',[
-        specRow('Motor Class',  edmS.epwt_class?edmS.epwt_class.replace(/_/g,' '):null),
-        specRow('Peak Power',   edmS.power_kw!=null?_f(edmS.power_kw)+' kW':null),
-        specRow('Efficiency',   edmS.efficiency!=null?_f(parseFloat(edmS.efficiency)*100)+'%':null),
-        specRow('Sourcing',     edmS.make_buy||null),
-      ])+
-      specSec('BATTERY PACK','var(--green)',[
-        specRow('Chemistry',    batS.chemistry?(chemN[batS.chemistry]?chemN[batS.chemistry].n:batS.chemistry.replace(/_/g,'-')):null),
-        specRow('Cell Mfg.',    batS.make_buy==='MAKE'?'Gigafactory':batS.make_buy==='BUY'?'Cell Supplier':batS.make_buy||null),
-        specRow('Capacity',     batS.target_kwh!=null?batS.target_kwh+' kWh':null),
-        specRow('Pack Volume',  batPVdual!=null?batPVdual+' L':null),
-      ])+
-      specSec('SHARED ATTRIBUTES','var(--muted)',[
-        specRow('Body Config',  thS.config_key?thS.config_key.replace(/_/g,' '):null),
-        specRow('Roominess',    thS.roominess!=null?parseFloat(thS.roominess).toFixed(1)+' m³':null),
-        specRow('Premiumness',  thS.premiumness!=null?_f(parseFloat(thS.premiumness)*100)+'%':null),
-        specRow('ADAS Level',   esS.adas_level!=null?'SAE L'+esS.adas_level:null),
-        specRow('E/E Arch.',    esS.ee_arch?archL[esS.ee_arch]||esS.ee_arch:null),
-      ]);
-
-    var iceDelta = [{label:'ICE Powertrain',val:iceVarTpc,color:'var(--orange)'}];
-    var bevDelta = [
-      {label:'Electric Drive Module',val:edmVarTpc,color:'var(--cyan)'},
-      {label:'Battery Pack',         val:batVarTpc,color:'var(--green)'},
-    ];
-
-    h += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px;">';
-    h += variantCol('🔶 ICE VARIANT','var(--orange)','#f97316',iceTotalTpc,iceSharedTpc,iceDelta,
-      modCard(M.pwt,iceTotalTpc,true), iceSpecBlocks);
-    h += variantCol('⚡ BEV VARIANT','var(--green)','#4ade80',bevTotalTpc,bevSharedTpc,bevDelta,
-      modCard(M.epwt,bevTotalTpc,true)+modCard(M.battery,bevTotalTpc,true), bevSpecBlocks);
-    h += '</div>';
-
-  } else {
-    // Single variant: show full-width version
-    var featTpc = hasIce ? iceTotalTpc : bevTotalTpc;
-    var featColor = hasIce ? 'var(--orange)' : 'var(--green)';
-    var featLabel = hasIce ? '🔶 ICE VARIANT' : '⚡ BEV VARIANT';
-    h += '<div style="background:var(--s2);border:1px solid var(--border2);border-top:3px solid '+featColor+';border-radius:4px;padding:14px;margin-bottom:14px;display:flex;gap:20px;align-items:flex-start;">';
-    h += '<div>';
-    h += '<div style="font-family:DM Mono,monospace;font-size:7px;letter-spacing:2px;color:'+featColor+';text-transform:uppercase;margin-bottom:4px;">'+featLabel+'</div>';
-    h += '<div style="font-family:Orbitron,sans-serif;font-size:24px;font-weight:800;color:'+featColor+';">€'+_f(featTpc).toLocaleString()+'<span style="font-size:11px;font-weight:400;color:var(--muted2);"> /veh</span></div>';
-    h += '</div>';
-    h += '<div style="flex:1;">';
-    if (hasIce) h += modCard(M.pwt, featTpc, false);
-    if (hasBev) { h += modCard(M.epwt, featTpc, false); h += modCard(M.battery, featTpc, false); }
-    h += '</div></div>';
+    h += '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;">'
+      + '<div style="flex:1;min-width:150px;background:var(--s3);border-radius:4px;border-top:2px solid var(--orange);padding:8px 12px;"><div style="font-family:DM Mono,monospace;font-size:7px;letter-spacing:1px;color:var(--orange);text-transform:uppercase;margin-bottom:2px;">🔶 ICE Variant · Total TPC</div><div style="font-family:Orbitron,sans-serif;font-size:20px;font-weight:800;color:var(--orange);">€'+_f(iceTotalTpc).toLocaleString()+'</div></div>'
+      + '<div style="flex:1;min-width:150px;background:var(--s3);border-radius:4px;border-top:2px solid var(--green);padding:8px 12px;"><div style="font-family:DM Mono,monospace;font-size:7px;letter-spacing:1px;color:var(--green);text-transform:uppercase;margin-bottom:2px;">⚡ BEV Variant · Total TPC</div><div style="font-family:Orbitron,sans-serif;font-size:20px;font-weight:800;color:var(--green);">€'+_f(bevTotalTpc).toLocaleString()+'</div></div>'
+      + '</div>';
   }
+  h += moduleTable();
 
-  // ── SHARED ARCHITECTURE ───────────────────────────────────────
-  h += sRule('SHARED PLATFORM ARCHITECTURE — COMMON TO ALL VARIANTS');
-  h += '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:14px;">';
-  // Platform card (expanded)
-  h += '<div style="border:1px solid var(--border2);border-left:3px solid var(--gold);border-radius:3px;padding:10px 12px;background:var(--s2);">';
-  h += '<div style="display:flex;align-items:center;gap:6px;margin-bottom:7px;">'+
-    '<span style="width:6px;height:6px;border-radius:1px;background:var(--gold);"></span>'+
-    '<span style="font-family:DM Mono,monospace;font-size:9px;font-weight:700;color:var(--white);">PLATFORM ARCHITECTURE</span>'+
-  '</div>';
-  // For multi-energy platform show both variant TPCs
-  if (M.platform.isMulti) {
-    h += '<div style="display:flex;gap:10px;margin-bottom:6px;">'+
-      '<div><div style="font-family:DM Mono,monospace;font-size:7px;color:var(--orange);text-transform:uppercase;margin-bottom:1px;">ICE-Ready</div>'+
-      '<div style="font-family:Orbitron,sans-serif;font-size:11px;color:var(--orange);">€'+_f(M.platform.tpc).toLocaleString()+'</div></div>'+
-      '<div><div style="font-family:DM Mono,monospace;font-size:7px;color:var(--green);text-transform:uppercase;margin-bottom:1px;">BEV-Ready</div>'+
-      '<div style="font-family:Orbitron,sans-serif;font-size:11px;color:var(--green);">€'+_f(M.platform.tpc_bev).toLocaleString()+'</div></div>'+
-    '</div>';
-  } else {
-    h += '<div style="font-family:Orbitron,sans-serif;font-size:12px;color:var(--gold);margin-bottom:6px;">€'+_f(M.platform.tpc).toLocaleString()+'/veh</div>';
-  }
-  var platCk = M.platform.configKey;
-  h += specRow('Config', platCk||null);
-  h += specRow('Size',   plS.size?(sizeL[plS.size]||plS.size):null);
-  h += specRow('PWT Type', plS.pwt?(pwtL[plS.pwt]||plS.pwt.replace(/_/g,'-')):null);
-  h += specRow('Reliability', plS.reliability!=null?_f(plS.reliability)+'%':null);
-  h += specRow('Comfort',     plS.comfort!=null?_f(plS.comfort)+'%':null);
-  h += specRow('Safety',      plS.safety!=null?_f(plS.safety)+'%':null);
-  h += (M.platform.weight>0?'<div style="margin-top:5px;font-family:DM Mono,monospace;font-size:8px;color:var(--muted2);">⚤ '+_f(M.platform.weight)+' kg · R&D €'+_f(M.platform.rd)+'M</div>':'');
-  h += '</div>';
-  // TopHat card
-  h += '<div style="border:1px solid var(--border2);border-left:3px solid var(--purple);border-radius:3px;padding:10px 12px;background:var(--s2);">';
-  h += '<div style="display:flex;align-items:center;gap:6px;margin-bottom:7px;">'+
-    '<span style="width:6px;height:6px;border-radius:1px;background:var(--purple);"></span>'+
-    '<span style="font-family:DM Mono,monospace;font-size:9px;font-weight:700;color:var(--white);">TOP HAT</span>'+
-  '</div>';
-  h += '<div style="font-family:Orbitron,sans-serif;font-size:12px;color:var(--purple);margin-bottom:6px;">€'+_f(M.tophat.tpc).toLocaleString()+'/veh</div>';
-  h += specRow('Body Config',  thS.config_key?thS.config_key.replace(/_/g,' '):null);
-  h += specRow('Roominess',    thS.roominess!=null?parseFloat(thS.roominess).toFixed(1)+' m³':null);
-  h += specRow('Premiumness',  thS.premiumness!=null?_f(parseFloat(thS.premiumness)*100)+'%':null);
-  h += specRow('Comfort',      thS.comfort!=null?_f(parseFloat(thS.comfort)*100)+'%':null);
-  h += specRow('Safety',       thS.safety!=null?_f(parseFloat(thS.safety)*100)+'%':null);
-  h += (M.tophat.weight>0?'<div style="margin-top:5px;font-family:DM Mono,monospace;font-size:8px;color:var(--muted2);">⚤ '+_f(M.tophat.weight)+' kg · R&D €'+_f(M.tophat.rd)+'M</div>':'');
-  h += '</div>';
-  // E&S card
-  h += '<div style="border:1px solid var(--border2);border-left:3px solid var(--blue);border-radius:3px;padding:10px 12px;background:var(--s2);">';
-  h += '<div style="display:flex;align-items:center;gap:6px;margin-bottom:7px;">'+
-    '<span style="width:6px;height:6px;border-radius:1px;background:var(--blue);"></span>'+
-    '<span style="font-family:DM Mono,monospace;font-size:9px;font-weight:700;color:var(--white);">E&S / ADAS</span>'+
-  '</div>';
-  h += '<div style="font-family:Orbitron,sans-serif;font-size:12px;color:var(--blue);margin-bottom:6px;">€'+_f(M.eands.tpc).toLocaleString()+'/veh</div>';
-  h += specRow('E/E Architecture', esS.ee_arch?archL[esS.ee_arch]||esS.ee_arch:null);
-  h += specRow('Sourcing',         esS.make_buy==='MAKE'?'Make (Own Dev)':esS.make_buy==='BUY'?'Buy (Tier-1)':esS.make_buy||null);
-  h += specRow('ADAS Level',       esS.adas_level!=null?'SAE Level '+esS.adas_level:null);
-  h += specRow('Sensor Suite',     esS.sensor_suite!=null?esS.sensor_suite+'%':null);
-  h += specRow('Connectivity',     esS.connectivity!=null?esS.connectivity+'%':null);
-  h += specRow('Infotainment',     esS.infotainment!=null?esS.infotainment+'%':null);
-  h += specRow('Cybersecurity',    esS.cybersecurity!=null?esS.cybersecurity+'%':null);
-  h += (M.eands.weight>0?'<div style="margin-top:5px;font-family:DM Mono,monospace;font-size:8px;color:var(--muted2);">⚤ '+_f(M.eands.weight)+' kg · R&D €'+_f(M.eands.rd)+'M</div>':'');
-  h += '</div>';
-  h += '</div>'; // end 3-col shared grid
+  // (Former dual/single variant cards + shared-architecture grid consolidated into
+  //  moduleTable() above during the §6 simplification.)
 
   // ── WLTP PERFORMANCE PROFILE ──────────────────────────────────
-  var _propCons = null; // shared with acceleration engine below
   (function() {
-    if (typeof _CONS_E === 'undefined') return;
-    var consBody = thS.config_key ? thS.config_key.split('_').slice(1).join('_') : 'HB';
-    var consOpts = {
-      platform_size:    plS.size || 'medium',
-      segment_code:     _prop.study ? _prop.study.segment_code : 'c_segment',
-      body_type:        consBody,
-      pwt_type:         plS.pwt || (hasIce ? 'ice_only' : hasBev ? 'bev_only' : 'ice_only'),
-      ice_config_key:   pwtS.config_key || null,
-      power_hp:         pwtS.power || null,
-      emission_tech:    pwtS.emission_tech != null ? pwtS.emission_tech : null,
-      epwt_class:       edmS.epwt_class || null,
-      power_kw:         edmS.power_kw || null,
-      motor_efficiency: edmS.efficiency != null ? parseFloat(edmS.efficiency) : null,
-      battery_kwh:      batS.target_kwh || null,
-      battery_chemistry:batS.chemistry || null,
-      weight_opt:       Math.max(plS.weight_opt || 0, thS.weight_opt || 0),
-      safety:           thS.safety != null ? thS.safety : (plS.safety || 50),
-      adas_level:       esS.adas_level || 0
-    };
-    try { _propCons = _CONS_E.calc(consOpts); } catch(e) { console.warn('Consumption engine error:', e); }
     var cons = _propCons;
     if (!cons) return;
 
-    h += sRule('WLTP PERFORMANCE PROFILE — ESTIMATED FROM TECHNICAL SPECIFICATIONS');
+    h += collapseHdr('s6-wltp', 'WLTP PERFORMANCE PROFILE');
+    h += '<div id="s6-wltp" style="display:none;">';
 
     var cols = (cons.ice && cons.bev) ? '1fr 1fr 1fr' : '1fr 1fr';
     h += '<div style="display:grid;grid-template-columns:'+cols+';gap:8px;margin-bottom:14px;">';
@@ -18193,35 +18260,16 @@ function buildReviewSection() {
     h += '</div></div>';
 
     h += '</div>'; // end WLTP grid
+    h += '</div>'; // end WLTP collapsible
   })();
 
   // ── ACCELERATION PERFORMANCE ──────────────────────────────────
-  var _propPerf = null; // shared with market engine below
   (function() {
-    if (typeof _PERF_E === 'undefined') return;
-    try {
-      _propPerf = _PERF_E.calc({
-        pwt_type:         plS.pwt || (hasIce ? 'ice_only' : hasBev ? 'bev_only' : 'ice_only'),
-        platform_size:    plS.size || 'medium',
-        body_type:        thS.config_key ? thS.config_key.split('_').slice(1).join('_') : 'HB',
-        ice_config_key:   pwtS.config_key || null,
-        power_hp:         pwtS.power || null,
-        epwt_class:       edmS.epwt_class || null,
-        power_kw:         edmS.power_kw || null,
-        motor_efficiency: edmS.efficiency != null ? parseFloat(edmS.efficiency) : null,
-        battery_kwh:      batS.target_kwh || null,
-        battery_chemistry:batS.chemistry || null,
-        weight_opt:       plS.weight_opt || 0,
-        safety:           thS.safety != null ? thS.safety : (plS.safety || 50),
-        // Pass pre-computed values from _CONS_E to avoid re-derivation
-        kerb_mass_kg:     _propCons ? _propCons.kerb_mass_kg : null,
-        CdA:              _propCons ? _propCons.CdA : null
-      });
-    } catch(e) { console.warn('Acceleration engine error:', e); return; }
     var perf = _propPerf;
     if (!perf) return;
 
-    h += sRule('ACCELERATION PERFORMANCE — DERIVED FROM POWERTRAIN & MASS SPECS');
+    h += collapseHdr('s6-accel', 'ACCELERATION PERFORMANCE');
+    h += '<div id="s6-accel" style="display:none;">';
 
     var isDualPerf = (perf.ice_power_kw > 0 && perf.bev_power_kw > 0);
 
@@ -18298,61 +18346,27 @@ function buildReviewSection() {
 
       h += '</div>'; // end power breakdown row
     }
+    h += '</div>'; // end acceleration collapsible
   })();
 
-  // ── BOM + RADAR side by side ──────────────────────────────────
-  h += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;">';
+  // ── PERFORMANCE RADAR (always visible — the single perf-vs-benchmark visual) ──
+  h += sRule(dualVariant ? 'PERFORMANCE RADAR — ICE vs BEV' : 'PERFORMANCE RADAR — vs SEGMENT BENCHMARK');
+  h += '<div id="prop-radar-legend" style="display:flex;gap:8px;margin-bottom:6px;flex-wrap:wrap;justify-content:center;font-family:DM Mono,monospace;font-size:8px;"></div>';
+  h += '<canvas id="prop-radar-canvas" width="320" height="280" style="display:block;margin:0 auto;"></canvas>';
+  h += '<div style="font-family:DM Mono,monospace;font-size:7px;color:var(--muted2);text-align:center;margin-top:3px;margin-bottom:12px;">▲ outer = better · dashed = segment benchmark</div>';
 
-  // BOM (left)
-  h += '<div>';
-  h += sRule('MATERIAL BOM BY VARIANT');
+  // ── MATERIAL BOM (collapsible) ────────────────────────────────
+  h += collapseHdr('s6-bom', 'MATERIAL BOM BY VARIANT');
+  h += '<div id="s6-bom" style="display:none;">';
   h += bomTable([M.platform,M.tophat,M.eands], 'Shared Architecture', 'var(--gold)');
   if (hasIce) h += bomTable([M.pwt], 'ICE Powertrain Materials', 'var(--orange)');
   if (hasBev) h += bomTable([M.epwt,M.battery], 'BEV Drivetrain Materials', 'var(--green)');
   h += '</div>';
 
-  // Radar (right)
-  h += '<div>';
-  if (dualVariant) {
-    h += sRule('PERFORMANCE RADAR — ICE vs BEV');
-  } else {
-    h += sRule('PERFORMANCE RADAR — vs SEGMENT BENCHMARK');
-  }
-  h += '<div id="prop-radar-legend" style="display:flex;gap:8px;margin-bottom:6px;flex-wrap:wrap;font-family:DM Mono,monospace;font-size:8px;"></div>';
-  h += '<canvas id="prop-radar-canvas" width="320" height="280" style="display:block;margin:0 auto;"></canvas>';
-  h += '<div style="font-family:DM Mono,monospace;font-size:7px;color:var(--muted2);text-align:center;margin-top:3px;">▲ outer = better · dashed = segment benchmark</div>';
-  h += '</div>';
-
-  h += '</div>'; // end BOM+radar grid
-
   // ── MARKET COMPETITIVENESS ────────────────────────────────────
   (function() {
-    if (typeof _MARKET_E === 'undefined') return;
-
-    // Price: use actual commercial price if set in Section 7, else segment reference
-    var comPrice = (_prop.commercial && _prop.commercial.years && _prop.commercial.years.length > 0)
-      ? _prop.commercial.years[0].price : null;
-
-    var mkt;
-    try {
-      mkt = _MARKET_E.calc({
-        segment_code:   _prop.study ? _prop.study.segment_code : 'c_segment',
-        price_eur_k:    comPrice,
-        pwt_type:       plS.pwt || (hasIce ? 'ice_only' : hasBev ? 'bev_only' : 'ice_only'),
-        ice_fuel_L100km:(_propCons && _propCons.ice) ? _propCons.ice.fuel_L100km : null,
-        bev_kwh_100km:  (_propCons && _propCons.bev) ? _propCons.bev.kwh_100km  : null,
-        co2_g_km:       (_propCons && _propCons.ice) ? _propCons.ice.co2_g_km   : 0,
-        t_0_100_s:      _propPerf ? _propPerf.t_0_100_s : null,
-        safety:         thS.safety     != null ? thS.safety     : (plS.safety     || 50),
-        comfort:        thS.comfort    != null ? thS.comfort    : (plS.comfort    || 50),
-        premiumness:    thS.premiumness != null ? thS.premiumness : 0.3,
-        reliability:    thS.reliability!= null ? thS.reliability : (plS.reliability || 50),
-        adas_level:     esS.adas_level  || 1,
-        connectivity:   esS.connectivity|| 30,
-        brand_code:     _prop.study ? (_prop.study.brand_code || '') : '',
-        brand_scores:   _brandScores || null
-      });
-    } catch(e) { console.warn('Market engine error:', e); return; }
+    var mkt = _propMkt;
+    if (!mkt) return;
 
     var attrs = ['price','efficiency','performance','safety','comfort','technology','reliability'];
     var attrLabels = {
@@ -18367,7 +18381,8 @@ function buildReviewSection() {
     // Utility score meter color
     var utilColor = mkt.utility_score >= 70 ? '#4ade80' : mkt.utility_score >= 50 ? '#fbbf24' : '#f87171';
 
-    h += sRule('MARKET COMPETITIVENESS — ' + ((_prop.study&&_prop.study.segment_code)||'SEGMENT').toUpperCase() + ' BENCHMARK ANALYSIS');
+    h += collapseHdr('s6-market', 'MARKET COMPETITIVENESS — ' + ((_prop.study&&_prop.study.segment_code)||'SEGMENT').toUpperCase() + ' BENCHMARK ANALYSIS');
+    h += '<div id="s6-market" style="display:none;">';
 
     // ── Top row: utility + market share + positioning ──
     h += '<div style="display:grid;grid-template-columns:auto 1fr auto;gap:12px;align-items:stretch;'
@@ -18471,6 +18486,7 @@ function buildReviewSection() {
     } else {
       h += '<div style="height:14px;"></div>';
     }
+    h += '</div>'; // end market collapsible
   })();
 
   // Action bar
