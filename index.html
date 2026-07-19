@@ -17793,22 +17793,30 @@ function buildReviewSection() {
       ';margin-bottom:6px;">MODULE READINESS'+(sopYear?' vs SOP '+sopLabel:'')+'</div>'+readinessBanner+'</div>';
   }
 
-  // Shared specs for radar
+  // Shared specs for radar. The rating axes (reliability/comfort/safety/premiumness/efficiency/
+  // emission_tech) feed norms that expect 0-1, but session specs are stored 0-100 for NEW modules
+  // and 0-1 for reused ones — _n01 normalises either form. Fuel-economy / CO₂ / acceleration are
+  // derived from the consumption & performance engines and injected below (they aren't module specs).
+  function _n01(v){ v=parseFloat(v); if(isNaN(v)) return null; return v>1 ? v/100 : v; }
   var sharedRsp = {};
-  if (thS.reliability!=null) sharedRsp.reliability=parseFloat(thS.reliability); else if (plS.reliability!=null) sharedRsp.reliability=(plS.reliability||50)/100;
-  if (thS.comfort!=null)     sharedRsp.comfort=parseFloat(thS.comfort);         else if (plS.comfort!=null)     sharedRsp.comfort=(plS.comfort||50)/100;
-  if (thS.safety!=null)      sharedRsp.safety=parseFloat(thS.safety);           else if (plS.safety!=null)      sharedRsp.safety=(plS.safety||50)/100;
-  if (thS.premiumness!=null) sharedRsp.premiumness=parseFloat(thS.premiumness);
+  var _rel = thS.reliability!=null ? _n01(thS.reliability) : (plS.reliability!=null ? (plS.reliability||50)/100 : null);
+  if (_rel!=null) sharedRsp.reliability=_rel;
+  var _cmf = thS.comfort!=null ? _n01(thS.comfort) : (plS.comfort!=null ? (plS.comfort||50)/100 : null);
+  if (_cmf!=null) sharedRsp.comfort=_cmf;
+  var _saf = thS.safety!=null ? _n01(thS.safety) : (plS.safety!=null ? (plS.safety||50)/100 : null);
+  if (_saf!=null) sharedRsp.safety=_saf;
+  if (thS.premiumness!=null) sharedRsp.premiumness=_n01(thS.premiumness);
   if (thS.roominess!=null)   sharedRsp.roominess=parseFloat(thS.roominess);
   if (esS.adas_level!=null)  sharedRsp.adas_level=parseFloat(esS.adas_level);
 
   var iceRsp = Object.assign({}, sharedRsp);
-  if (pwtS.power!=null)         iceRsp.power=parseFloat(pwtS.power);
-  if (pwtS.emission_tech!=null) iceRsp.emission_tech=parseFloat(pwtS.emission_tech);
+  if (pwtS.power!=null)      iceRsp.power=parseFloat(pwtS.power);
+  // Emission tech: §3 slider (0-100, default 10). Normalise; fall back to the cost-engine baseline.
+  iceRsp.emission_tech = _n01(pwtS.emission_tech != null ? pwtS.emission_tech : 10);
 
   var bevRsp = Object.assign({}, sharedRsp);
   if (edmS.power_kw!=null)   bevRsp.power_kw=parseFloat(edmS.power_kw);
-  if (edmS.efficiency!=null) bevRsp.efficiency=parseFloat(edmS.efficiency);
+  if (edmS.efficiency!=null) bevRsp.efficiency=_n01(edmS.efficiency);
 
   // Lookups
   var SEG_NL=typeof SEG_NAMES!=='undefined'?SEG_NAMES:{};
@@ -18038,6 +18046,23 @@ function buildReviewSection() {
       });
     } catch(e) { console.warn('Acceleration engine error:', e); }
   }
+
+  // Inject derived radar axes from the consumption/performance engines (mirrors the canonical
+  // rolled_up_specs builder): fuel economy = L/100km → km/L (higher = better), CO₂ raw g/km,
+  // acceleration raw 0-100 s. Without this, these axes read 0 despite being fully specced upstream.
+  if (_propCons && _propCons.ice) {
+    if (_propCons.ice.fuel_L100km > 0) iceRsp.fuel_economy = 100 / _propCons.ice.fuel_L100km;
+    if (_propCons.ice.co2_g_km != null) iceRsp.co2 = _propCons.ice.co2_g_km;
+  }
+  if (_propCons && _propCons.bev) {
+    bevRsp.fuel_economy = 25; // BEV — max fuel-economy score (no liquid fuel)
+    bevRsp.co2 = 0;           // tailpipe-clean
+  }
+  if (_propPerf && _propPerf.t_0_100_s) {
+    iceRsp.accel = _propPerf.t_0_100_s;
+    bevRsp.accel = _propPerf.t_0_100_s;
+  }
+
   if (typeof _MARKET_E !== 'undefined') {
     var _comPrice = (_prop.commercial && _prop.commercial.years && _prop.commercial.years.length > 0)
       ? _prop.commercial.years[0].price : null;
