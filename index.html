@@ -18603,16 +18603,20 @@ function _drawDualRadar(iceSpecs, iceTpc, bevSpecs, bevTpc) {
   var iceVals = axes.map(function(ax){ return normVal(ax, iceSpecs, iceTpc); });
   var bevVals = axes.map(function(ax){ return normVal(ax, bevSpecs, bevTpc); });
   var benchNorm = benchSpecs ? axes.map(function(ax){ return normVal(ax, benchSpecs, 0); }) : null;
-  _renderRadarTable([{label:'ICE',color:'#f97316',vals:iceVals},{label:'BEV',color:'#4ade80',vals:bevVals}], benchNorm);
+  _renderRadarTable([{label:'ICE',color:'#f97316',vals:iceVals},{label:'BEV',color:'#4ade80',vals:bevVals}],
+    benchNorm, Object.assign({}, iceSpecs, bevSpecs), iceTpc);
 }
 
 // Fills the #prop-radar-table with one row per radar axis. Each cell shows the axis' normalised
 // score (0–100, "outer = better") as a mini-bar + number, mirroring the polygons in the chart.
 // series = [{label, color, vals:[0..1 per axis]}]; benchNorm = [0..1 per axis] or null.
-function _renderRadarTable(series, benchNorm) {
+// series = [{label, color, vals:[0..1]}]; benchNorm = [0..1] or null; rawSpecs = merged spec object
+// for the VALUE column (real spec value + unit); tpcEur backs the derived Design-to-Cost axis.
+function _renderRadarTable(series, benchNorm, rawSpecs, tpcEur) {
   var el = document.getElementById('prop-radar-table');
   if (!el) return;
   var axes = RADAR_AXES;
+  rawSpecs = rawSpecs || {};
   function bar(v, col) {
     var p = Math.round((v||0)*100);
     return '<td style="padding:2px 6px;text-align:right;white-space:nowrap;">'
@@ -18621,16 +18625,24 @@ function _renderRadarTable(series, benchNorm) {
       + '<span style="position:absolute;left:0;top:0;height:100%;width:'+p+'%;background:'+col+';border-radius:2px;"></span></span>'
       + '<span style="font-family:DM Mono,monospace;font-size:9px;color:'+col+';min-width:20px;text-align:right;">'+p+'</span></span></td>';
   }
+  // Real spec value + unit for an axis (blank when the axis doesn't apply to this vehicle).
+  function realVal(ax) {
+    var v = (ax.derived && ax.key === '_dtc') ? tpcEur : rawSpecs[ax.key];
+    if (v == null || isNaN(parseFloat(v)) || !ax.fmt) return '—';
+    return ax.fmt(v);
+  }
   var th = 'text-align:right;padding:3px 6px;font-size:7px;letter-spacing:1px;text-transform:uppercase;font-weight:400;';
   var h = '<table style="width:100%;border-collapse:collapse;">';
   h += '<thead><tr style="border-bottom:1px solid var(--border2);">';
   h += '<th style="text-align:left;padding:3px 6px;font-size:7px;letter-spacing:1px;color:var(--muted);text-transform:uppercase;font-weight:400;">Metric</th>';
+  h += '<th style="'+th+'color:var(--muted);">Value</th>';
   series.forEach(function(s){ h += '<th style="'+th+'color:'+s.color+';">'+s.label+'</th>'; });
   if (benchNorm) h += '<th style="'+th+'color:var(--blue);">Bench</th>';
   h += '</tr></thead><tbody>';
   axes.forEach(function(ax,i){
     h += '<tr style="border-bottom:1px solid rgba(255,255,255,.04);">';
     h += '<td style="text-align:left;padding:2px 6px;font-family:DM Mono,monospace;font-size:9px;color:var(--muted2);white-space:nowrap;">'+ax.label+'</td>';
+    h += '<td style="text-align:right;padding:2px 6px;font-family:DM Mono,monospace;font-size:9px;color:var(--text);white-space:nowrap;">'+realVal(ax)+'</td>';
     series.forEach(function(s){ h += bar(s.vals[i], s.color); });
     if (benchNorm) h += bar(benchNorm[i], 'rgba(68,128,224,.85)');
     h += '</tr>';
@@ -18740,7 +18752,7 @@ function drawProposalRadar(specs, tpcEur) {
   var benchNorm = benchSpecs ? axes.map(function(ax){
     return Math.min(1, Math.max(0, ax.norm(parseFloat(benchSpecs[ax.key]||0))));
   }) : null;
-  _renderRadarTable([{label:'Proposed', color:'var(--gold)', vals:vals}], benchNorm);
+  _renderRadarTable([{label:'Proposed', color:'var(--gold)', vals:vals}], benchNorm, specs, tpcEur);
 }
 
 // ── Confirm ────────────────────────────────────────────────
@@ -26049,22 +26061,24 @@ function getBenchColumns(filter) {
 let _radarDatasets  = [];   // [{label, color, specs, active}]
 let _radarToggles   = {};   // {label: bool}
 
+// `fmt` renders the RAW spec value with its measurement unit (shown in the radar table's
+// "VALUE" column, alongside the 0-100 normalised score). The 0-1 rating axes display as %.
 const RADAR_AXES = [
-  {key:'reliability',   label:'Reliability',        norm:v=>Math.min(1,v)},
-  {key:'comfort',       label:'Comfort',             norm:v=>Math.min(1,v)},
-  {key:'safety',        label:'Safety',              norm:v=>Math.min(1,v)},
-  {key:'premiumness',   label:'Premiumness',         norm:v=>Math.min(1,v)},
-  {key:'roominess',     label:'Roominess',           norm:v=>Math.min(1,(v-1.5)/6)},
-  {key:'power',         label:'ICE Power',           norm:v=>Math.min(1,v/640)},
-  {key:'power_kw',      label:'BEV Power',           norm:v=>Math.min(1,v/1500)},
-  {key:'efficiency',    label:'e-Motor Eff.',        norm:v=>Math.min(1,v)},
-  {key:'emission_tech', label:'Emis. Tech',          norm:v=>Math.min(1,v)},
-  {key:'adas_level',    label:'ADAS',                norm:v=>Math.min(1,v/5)},
+  {key:'reliability',   label:'Reliability',        norm:v=>Math.min(1,v),               fmt:v=>Math.round(v*100)+'%'},
+  {key:'comfort',       label:'Comfort',             norm:v=>Math.min(1,v),               fmt:v=>Math.round(v*100)+'%'},
+  {key:'safety',        label:'Safety',              norm:v=>Math.min(1,v),               fmt:v=>Math.round(v*100)+'%'},
+  {key:'premiumness',   label:'Premiumness',         norm:v=>Math.min(1,v),               fmt:v=>Math.round(v*100)+'%'},
+  {key:'roominess',     label:'Roominess',           norm:v=>Math.min(1,(v-1.5)/6),        fmt:v=>parseFloat(v).toFixed(1)+' m³'},
+  {key:'power',         label:'ICE Power',           norm:v=>Math.min(1,v/640),            fmt:v=>Math.round(v)+' hp'},
+  {key:'power_kw',      label:'BEV Power',           norm:v=>Math.min(1,v/1500),           fmt:v=>Math.round(v)+' kW'},
+  {key:'efficiency',    label:'e-Motor Eff.',        norm:v=>Math.min(1,v),               fmt:v=>Math.round(v*100)+'%'},
+  {key:'emission_tech', label:'Emis. Tech',          norm:v=>Math.min(1,v),               fmt:v=>Math.round(v*100)+'%'},
+  {key:'adas_level',    label:'ADAS',                norm:v=>Math.min(1,v/5),              fmt:v=>'L'+Math.round(v)},
   // ▲ axes: inverted internally so bigger polygon = better
-  {key:'fuel_economy',  label:'Fuel Economy ▲',      norm:v=>Math.min(1,v/25)},
-  {key:'co2',           label:'CO₂ Clean ▲',        norm:v=>Math.min(1,Math.max(0,1-v/220)), inverted:true},
-  {key:'accel',         label:'Acceleration ▲',   norm:v=>Math.min(1,Math.max(0,1-v/18)),  inverted:true},
-  {key:'_dtc',          label:'Design-to-Cost ▲', norm:v=>Math.min(1,Math.max(0,1-v/10000)),inverted:true,derived:true},
+  {key:'fuel_economy',  label:'Fuel Economy ▲',      norm:v=>Math.min(1,v/25),             fmt:v=>parseFloat(v).toFixed(1)+' km/L'},
+  {key:'co2',           label:'CO₂ Clean ▲',        norm:v=>Math.min(1,Math.max(0,1-v/220)), inverted:true, fmt:v=>Math.round(v)+' g/km'},
+  {key:'accel',         label:'Acceleration ▲',   norm:v=>Math.min(1,Math.max(0,1-v/18)),  inverted:true, fmt:v=>parseFloat(v).toFixed(1)+' s'},
+  {key:'_dtc',          label:'Design-to-Cost ▲', norm:v=>Math.min(1,Math.max(0,1-v/10000)),inverted:true,derived:true, fmt:v=>'€'+Math.round(v).toLocaleString()},
 ];
 
 function specToRadar(specs, tpcEur) {
