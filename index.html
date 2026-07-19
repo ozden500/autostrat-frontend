@@ -18255,10 +18255,16 @@ function buildReviewSection() {
   })();
 
   // ── PERFORMANCE RADAR (always visible — the single perf-vs-benchmark visual) ──
+  // Chart on the left, per-axis score table on the right (filled by drawProposalRadar/_drawDualRadar).
   h += sRule(dualVariant ? 'PERFORMANCE RADAR — ICE vs BEV' : 'PERFORMANCE RADAR — vs SEGMENT BENCHMARK');
   h += '<div id="prop-radar-legend" style="display:flex;gap:8px;margin-bottom:6px;flex-wrap:wrap;justify-content:center;font-family:DM Mono,monospace;font-size:8px;"></div>';
-  h += '<canvas id="prop-radar-canvas" width="320" height="280" style="display:block;margin:0 auto;"></canvas>';
-  h += '<div style="font-family:DM Mono,monospace;font-size:7px;color:var(--muted2);text-align:center;margin-top:3px;margin-bottom:12px;">▲ outer = better · dashed = segment benchmark</div>';
+  h += '<div style="display:flex;gap:24px;align-items:center;flex-wrap:wrap;margin-bottom:12px;">';
+  h += '<div style="flex:0 0 auto;">';
+  h += '<canvas id="prop-radar-canvas" width="320" height="280" style="display:block;"></canvas>';
+  h += '<div style="font-family:DM Mono,monospace;font-size:7px;color:var(--muted2);text-align:center;margin-top:3px;">▲ outer = better · dashed = segment benchmark</div>';
+  h += '</div>';
+  h += '<div id="prop-radar-table" style="flex:1 1 300px;min-width:280px;"></div>';
+  h += '</div>';
 
   // ── MATERIAL BOM (collapsible) ────────────────────────────────
   h += collapseHdr('s6-bom', 'MATERIAL BOM BY VARIANT');
@@ -18500,6 +18506,45 @@ function _drawDualRadar(iceSpecs, iceTpc, bevSpecs, bevTpc) {
       '<span style="display:flex;align-items:center;gap:5px;color:#4ade80;"><span style="width:14px;height:2px;background:#4ade80;display:inline-block;"></span>BEV Variant</span>'+
       (benchSpecs?'<span style="display:flex;align-items:center;gap:5px;color:rgba(68,128,224,.8);"><span style="width:14px;height:2px;border-top:2px dashed rgba(68,128,224,.7);display:inline-block;"></span>Segment Benchmark</span>':'');
   }
+
+  // Data table (right column)
+  var iceVals = axes.map(function(ax){ return normVal(ax, iceSpecs, iceTpc); });
+  var bevVals = axes.map(function(ax){ return normVal(ax, bevSpecs, bevTpc); });
+  var benchNorm = benchSpecs ? axes.map(function(ax){ return normVal(ax, benchSpecs, 0); }) : null;
+  _renderRadarTable([{label:'ICE',color:'#f97316',vals:iceVals},{label:'BEV',color:'#4ade80',vals:bevVals}], benchNorm);
+}
+
+// Fills the #prop-radar-table with one row per radar axis. Each cell shows the axis' normalised
+// score (0–100, "outer = better") as a mini-bar + number, mirroring the polygons in the chart.
+// series = [{label, color, vals:[0..1 per axis]}]; benchNorm = [0..1 per axis] or null.
+function _renderRadarTable(series, benchNorm) {
+  var el = document.getElementById('prop-radar-table');
+  if (!el) return;
+  var axes = RADAR_AXES;
+  function bar(v, col) {
+    var p = Math.round((v||0)*100);
+    return '<td style="padding:2px 6px;text-align:right;white-space:nowrap;">'
+      + '<span style="display:inline-flex;align-items:center;gap:5px;justify-content:flex-end;">'
+      + '<span style="width:40px;height:4px;background:rgba(255,255,255,.08);border-radius:2px;position:relative;display:inline-block;">'
+      + '<span style="position:absolute;left:0;top:0;height:100%;width:'+p+'%;background:'+col+';border-radius:2px;"></span></span>'
+      + '<span style="font-family:DM Mono,monospace;font-size:9px;color:'+col+';min-width:20px;text-align:right;">'+p+'</span></span></td>';
+  }
+  var th = 'text-align:right;padding:3px 6px;font-size:7px;letter-spacing:1px;text-transform:uppercase;font-weight:400;';
+  var h = '<table style="width:100%;border-collapse:collapse;">';
+  h += '<thead><tr style="border-bottom:1px solid var(--border2);">';
+  h += '<th style="text-align:left;padding:3px 6px;font-size:7px;letter-spacing:1px;color:var(--muted);text-transform:uppercase;font-weight:400;">Metric</th>';
+  series.forEach(function(s){ h += '<th style="'+th+'color:'+s.color+';">'+s.label+'</th>'; });
+  if (benchNorm) h += '<th style="'+th+'color:var(--blue);">Bench</th>';
+  h += '</tr></thead><tbody>';
+  axes.forEach(function(ax,i){
+    h += '<tr style="border-bottom:1px solid rgba(255,255,255,.04);">';
+    h += '<td style="text-align:left;padding:2px 6px;font-family:DM Mono,monospace;font-size:9px;color:var(--muted2);white-space:nowrap;">'+ax.label+'</td>';
+    series.forEach(function(s){ h += bar(s.vals[i], s.color); });
+    if (benchNorm) h += bar(benchNorm[i], 'rgba(68,128,224,.85)');
+    h += '</tr>';
+  });
+  h += '</tbody></table>';
+  el.innerHTML = h;
 }
 
 
@@ -18598,6 +18643,12 @@ function drawProposalRadar(specs, tpcEur) {
         '<span style="width:14px;height:2px;border-top:2px dashed rgba(68,128,224,.7);display:inline-block;"></span>Segment Benchmark (' + segVehicles.length + ' vehicles)' +
       '</span>' : '<span style="font-family:DM Mono,monospace;font-size:9px;color:var(--muted2);">No benchmark — no existing vehicles in segment</span>');
   }
+
+  // Data table (right column)
+  var benchNorm = benchSpecs ? axes.map(function(ax){
+    return Math.min(1, Math.max(0, ax.norm(parseFloat(benchSpecs[ax.key]||0))));
+  }) : null;
+  _renderRadarTable([{label:'Proposed', color:'var(--gold)', vals:vals}], benchNorm);
 }
 
 // ── Confirm ────────────────────────────────────────────────
