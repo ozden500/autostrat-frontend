@@ -18219,8 +18219,9 @@ function buildReviewSection() {
     h += '</div>';
     h += '</div>'; // end main row
 
-    // Power breakdown row (show only when meaningful data exists)
-    if (isDualPerf || perf.ice_power_kw > 0 || perf.bev_power_kw > 0) {
+    // Power breakdown row — only for dual (ICE+BEV) powertrains, where the split is meaningful.
+    // For a single powertrain it just repeats the "Wheel Power" tile above, so it's dropped.
+    if (isDualPerf) {
       h += '<div style="display:flex;gap:8px;margin-bottom:14px;">';
 
       if (perf.ice_power_kw > 0) {
