@@ -3351,6 +3351,12 @@ function buildSpecSliders(type) {
         oninput="document.getElementById('msv-${sp.id}').textContent=this.value+'${sp.unit}';scheduleCostCalc()">
     </div>`;
   }).join('');
+  // ICE power slider: override the static MOD_SPECS 60-640 band with a realistic per-engine range
+  // (cylinders × aspiration/hybrid) once a config is selected. Falls back to the static def otherwise.
+  if (type === 'ice_pwt') {
+    var _ck = getSelectedConfigKey();
+    if (_ck) _applyIcePowerRange('msr-power', 'msv-power', icePowerRangeFromKey(_ck));
+  }
 }
 
 function updateSpecDisplay(id, unit, decimals, val) {
@@ -4546,6 +4552,33 @@ function fetchPlatformStdCost() {
     _renderSingleVariantLayout(r, bomEl, legEl);
 
   } catch(e) { console.warn('Platform BOM cost error:', e); }
+}
+
+// ── Realistic ICE power band (physics, not per-team data) ─────────────────────
+// A real engine's peak power is bounded by its specific output (hp per cylinder), which depends on
+// aspiration/hybridisation. So the Power slider's min/max scale with cylinders × band, instead of a
+// flat 60-640 that let a 3-cyl reach an impossible 213 hp/cyl. Cost engines already price hp/cyl —
+// this only constrains the UI input, so there is no backend / Engine-Parity change.
+const ICE_HP_PER_CYL = { ICE:[20,45], TURBO:[25,80], HEV:[20,50], PHEV:[22,55], REEV:[18,40] };
+function icePowerRange(cylinders, tech) {
+  var cyl  = parseInt(cylinders) || 4;
+  var band = ICE_HP_PER_CYL[(tech||'ICE').toUpperCase()] || ICE_HP_PER_CYL.ICE;
+  var mn = Math.round(cyl*band[0]/10)*10, mx = Math.round(cyl*band[1]/10)*10;
+  return { min: mn, max: mx, def: Math.round((mn + (mx-mn)*0.4)/10)*10 };
+}
+// config_key e.g. "4CYL_TURBO" → range. parts[0]=cylinders, rest=hybrid_tech (as in _ICE_PC.calc).
+function icePowerRangeFromKey(ck){ var p=(ck||'').split('_'); return icePowerRange(p[0], p.slice(1).join('_')); }
+// Apply a range to a live power slider: set min/max, clamp the current value into the band, refresh
+// the "…-val" label, and return the (possibly clamped) value so callers can persist it.
+function _applyIcePowerRange(sliderId, valId, range) {
+  var s = document.getElementById(sliderId); if (!s) return null;
+  s.min = range.min; s.max = range.max;
+  var v = parseFloat(s.value); if (isNaN(v)) v = range.def;
+  v = Math.min(range.max, Math.max(range.min, v));
+  s.value = v;
+  var lbl = valId && document.getElementById(valId);
+  if (lbl) lbl.textContent = v + 'hp';
+  return v;
 }
 
 // ════════════════════════════════════════════════════════════════════
@@ -16900,7 +16933,10 @@ function buildModuleOptions(modType, propKey, nextFn) {
           +' style="width:100%;accent-color:'+color+';margin:2px 0 4px;" oninput="'
           +'document.getElementById(\'prop-ice-'+id+'-val\').textContent=this.value+\''+unit+'\';onPropICEPWTChange()"></div>';
       }
-      html += icePropSlider('power',        'Power',        60,  640, 10,   100, 'hp', 'var(--orange)');
+      // Power band scales with the chosen engine (cylinders × aspiration/hybrid); falls back to the
+      // cylinder count with the NA band until an engine type is picked. onPropICEPWTChange re-clamps.
+      var _icePwr = icePowerRangeFromKey(iceSpecs.config_key || ((iceSpecs.cylinders||'') + '_ICE'));
+      html += icePropSlider('power',        'Power',        _icePwr.min, _icePwr.max, 10, _icePwr.def, 'hp', 'var(--orange)');
       html += icePropSlider('emission_tech','Emission Tech',0,   100,  1,    10, '%',  'var(--green)');
       html += icePropSlider('reliability',  'Reliability',  0,   100,  1,    50, '%',  'var(--gold)');
       html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:4px;">';
@@ -17488,12 +17524,17 @@ function onPropICECylChange() {
   if (!_prop.pwt.specs) _prop.pwt.specs = {};
   _prop.pwt.specs.cylinders = cyl;
   _prop.pwt.specs.config_key = '';
+  // Provisional power band for the new cylinder count (NA band until an engine type is picked).
+  var _pv = _applyIcePowerRange('prop-ice-power', 'prop-ice-power-val', icePowerRange(cyl, 'ICE'));
+  if (_pv != null) _prop.pwt.specs.power = _pv;
   var bomDiv = document.getElementById('prop-pwt-bom');
   if (bomDiv) bomDiv.innerHTML = '<span style="color:var(--muted2);">Select engine type to see BOM</span>';
 }
 
 function onPropICEPWTChange() {
   var ck  = document.getElementById('prop-ice-config')?.value; if (!ck) return;
+  // Constrain the power slider to this engine's realistic band, then read the (clamped) value.
+  _applyIcePowerRange('prop-ice-power', 'prop-ice-power-val', icePowerRangeFromKey(ck));
   var pw  = parseFloat(document.getElementById('prop-ice-power')?.value        || 100);
   var et  = parseFloat(document.getElementById('prop-ice-emission_tech')?.value || 10) / 100;
   var rel = parseFloat(document.getElementById('prop-ice-reliability')?.value   || 50) / 100;
