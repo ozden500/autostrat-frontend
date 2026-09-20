@@ -1291,21 +1291,27 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
     <div class="kpi kk-r"><div class="kl">Net Debt</div><div class="kv" id="fin-debt" style="color:var(--red)">€6,240M</div><div class="kd dn" id="fin-debt-sub">1.5× EBITDA</div></div>
     <div class="kpi kk-b"><div class="kl">Free Cash Flow</div><div class="kv" id="fin-cashflow">€455M</div><div class="kd up" id="fin-cashflow-sub">▲ strong</div></div>
   </div>
+  <!-- ── Three statements: P&L / Balance Sheet / Cash Flow ── -->
+  <div style="display:flex;gap:0;margin-bottom:12px;border-bottom:1px solid var(--border);">
+    <div class="fin-stmt-tab active" data-tab="pl" onclick="switchFinTab('pl')"
+      style="font-family:DM Mono,monospace;font-size:9px;letter-spacing:1px;padding:7px 18px;cursor:pointer;
+      border-bottom:2px solid var(--gold);color:var(--gold);transition:all .15s;">P&amp;L</div>
+    <div class="fin-stmt-tab" data-tab="bs" onclick="switchFinTab('bs')"
+      style="font-family:DM Mono,monospace;font-size:9px;letter-spacing:1px;padding:7px 18px;cursor:pointer;
+      border-bottom:2px solid transparent;color:var(--muted2);transition:all .15s;">BALANCE SHEET</div>
+    <div class="fin-stmt-tab" data-tab="cf" onclick="switchFinTab('cf')"
+      style="font-family:DM Mono,monospace;font-size:9px;letter-spacing:1px;padding:7px 18px;cursor:pointer;
+      border-bottom:2px solid transparent;color:var(--muted2);transition:all .15s;">CASH FLOW</div>
+  </div>
+
   <div class="card" style="margin-bottom:12px;">
-    <div class="card-title" id="pl-title">Quarterly P&L — Q2 2025</div>
-    <table class="tbl">
-      <thead><tr><th>Line Item</th><th id="pl-cur-hdr">Q2 2025</th><th id="pl-prev-hdr">Q1 2025</th><th>Δ %</th></tr></thead>
-      <tbody>
-        <tr><td>Revenue</td><td id="pl-rev">—</td><td id="pl-rev-prev">—</td><td id="pl-rev-delta">—</td></tr>
-        <tr><td>Cost of Goods Sold</td><td class="neg" id="pl-cogs">—</td><td class="neg" id="pl-cogs-prev">—</td><td id="pl-cogs-delta">—</td></tr>
-        <tr><td>Gross Profit</td><td id="pl-gp">—</td><td id="pl-gp-prev">—</td><td id="pl-gp-delta">—</td></tr>
-        <tr><td>R&D Expense</td><td class="neg" id="pl-rd">—</td><td class="neg" id="pl-rd-prev">—</td><td id="pl-rd-delta">—</td></tr>
-        <tr><td>SG&A + Marketing</td><td class="neg" id="pl-mktg">—</td><td class="neg" id="pl-mktg-prev">—</td><td id="pl-mktg-delta">—</td></tr>
-        <tr class="tot"><td>EBIT</td><td id="pl-ebit">—</td><td id="pl-ebit-prev">—</td><td id="pl-ebit-delta">—</td></tr>
-        <tr><td>Tax & Financing</td><td class="neg" id="pl-tax">—</td><td class="neg" id="pl-tax-prev">—</td><td id="pl-tax-delta">—</td></tr>
-        <tr class="tot"><td>Net Income</td><td id="pl-ni">—</td><td id="pl-ni-prev">—</td><td id="pl-ni-delta">—</td></tr>
-      </tbody>
-    </table>
+    <div class="card-title" id="fin-stmt-title">Quarterly P&L</div>
+    <div id="fin-stmt-body">
+      <div style="color:var(--muted2);font-size:12px;padding:24px 0;text-align:center;font-family:DM Mono,monospace;">
+        Select a team and session to load financial statements.
+      </div>
+    </div>
+    <div id="fin-stmt-note" style="margin-top:10px;font-family:DM Mono,monospace;font-size:9px;color:var(--muted);display:none;"></div>
   </div>
   <!-- Finance & Capital Management Panel -->
   <div class="card" id="fin-capital-panel" style="margin-top:12px;">
@@ -13571,6 +13577,220 @@ function _fcpRenderProforma() {
   cont.innerHTML = html;
 }
 
+// ── THREE STATEMENTS: P&L / BALANCE SHEET / CASH FLOW ────────────────────────
+// Each renders three value columns: prior-quarter actual, current-quarter
+// actual, and next-quarter pro-forma. All figures come from
+// team_financial_statements (actuals) and /financial-projection (pro-forma) —
+// the same backend model produces both, so the columns are directly comparable.
+var _finTab   = 'pl';
+var _finStmts = {
+  prev: null, cur: null, proj: null,
+  prevHdr: 'Prev', curHdr: 'Current', projHdr: 'Next e',
+  basis: null, assumptions: [], reason: null
+};
+
+// kind: 'line' normal · 'sub' subtotal · 'tot' bold total · 'head' section header
+// neg:  value is stored positive but is an expense/outflow → display negative
+var _FIN_LINES = {
+  pl: [
+    {l:'Revenue',                k:'net_revenue_m'},
+    {l:'Cost of Goods Sold',     k:'cogs_m', neg:true},
+    {l:'Gross Profit',           k:'gross_profit_m', kind:'sub'},
+    {l:'R&D Expense',            k:'rd_expense_m', neg:true},
+    {l:'SG&A + Marketing',       k:'sga_m', neg:true},
+    {l:'Depreciation',           k:'depreciation_total_m', neg:true},
+    {l:'Supply chain & other',   k:'_pl_other', neg:true, optional:true},
+    {l:'EBIT',                   k:'ebit_m', kind:'tot'},
+    {l:'Interest',               k:'interest_total_m', neg:true},
+    {l:'Profit Before Tax',      k:'pbt_m', kind:'sub'},
+    {l:'Tax',                    k:'tax_m', neg:true},
+    {l:'Net Income',             k:'net_income_m', kind:'tot'}
+  ],
+  bs: [
+    {l:'ASSETS',                     kind:'head'},
+    {l:'Cash',                       k:'cash_m'},
+    {l:'Accounts Receivable',        k:'accounts_receivable_m'},
+    {l:'Inventory',                  k:'inventory_m'},
+    {l:'Prepaid Expenses',           k:'prepaid_m', optional:true},
+    {l:'Total Current Assets',       k:'total_current_assets_m', kind:'sub'},
+    {l:'PP&E (gross)',               k:'ppe_gross_m'},
+    {l:'Accumulated Depreciation',   k:'accumulated_depreciation_m', neg:true},
+    {l:'PP&E (net)',                 k:'ppe_net_m', kind:'sub'},
+    {l:'Total Assets',               k:'total_assets_m', kind:'tot'},
+    {l:'LIABILITIES',                kind:'head'},
+    {l:'Accounts Payable',           k:'accounts_payable_m'},
+    {l:'Accrued Expenses',           k:'accrued_expenses_m'},
+    {l:'Short-Term Debt / Revolver', k:'short_term_debt_m'},
+    {l:'Warranty Provision',         k:'warranty_provision_m', optional:true},
+    {l:'Total Current Liabilities',  k:'total_current_liab_m', kind:'sub'},
+    {l:'Long-Term Debt',             k:'long_term_debt_m'},
+    {l:'Deferred Tax Liability',     k:'deferred_tax_liab_m', optional:true},
+    {l:'Total Liabilities',          k:'total_liabilities_m', kind:'tot'},
+    {l:'EQUITY',                     kind:'head'},
+    {l:'Share Capital',              k:'share_capital_m'},
+    {l:'Retained Earnings',          k:'retained_earnings_m'},
+    {l:'Total Equity',               k:'total_equity_m', kind:'tot'}
+  ],
+  cf: [
+    {l:'OPERATING',                  kind:'head'},
+    {l:'Net Income',                 k:'cfo_net_income_m'},
+    {l:'Depreciation (non-cash)',    k:'cfo_depreciation_m'},
+    {l:'Δ Accounts Receivable',      k:'cfo_delta_ar_m'},
+    {l:'Δ Inventory',                k:'cfo_delta_inventory_m'},
+    {l:'Δ Accounts Payable',         k:'cfo_delta_ap_m'},
+    {l:'Δ Accrued Expenses',         k:'cfo_delta_accrued_m'},
+    {l:'Δ Warranty Provision',       k:'cfo_delta_warranty_m', optional:true},
+    {l:'Δ Deferred Tax',             k:'cfo_delta_deferred_tax_m', optional:true},
+    {l:'Cash Flow from Operations',  k:'cfo_total_m', kind:'tot'},
+    {l:'INVESTING',                  kind:'head'},
+    {l:'Vehicle Programme CapEx',    k:'cfi_vehicle_capex_m'},
+    {l:'Infrastructure CapEx',       k:'cfi_infra_capex_m'},
+    {l:'Disposal Proceeds',          k:'cfi_disposal_proceeds_m', optional:true},
+    {l:'Cash Flow from Investing',   k:'cfi_total_m', kind:'tot'},
+    {l:'FINANCING',                  kind:'head'},
+    {l:'LT Debt Change',             k:'cff_lt_debt_change_m', optional:true},
+    {l:'ST Debt Change',             k:'cff_st_debt_change_m', optional:true},
+    {l:'Shares Issued',              k:'cff_shares_issued_m', optional:true},
+    {l:'Shares Repurchased',         k:'cff_shares_repurchased_m', optional:true},
+    {l:'Dividends Paid',             k:'cff_dividends_m', optional:true},
+    {l:'Cash Flow from Financing',   k:'cff_total_m', kind:'tot'},
+    {l:'Net Change in Cash',         k:'net_cash_change_m', kind:'sub'},
+    {l:'Opening Cash',               k:'opening_cash_m'},
+    {l:'Closing Cash',               k:'closing_cash_m', kind:'tot'}
+  ]
+};
+
+var _FIN_TITLES = {pl:'Quarterly P&L', bs:'Balance Sheet', cf:'Cash Flow Statement'};
+
+function switchFinTab(tab) {
+  _finTab = tab;
+  document.querySelectorAll('.fin-stmt-tab').forEach(function(t){
+    var on = t.getAttribute('data-tab') === tab;
+    t.style.borderBottomColor = on ? 'var(--gold)' : 'transparent';
+    t.style.color = on ? 'var(--gold)' : 'var(--muted2)';
+  });
+  renderFinStatement();
+}
+
+// EBIT is struck after supply-chain fixed and working-capital financing costs,
+// which are not stored as their own columns. Derive the residual so the P&L
+// actually foots instead of showing an unexplained gap above EBIT.
+function _finPlOther(s) {
+  if (!s) return 0;
+  var n = function(k){ return parseFloat(s[k]) || 0; };
+  return n('gross_profit_m') - n('rd_expense_m') - n('sga_m')
+       - n('depreciation_total_m') - n('ebit_m');
+}
+
+function _finVal(s, key) {
+  if (!s) return null;
+  if (key === '_pl_other') return _finPlOther(s);
+  var v = s[key];
+  return (v === null || v === undefined) ? null : (parseFloat(v) || 0);
+}
+
+function renderFinStatement() {
+  var body = document.getElementById('fin-stmt-body');
+  var note = document.getElementById('fin-stmt-note');
+  var ttl  = document.getElementById('fin-stmt-title');
+  if (!body) return;
+  var S = _finStmts;
+  if (ttl) ttl.textContent = _FIN_TITLES[_finTab] || 'Financial Statement';
+  if (!S.cur) {
+    body.innerHTML = '<div style="color:var(--muted2);font-size:12px;padding:24px 0;text-align:center;'
+                   + 'font-family:DM Mono,monospace;">No financial statement for this round yet.</div>';
+    return;
+  }
+
+  var lines = _FIN_LINES[_finTab] || [];
+  var cols  = [S.prev, S.cur, S.proj];
+  var fmtM  = function(v){
+    if (v === null || v === undefined) return '—';
+    var a = Math.abs(v);
+    return (v < 0 ? '-' : '') + '€' + a.toLocaleString(undefined,{maximumFractionDigits:0}) + 'M';
+  };
+
+  var h = '<div style="overflow-x:auto;"><table class="tbl" style="min-width:520px;">';
+  h += '<thead><tr><th style="text-align:left;">Line Item</th>'
+     + '<th style="text-align:right;">' + (S.prevHdr||'Prev') + '</th>'
+     + '<th style="text-align:right;">' + (S.curHdr||'Current') + '</th>'
+     + '<th style="text-align:right;border-left:1px dashed var(--border2);color:var(--gold);">'
+     +   (S.projHdr||'Next e') + '</th></tr></thead><tbody>';
+
+  lines.forEach(function(ln){
+    if (ln.kind === 'head') {
+      h += '<tr><td colspan="4" style="font-family:DM Mono,monospace;font-size:8px;'
+         + 'letter-spacing:1.5px;color:var(--muted);padding-top:10px;text-transform:uppercase;">'
+         + ln.l + '</td></tr>';
+      return;
+    }
+    var vals = cols.map(function(s){
+      var v = _finVal(s, ln.k);
+      return (v === null) ? null : (ln.neg ? -Math.abs(v) : v);
+    });
+    // Hide optional rows that are zero/absent everywhere — keeps the statement
+    // readable for teams that have no debt, no warranty provision, etc.
+    if (ln.optional && vals.every(function(v){ return v === null || Math.abs(v) < 0.5; })) return;
+
+    var rowStyle = ln.kind === 'tot' ? 'font-weight:700;border-top:1px solid var(--border2);'
+                 : ln.kind === 'sub' ? 'font-weight:600;' : '';
+    h += '<tr style="' + rowStyle + '"><td style="text-align:left;">' + ln.l + '</td>';
+    vals.forEach(function(v, i){
+      var isProj = (i === 2);
+      // Negative always reads red, in every column; the pro-forma column is
+      // otherwise gold so an estimate is never mistaken for an actual.
+      var colour = (v !== null && v < 0) ? 'var(--red)' : (isProj ? 'var(--gold)' : '');
+      var css = 'text-align:right;font-family:DM Mono,monospace;'
+              + (isProj ? 'border-left:1px dashed var(--border2);' : '')
+              + (colour ? 'color:' + colour + ';' : '');
+      h += '<td style="' + css + '">' + fmtM(v) + '</td>';
+    });
+    h += '</tr>';
+  });
+  h += '</tbody></table></div>';
+
+  // Balance-sheet integrity — a pro-forma BS that doesn't balance is worse than none
+  if (_finTab === 'bs') {
+    var chk = function(s){
+      if (!s) return null;
+      return (parseFloat(s.total_assets_m)||0) - (parseFloat(s.total_liabilities_m)||0)
+           - (parseFloat(s.total_equity_m)||0);
+    };
+    var parts = [['Current', chk(S.cur)], ['Pro-forma', chk(S.proj)]].filter(function(p){ return p[1] !== null; });
+    if (parts.length) {
+      h += '<div style="margin-top:8px;font-family:DM Mono,monospace;font-size:9px;">'
+         + parts.map(function(p){
+             var ok = Math.abs(p[1]) < 1;
+             return '<span style="color:' + (ok ? 'var(--green)' : 'var(--red)') + ';margin-right:14px;">'
+                  + (ok ? '✓ ' : '⚠ ') + p[0] + ' balances'
+                  + (ok ? '' : ' (off by €' + Math.abs(p[1]).toFixed(1) + 'M)') + '</span>';
+           }).join('') + '</div>';
+    }
+  }
+  body.innerHTML = h;
+
+  // Pro-forma provenance — say plainly what the estimate rests on
+  if (note) {
+    var msg = '';
+    if (S.proj) {
+      var src = S.basis && S.basis.source;
+      var srcTxt = src === 'sop_forecast'  ? 'your S&OP sales-plan forecast'
+                 : src === 'commercial_plan' ? 'your commercial plan volumes (annual ÷ 4)'
+                 : 'no volume plan';
+      msg = '◆ ' + (S.projHdr||'Next quarter') + ' is a PRO-FORMA built from ' + srcTxt
+          + '. Actual volume and market share are set at market clearing.';
+      if (S.assumptions && S.assumptions.length) {
+        msg += '<div style="margin-top:4px;color:var(--muted2);">'
+             + S.assumptions.map(function(a){ return '· ' + a; }).join('<br>') + '</div>';
+      }
+    } else if (S.reason) {
+      msg = '◆ No pro-forma available — ' + S.reason;
+    }
+    note.innerHTML = msg;
+    note.style.display = msg ? 'block' : 'none';
+  }
+}
+
 async function loadFinancePanel() {
   if (!sessionId || !teamId) return;
   try {
@@ -13629,66 +13849,27 @@ async function loadFinancePanel() {
       document.getElementById('fin-cashflow').textContent      = fmtEur(fcf);
       document.getElementById('fin-cashflow-sub').textContent  = myStmt.is_opening_balance ? '—' : (fcf>=0?'▲ strong':'▼ negative');
 
-      var qLabel = (data.round && !data.round.is_historical) ? ('Q'+data.round.quarter+' '+data.round.year) : '';
-      if (qLabel) document.getElementById('pl-title').textContent = 'Quarterly P&L — '+qLabel;
-      document.getElementById('pl-rev').textContent  = fmt2(rev);
-      document.getElementById('pl-cogs').textContent = '-'+fmt2(cogs);
-      document.getElementById('pl-gp').textContent   = fmt2(gp);
-      document.getElementById('pl-rd').textContent   = '-'+fmt2(rd);
-      document.getElementById('pl-mktg').textContent = '-'+fmt2(sga);
-      document.getElementById('pl-ebit').textContent = fmt2(ebit);
-      var taxFin = ebit - ni;
-      document.getElementById('pl-tax').textContent  = '-'+fmt2(taxFin);
-      document.getElementById('pl-ni').textContent   = fmt2(ni);
+      // ── Three statements: prior actual · current actual · next-quarter pro-forma ──
+      _finStmts.prev    = myStmt.prev || null;
+      _finStmts.cur     = myStmt;
+      _finStmts.curHdr  = (data.round)      ? ('Q'+data.round.quarter+' '+data.round.year)           : 'Current';
+      _finStmts.prevHdr = (data.prev_round) ? ('Q'+data.prev_round.quarter+' '+data.prev_round.year) : 'Prev';
+      renderFinStatement();
 
-      // ── Prior-quarter column + Δ% (real data, not demo placeholders) ──
-      var setTxt = function(id, t){ var c=document.getElementById(id); if(c) c.textContent=t; };
-      var curHdr  = (data.round)      ? ('Q'+data.round.quarter+' '+data.round.year)           : 'Current';
-      var prevHdr = (data.prev_round) ? ('Q'+data.prev_round.quarter+' '+data.prev_round.year)  : 'Prev';
-      setTxt('pl-cur-hdr', curHdr);
-      setTxt('pl-prev-hdr', prevHdr);
-
-      var prev  = myStmt.prev || null;
-      var pRev  = prev ? (parseFloat(prev.net_revenue_m)||0) : 0;
-      var pCogs = prev ? (parseFloat(prev.cogs_m)||0)        : 0;
-      var pGp   = prev ? (parseFloat(prev.gross_profit_m)||0): 0;
-      var pRd   = prev ? (parseFloat(prev.rd_expense_m)||0)  : 0;
-      var pSga  = prev ? (parseFloat(prev.sga_m)||0)         : 0;
-      var pEbit = prev ? (parseFloat(prev.ebit_m)||0)        : 0;
-      var pNi   = prev ? (parseFloat(prev.net_income_m)||0)  : 0;
-      var pTax  = pEbit - pNi;
-
-      if (!prev) {
-        ['rev','cogs','gp','rd','mktg','ebit','tax','ni'].forEach(function(k){
-          setTxt('pl-'+k+'-prev','—');
-          var d=document.getElementById('pl-'+k+'-delta'); if(d){ d.textContent='—'; d.className=''; }
-        });
-      } else {
-        setTxt('pl-rev-prev',  fmt2(pRev));
-        setTxt('pl-cogs-prev', '-'+fmt2(pCogs));
-        setTxt('pl-gp-prev',   fmt2(pGp));
-        setTxt('pl-rd-prev',   '-'+fmt2(pRd));
-        setTxt('pl-mktg-prev', '-'+fmt2(pSga));
-        setTxt('pl-ebit-prev', fmt2(pEbit));
-        setTxt('pl-tax-prev',  '-'+fmt2(pTax));
-        setTxt('pl-ni-prev',   fmt2(pNi));
-        // Δ% on signed P&L values (expenses negative) → growth in an expense reads as a negative Δ
-        var setDelta = function(id, curV, prevV){
-          var c=document.getElementById(id); if(!c) return;
-          if (Math.abs(prevV) < 1e-9){ c.textContent='—'; c.className=''; return; }
-          var pct=(curV-prevV)/Math.abs(prevV)*100;
-          c.textContent=(pct>=0?'+':'')+pct.toFixed(1)+'%';
-          c.className=pct>=0?'pos':'neg';
-        };
-        setDelta('pl-rev-delta',  rev,      pRev);
-        setDelta('pl-cogs-delta', -cogs,    -pCogs);
-        setDelta('pl-gp-delta',   gp,       pGp);
-        setDelta('pl-rd-delta',   -rd,      -pRd);
-        setDelta('pl-mktg-delta', -sga,     -pSga);
-        setDelta('pl-ebit-delta', ebit,     pEbit);
-        setDelta('pl-tax-delta',  -taxFin,  -pTax);
-        setDelta('pl-ni-delta',   ni,       pNi);
-      }
+      // The pro-forma is advisory — fetched separately so that a slow or failing
+      // projection never delays or blanks the actual statements.
+      fetch(API_URL + '/sessions/' + sessionId + '/financial-projection?team_id=' + teamId)
+        .then(function(r){ return r.ok ? r.json() : null; })
+        .then(function(pj){
+          if (!pj) return;
+          _finStmts.proj        = pj.projected || null;
+          _finStmts.basis       = pj.basis || null;
+          _finStmts.assumptions = pj.assumptions || [];
+          _finStmts.reason      = pj.projected ? null : (pj.reason || null);
+          _finStmts.projHdr     = pj.round ? ('Q'+pj.round.quarter+' '+pj.round.year+'e') : 'Next e';
+          renderFinStatement();
+        })
+        .catch(function(e){ console.warn('financial-projection:', e); });
     }
 
     // Check for pending decisions
