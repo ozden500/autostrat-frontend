@@ -19034,8 +19034,20 @@ function _findClosestPlant(marketRegion) {
 }
 
 function _computeBaseTpc() {
+  // per_unit_tpc_eur is set on modules loaded from the DB, but a module just
+  // designed in this session carries its cost as the dmp/make BOM split instead
+  // and has no per_unit_tpc_eur yet. Reading only the first key returned 0 for a
+  // freshly-designed vehicle, so confirmProposal()'s `if (_enrichedTpc > 0)`
+  // silently dropped total_unit_tpc_eur from the PATCH and the vehicle reached
+  // the DB with no cost basis at all -- 100% gross margin in the P&L. Mirror the
+  // two-branch read _computeDmpMake() already does right below.
   var t=0;
-  ['platform','pwt','epwt','battery','tophat','eands'].forEach(function(k){var p=_prop[k];if(p&&p.module)t+=parseFloat(p.module.per_unit_tpc_eur||0);});
+  ['platform','pwt','epwt','battery','tophat','eands'].forEach(function(k){
+    var p=_prop[k]; if(!p||!p.module) return;
+    var m=p.module, u=parseFloat(m.per_unit_tpc_eur||0);
+    if (!(u>0) && m.dmp && m.make) u = parseFloat(m.dmp.total_eur||0)+parseFloat(m.make.total_eur||0);
+    t += u>0 ? u : 0;
+  });
   return t;
 }
 
