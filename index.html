@@ -21313,6 +21313,10 @@ function _buildPwtPlantFromDecision(lk){
   var ct=cl.find(function(c){return c.code===cc;})||cl[0]||{name:cc,code:cc};
   if(!ops.powertrain_plants)ops.powertrain_plants=[];
   var pp=ops.powertrain_plants.find(function(p){return p.id===pid;})||null;
+  // Drop the 'pwt1' placeholder for the same reason as 'vp1' above.
+  ops.powertrain_plants=ops.powertrain_plants.filter(function(p){
+    return p.id===pid||p.vehicle_capacity_yr;});
+  var pp=ops.powertrain_plants.find(function(p){return p.id===pid;})||null;
   if(!pp){pp={id:pid,region:reg,country_code:cc,country_name:ct.name||cc,automation_level:2,module_capacity:{},_computed:null};ops.powertrain_plants.push(pp);}
   if(ops._existing_pwt_auto)pp.automation_level=ops._existing_pwt_auto;
   var capK=ops.pwt_capacity_yr||_getTotalConfirmedVehicleCapK()||_suggestedVolK()||50;
@@ -22742,6 +22746,15 @@ function _buildPlantFromDecision(){
   // ── Vehicle plant — find-or-create by locKey id ────────────────────────────
   if(!ops.vehicle_plants)ops.vehicle_plants=[];
   var targetId=ops.selected_plant_key?'vp_'+ops.selected_plant_key:'vp1';
+  // Once a real location is chosen, drop the 'vp1' placeholder this same
+  // find-or-create made before one was. It is never selected again, so it used
+  // to survive into operations_plan beside the real plant and every backend
+  // reader counted both -- ~\u20ac23M of phantom capex, and S&OP routing that
+  // resolved to the placeholder's 280k/yr instead of the 50k line actually
+  // built. Confirmed allocations (vehicle_capacity_yr) are always kept.
+  if(ops.selected_plant_key)
+    ops.vehicle_plants=ops.vehicle_plants.filter(function(p){
+      return p.id===targetId||p.vehicle_capacity_yr;});
   var vp=ops.vehicle_plants.find(function(p){return p.id===targetId;})||null;
   if(!vp){
     vp={id:targetId,region:'EU',country_code:'DE',country_name:'Germany',jph:40,automation_level:2,platform_shared:false,module_capacity:{},_computed:null};
@@ -23453,7 +23466,14 @@ async function confirmProposal(acceptedSop) {
     };
     if (_priceK)       patch.price_eur_k       = _priceK;
     if (_comPlan)      patch.commercial_plan    = _comPlan;
-    if (_enrichedTpc > 0) patch.total_unit_tpc_eur = Math.round(_enrichedTpc);
+    // Always send a cost basis. `if (_enrichedTpc > 0)` silently omitted the key
+    // whenever the enrichment came out non-positive -- which it does the moment
+    // _baseTpc is 0, and then the vehicle reaches the DB with no unit cost at
+    // all: 100% gross margin in the P&L and a price-derived guess in market
+    // clearing. Fall back to the raw BOM rather than send nothing; the backend
+    // re-derives the enrichment from operations_plan either way.
+    var _tpcOut = _enrichedTpc > 0 ? _enrichedTpc : _baseTpc;
+    if (_tpcOut > 0) patch.total_unit_tpc_eur = Math.round(_tpcOut);
 
     // \u2500\u2500 SOP readiness check \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
     var sopYear    = _prop.study.start_year    || null;
@@ -23504,11 +23524,21 @@ async function confirmProposal(acceptedSop) {
       } else {
         toast('\u2713 Proposal submitted \u2014 vehicle moved to PLAN');
       }
-      // Activate any 'draft' modules created at the \u00a77\u21928 transition for this proposal
-      [platformId, pwtId, epwtId, tophatId, eandsId].filter(Boolean).forEach(function(mid){
-        fetch(API_URL + '/modules/' + mid + '/activate', { method: 'POST' })
-          .catch(function(e){ console.warn('activate-draft failed', mid, e); });
-      });
+      // Activate any 'draft' modules created at the \u00a77\u21928 transition for this
+      // proposal. SEQUENTIALLY, and awaited: each activation assigns the module
+      // its engineering priority by reading the ones already in development, so
+      // firing all five at once had every request read an empty list and land on
+      // priority 1. The throttle then funded whichever row the DB returned first
+      // and the platform could be starved while a powertrain took the quarter.
+      // The backend resequences defensively too, but that is a net, not a plan.
+      await (async function(){
+        var _mids = [platformId, pwtId, epwtId, tophatId, eandsId].filter(Boolean);
+        for (var _i = 0; _i < _mids.length; _i++) {
+          try {
+            await fetch(API_URL + '/modules/' + _mids[_i] + '/activate', { method: 'POST' });
+          } catch(e) { console.warn('activate-draft failed', _mids[_i], e); }
+        }
+      })();
       // Full reset of proposal state
       _prop.study = null; _prop.platform = null; _prop.pwt = null;
       _prop.epwt  = null; _prop.tophat   = null; _prop.eands = null;
