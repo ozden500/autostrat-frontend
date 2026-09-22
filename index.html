@@ -20344,7 +20344,11 @@ function _calcFacilityInv(type,fac){
     var _gfTot=0; Object.keys(gf).forEach(function(k){_gfTot+=(gf[k].inv_m||0);});
     var _m2=fac._computed.manuf_result, _efc=_m2.eff_capacity_yr||1;
     var _mpu=Math.round(_gfTot*1e6*_MANUF_E.MAINT_RATE/_efc);
-    _m2.maint_per_unit=_mpu; _m2.total_investment_m=Math.round(_gfTot);
+    // 1 decimal, not whole €M: the per-module figures §7 displays are themselves
+    // 1dp, so Math.round() made the registered capex disagree with the column the
+    // team read (17.4+15.7+1.8 shown as 34.9, registered as 35; a €5.4M powertrain
+    // line registered as €5).
+    _m2.maint_per_unit=_mpu; _m2.total_investment_m=Math.round(_gfTot*10)/10;
     _m2.manuf_var_total=(_m2.labour_per_unit||0)+(_m2.energy_per_unit||0)+_mpu;
     fac._computed.manuf_var_total=_m2.manuf_var_total;
     // OEM transformation is already carried at standard-plant rates inside the BOM 'make' (part of
@@ -20370,7 +20374,7 @@ function _calcFacilityInv(type,fac){
     modules[d.key]={installed_k:mc.installed_k||0,used_k:mc.used_k||0,spare_k:spareK,incremental_k:incK,greenfield_inv_m:gfMod.inv_m,greenfield_cap_k:gfMod.cap_k,rate_k:Math.round(rateK*10)/10,incremental_inv_m:incInvM};
     totalInv+=incInvM;
   });
-  fac._computed.module_investments=modules;fac._computed.total_inv_m=Math.round(totalInv);
+  fac._computed.module_investments=modules;fac._computed.total_inv_m=Math.round(totalInv*10)/10;
   return fac._computed;
 }
 
@@ -22351,6 +22355,18 @@ async function confirmSourcingPlan() {
     var data = await res.json();
     if (data.success) {
       _prop.operations._sourcingCapexM = data.total_capex_m || 0;
+      // Persist immediately. The ops save runs at the §9→§10 transition, which is
+      // BEFORE this on the first pass through the flow, so a team that never
+      // revisits §9 left _sourcingCapexM in memory only and the capex §8 just told
+      // them was charged never reached the books. (_register_vehicle_capex now
+      // derives it from module_zone_contracts too — this keeps the stored plan
+      // matching what the team was shown.)
+      try {
+        await fetch(API_URL + '/vehicles/' + vid, {
+          method: 'PATCH', headers: {'Content-Type':'application/json'},
+          body: JSON.stringify({operations_plan: _prop.operations})
+        });
+      } catch(pe) { console.warn('sourcing capex save failed', pe); }
       var msg = '✓ Sourcing plan confirmed — capacity reserved';
       var toolM = data.total_tooling_capex_m || 0, capM = data.total_capacity_capex_m || 0;
       if (toolM > 0 && capM > 0) msg += ' · €' + toolM.toFixed(2) + 'M tooling + €' + capM.toFixed(2) + 'M capacity capex charged';
@@ -23347,6 +23363,36 @@ function acceptNewSOPAndResubmit(year, quarter) {
   confirmProposal({year: year, quarter: quarter});
 }
 
+// Volume-weighted sales discount % implied by a §9 commercial plan, across the
+// selected markets of the SOP year (all years if that year has no volume).
+// Engine Parity pair with main._commercial_plan_discount_pct — the backend
+// derives the same figure when a PATCH carries a commercial_plan without one.
+function _commercialPlanDiscountPct(cp, year) {
+  var markets = ((cp || {}).markets) || [];
+  var tries = year ? [year, null] : [null];
+  for (var t = 0; t < tries.length; t++) {
+    var want = tries[t], num = 0, den = 0;
+    markets.forEach(function(mkt) {
+      if (!mkt.selected) return;
+      (mkt.years || []).forEach(function(yr) {
+        if (want !== null && parseInt(yr.year, 10) !== parseInt(want, 10)) return;
+        var vol = parseFloat(yr.volume || 0);
+        if (vol <= 0) return;
+        num += vol * parseFloat(yr.discount || 0); den += vol;
+      });
+    });
+    if (den > 0) return Math.round(num / den * 100) / 100;
+  }
+  // Prices set but no volumes anywhere: plain average of the discounts chosen.
+  var ds = [];
+  markets.forEach(function(mkt) {
+    if (!mkt.selected) return;
+    (mkt.years || []).forEach(function(yr) { ds.push(parseFloat(yr.discount || 0)); });
+  });
+  if (!ds.length) return 0;
+  return Math.round(ds.reduce(function(a, b) { return a + b; }, 0) / ds.length * 100) / 100;
+}
+
 async function confirmProposal(acceptedSop) {
   if (!_prop.study) { toast('\u26a0 No study selected'); return; }
   var vid = _prop.study.id;
@@ -23466,6 +23512,15 @@ async function confirmProposal(acceptedSop) {
     };
     if (_priceK)       patch.price_eur_k       = _priceK;
     if (_comPlan)      patch.commercial_plan    = _comPlan;
+    // §9's discount is the team's decision, but market clearing reads
+    // vehicle_configs.discount_pct and nothing ever wrote it from the proposal
+    // flow -- so a proposal built on 5% off cleared at full MSRP. Send the
+    // volume-weighted figure; the backend derives the same value from
+    // commercial_plan as a net (Engine Parity pair with _commercialPlanDiscountPct).
+    if (_comPlan) {
+      var _dsc = _commercialPlanDiscountPct(_comPlan, _prop.study && _prop.study.start_year);
+      if (_dsc > 0) patch.discount_pct = _dsc;
+    }
     // Always send a cost basis. `if (_enrichedTpc > 0)` silently omitted the key
     // whenever the enrichment came out non-positive -- which it does the moment
     // _baseTpc is 0, and then the vehicle reaches the DB with no unit cost at
