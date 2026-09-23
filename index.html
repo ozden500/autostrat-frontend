@@ -72,6 +72,23 @@ body{background:var(--bg);color:var(--text);font-family:'DM Sans',sans-serif;fon
 .nav-icon{font-size:12px;width:15px;text-align:center;flex-shrink:0;}
 .nav-badge{margin-left:auto;font-family:'DM Mono',monospace;font-size:8px;padding:1px 5px;border-radius:1px;background:var(--s3);color:var(--muted2);}
 .nav-item.active .nav-badge{background:var(--goldl);color:var(--gold);}
+.nav-badge.cl-red,.nav-item.active .nav-badge.cl-red{background:var(--redl);color:var(--red);}
+.nav-badge.cl-amber,.nav-item.active .nav-badge.cl-amber{background:var(--goldl);color:var(--gold);}
+.nav-badge.cl-green,.nav-item.active .nav-badge.cl-green{background:var(--greenl);color:var(--green);}
+/* Round checklist */
+.cl-row{display:flex;gap:12px;align-items:flex-start;padding:10px 0;border-bottom:1px solid var(--border);}
+.cl-row:last-child{border-bottom:none;}
+.cl-dot{width:9px;height:9px;border-radius:50%;margin-top:4px;flex-shrink:0;background:var(--muted);}
+.cl-dot.red{background:var(--red);box-shadow:0 0 0 3px var(--redl);}
+.cl-dot.amber{background:var(--gold);box-shadow:0 0 0 3px var(--goldl);}
+.cl-dot.green{background:var(--green);}
+.cl-main{flex:1;min-width:0;}
+.cl-title{font-size:12px;font-weight:600;color:var(--white);}
+.cl-detail{font-size:11px;color:var(--muted2);margin-top:3px;line-height:1.5;}
+.cl-go{font-family:'DM Mono',monospace;font-size:9px;letter-spacing:1px;color:var(--cyan);cursor:pointer;white-space:nowrap;padding-top:2px;}
+.cl-go:hover{text-decoration:underline;}
+.cl-ack{display:flex;gap:6px;align-items:center;font-size:10px;color:var(--red);margin-top:6px;cursor:pointer;}
+.cl-empty{font-size:11px;color:var(--muted);padding:18px 0;}
 
 .team-row{display:flex;align-items:center;gap:6px;padding:5px 6px;border-radius:2px;cursor:pointer;
   margin-bottom:2px;transition:all .12s;border:1px solid transparent;font-size:11px;}
@@ -886,6 +903,7 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
     <div class="nav-item" onclick="nav('market',this)"><span class="nav-icon">≋</span> Market Intel</div>
     <div class="nav-item" onclick="nav('leaderboard',this);buildLB()"><span class="nav-icon">▲</span> Leaderboard</div>
     <div class="nav-item" onclick="nav('performance',this);loadPerformanceData()"><span class="nav-icon">📈</span> Performance</div>
+    <div class="nav-item" onclick="nav('checklist',this)" id="nav-checklist"><span class="nav-icon">✓</span> Round Checklist <span class="nav-badge" id="nav-checklist-badge" style="display:none"></span></div>
   </div>
 
   <div class="sb-sec">
@@ -1924,6 +1942,21 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
 </div>
 
 <!-- ████ PERFORMANCE DASHBOARD ████ -->
+<div class="page" id="page-checklist">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;gap:12px;flex-wrap:wrap;">
+    <div>
+      <div class="pg-title" style="margin-bottom:2px;">ROUND CHECKLIST</div>
+      <div class="pg-sub" id="cl-sub">What to check before you sign off this round's decisions</div>
+    </div>
+    <div style="display:flex;gap:8px;">
+      <button class="btn-d" onclick="loadRoundChecklist()">↻ RE-CHECK</button>
+      <button class="btn-sub" id="cl-signoff-btn" onclick="openSubmitChecklist()">SIGN OFF &amp; SUBMIT →</button>
+    </div>
+  </div>
+  <div class="kpi-row" id="cl-kpis" style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:14px 0;"></div>
+  <div id="cl-body"><div class="cl-empty">Loading checks…</div></div>
+</div>
+
 <div class="page" id="page-performance">
   <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
     <div>
@@ -2540,7 +2573,25 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
   <div style="display:flex;gap:8px;">
     <button class="btn-d" onclick="saveDraft()">SAVE DRAFT</button>
     <button class="btn-d" id="resultsBtn" onclick="openResultsModal()" style="display:none;background:var(--cyan);color:#000;font-weight:700">📊 VIEW RESULTS</button>
-    <button class="btn-sub" id="submitBtn" onclick="submitRound()">SUBMIT DECISIONS →</button>
+    <button class="btn-sub" id="submitBtn" onclick="openSubmitChecklist()">SUBMIT DECISIONS →</button>
+  </div>
+</div>
+
+<!-- ROUND SIGN-OFF MODAL -->
+<div class="bc-modal-overlay" id="clModal" onclick="if(event.target===this)closeSubmitChecklist()">
+  <div class="bc-modal-panel" style="width:640px;">
+    <div class="bc-modal-header">
+      <div class="bc-modal-title">SIGN OFF ROUND DECISIONS</div>
+      <button class="btn-d" onclick="closeSubmitChecklist()">✕</button>
+    </div>
+    <div class="bc-modal-body" id="clModalBody"></div>
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:14px 20px;border-top:1px solid var(--border);background:var(--s2);">
+      <div id="clModalNote" style="font-size:10px;color:var(--muted2);"></div>
+      <div style="display:flex;gap:8px;">
+        <button class="btn-d" style="white-space:nowrap" onclick="closeSubmitChecklist()">BACK TO DECISIONS</button>
+        <button class="btn-sub" id="clModalSubmit" style="white-space:nowrap" onclick="confirmSubmitChecklist()">SIGN OFF &amp; SUBMIT →</button>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -2955,6 +3006,7 @@ function nav(page, el) {
   if(page==='market-intel') loadMarketIntel();
   if(page==='brands') loadBrandsPage();
   if(page==='financial') loadFinancePanel();
+  if(page==='checklist') loadRoundChecklist();
   if(page==='engineering') {
     loadBaseConfigs(currentModType);
     if(teamId) { loadProductStudies(); buildEngineeringDashboard(); }
@@ -11865,6 +11917,7 @@ function enterSimulator() {
   // tiles with this team's real (or empty) baseline on first paint.
   if (currentUser.role !== 'instructor') loadCommandCenterKPIs();
   if (currentUser.role !== 'instructor') startRoundStatePolling();
+  if (currentUser.role !== 'instructor') refreshChecklistBadge();
   sessionStorage.setItem('as_sessionId', sessionId || '');
   sessionStorage.setItem('as_teamId',    teamId    || '');
   sessionStorage.setItem('as_roundId',   roundId   || '');
@@ -12092,6 +12145,168 @@ async function submitRound() {
     document.getElementById('submitBtn').disabled = false;
   }
 }
+// ══════════════════════════════════════════
+// ROUND CHECKLIST — pre-submission sign-off
+// ══════════════════════════════════════════
+// Checks are evaluated server-side (backend/round_checklist.py) with the same
+// shared readers round-advance and clearing use, so what this page says is what
+// the round will do. It warns; it never blocks: a red can be a deliberate choice
+// and the simulation fills anything a team leaves unset.
+var _clData = null;
+var _clAcked = {};           // {check_id: true} — red items acknowledged this round
+var _CL_ORDER = {red:0, amber:1, info:2, green:3};
+
+function _clEsc(s) {
+  return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+
+async function fetchRoundChecklist() {
+  if (!sessionId || !teamId) return null;
+  var r = await fetch(API_URL+'/sessions/'+sessionId+'/teams/'+teamId+'/round-checklist');
+  if (!r.ok) throw new Error('HTTP '+r.status);
+  var d = await r.json();
+  if (!d || !Array.isArray(d.checks) || (!d.checks.length && d.reason)) throw new Error(d && d.reason || 'no checks');
+  if (_clData && _clData.round && d.round && _clData.round.id !== d.round.id) _clAcked = {};
+  _clData = d;
+  _clUpdateBadge();
+  return d;
+}
+
+function _clUpdateBadge() {
+  var b = document.getElementById('nav-checklist-badge');
+  if (!b) return;
+  var s = (_clData && _clData.summary) || null;
+  b.classList.remove('cl-red','cl-amber','cl-green');
+  if (!s) { b.style.display = 'none'; return; }
+  b.style.display = '';
+  if (s.red)        { b.textContent = s.red+' red';   b.classList.add('cl-red'); }
+  else if (s.amber) { b.textContent = s.amber+' warn'; b.classList.add('cl-amber'); }
+  else              { b.textContent = '✓';           b.classList.add('cl-green'); }
+}
+
+function refreshChecklistBadge() {
+  if (!currentUser || currentUser.role === 'instructor') return;
+  fetchRoundChecklist().catch(function(e){ console.warn('round checklist', e); });
+}
+
+async function loadRoundChecklist() {
+  var body = document.getElementById('cl-body');
+  if (!sessionId || !teamId) { body.innerHTML = '<div class="cl-empty">Join a session first.</div>'; return; }
+  body.innerHTML = '<div class="cl-empty">Running checks…</div>';
+  try {
+    var d = await fetchRoundChecklist();
+    _clRenderPage(d);
+  } catch (e) {
+    body.innerHTML = '<div class="cl-empty">Could not run the checklist: '+_clEsc(e.message)+'</div>';
+  }
+}
+
+function _clSorted(checks) {
+  return checks.slice().sort(function(a,b){ return _CL_ORDER[a.status]-_CL_ORDER[b.status]; });
+}
+
+function _clRow(c, withAck) {
+  var go = (c.fix && c.fix.page)
+    ? '<div class="cl-go" onclick="_clGoTo(\''+_clEsc(c.fix.page)+'\',\''+_clEsc(c.fix.tab||'')+'\')">GO TO →</div>' : '';
+  var ack = (withAck && c.status === 'red')
+    ? '<label class="cl-ack"><input type="checkbox" '+(_clAcked[c.id]?'checked':'')+
+      ' onchange="_clAck(\''+_clEsc(c.id)+'\',this.checked)"> I understand and want to submit anyway</label>' : '';
+  return '<div class="cl-row"><div class="cl-dot '+_clEsc(c.status)+'"></div>'+
+    '<div class="cl-main"><div class="cl-title">'+_clEsc(c.title)+'</div>'+
+    '<div class="cl-detail">'+_clEsc(c.detail)+'</div>'+ack+'</div>'+go+'</div>';
+}
+
+function _clRenderPage(d) {
+  var s = d.summary || {};
+  var rnd = d.round;
+  document.getElementById('cl-sub').textContent = rnd
+    ? 'Round '+(rnd.round_number||'')+' · '+rnd.year+' Q'+rnd.quarter+' · check these before you sign off'
+    : 'What to check before you sign off this round\'s decisions';
+  document.getElementById('cl-kpis').innerHTML =
+    [['red','kk-r','Must review','var(--red)'],['amber','kk-g','Warnings','var(--gold)'],['green','kk-b','All clear','var(--green)']]
+    .map(function(k){
+      return '<div class="kpi '+k[1]+'"><div class="kl">'+k[2]+'</div>'+
+             '<div class="kv" style="color:'+k[3]+'">'+(s[k[0]]||0)+'</div></div>';
+    }).join('');
+  var groups = {};
+  d.checks.forEach(function(c){ (groups[c.category] = groups[c.category] || []).push(c); });
+  var worst = function(list){ return Math.min.apply(null, list.map(function(c){ return _CL_ORDER[c.status]; })); };
+  var cats = Object.keys(groups).sort(function(a,b){ return worst(groups[a]) - worst(groups[b]); });
+  document.getElementById('cl-body').innerHTML = cats.map(function(cat){
+    return '<div class="card" style="margin-bottom:12px;"><div class="card-title">'+_clEsc(cat)+'</div>'+
+      _clSorted(groups[cat]).map(function(c){ return _clRow(c, false); }).join('')+'</div>';
+  }).join('') || '<div class="cl-empty">No checks apply this round.</div>';
+}
+
+function _clGoTo(page, tab) {
+  closeSubmitChecklist();
+  var navEl = document.querySelector('#team-nav .nav-item[onclick*="nav(\''+page+'\'"]');
+  if (navEl) navEl.click(); else return;
+  if (!tab) return;
+  setTimeout(function(){
+    if (page === 'engineering' && typeof engView === 'function') engView(tab);
+    else if (page === 'commercial' && typeof switchComTab === 'function') switchComTab(tab);
+    else if (page === 'operations') {
+      var t = document.querySelector('.ops-tab[onclick*="opsTab(\''+tab+'\'"]');
+      if (t) t.click();
+    }
+  }, 60);
+}
+
+function _clAck(id, on) {
+  if (on) _clAcked[id] = true; else delete _clAcked[id];
+  _clSyncSubmit();
+}
+
+function _clSyncSubmit() {
+  var reds = (_clData && _clData.checks || []).filter(function(c){ return c.status === 'red'; });
+  var open = reds.filter(function(c){ return !_clAcked[c.id]; }).length;
+  var btn = document.getElementById('clModalSubmit');
+  btn.disabled = open > 0;
+  btn.style.opacity = open > 0 ? '.45' : '';
+  document.getElementById('clModalNote').textContent = open > 0
+    ? 'Tick each red item to confirm you have reviewed it ('+open+' left).'
+    : (reds.length ? 'All red items reviewed.' : '');
+}
+
+async function openSubmitChecklist() {
+  if (submitted) { toast('Decisions already submitted for this round.'); return; }
+  if (!sessionId || !roundId || !teamId) { toast('⚠ Please join a session first.'); return; }
+  var modal = document.getElementById('clModal');
+  var body = document.getElementById('clModalBody');
+  body.innerHTML = '<div class="cl-empty">Running checks…</div>';
+  document.getElementById('clModalNote').textContent = '';
+  modal.classList.add('open');
+  var d;
+  try { d = await fetchRoundChecklist(); }
+  catch (e) {
+    // The checklist is advisory: if it cannot run, fall back to a plain confirmation.
+    modal.classList.remove('open');
+    if (confirm('The round checklist could not be loaded ('+e.message+').\n\nSubmit your decisions anyway?')) submitRound();
+    return;
+  }
+  var flagged = _clSorted(d.checks.filter(function(c){ return c.status === 'red' || c.status === 'amber'; }));
+  var s = d.summary || {};
+  body.innerHTML = flagged.length
+    ? '<div class="bc-section"><div class="bc-section-title">'+(s.red||0)+' to review · '+(s.amber||0)+' warnings · '+(s.green||0)+' clear</div>'+
+      flagged.map(function(c){ return _clRow(c, true); }).join('')+'</div>'
+    : '<div class="cl-empty" style="color:var(--green);">✓ All '+(s.green||0)+' checks are clear. Ready to submit.</div>';
+  _clSyncSubmit();
+}
+
+function closeSubmitChecklist() {
+  document.getElementById('clModal').classList.remove('open');
+  if (document.getElementById('page-checklist').classList.contains('active') && _clData) _clRenderPage(_clData);
+}
+
+function confirmSubmitChecklist() {
+  if (document.getElementById('clModalSubmit').disabled) return;
+  if (_clData) console.info('[round checklist] signed off', (_clData.round||{}).id, 'acknowledged:', Object.keys(_clAcked));
+  document.getElementById('clModal').classList.remove('open');
+  submitRound();
+}
+
 function closeRes() {
   document.getElementById('resModal').classList.remove('open');
   // Stop polling when user closes modal
@@ -12374,6 +12589,8 @@ function startRoundStatePolling() {
       if (latest.id !== roundId && latest.phase === 'decision') {
         roundId   = latest.id;
         submitted = false;
+        _clAcked  = {};
+        refreshChecklistBadge();
         updateRoundDisplay(latest);
         sessionStorage.setItem('as_roundId', roundId);
         document.getElementById('submitBtn').textContent = 'SUBMIT DECISIONS →';
