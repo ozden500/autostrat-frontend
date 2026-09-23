@@ -652,6 +652,13 @@ input[type=text]:focus,input[type=number]:focus{outline:none;border-color:var(--
   display:flex;align-items:center;justify-content:space-between;z-index:50;}
 .sb-stat{font-size:10px;color:var(--muted2);}
 .sb-stat strong{color:var(--cyan);}
+.sb-cl{font-size:10px;color:var(--muted2);}
+.sb-cl .r{color:var(--red);} .sb-cl .a{color:var(--gold);} .sb-cl .g{color:var(--green);}
+.sb-link{font-family:'DM Mono',monospace;font-size:9px;letter-spacing:1px;padding:6px 12px;border:1px solid var(--gold);
+  background:transparent;color:var(--gold);border-radius:2px;cursor:pointer;}
+.sb-link:hover{background:rgba(255,255,255,.04);}
+.sb-link.done{border-color:var(--border2);color:var(--muted2);cursor:default;}
+body.on-checklist .submit-bar{display:none;}
 .btn-d{font-family:'DM Mono',monospace;font-size:9px;letter-spacing:1px;padding:7px 14px;
   border:1px solid var(--border2);background:transparent;color:var(--muted2);border-radius:2px;cursor:pointer;}
 .btn-d:hover{border-color:var(--text);color:var(--text);}
@@ -1948,9 +1955,10 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
       <div class="pg-title" style="margin-bottom:2px;">ROUND CHECKLIST</div>
       <div class="pg-sub" id="cl-sub">What to check before you sign off this round's decisions</div>
     </div>
-    <div style="display:flex;gap:8px;">
+    <div style="display:flex;gap:8px;align-items:center;">
+      <div id="cl-note" style="font-size:10px;color:var(--muted2);"></div>
       <button class="btn-d" onclick="loadRoundChecklist()">↻ RE-CHECK</button>
-      <button class="btn-sub" id="cl-signoff-btn" onclick="openSubmitChecklist()">SIGN OFF &amp; SUBMIT →</button>
+      <button class="btn-sub" id="cl-signoff-btn" onclick="confirmSubmitChecklist()">SIGN OFF &amp; SUBMIT →</button>
     </div>
   </div>
   <div class="kpi-row" id="cl-kpis" style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:14px 0;"></div>
@@ -2569,29 +2577,11 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
 
 <!-- SUBMIT BAR -->
 <div class="submit-bar">
-  <div class="sb-stat" id="sb-stat">Auto-saved · <strong>6 / 12 teams submitted</strong> this round</div>
-  <div style="display:flex;gap:8px;">
-    <button class="btn-d" onclick="saveDraft()">SAVE DRAFT</button>
+  <div class="sb-stat" id="sb-stat">Decisions open this round</div>
+  <div style="display:flex;gap:12px;align-items:center;">
+    <span class="sb-cl" id="sb-cl"></span>
     <button class="btn-d" id="resultsBtn" onclick="openResultsModal()" style="display:none;background:var(--cyan);color:#000;font-weight:700">📊 VIEW RESULTS</button>
-    <button class="btn-sub" id="submitBtn" onclick="openSubmitChecklist()">SUBMIT DECISIONS →</button>
-  </div>
-</div>
-
-<!-- ROUND SIGN-OFF MODAL -->
-<div class="bc-modal-overlay" id="clModal" onclick="if(event.target===this)closeSubmitChecklist()">
-  <div class="bc-modal-panel" style="width:640px;">
-    <div class="bc-modal-header">
-      <div class="bc-modal-title">SIGN OFF ROUND DECISIONS</div>
-      <button class="btn-d" onclick="closeSubmitChecklist()">✕</button>
-    </div>
-    <div class="bc-modal-body" id="clModalBody"></div>
-    <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:14px 20px;border-top:1px solid var(--border);background:var(--s2);">
-      <div id="clModalNote" style="font-size:10px;color:var(--muted2);"></div>
-      <div style="display:flex;gap:8px;">
-        <button class="btn-d" style="white-space:nowrap" onclick="closeSubmitChecklist()">BACK TO DECISIONS</button>
-        <button class="btn-sub" id="clModalSubmit" style="white-space:nowrap" onclick="confirmSubmitChecklist()">SIGN OFF &amp; SUBMIT →</button>
-      </div>
-    </div>
+    <button class="sb-link" id="submitBtn" onclick="openSubmitChecklist()">REVIEW &amp; SUBMIT →</button>
   </div>
 </div>
 
@@ -2998,6 +2988,7 @@ function nav(page, el) {
   document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
   document.getElementById('page-'+page).classList.add('active');
   el.classList.add('active');
+  document.body.classList.toggle('on-checklist', page==='checklist'); // the page has its own sign-off
   if(page==='market') buildMktBars();
   if(page==='plan') loadVehiclePlan();
   if(page==='proposal') loadVehicleProposal();
@@ -12088,23 +12079,18 @@ function collectDecisions() {
 }
 
 // ══════════════════════════════════════════
-// SAVE DRAFT
-// ══════════════════════════════════════════
-async function saveDraft() {
-  if (!sessionId) { toast('Join a session first.'); return; }
-  toast('Draft saved ✓');
-}
-
-// ══════════════════════════════════════════
 // SUBMIT ROUND
 // ══════════════════════════════════════════
 async function submitRound() {
   if (submitted) return;
   if (!sessionId || !roundId || !teamId) { toast('⚠ Please join a session first.'); return; }
   const d = collectDecisions();
+  const clBtn = document.getElementById('cl-signoff-btn');
+  _clSubmitting = true;
   try {
     document.getElementById('submitBtn').textContent = 'Submitting...';
     document.getElementById('submitBtn').disabled = true;
+    if (clBtn) { clBtn.textContent = 'Submitting...'; clBtn.disabled = true; }
 
     const subRes  = await fetch(`${API_URL}/submissions?round_id=${roundId}&team_id=${teamId}`, {method:'POST'});
     const subData = await subRes.json();
@@ -12132,9 +12118,12 @@ async function submitRound() {
     _clSignoff = null;
 
     submitted = true;
+    _clSubmitting = false;
     document.getElementById('submitBtn').textContent = '✓ SUBMITTED';
     document.getElementById('submitBtn').classList.add('done');
     document.getElementById('sb-stat').innerHTML = '✓ <strong>Decisions submitted</strong> — waiting for instructor to close round';
+    _clSyncSubmit();
+    if (_clData) _clRenderPage(_clData);   // drop the ack ticks now that it is signed
     toast('Decisions submitted ✓');
     // Approval is manual — team clicks Approve on each Plan vehicle card
     // Show results button immediately so team can check anytime
@@ -12145,8 +12134,10 @@ async function submitRound() {
   } catch(err) {
     console.error(err);
     toast('⚠ Submit failed — ' + err.message);
-    document.getElementById('submitBtn').textContent = 'SUBMIT DECISIONS →';
+    document.getElementById('submitBtn').textContent = 'REVIEW & SUBMIT →';
     document.getElementById('submitBtn').disabled = false;
+    _clSubmitting = false;
+    _clSyncSubmit();
   }
 }
 // ══════════════════════════════════════════
@@ -12159,6 +12150,7 @@ async function submitRound() {
 var _clData = null;
 var _clAcked = {};           // {check_id: true} — red items acknowledged this round
 var _clSignoff = null;       // snapshot sent with the submission (round_submissions.checklist_ack)
+var _clSubmitting = false;   // submitRound() in flight — leave the sign-off button alone
 var _CL_ORDER = {red:0, amber:1, info:2, green:3};
 
 function _clEsc(s) {
@@ -12179,9 +12171,19 @@ async function fetchRoundChecklist() {
 }
 
 function _clUpdateBadge() {
+  var s = (_clData && _clData.summary) || null;
+  // Bottom strip: the checklist status on every page, pointing at the one place to sign off
+  var sb = document.getElementById('sb-cl');
+  if (sb) {
+    sb.innerHTML = !s ? '' :
+      (s.red || s.amber)
+        ? 'Checklist: '+(s.red ? '<span class="r">'+s.red+' to review</span>' : '')+
+          (s.red && s.amber ? ' · ' : '')+(s.amber ? '<span class="a">'+s.amber+' warning'+(s.amber>1?'s':'')+'</span>' : '')
+        : 'Checklist: <span class="g">all clear</span>';
+  }
+  _clSyncSubmit();
   var b = document.getElementById('nav-checklist-badge');
   if (!b) return;
-  var s = (_clData && _clData.summary) || null;
   b.classList.remove('cl-red','cl-amber','cl-green');
   if (!s) { b.style.display = 'none'; return; }
   b.style.display = '';
@@ -12192,6 +12194,7 @@ function _clUpdateBadge() {
 
 function refreshChecklistBadge() {
   if (!currentUser || currentUser.role === 'instructor') return;
+  if (document.body.classList.contains('on-checklist')) { loadRoundChecklist(); return; }
   fetchRoundChecklist().catch(function(e){ console.warn('round checklist', e); });
 }
 
@@ -12203,7 +12206,10 @@ async function loadRoundChecklist() {
     var d = await fetchRoundChecklist();
     _clRenderPage(d);
   } catch (e) {
-    body.innerHTML = '<div class="cl-empty">Could not run the checklist: '+_clEsc(e.message)+'</div>';
+    _clData = null;
+    _clSyncSubmit();
+    body.innerHTML = '<div class="cl-empty">Could not run the checklist: '+_clEsc(e.message)+
+      (submitted ? '' : '<div style="margin-top:12px;"><button class="btn-d" onclick="_clSubmitWithoutChecklist()">SUBMIT WITHOUT CHECKLIST</button></div>')+'</div>';
   }
 }
 
@@ -12240,12 +12246,11 @@ function _clRenderPage(d) {
   var cats = Object.keys(groups).sort(function(a,b){ return worst(groups[a]) - worst(groups[b]); });
   document.getElementById('cl-body').innerHTML = cats.map(function(cat){
     return '<div class="card" style="margin-bottom:12px;"><div class="card-title">'+_clEsc(cat)+'</div>'+
-      _clSorted(groups[cat]).map(function(c){ return _clRow(c, false); }).join('')+'</div>';
+      _clSorted(groups[cat]).map(function(c){ return _clRow(c, !submitted); }).join('')+'</div>';
   }).join('') || '<div class="cl-empty">No checks apply this round.</div>';
 }
 
 function _clGoTo(page, tab) {
-  closeSubmitChecklist();
   var navEl = document.querySelector('#team-nav .nav-item[onclick*="nav(\''+page+'\'"]');
   if (navEl) navEl.click(); else return;
   if (!tab) return;
@@ -12265,48 +12270,45 @@ function _clAck(id, on) {
 }
 
 function _clSyncSubmit() {
+  var btn = document.getElementById('cl-signoff-btn');
+  var note = document.getElementById('cl-note');
+  if (!btn || _clSubmitting) return;
+  if (submitted) {
+    btn.textContent = '✓ SUBMITTED'; btn.disabled = true; btn.style.opacity = '.45';
+    if (note) note.textContent = 'Decisions submitted for this round.';
+    return;
+  }
+  btn.textContent = 'SIGN OFF & SUBMIT →';
   var reds = (_clData && _clData.checks || []).filter(function(c){ return c.status === 'red'; });
   var open = reds.filter(function(c){ return !_clAcked[c.id]; }).length;
-  var btn = document.getElementById('clModalSubmit');
-  btn.disabled = open > 0;
-  btn.style.opacity = open > 0 ? '.45' : '';
-  document.getElementById('clModalNote').textContent = open > 0
+  var blocked = !_clData || open > 0;
+  btn.disabled = blocked;
+  btn.style.opacity = blocked ? '.45' : '';
+  if (note) note.textContent = !_clData ? '' : open > 0
     ? 'Tick each red item to confirm you have reviewed it ('+open+' left).'
     : (reds.length ? 'All red items reviewed.' : '');
 }
 
-async function openSubmitChecklist() {
+// Sign-off happens on the Round Checklist page only; this is kept as the one entry
+// point other pages (the bottom strip) use to get there.
+function openSubmitChecklist() {
   if (submitted) { toast('Decisions already submitted for this round.'); return; }
   if (!sessionId || !roundId || !teamId) { toast('⚠ Please join a session first.'); return; }
-  var modal = document.getElementById('clModal');
-  var body = document.getElementById('clModalBody');
-  body.innerHTML = '<div class="cl-empty">Running checks…</div>';
-  document.getElementById('clModalNote').textContent = '';
-  modal.classList.add('open');
-  var d;
-  try { d = await fetchRoundChecklist(); }
-  catch (e) {
-    // The checklist is advisory: if it cannot run, fall back to a plain confirmation.
-    modal.classList.remove('open');
-    if (confirm('The round checklist could not be loaded ('+e.message+').\n\nSubmit your decisions anyway?')) submitRound();
-    return;
-  }
-  var flagged = _clSorted(d.checks.filter(function(c){ return c.status === 'red' || c.status === 'amber'; }));
-  var s = d.summary || {};
-  body.innerHTML = flagged.length
-    ? '<div class="bc-section"><div class="bc-section-title">'+(s.red||0)+' to review · '+(s.amber||0)+' warnings · '+(s.green||0)+' clear</div>'+
-      flagged.map(function(c){ return _clRow(c, true); }).join('')+'</div>'
-    : '<div class="cl-empty" style="color:var(--green);">✓ All '+(s.green||0)+' checks are clear. Ready to submit.</div>';
-  _clSyncSubmit();
+  var navEl = document.getElementById('nav-checklist');
+  if (navEl) navEl.click();
 }
 
-function closeSubmitChecklist() {
-  document.getElementById('clModal').classList.remove('open');
-  if (document.getElementById('page-checklist').classList.contains('active') && _clData) _clRenderPage(_clData);
+// The checklist is advisory: if it cannot run, the team can still submit.
+function _clSubmitWithoutChecklist() {
+  if (submitted) return;
+  if (!confirm('The round checklist could not be loaded.\n\nSubmit your decisions anyway?')) return;
+  _clSignoff = null;
+  submitRound();
 }
 
 function confirmSubmitChecklist() {
-  if (document.getElementById('clModalSubmit').disabled) return;
+  var btn = document.getElementById('cl-signoff-btn');
+  if (submitted || (btn && btn.disabled)) return;
   _clSignoff = _clData ? {
     round_id: (_clData.round||{}).id || null,
     signed_at: new Date().toISOString(),
@@ -12316,7 +12318,6 @@ function confirmSubmitChecklist() {
     warnings: _clData.checks.filter(function(c){ return c.status === 'amber'; })
       .map(function(c){ return {id:c.id, title:c.title}; })
   } : null;
-  document.getElementById('clModal').classList.remove('open');
   submitRound();
 }
 
@@ -12617,9 +12618,10 @@ function startRoundStatePolling() {
         refreshChecklistBadge();
         updateRoundDisplay(latest);
         sessionStorage.setItem('as_roundId', roundId);
-        document.getElementById('submitBtn').textContent = 'SUBMIT DECISIONS →';
+        document.getElementById('submitBtn').textContent = 'REVIEW & SUBMIT →';
         document.getElementById('submitBtn').disabled = false;
         document.getElementById('submitBtn').classList.remove('done');
+        _clSyncSubmit();
         document.getElementById('sb-stat').innerHTML = '⚡ <strong>New round open</strong> — submit your decisions';
         // Hide results button, reset state
         const rb = document.getElementById('resultsBtn');
