@@ -12125,7 +12125,11 @@ async function submitRound() {
         body: JSON.stringify({submission_id:submissionId, ...segDec})
       });
     }
-    await fetch(`${API_URL}/submissions/${submissionId}/submit`, {method:'POST'});
+    await fetch(`${API_URL}/submissions/${submissionId}/submit`, {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify(_clSignoff ? {checklist_ack: _clSignoff} : {})
+    });
+    _clSignoff = null;
 
     submitted = true;
     document.getElementById('submitBtn').textContent = '✓ SUBMITTED';
@@ -12154,6 +12158,7 @@ async function submitRound() {
 // and the simulation fills anything a team leaves unset.
 var _clData = null;
 var _clAcked = {};           // {check_id: true} — red items acknowledged this round
+var _clSignoff = null;       // snapshot sent with the submission (round_submissions.checklist_ack)
 var _CL_ORDER = {red:0, amber:1, info:2, green:3};
 
 function _clEsc(s) {
@@ -12302,9 +12307,28 @@ function closeSubmitChecklist() {
 
 function confirmSubmitChecklist() {
   if (document.getElementById('clModalSubmit').disabled) return;
-  if (_clData) console.info('[round checklist] signed off', (_clData.round||{}).id, 'acknowledged:', Object.keys(_clAcked));
+  _clSignoff = _clData ? {
+    round_id: (_clData.round||{}).id || null,
+    signed_at: new Date().toISOString(),
+    summary: _clData.summary || {},
+    acknowledged: _clData.checks.filter(function(c){ return c.status === 'red'; })
+      .map(function(c){ return {id:c.id, title:c.title, detail:c.detail}; }),
+    warnings: _clData.checks.filter(function(c){ return c.status === 'amber'; })
+      .map(function(c){ return {id:c.id, title:c.title}; })
+  } : null;
   document.getElementById('clModal').classList.remove('open');
   submitRound();
+}
+
+// Instructor hub: one line per submitted team saying what its checklist showed at sign-off.
+function _hubChecklistLine(sub) {
+  var ck = sub && sub.checklist_ack;
+  if (!ck || !ck.summary) return '';
+  var reds = ck.acknowledged || [];
+  var tip = reds.map(function(r){ return r.title; }).join(' · ');
+  if (reds.length)
+    return '<div style="font-size:9px;color:#f87171;margin-top:3px" title="'+_clEsc(tip)+'">⚠ Signed off '+reds.length+' red item'+(reds.length>1?'s':'')+'</div>';
+  return '<div style="font-size:9px;color:#4ade80;margin-top:3px">✓ Checklist clear'+(ck.summary.amber?' · '+ck.summary.amber+' warning'+(ck.summary.amber>1?'s':''):'')+'</div>';
 }
 
 function closeRes() {
@@ -13012,6 +13036,7 @@ async function refreshInstructorHub() {
             </div>
             <div style="font-size:10px;color:${done?'#4ade80':'#fbbf24'}">${done?'Submitted':'Pending'}</div>
             <div style="font-size:9px;color:${hasV?'#2dd4bf':'#475569'};margin-top:3px">${hasV?'🚗 Vehicle ready':'— No vehicle'}</div>
+            ${_hubChecklistLine(sub)}
           </div>`;
         }).join('') +
         aiTeams.map(t => {
@@ -13814,6 +13839,7 @@ var _FIN_LINES = {
     {l:'Cost of Goods Sold',     k:'cogs_m', neg:true},
     {l:'Gross Profit',           k:'gross_profit_m', kind:'sub'},
     {l:'R&D Expense',            k:'rd_expense_m', neg:true},
+    {l:'  ↳ incl. idle engineering', k:'eng_idle_m', neg:true, optional:true},
     {l:'SG&A + Marketing',       k:'sga_m', neg:true},
     {l:'Depreciation',           k:'depreciation_total_m', neg:true},
     {l:'Supply chain & other',   k:'_pl_other', neg:true, optional:true},
