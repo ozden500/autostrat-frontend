@@ -3459,6 +3459,27 @@ function _systemLines(spec, kgScale, priceMult) {
             cost:Math.round(net*price*100)/100, proc:null, spec:false, label:''};
   });
 }
+// Bought-in ICE content the engine-core BOM lacked (2026-09-25): transmission & driveline and engine
+// ancillaries, scaled by power (and cylinders). Mirrors cost_engines._ice_system_spec().
+function _iceSystemSpec(powerHp, cylinders) {
+  var hp = Math.max(0, parseFloat(powerHp)||0), cyl = Math.max(1, parseInt(cylinders)||4);
+  return [['DRIVELINE',          45 + 0.12*hp, 12 + 0.035*hp, 'all', 'Transmission & driveline (bought-in)'],
+          ['ENGINE_ANCILLARIES', 12 + 3.5*cyl, 30 + 0.05*hp,  'all', 'Turbo, injection, ECU & ancillaries (bought-in)']];
+}
+// Bought-in electronics above a basic car: ADAS sensor suite beyond level 1, infotainment & audio beyond
+// 40/100. Convex -- zero for a basic car. Mirrors cost_engines._eands_system_spec().
+function _eandsSystemSpec(adasLevel, sensorSuite, infotainment) {
+  var adas = Math.max(0, (parseFloat(adasLevel)||0) - 1), info = Math.max(0, (parseFloat(infotainment)||0) - 40);
+  var sens = parseFloat(sensorSuite)||0, infoRaw = parseFloat(infotainment)||0;
+  return [['ADAS_SENSOR_SUITE',  1.2*adas,  150 + 2.0*sens,   'all', 'ADAS sensor suite (bought-in)'],
+          ['INFOTAINMENT_AUDIO', 0.15*info, 60 + 1.5*infoRaw, 'all', 'Infotainment & audio (bought-in)']];
+}
+// Bought-in e-drive content the motor-only BOM lacked: inverter, reduction gear, OBC, DC-DC.
+// Mirrors cost_engines._epwt_system_spec().
+function _epwtSystemSpec(powerKw) {
+  var kw = Math.max(0, parseFloat(powerKw)||0);
+  return [['EDRIVE_POWER_ELEC', 25 + 0.08*kw, 25 + 0.05*kw, 'all', 'Inverter, gearbox, OBC & DC-DC (bought-in)']];
+}
 
 var _PC = {
   VERSION: "2.2.0",
@@ -3860,8 +3881,12 @@ var _PC = {
     // Finalise mat costs
     mats.forEach(function(l){l.gross=Math.round(l.gross*100)/100;l.net=Math.round(l.net*100)/100;l.cost=Math.round(l.gross*l.price*100)/100;});
     var _chKind = pwt==='bev_only' ? 'bev' : 'ice';
+    // Comfort buys air suspension and adaptive dampers; the performance platform bigger brakes,
+    // wheels and tyres (luxury content calibration 2026-09-25). Mirrors PlatformCostEngine.
+    var _chCom = (com>1 ? com/100 : (com||0));
+    var _chMult = (1 + 1.0*Math.max(0, _chCom-0.5)/0.5) * (size==='performance' ? 1.35 : 1.0);
     _systemLines(_PC.CHASSIS_SYSTEMS.filter(function(r){return r[3]==='all'||r[3]===_chKind;}),
-                 _PC.CHASSIS_SCALE[size]||1.0, 1.0).forEach(function(l){mats.push(l);});
+                 _PC.CHASSIS_SCALE[size]||1.0, _chMult).forEach(function(l){mats.push(l);});
 
     var tm=mats.reduce(function(s,l){return s+l.cost;},0);
     var tp=procs.reduce(function(s,l){return s+l.total;},0);
@@ -4832,6 +4857,7 @@ var _ICE_PC = {
       l.net   = Math.round(l.net*100)/100;
       l.cost  = Math.round(l.gross*l.price*100)/100;
     });
+    _systemLines(_iceSystemSpec(power_hp, cylinders), 1.0, 1.0).forEach(function(l){mats.push(l);});
 
     // Step 9 — Cost build-up (identical formula to _PC)
     var tm=mats.reduce(function(s,l){return s+l.cost;},0);
@@ -5100,6 +5126,7 @@ var _EPWT_PC = {
       l.net   = Math.round(l.net*100)/100;
       l.cost  = Math.round(l.gross*l.price*100)/100;
     });
+    _systemLines(_epwtSystemSpec(power_kw), 1.0, 1.0).forEach(function(l){mats.push(l);});
 
     var tm=mats.reduce(function(s,l){return s+l.cost;},0);
     var tp=procs.reduce(function(s,l){return s+l.total;},0);
@@ -5338,7 +5365,7 @@ var _TOPHAT_PC = {
     "D_SUV":195, "E_SEDAN":220, "F_COUPE":250, "C_VAN":125,
   },
   // Body systems bought in per top hat (C_HB = reference, scaled by segment x body): [code, kg, direct €/kg].
-  // Price rises with premiumness (up to +60%). Mirrors cost_engines.TopHatCostEngine.BODY_SYSTEMS.
+  // Price rises with premiumness (up to +150%, raised from +60% 2026-09-25). Mirrors cost_engines.TopHatCostEngine.BODY_SYSTEMS.
   BODY_SYSTEMS: [
     ['HVAC_MODULE',      25, 18.0, 'all', 'HVAC module (bought-in)'],
     ['LIGHTING',         14, 32.0, 'all', 'Lighting (bought-in)'],
@@ -5493,7 +5520,7 @@ var _TOPHAT_PC = {
       l.net   = Math.round(l.net*100)/100;
       l.cost  = Math.round(l.gross*l.price*100)/100;
     });
-    _systemLines(_TOPHAT_PC.BODY_SYSTEMS, scale, 1+0.60*Math.max(0,premiumness-0.30)/0.70)
+    _systemLines(_TOPHAT_PC.BODY_SYSTEMS, scale, 1+1.50*Math.max(0,premiumness-0.30)/0.70)
       .forEach(function(l){mats.push(l);});
 
     var tm=mats.reduce(function(s,l){return s+l.cost;},0);
@@ -5815,6 +5842,8 @@ var _EANDS_PC = {
       l.net   = Math.round(l.net*100)/100;
       l.cost  = Math.round(l.gross*l.price*100)/100;
     });
+    _systemLines(_eandsSystemSpec(adas_level, sensor_suite, infotainment), 1.0, 1.0)
+      .filter(function(l){return l.net > 0;}).forEach(function(l){mats.push(l);});
 
     var tm  = mats.reduce(function(s,l){return s+l.cost;},0);
     var tp  = procs.reduce(function(s,l){return s+l.total;},0);
