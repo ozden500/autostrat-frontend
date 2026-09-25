@@ -13878,9 +13878,11 @@ var _FIN_LINES = {
   pl: [
     {l:'Revenue',                k:'net_revenue_m'},
     {l:'Cost of Goods Sold',     k:'cogs_m', neg:true},
+    {l:'Warranty',               k:'warranty_expense_m', neg:true, optional:true},
     {l:'Gross Profit',           k:'gross_profit_m', kind:'sub'},
     {l:'R&D Expense',            k:'rd_expense_m', neg:true},
     {l:'  ↳ incl. idle engineering', k:'eng_idle_m', neg:true, optional:true},
+    {l:'  ↳ incl. sustaining engineering', k:'rd_sustaining_m', neg:true, optional:true},
     {l:'SG&A',                   k:'sga_m', neg:true},
     {l:'Brand marketing',        k:'marketing_m', neg:true, optional:true},
     {l:'Depreciation',           k:'depreciation_total_m', neg:true},
@@ -20074,6 +20076,10 @@ var _MODINV_E = (function() {
   var BEV_PLATFORM_STEP = 1.15;                     // BEV-only platform vs ICE: battery-floor structure + larger
                                                     // paint cooling (~10-15% real-world line premium; McKinsey/AMS 2026)
   var MARRIAGE_INV_M = 8;                            // ICE powertrain marriage on vehicle line, @V_REF
+  // Capex re-scale (2026-09-25): the 2026-07-12 anchors (~€435 per unit of annual capacity) were 10-20x
+  // below real greenfield plants (€4-7k/unit) and supplier tooling ~3x low. Applied at the output so the
+  // tables keep their relative shape. Mirrors financial_engine._MI_PLANT_SCALE / _MI_SUPPLIER_SCALE.
+  var PLANT_SCALE = 10.0, SUPPLIER_SCALE = 3.0;
 
   // Calibrated 2026-07-12; platform base -50% & tophat base -20% (medium veh-plant ≈ €122M @280k/yr).
   var PLAT_INV = {micro:37,small:51,medium:67,large:84,frame:75,performance:98,commercial:63};
@@ -20149,7 +20155,7 @@ var _MODINV_E = (function() {
     } else if(mod==='eands'){
       return 0;                                                          // Option A: zero plant capex
     }
-    return Math.round(base * m * (AUTO_INV[al]||1.00) * capScale(capK) * 10)/10;
+    return Math.round(base * m * (AUTO_INV[al]||1.00) * capScale(capK) * PLANT_SCALE * 10)/10;
   }
 
   // Direct labour content (s/veh) for one module.
@@ -20195,15 +20201,15 @@ var _MODINV_E = (function() {
   function supplierInvestment(mod, o){
     o=o||{}; var s=o.specs||{}, al=o.automation_level||2, seg=o.segment_code||'c_segment';
     if(SUPPLIER_RATIO[mod]!=null)
-      return Math.round(investment(mod,o) * SUPPLIER_RATIO[mod] * 10)/10;
+      return Math.round(investment(mod,o) / PLANT_SCALE * SUPPLIER_RATIO[mod] * SUPPLIER_SCALE * 10)/10;
     if(mod==='battery'){
       var kwh=parseFloat(s.target_kwh)||60, chem=(s.chemistry||'NMC').toUpperCase().replace(/[^A-Z_]/g,'');
       var fullBase=(18+0.70*kwh)*(BAT_CHEM[chem]||1.00);                            // cell+pack ecosystem (make basis)
-      return Math.round(fullBase * (isBuy(s)?0.90:0.35) * (AUTO_INV[al]||1.00) * capScale(o.cap_k) * 10)/10;
+      return Math.round(fullBase * (isBuy(s)?0.90:0.35) * (AUTO_INV[al]||1.00) * capScale(o.cap_k) * SUPPLIER_SCALE * 10)/10;
     }
     if(mod==='eands'){
       var base=(TH_INV[seg]||47) * 0.28 * (1+0.30*nr(s.adas_level,1,4));            // electronics/ADAS content (plant≈0, ~90% supplier)
-      return Math.round(base * (AUTO_INV[al]||1.00) * capScale(o.cap_k) * (isBuy(s)?1.15:1.00) * 10)/10;
+      return Math.round(base * (AUTO_INV[al]||1.00) * capScale(o.cap_k) * (isBuy(s)?1.15:1.00) * SUPPLIER_SCALE * 10)/10;
     }
     return 0;
   }
