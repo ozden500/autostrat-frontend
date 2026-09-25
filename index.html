@@ -13842,7 +13842,8 @@ var _FIN_LINES = {
     {l:'Gross Profit',           k:'gross_profit_m', kind:'sub'},
     {l:'R&D Expense',            k:'rd_expense_m', neg:true},
     {l:'  ↳ incl. idle engineering', k:'eng_idle_m', neg:true, optional:true},
-    {l:'SG&A + Marketing',       k:'sga_m', neg:true},
+    {l:'SG&A',                   k:'sga_m', neg:true},
+    {l:'Brand marketing',        k:'marketing_m', neg:true, optional:true},
     {l:'Depreciation',           k:'depreciation_total_m', neg:true},
     {l:'Supply chain & other',   k:'_pl_other', neg:true, optional:true},
     {l:'EBIT',                   k:'ebit_m', kind:'tot'},
@@ -13923,7 +13924,7 @@ function switchFinTab(tab) {
 function _finPlOther(s) {
   if (!s) return 0;
   var n = function(k){ return parseFloat(s[k]) || 0; };
-  return n('gross_profit_m') - n('rd_expense_m') - n('sga_m')
+  return n('gross_profit_m') - n('rd_expense_m') - n('sga_m') - n('marketing_m')
        - n('depreciation_total_m') - n('ebit_m');
 }
 
