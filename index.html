@@ -3448,6 +3448,18 @@ function scheduleCostCalc() {
 // PLATFORM COST ENGINE v2.2.0 — Client-Side JavaScript
 // All calculation runs in browser. DB write only on module submission.
 // ════════════════════════════════════════════════════════════════════
+// Bought-in vehicle systems as material lines (margin calibration 2026-09-25). The module BOMs
+// costed only ~690 kg of a ~1,400 kg C-segment car; these add suspension, wheels, brakes, exhaust,
+// HVAC, lighting, harness... at direct cost per kg (supplier overhead + profit in _calcBomSplit
+// bring them to delivered part prices). Mirrors cost_engines._system_lines().
+function _systemLines(spec, kgScale, priceMult) {
+  return spec.map(function(r){
+    var net = Math.round(r[1]*kgScale*100)/100, price = r[2]*priceMult;
+    return {code:r[0], name:r[4]||r[0], net:net, sc:1.0, gross:net, price:price,
+            cost:Math.round(net*price*100)/100, proc:null, spec:false, label:''};
+  });
+}
+
 var _PC = {
   VERSION: "2.2.0",
   US_LABOR: 58.0, US_ELEC: 0.08,
@@ -3482,6 +3494,17 @@ var _PC = {
   RUBBER: {RUBBER_EPDM:1}, ADHESIVE: {STRUCT_ADHESIVE:1},
   PRECISION: {WELDING_MIG:1,WELDING_LASER:1,WELDING_FRICTION:1,MACHINING_CNC:1},
   BASE_RD: {micro:80,small:180,medium:280,large:380,frame:220,performance:480,commercial:200},
+  // Chassis systems bought in per platform (medium = C-segment reference): [code, kg, direct €/kg, pwt].
+  // Mirrors cost_engines.PlatformCostEngine.CHASSIS_SYSTEMS (margin calibration 2026-09-25).
+  CHASSIS_SYSTEMS: [
+    ['SUSPENSION_STEER', 115,  9.5, 'all', 'Suspension & steering (bought-in)'],
+    ['WHEELS_TYRES',      85,  6.0, 'all', 'Wheels & tyres (bought-in)'],
+    ['BRAKE_SYSTEM',      42, 10.0, 'all', 'Brake system (bought-in)'],
+    ['COOLING_MODULE',    15, 10.0, 'all', 'Cooling module (bought-in)'],
+    ['FUEL_EXHAUST',      38, 11.0, 'ice', 'Fuel & exhaust system (bought-in)'],
+    ['EV_THERMAL',        22, 16.0, 'bev', 'EV thermal system (bought-in)'],
+  ],
+  CHASSIS_SCALE: {micro:0.65,small:0.82,medium:1.00,large:1.22,frame:1.45,performance:1.40,commercial:1.35},
   RD_FTE_SHARE: 0.60,        // 60% of R&D is FTE cost
   RD_MAT_SHARE: 0.40,        // 40% of R&D is material cost
   US_FTE_RATE_MONTH: 13333,  // US fully loaded engineering FTE €160k/yr ÷ 12
@@ -3836,6 +3859,9 @@ var _PC = {
 
     // Finalise mat costs
     mats.forEach(function(l){l.gross=Math.round(l.gross*100)/100;l.net=Math.round(l.net*100)/100;l.cost=Math.round(l.gross*l.price*100)/100;});
+    var _chKind = pwt==='bev_only' ? 'bev' : 'ice';
+    _systemLines(_PC.CHASSIS_SYSTEMS.filter(function(r){return r[3]==='all'||r[3]===_chKind;}),
+                 _PC.CHASSIS_SCALE[size]||1.0, 1.0).forEach(function(l){mats.push(l);});
 
     var tm=mats.reduce(function(s,l){return s+l.cost;},0);
     var tp=procs.reduce(function(s,l){return s+l.total;},0);
@@ -5311,6 +5337,17 @@ var _TOPHAT_PC = {
     "A_HB":85,  "B_HB":110, "C_HB":140, "C_SUV":155,
     "D_SUV":195, "E_SEDAN":220, "F_COUPE":250, "C_VAN":125,
   },
+  // Body systems bought in per top hat (C_HB = reference, scaled by segment x body): [code, kg, direct €/kg].
+  // Price rises with premiumness (up to +60%). Mirrors cost_engines.TopHatCostEngine.BODY_SYSTEMS.
+  BODY_SYSTEMS: [
+    ['HVAC_MODULE',      25, 18.0, 'all', 'HVAC module (bought-in)'],
+    ['LIGHTING',         14, 32.0, 'all', 'Lighting (bought-in)'],
+    ['BUMPER_FASCIA',    22, 13.0, 'all', 'Bumpers & fascias (bought-in)'],
+    ['WIRING_HARNESS',   28, 19.0, 'all', 'Wiring harness (bought-in)'],
+    ['PAINT_MATERIAL',   12, 16.0, 'all', 'Paint materials (bought-in)'],
+    ['INTERIOR_MODULES', 55,  9.0, 'all', 'Interior modules (bought-in)'],
+    ['ELEC_ANCILLARY',   22, 12.0, 'all', '12V & electrical ancillaries (bought-in)'],
+  ],
   scrap: function(code, proc) {
     var m = this.MAT[code]; if (!m) return 1.05;
     if (proc.indexOf('STAMP')>=0) return m.sc;
@@ -5456,6 +5493,8 @@ var _TOPHAT_PC = {
       l.net   = Math.round(l.net*100)/100;
       l.cost  = Math.round(l.gross*l.price*100)/100;
     });
+    _systemLines(_TOPHAT_PC.BODY_SYSTEMS, scale, 1+0.60*Math.max(0,premiumness-0.30)/0.70)
+      .forEach(function(l){mats.push(l);});
 
     var tm=mats.reduce(function(s,l){return s+l.cost;},0);
     var tp=procs.reduce(function(s,l){return s+l.total;},0);
@@ -8816,7 +8855,7 @@ function buildBusinessCase(v, tpcStr, hasModules, isApproved) {
     f_segment:90,mpv:32,pickup:45,sports:55,c_van:28,d_van:40,e_van:55};
   var priceK   = segPrice[v.segment_code] || 25;
   var unitsQ   = 8000;
-  var revM     = Math.round(unitsQ * priceK * 1000 / 1e6);
+  var revM     = Math.round(unitsQ * priceK * 1000 * OEM_NET_REVENUE_SHARE / 1e6);
   var cogsM    = tpcNum > 0 ? Math.round(unitsQ * tpcNum / 1e6) : Math.round(revM * 0.72);
   var gpM      = revM - cogsM;
   var gpPct    = revM > 0 ? Math.round(gpM/revM*100) : 0;
@@ -9598,7 +9637,7 @@ function recalcBC() {
   var totalInvM = rdM + extraCap;
 
   // P&L per quarter
-  var priceEur  = priceK * 1000;
+  var priceEur  = priceK * 1000 * OEM_NET_REVENUE_SHARE;   // OEM revenue per unit, not MSRP
   var taxRate   = 0.25;
   var sgaPct    = 0.06;
   var rdPct     = 0.04; // ongoing R&D as % revenue
@@ -9891,7 +9930,7 @@ function _quickNPV(v) {
     f_segment:90,mpv:32,pickup:45,sports:55,c_van:28,d_van:40,e_van:55};
   var priceK  = segPrice[v.segment_code] || 25;
   var units   = 8000;
-  var revM    = units * priceK * 1000 / 1e6;
+  var revM    = units * priceK * 1000 * OEM_NET_REVENUE_SHARE / 1e6;
   var cogsM   = tpcNum > 0 ? units * tpcNum / 1e6 : revM * 0.72;
   var gpM     = revM - cogsM;
   var sgaM    = revM * 0.06;
@@ -9912,7 +9951,7 @@ function _quickGM(v) {
   var segPrice = {a_segment:12,b_segment:18,c_segment:26,d_segment:38,e_segment:55,
     f_segment:90,mpv:32,pickup:45,sports:55,c_van:28,d_van:40,e_van:55};
   var priceK  = segPrice[v.segment_code] || 25;
-  var priceEur = priceK * 1000;
+  var priceEur = priceK * 1000 * OEM_NET_REVENUE_SHARE;
   if (!tpcNum || !priceEur) return null;
   return Math.round((priceEur - tpcNum) / priceEur * 100);
 }
@@ -19405,6 +19444,14 @@ function _computeModDmpMake(mod) {
 
 // _prop.commercial = { years: [{year, price, volume, discount}], markets: [{region, vol_pct, price_idx, selected}] }
 
+// Revenue calibration (2026-09-25): msrp_eur_k is the consumer price. The OEM books it net of
+// VAT (~20%) and the dealer margin (~12%): 1/1.20 x 0.88 = 0.73. Mirrors financial_engine.
+// OEM_NET_REVENUE_SHARE, which market clearing applies to every unit sold.
+var OEM_NET_REVENUE_SHARE = 0.73;
+function _oemUnitRev(msrpK, discPct) {
+  return (parseFloat(msrpK)||0) * 1000 * OEM_NET_REVENUE_SHARE * (1 - (parseFloat(discPct)||0)/100);
+}
+
 var SALES_MARKETS = [
   {region:'EU',   label:'Europe',               seg_size_mult:1.00, default_price_idx:1.00, default_vol_pct:60},
   {region:'NA',   label:'North America',         seg_size_mult:0.85, default_price_idx:1.05, default_vol_pct:25},
@@ -19618,7 +19665,7 @@ function buildCommercialSection() {
       ['Year','Discount %','Volume','Net Rev/unit','Total Cost/unit','Var Margin/unit','Revenue (€M)','Cost (€M)','Gross Contrib (€M)'].forEach(function(h){html+='<th style="font-family:DM Mono,monospace;font-size:8px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);padding:6px 10px;background:var(--s2);border-bottom:1px solid var(--border);text-align:center;">'+h+'</th>';});
       html+='</tr></thead><tbody>';
       (mkt.years||[]).forEach(function(yr,i){
-        var netRev=(mkt.msrp_eur_k||defPK)*1000*(1-yr.discount/100);
+        var netRev=_oemUnitRev((mkt.msrp_eur_k||defPK), yr.discount);
         var tE=netRev*lo.t, totalCost=landedX+tE, margin=netRev-totalCost;
         var revM=netRev*yr.volume/1e6, costM=totalCost*yr.volume/1e6, gc=revM-costM;
         var bg=gc<=0&&yr.volume>0?'background:rgba(220,50,50,0.08);':'';
@@ -19639,7 +19686,7 @@ function buildCommercialSection() {
       var totV=(mkt.years||[]).reduce(function(s,yr){return s+yr.volume;},0);
       var totRevM=0, totCostM=0;
       (mkt.years||[]).forEach(function(yr){
-        var n=(mkt.msrp_eur_k||defPK)*1000*(1-yr.discount/100);
+        var n=_oemUnitRev((mkt.msrp_eur_k||defPK), yr.discount);
         var t=n*lo.t, tc=landedX+t;
         totRevM+=n*yr.volume/1e6; totCostM+=tc*yr.volume/1e6;
       });
@@ -19707,7 +19754,7 @@ function _refreshMarketRows(region){
   var baseC=_computeUnitEconCost(plant).baseC;
   var lX=baseC+lo.l, totV=0, totRevM=0, totCostM=0;
   (mkt.years||[]).forEach(function(yr,i){
-    var nR=mkt.msrp_eur_k*1000*(1-yr.discount/100), tE=nR*lo.t, totalCost=lX+tE, m=nR-totalCost;
+    var nR=_oemUnitRev(mkt.msrp_eur_k, yr.discount), tE=nR*lo.t, totalCost=lX+tE, m=nR-totalCost;
     var revM=nR*yr.volume/1e6, costM=totalCost*yr.volume/1e6, gc=revM-costM;
     totV+=yr.volume; totRevM+=revM; totCostM+=costM;
     var rEl=document.getElementById('prop-com-'+region+'-yr-'+i+'-row');
@@ -19741,7 +19788,7 @@ function renderComValidation(){
     var baseC=_computeUnitEconCost(plant).baseC;
     var lX=baseC+lo.l;
     (mkt.years||[]).forEach(function(yr,i){
-      var nR=mkt.msrp_eur_k*1000*(1-yr.discount/100);
+      var nR=_oemUnitRev(mkt.msrp_eur_k, yr.discount);
       var gc=(nR-(lX+nR*lo.t))*yr.volume/1e6;
       if(gc<=0&&yr.volume>0)neg.push(mkt.region+' '+yr.year);
     });
@@ -23308,7 +23355,7 @@ async function advanceToBizCase() {
     var lo=plant?(((MARKET_LOGISTICS_COST[plant.region]||{})[mkt.region])||{l:200,t:0}):{l:200,t:0};
     var baseC=_computeUnitEconCost(plant).baseC;
     (mkt.years||[]).forEach(function(yr){
-      var nR=mkt.msrp_eur_k*1000*(1-yr.discount/100);
+      var nR=_oemUnitRev(mkt.msrp_eur_k, yr.discount);
       var gc=(nR-(baseC+lo.l+nR*lo.t))*yr.volume/1e6;
       if(gc<=0&&yr.volume>0)_negL.push(mkt.region+' '+yr.year);
     });
@@ -23397,7 +23444,7 @@ function calcPropBizCase() {
           var mfr=plant?plant._manuf:_m;
           if(!mfr)return;
           var uQ=Math.round(yd.volume/4);
-          var nR=(mkt.msrp_eur_k||0)*1000*(1-yd.discount/100);
+          var nR=_oemUnitRev((mkt.msrp_eur_k||0), yd.discount);
           var lo=plant?(((MARKET_LOGISTICS_COST[plant.region]||{})[mkt.region])||{l:200,t:0}):{l:200,t:0};
           var landed=tpcNum+_srcAdj+mfr.buy_cost_adj+_manufVarDelta(mfr)+lo.l+nR*lo.t;
           revM+=uQ*nR/1e6; cogsM+=uQ*landed/1e6;
@@ -23473,7 +23520,7 @@ function calcPropBizCase() {
     var mfr=plant?plant._manuf:_m;
     var baseC=tpcNum+_srcAdj+(mfr?mfr.buy_cost_adj:0)+_manufVarDelta(mfr);
     var avgDisc=(mkt.years||[]).reduce(function(s,y){return s+y.discount;},0)/Math.max(1,(mkt.years||[]).length);
-    var nR=(mkt.msrp_eur_k||0)*1000*(1-avgDisc/100);
+    var nR=_oemUnitRev((mkt.msrp_eur_k||0), avgDisc);
     var tE=nR*lo.t, lnd=baseC+lo.l+tE, mg=nR-lnd;
     var totV=(mkt.years||[]).reduce(function(s,y){return s+y.volume;},0);
     return {region:mkt.region,msrp:mkt.msrp_eur_k,disc:avgDisc,netRev:nR,
