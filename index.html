@@ -6949,9 +6949,9 @@ var _MKTNET_E = {
 var _OVERHEAD_E = {
   FIXED_M: 200.0, PER_COUNTRY_M: 4.0, PER_MODEL_M: 10.0, PER_SITE_M: 20.0, VAR_PCT: 0.025,
   LEVELS: {
-    lean:     {cost: 0.85, appeal: 0.97, label: 'Lean'},
-    standard: {cost: 1.00, appeal: 1.00, label: 'Standard'},
-    generous: {cost: 1.15, appeal: 1.03, label: 'Generous'}
+    lean:     {cost: 0.85, appeal: 0.97, price: 0.995,  label: 'Lean'},
+    standard: {cost: 1.00, appeal: 1.00, price: 1.000,  label: 'Standard'},
+    generous: {cost: 1.15, appeal: 1.03, price: 1.0025, label: 'Generous'}
   },
   EFF_SAVING: 0.10, EFF_RAMP_Q: 4, EFF_COST_MULT: 0.60, EFF_MAX_SAVING: 0.20, EFF_COOLDOWN_Q: 8,
   policy: function(rows, qabs) {
@@ -6987,6 +6987,14 @@ var _OVERHEAD_E = {
   },
   appeal: function(level) {
     return (_OVERHEAD_E.LEVELS[level || 'standard'] || _OVERHEAD_E.LEVELS.standard).appeal;
+  },
+  price: function(level) {
+    return (_OVERHEAD_E.LEVELS[level || 'standard'] || _OVERHEAD_E.LEVELS.standard).price;
+  },
+  // financial_engine.discount_with_staffing_m: planned discount + the level's leakage / premium
+  discountM: function(grossM, discountPct, level) {
+    var planned = grossM * (parseFloat(discountPct) || 0) / 100;
+    return Math.round((planned + (grossM - planned) * (1 - _OVERHEAD_E.price(level))) * 1e4) / 1e4;
   },
   // What one more model adds to the head office in a quarter: its own admin plus the
   // volume-linked share of its revenue (standard staffing). The §10 business case and the
@@ -14751,9 +14759,9 @@ function _ovhRender() {
 
   // Staffing level
   var effect = {
-    lean:     'overhead −15% · thinner dealer &amp; customer support: your cars are ~3% less attractive',
-    standard: 'the industry norm · no effect on demand',
-    generous: 'overhead +15% · stronger dealer &amp; customer support: your cars are ~3% more attractive'
+    lean:     'overhead −15% · thinner pricing &amp; dealer support: 0.5% more discount leaks on every car, and your cars are ~3% less attractive',
+    standard: 'the industry norm · no effect on price or demand',
+    generous: 'overhead +15% · stronger pricing &amp; dealer support: +0.25% realised price on every car, and your cars are ~3% more attractive'
   };
   h += head('STAFFING LEVEL', 'applies from this quarter and carries forward until changed');
   h += '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:6px;">';
@@ -14770,7 +14778,7 @@ function _ovhRender() {
          '<div style="font-size:9px;color:var(--muted2);margin-top:3px;line-height:1.4;">' + effect[lv] + '</div></div>';
   });
   h += '</div>';
-  h += '<div style="font-size:9px;color:var(--muted);margin-bottom:14px;">Rule of thumb: lean pays when your gross margin is below ~30% (volume cars), generous when it is above (premium).</div>';
+  h += '<div style="font-size:9px;color:var(--muted);margin-bottom:14px;">Rule of thumb: lean saves money only where overhead is large next to revenue and demand is not the constraint; generous pays for high-margin cars that can meet their extra demand.</div>';
 
   // Efficiency programme
   var launchCost = E.cost(dr, rev, pol.level, pol.saving_pct, true).programme_m;
