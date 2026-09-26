@@ -24469,9 +24469,12 @@ async function loadMarketsTab() {
   if (!el) return;
   if (!_mktTab.data) el.innerHTML = '<div style="color:var(--muted2);font-family:DM Mono,monospace;font-size:11px;padding:16px 0;">Loading…</div>';
   try {
+    var movesP = fetch(API_URL + '/sessions/' + sessionId + '/market-moves?team_id=' + teamId)
+      .then(function(r){ return r.ok ? r.json() : {moves: []}; }).catch(function(){ return {moves: []}; });
     var res = await fetch(API_URL + '/sessions/' + sessionId + '/teams/' + teamId + '/markets');
     if (!res.ok) throw new Error('HTTP ' + res.status);
     _mktTab.data = await res.json();
+    _mktTab.moves = (await movesP).moves || [];
     _renderMarketsTab();
   } catch (e) {
     el.innerHTML = '<div style="color:var(--red);font-family:DM Mono,monospace;font-size:11px;padding:16px 0;">Failed to load markets: ' + e.message + '</div>';
@@ -24528,7 +24531,11 @@ function _renderMarketsTab() {
     + '<span style="display:inline-flex;align-items:center;gap:6px;">0%<span style="display:inline-block;width:120px;height:8px;background:linear-gradient(90deg,#123a3c,#32ccc0,#dcfffa);"></span>90%+</span>'
     + '<span><span style="display:inline-block;width:10px;height:8px;background:#1a2030;border:1px solid var(--border2);vertical-align:middle;"></span> not entered</span>'
     + '<span><span style="display:inline-block;width:10px;height:8px;background:#123a3c;border:1px solid #c8a43c;vertical-align:middle;"></span> entering</span>'
-    + '<span>Smaller countries are shaded with their "Rest of" market. Click a country to jump to its row.</span></div>';
+    + '<span><span style="color:#4ade80;">▲</span> AI entered · <span style="color:#f87171;">▼</span> AI exited (last 4 quarters) '
+    + '<label style="cursor:pointer;"><input type="checkbox" ' + (_mktTab.hideMoves ? '' : 'checked ')
+    + 'onchange="_mktTab.hideMoves=!this.checked;_renderMarketsTab()" style="vertical-align:middle;"> show</label></span>'
+    + '<span>Smaller countries are shaded with their "Rest of" market. Click a country to jump to its row.</span></div>'
+    + _mktMovesList();
   h += '<div style="font-size:11px;color:var(--muted2);margin-bottom:12px;' + mono + 'line-height:1.6;">'
     + 'Your team sells a vehicle only in countries where it has a sales network, inside the regions the vehicle\'s commercial plan selects. '
     + 'Entering costs a one-off fee and sales start ' + _MKTNET_E.ENTRY_LEAD_Q + ' quarters later. The network costs at least the country minimum every quarter. '
@@ -24707,6 +24714,77 @@ function _drawMarketsMap() {
       var c = byCode[f.properties.mkt]; if (!c) return;
       _mktTab.openReg[c.region] = true; _mktTab.focus = c.code; _renderMarketsTab();
     });
+  if (!_mktTab.hideMoves) _drawMarketMoves(svg, path, tip, host, byCode);
+}
+
+// AI entries (green ▲) and exits (red ▼) over the last 4 cleared quarters, one marker
+// per market and direction, at the market's anchor point (the country itself, or the
+// largest country of a "Rest of" bucket). Hover lists who moved and when.
+function _drawMarketMoves(svg, path, tip, host, byCode) {
+  var moves = _mktTab.moves || [];
+  if (!moves.length || !_mktMap.world) return;
+  if (!_mktMap.anchor) {
+    var best = {};
+    _mktMap.world.features.forEach(function(f) {
+      var k = f.properties.mkt, a = d3.geoArea(f);
+      if (!best[k] || a > best[k].a) best[k] = {a: a, f: f};
+    });
+    _mktMap.anchor = {};
+    Object.keys(best).forEach(function(k){ _mktMap.anchor[k] = d3.geoCentroid(best[k].f); });
+  }
+  var groups = {};
+  moves.forEach(function(m) {
+    var k = m.country_code + '|' + m.action;
+    (groups[k] = groups[k] || {cc: m.country_code, action: m.action, list: []}).list.push(m);
+  });
+  var proj = path.projection();
+  var g = svg.append('g');
+  Object.keys(groups).forEach(function(k) {
+    var gr = groups[k], ll = _mktMap.anchor[gr.cc];
+    if (!ll) return;
+    var p = proj(ll); if (!p) return;
+    var dx = gr.action === 'enter' ? -6 : 6;          // both kinds in one market sit side by side
+    var up = gr.action === 'enter';
+    var x = p[0] + dx, y = p[1];
+    var tri = up ? [[x, y - 6], [x - 5.5, y + 4], [x + 5.5, y + 4]] : [[x, y + 6], [x - 5.5, y - 4], [x + 5.5, y - 4]];
+    var mk = g.append('g').style('cursor', 'pointer');
+    mk.append('polygon').attr('points', tri.map(function(t){ return t.join(','); }).join(' '))
+      .attr('fill', up ? '#4ade80' : '#f87171').attr('stroke', '#07080d').attr('stroke-width', 1);
+    if (gr.list.length > 1)
+      mk.append('text').attr('x', x + 7).attr('y', y + 3).text(gr.list.length)
+        .attr('fill', '#e6edf3').style('font-family', 'DM Mono,monospace').style('font-size', '9px');
+    mk.on('mousemove', function(ev) {
+        var c = byCode[gr.cc] || {label: gr.cc};
+        var r = host.getBoundingClientRect();
+        tip.style('display', 'block').html('<b>' + c.label + '</b> · AI ' + (up ? 'entries' : 'exits') + '<br>'
+          + gr.list.map(function(m){ return '<span style="color:' + (m.color || 'var(--text)') + '">■</span> '
+              + m.team + ' · ' + m.label + (m.cost_m ? ' · €' + m.cost_m + 'M' : ''); }).join('<br>'))
+          .style('left', (ev.clientX - r.left + 12) + 'px').style('top', (ev.clientY - r.top + 12) + 'px');
+      })
+      .on('mouseleave', function(){ tip.style('display', 'none'); })
+      .on('click', function() {
+        var c = byCode[gr.cc]; if (!c) return;
+        _mktTab.openReg[c.region] = true; _mktTab.focus = c.code; _renderMarketsTab();
+      });
+  });
+}
+
+// The same moves as text under the map (and the only view if the map cannot load).
+function _mktMovesList() {
+  var moves = _mktTab.moves || [];
+  var mono = 'font-family:DM Mono,monospace;';
+  if (!moves.length)
+    return '<div style="' + mono + 'font-size:10px;color:var(--muted);margin:-8px 0 14px;">No AI market entries or exits in the last 4 quarters.</div>';
+  var byC = {};
+  (_mktTab.data && _mktTab.data.countries || []).forEach(function(c){ byC[c.code] = c.label; });
+  var h = '<div style="' + mono + 'font-size:10px;color:var(--muted2);margin:-8px 0 14px;line-height:1.7;">Recent AI moves: ';
+  h += moves.slice(0, 12).map(function(m) {
+    return '<span style="white-space:nowrap;"><span style="color:' + (m.action === 'enter' ? '#4ade80' : '#f87171') + '">'
+      + (m.action === 'enter' ? '▲' : '▼') + '</span> ' + m.team + ' ' + (m.action === 'enter' ? 'entered ' : 'left ')
+      + (byC[m.country_code] || m.country_code) + ' (' + m.label + ')</span>';
+  }).join(' · ');
+  if (moves.length > 12) h += ' · +' + (moves.length - 12) + ' more (hover the map)';
+  return h + '</div>';
 }
 
 function _mktLabel(qabs) { return (2025 + Math.floor(qabs / 4)) + ' Q' + (((qabs % 4) + 4) % 4 + 1); }
