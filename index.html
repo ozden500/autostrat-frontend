@@ -1346,6 +1346,14 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
     </div>
     <div id="fin-stmt-note" style="margin-top:10px;font-family:DM Mono,monospace;font-size:9px;color:var(--muted);display:none;"></div>
   </div>
+  <!-- Head-office overhead (SG&A) decisions -->
+  <div class="card" id="fin-overhead-panel" style="margin-top:12px;">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+      <div class="card-title" style="margin:0"><span class="tag tf">HEAD OFFICE</span> Overhead (SG&amp;A)</div>
+      <button onclick="loadOverheadPanel()" style="background:none;border:1px solid var(--border);color:var(--muted2);font-family:DM Mono,monospace;font-size:9px;padding:3px 10px;border-radius:4px;cursor:pointer;">↻ Refresh</button>
+    </div>
+    <div id="fin-overhead-body" style="font-family:DM Mono,monospace;font-size:10px;color:var(--muted2);">Loading…</div>
+  </div>
   <!-- Finance & Capital Management Panel -->
   <div class="card" id="fin-capital-panel" style="margin-top:12px;">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
@@ -6925,6 +6933,60 @@ var _MKTNET_E = {
   }
 };
 
+// Head-office overhead (SG&A), 2026-09-26. Verbatim mirror of financial_engine's GA_* constants,
+// overhead_policy / overhead_cost_m / overhead_appeal (parity-checked by
+// tools/engine_parity_check.py). SG&A = base + countries + models on sale + assembly countries
+// + a volume-linked share, x the staffing level, less efficiency-programme savings.
+var _OVERHEAD_E = {
+  FIXED_M: 200.0, PER_COUNTRY_M: 4.0, PER_MODEL_M: 10.0, PER_SITE_M: 20.0, VAR_PCT: 0.025,
+  LEVELS: {
+    lean:     {cost: 0.85, appeal: 0.97, label: 'Lean'},
+    standard: {cost: 1.00, appeal: 1.00, label: 'Standard'},
+    generous: {cost: 1.15, appeal: 1.03, label: 'Generous'}
+  },
+  EFF_SAVING: 0.10, EFF_RAMP_Q: 4, EFF_COST_MULT: 0.60, EFF_MAX_SAVING: 0.20, EFF_COOLDOWN_Q: 8,
+  policy: function(rows, qabs) {
+    var level = 'standard', levelQ = -1, launches = [];
+    (rows || []).forEach(function(r) {
+      var q = (r.qabs === null || r.qabs === undefined) ? 1e6 : parseInt(r.qabs, 10);
+      if (q > qabs) return;
+      if (_OVERHEAD_E.LEVELS[r.staffing_level] && q >= levelQ) { level = r.staffing_level; levelQ = q; }
+      if (r.launch_programme) launches.push(q);
+    });
+    launches.sort(function(a, b) { return a - b; });
+    var saving = 0;
+    launches.forEach(function(L) { saving += _OVERHEAD_E.EFF_SAVING * Math.min(1, (qabs - L) / _OVERHEAD_E.EFF_RAMP_Q); });
+    return {level: level, launches: launches, launch_now: launches.indexOf(qabs) >= 0,
+            saving_pct: Math.round(Math.min(_OVERHEAD_E.EFF_MAX_SAVING, saving) * 1e6) / 1e6};
+  },
+  cost: function(drivers, revM, level, savingPct, launchNow) {
+    var d = drivers || {};
+    var base = _OVERHEAD_E.FIXED_M;
+    var cplx = (parseInt(d.countries || 0, 10)) * _OVERHEAD_E.PER_COUNTRY_M
+             + (parseInt(d.models || 0, 10)) * _OVERHEAD_E.PER_MODEL_M
+             + (parseInt(d.sites || 0, 10)) * _OVERHEAD_E.PER_SITE_M;
+    var v = _OVERHEAD_E.VAR_PCT * Math.max(0, parseFloat(revM || 0));
+    var gross = base + cplx + v;
+    var lvl = (_OVERHEAD_E.LEVELS[level] || _OVERHEAD_E.LEVELS.standard).cost;
+    var before = gross * lvl;
+    var savings = before * Math.max(0, Math.min(_OVERHEAD_E.EFF_MAX_SAVING, parseFloat(savingPct || 0)));
+    var prog = launchNow ? before * _OVERHEAD_E.EFF_COST_MULT : 0;
+    var r4 = function(x) { return Math.round(x * 1e4) / 1e4; };
+    return {base_m: r4(base), complexity_m: r4(cplx), variable_m: r4(v),
+            level_adj_m: r4(gross * (lvl - 1)), savings_m: r4(savings),
+            programme_m: r4(prog), total_m: r4(before - savings + prog)};
+  },
+  appeal: function(level) {
+    return (_OVERHEAD_E.LEVELS[level || 'standard'] || _OVERHEAD_E.LEVELS.standard).appeal;
+  },
+  // What one more model adds to the head office in a quarter: its own admin plus the
+  // volume-linked share of its revenue (standard staffing). The §10 business case and the
+  // quick NPV charge this instead of a % of revenue.
+  modelIncrementM: function(revM) {
+    return _OVERHEAD_E.PER_MODEL_M + _OVERHEAD_E.VAR_PCT * Math.max(0, parseFloat(revM || 0));
+  }
+};
+
 var _MARKET_E = {
   VERSION: "1.0.0",
 
@@ -9784,10 +9846,9 @@ function recalcBC() {
   // P&L per quarter
   var priceEur  = priceK * 1000 * OEM_NET_REVENUE_SHARE;   // OEM revenue per unit, not MSRP
   var taxRate   = 0.25;
-  var sgaPct    = 0.06;
   var rdPct     = 0.04; // ongoing R&D as % revenue
   var fcfCurve  = [];
-  var revCurve  = [], cogsCurve = [], gpCurve = [], ebitCurve = [], fcfRaw = [];
+  var revCurve  = [], cogsCurve = [], gpCurve = [], ebitCurve = [], fcfRaw = [], sgaCurve = [];
   var cumFCF    = 0;
   var paybackQ  = null;
   var cumStart  = -totalInvM;
@@ -9797,13 +9858,14 @@ function recalcBC() {
     var rev    = units * priceEur / 1e6;
     var cogs   = tpcNum > 0 ? units * tpcNum / 1e6 : rev * 0.72;
     var gp     = rev - cogs;
-    var sga    = rev * sgaPct;
+    var sga    = units > 0 ? _OVERHEAD_E.modelIncrementM(rev) : 0;   // head office this model adds
     var rd     = rev * rdPct;
     var ebit   = gp - sga - rd;
     var tax    = Math.max(ebit * taxRate, 0);
     var fcf    = ebit - tax;
 
     revCurve.push(rev);
+    sgaCurve.push(sga);
     cogsCurve.push(cogs);
     gpCurve.push(gp);
     ebitCurve.push(ebit);
@@ -9824,7 +9886,8 @@ function recalcBC() {
   var avgRev   = revCurve.reduce(function(a,b){return a+b;},0)/lifeQ;
   var avgCogs  = cogsCurve.reduce(function(a,b){return a+b;},0)/lifeQ;
   var avgGP    = gpCurve.reduce(function(a,b){return a+b;},0)/lifeQ;
-  var avgSGA   = avgRev * sgaPct;
+  var totSGA   = sgaCurve.reduce(function(a,b){return a+b;},0);
+  var avgSGA   = totSGA/lifeQ;
   var avgRD    = avgRev * rdPct;
   var avgEBIT  = ebitCurve.reduce(function(a,b){return a+b;},0)/lifeQ;
   var avgTax   = Math.max(avgEBIT*taxRate, 0);
@@ -9864,7 +9927,7 @@ function recalcBC() {
     ['Revenue', '€'+Math.round(priceEur/1000)+'k ASP', fm(avgRev), fm(totalRev), false],
     ['— COGS (Unit TPC × units)', tpcStr, fm(-avgCogs), fm(-revCurve.reduce(function(a,b){return a+b;},0)*avgCogs/avgRev), true],
     ['Gross Profit', '€'+Math.round((priceEur-tpcNum)/1000,1)+'k/unit', fm(avgGP), fm(totalRev-revCurve.reduce(function(a,b){return a+b;},0)*(1-avgGPPct/100)), false, 'subtotal'],
-    ['— SG&A / Marketing (6%)', '', fm(-avgSGA), fm(-totalRev*sgaPct), true],
+    ['— Head-office overhead', '€'+_OVERHEAD_E.PER_MODEL_M+'M/qtr + '+(_OVERHEAD_E.VAR_PCT*100).toFixed(1)+'%', fm(-avgSGA), fm(-totSGA), true],
     ['— Ongoing R&D (4%)', '', fm(-avgRD), fm(-totalRev*rdPct), true],
     ['EBIT', '', fm(avgEBIT), fm(totalFCF/(1-taxRate)*avgEBITPct/100), false, avgEBITPct>0?'subtotal':'neg subtotal'],
     ['— Tax (25%)', '', fm(-avgTax), fm(-Math.max(totalFCF/(1-taxRate)*avgEBITPct/100*taxRate,0)), true],
@@ -10078,7 +10141,7 @@ function _quickNPV(v) {
   var revM    = units * priceK * 1000 * OEM_NET_REVENUE_SHARE / 1e6;
   var cogsM   = tpcNum > 0 ? units * tpcNum / 1e6 : revM * 0.72;
   var gpM     = revM - cogsM;
-  var sgaM    = revM * 0.06;
+  var sgaM    = _OVERHEAD_E.modelIncrementM(revM);   // head office this model adds
   var rdM     = revM * 0.04;
   var fcfM    = (gpM - sgaM - rdM) * 0.75; // after 25% tax
   var sopQ = (v.start_year && v.start_quarter) ? (v.start_year-2025)*4+v.start_quarter-1 : 4;
@@ -14079,7 +14142,13 @@ var _FIN_LINES = {
     {l:'R&D Expense',            k:'rd_expense_m', neg:true},
     {l:'  ↳ incl. idle engineering', k:'eng_idle_m', neg:true, optional:true},
     {l:'  ↳ incl. sustaining engineering', k:'rd_sustaining_m', neg:true, optional:true},
-    {l:'SG&A',                   k:'sga_m', neg:true},
+    {l:'SG&A (head-office overhead)', k:'sga_m', neg:true},
+    {l:'  ↳ running the company',        k:'ga_base_m', neg:true, optional:true},
+    {l:'  ↳ countries, models, plants',  k:'ga_complexity_m', neg:true, optional:true},
+    {l:'  ↳ volume-linked admin',        k:'ga_variable_m', neg:true, optional:true},
+    {l:'  ↳ staffing level',             k:'ga_level_adj_m', neg:true, optional:true},
+    {l:'  ↳ efficiency savings',         k:'ga_savings_m', optional:true},
+    {l:'  ↳ efficiency programme (one-off)', k:'ga_programme_m', neg:true, optional:true},
     {l:'Brand marketing',        k:'marketing_m', neg:true, optional:true},
     {l:'Sales network',          k:'sales_network_m', neg:true, optional:true},
     {l:'Market entry / exit',    k:'market_entry_m', neg:true, optional:true},
@@ -14279,6 +14348,7 @@ function renderFinStatement() {
 
 async function loadFinancePanel() {
   if (!sessionId || !teamId) return;
+  loadOverheadPanel();
   try {
     var res = await fetch(API_URL + '/sessions/' + sessionId + '/financial-statements');
     if (!res.ok) return;
@@ -14367,6 +14437,134 @@ async function loadFinancePanel() {
       if (badge) badge.style.display = pending.length ? 'block' : 'none';
     }
   } catch(e) { console.warn('loadFinancePanel:', e); }
+}
+
+// ── Head-office overhead (SG&A) panel ─────────────────────────────
+// GET/PUT /sessions/{sid}/teams/{tid}/overhead. The server derives drivers, policy and cost
+// (financial_engine.team_overhead); this panel only renders them and sends decisions.
+var _ovhPanel = {data: null, busy: false};
+
+async function loadOverheadPanel() {
+  if (!sessionId || !teamId) return;
+  var body = document.getElementById('fin-overhead-body');
+  try {
+    var res = await fetch(API_URL + '/sessions/' + sessionId + '/teams/' + teamId + '/overhead');
+    var d = await res.json();
+    if (!res.ok) throw new Error(d.detail || ('HTTP ' + res.status));
+    _ovhPanel.data = d;
+    _ovhRender();
+  } catch (e) {
+    if (body) body.textContent = 'Overhead unavailable: ' + e.message;
+  }
+}
+
+async function _ovhDecide(payload) {
+  if (_ovhPanel.busy) return;
+  _ovhPanel.busy = true;
+  var ok = false;
+  try {
+    var res = await fetch(API_URL + '/sessions/' + sessionId + '/teams/' + teamId + '/overhead', {
+      method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload)
+    });
+    var d = await res.json();
+    if (!res.ok) throw new Error(d.detail || ('HTTP ' + res.status));
+    _ovhPanel.data = d;
+    ok = true;
+  } catch (e) {
+    toast('Overhead decision failed: ' + e.message);
+  } finally {
+    _ovhPanel.busy = false;
+    _ovhRender();
+  }
+  if (ok) loadFinancePanel();    // the next-quarter pro-forma column reflects the decision
+}
+
+function _ovhRender() {
+  var el = document.getElementById('fin-overhead-body');
+  var d = _ovhPanel.data;
+  if (!el || !d) return;
+  var E = _OVERHEAD_E, dr = d.drivers || {}, pol = d.policy || {}, c = d.cost || {};
+  var rev = parseFloat(d.revenue_basis_m) || 0;
+  var m = function(v) { return '€' + Math.round(parseFloat(v) || 0).toLocaleString() + 'M'; };
+  var pct = function(v) { return rev > 0 ? ' (' + ((parseFloat(v) || 0) / rev * 100).toFixed(1) + '% of revenue)' : ''; };
+  var q = d.round ? ('Q' + d.round.quarter + ' ' + d.round.year) : 'this quarter';
+  var qabsNow = d.round ? (d.round.year - 2025) * 4 + d.round.quarter - 1 : -1;
+  var head = function(t, sub) {
+    return '<div style="font-size:8px;text-transform:uppercase;letter-spacing:1.5px;color:#a78bfa;margin-bottom:6px;">' + t +
+      (sub ? ' <span style="color:var(--muted);letter-spacing:0;text-transform:none;">· ' + sub + '</span>' : '') + '</div>';
+  };
+  var h = '';
+  if (d.locked) {
+    h += '<div style="color:var(--gold);font-size:10px;margin-bottom:8px;">🔒 ' + _esc(q) +
+         ' has cleared. Overhead decisions open again when the next round starts.</div>';
+  }
+  h += '<div style="color:var(--text);font-size:11px;margin-bottom:10px;">' + _esc(q) + ': <b style="color:var(--gold)">' +
+       m(c.total_m) + '</b>' + pct(c.total_m) + ' <span style="color:var(--muted)">· estimated on ' + _esc(d.revenue_basis) +
+       ' (' + m(rev) + '); the P&amp;L above uses the projected revenue</span></div>';
+
+  // What drives it
+  var cell = function(lbl, calc, val) {
+    return '<div style="background:var(--s2);border-radius:6px;padding:8px;">' +
+      '<div style="font-size:8px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);">' + lbl + '</div>' +
+      '<div style="font-size:12px;font-weight:700;color:var(--text);margin-top:2px;">' + m(val) + '</div>' +
+      '<div style="font-size:9px;color:var(--muted2);margin-top:2px;">' + calc + '</div></div>';
+  };
+  h += head('WHAT DRIVES IT', 'at standard staffing');
+  h += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px;margin-bottom:14px;">';
+  h += cell('Running the company', 'board, finance, HR, IT, legal', E.FIXED_M);
+  h += cell('Countries', dr.countries + ' × ' + m(E.PER_COUNTRY_M) + ' (Markets tab)', dr.countries * E.PER_COUNTRY_M);
+  h += cell('Models on sale', dr.models + ' × ' + m(E.PER_MODEL_M), dr.models * E.PER_MODEL_M);
+  h += cell('Assembly countries', dr.sites + ' × ' + m(E.PER_SITE_M), dr.sites * E.PER_SITE_M);
+  h += cell('Volume-linked admin', (E.VAR_PCT * 100).toFixed(1) + '% of revenue', c.variable_m);
+  h += '</div>';
+
+  // Staffing level
+  var effect = {
+    lean:     'overhead −15% · thinner dealer &amp; customer support: your cars are ~3% less attractive',
+    standard: 'the industry norm · no effect on demand',
+    generous: 'overhead +15% · stronger dealer &amp; customer support: your cars are ~3% more attractive'
+  };
+  h += head('STAFFING LEVEL', 'applies from this quarter and carries forward until changed');
+  h += '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:6px;">';
+  ['lean', 'standard', 'generous'].forEach(function(lv) {
+    var on = pol.level === lv;
+    var cost = ((d.cost_by_level || {})[lv] || {}).total_m;
+    h += '<div ' + (d.locked ? '' : 'onclick="_ovhDecide({staffing_level:\'' + lv + '\'})" ') +
+         'style="cursor:' + (d.locked ? 'default' : 'pointer') + ';border:1px solid ' +
+         (on ? 'var(--gold)' : 'var(--border)') + ';background:' + (on ? 'rgba(251,191,36,0.08)' : 'var(--s2)') +
+         ';border-radius:6px;padding:8px;">' +
+         '<div style="font-size:11px;font-weight:700;color:' + (on ? 'var(--gold)' : 'var(--text)') + ';">' +
+         (on ? '● ' : '○ ') + E.LEVELS[lv].label + '</div>' +
+         '<div style="font-size:11px;color:var(--text);margin-top:3px;">' + m(cost) + '/qtr</div>' +
+         '<div style="font-size:9px;color:var(--muted2);margin-top:3px;line-height:1.4;">' + effect[lv] + '</div></div>';
+  });
+  h += '</div>';
+  h += '<div style="font-size:9px;color:var(--muted);margin-bottom:14px;">Rule of thumb: lean pays when your gross margin is below ~30% (volume cars), generous when it is above (premium).</div>';
+
+  // Efficiency programme
+  var launchCost = E.cost(dr, rev, pol.level, pol.saving_pct, true).programme_m;
+  var fullSave = E.cost(dr, rev, pol.level, 0, false).total_m * E.EFF_SAVING;
+  h += head('EFFICIENCY PROGRAMME', 'shared services, process automation');
+  h += '<div style="color:var(--text);font-size:10px;line-height:1.6;margin-bottom:6px;">One-off cost ~' + m(launchCost) +
+       ' in the quarter you launch it, then overhead falls by ' + (E.EFF_SAVING * 100) + '% (~' + m(fullSave) +
+       '/qtr), phased in over ' + E.EFF_RAMP_Q + ' quarters. Pays back in about 7–8 quarters. At most ' +
+       (E.EFF_MAX_SAVING * 100) + '% in all, ' + E.EFF_COOLDOWN_Q + ' quarters apart.</div>';
+  var launched = (pol.launches || []).filter(function(L) { return L !== qabsNow; });
+  if (launched.length || pol.saving_pct > 0) {
+    h += '<div style="color:var(--green);font-size:10px;margin-bottom:6px;">Saving now: ' + (pol.saving_pct * 100).toFixed(1) +
+         '% of overhead (' + m(c.savings_m) + ' this quarter) · ' + launched.length + ' programme(s) launched earlier</div>';
+  }
+  if (d.locked) {
+    if (pol.launch_now) h += '<div style="color:var(--gold);font-size:10px;">Programme launched this quarter (' + m(c.programme_m) + ')</div>';
+  } else if (pol.launch_now) {
+    h += '<div style="display:flex;align-items:center;gap:10px;"><span style="color:var(--gold);font-size:10px;">⏳ Launching this quarter (' +
+         m(c.programme_m) + ')</span><button onclick="_ovhDecide({launch_programme:false})" style="background:none;border:1px solid var(--border);color:var(--muted2);font-family:DM Mono,monospace;font-size:9px;padding:4px 10px;border-radius:4px;cursor:pointer;">Undo</button></div>';
+  } else if (d.programme_allowed) {
+    h += '<button onclick="_ovhDecide({launch_programme:true})" style="background:var(--gold);color:#000;font-family:DM Mono,monospace;font-size:10px;font-weight:700;padding:6px 16px;border:none;border-radius:5px;cursor:pointer;">LAUNCH PROGRAMME</button>';
+  } else {
+    h += '<div style="color:var(--muted);font-size:10px;">' + _esc(d.programme_blocked_reason || 'Not available') + '</div>';
+  }
+  el.innerHTML = h;
 }
 
 async function submitFinancingDecision() {
@@ -14993,7 +15191,7 @@ function renderPLComparison(data) {
     o._depr_veh     = parseFloat(fs.depreciation_vehicle_m|| 0);   // REAL: units-of-prod
     o._depr_infra   = parseFloat(fs.depreciation_infra_m  || 0);   // REAL: straight-line
     o._depr_total   = parseFloat(fs.depreciation_total_m  || 0);   // REAL total
-    o._ga           = parseFloat(fs.sga_m                 || rev * 0.05); // REAL SG&A
+    o._ga           = parseFloat(fs.sga_m                 || 0);   // REAL: head-office overhead
     o._mkt_net      = parseFloat(fs.sales_network_m       || 0);   // REAL: country networks
     o._mkt_entry    = parseFloat(fs.market_entry_m        || 0);   // REAL: entry fees / exit costs
     // EBIT — REAL
@@ -15034,7 +15232,7 @@ function renderPLComparison(data) {
     {type:'line',   label:'  R&D Expense (100% expensed)',     key:'_rd',           sign:1},
     {type:'line',   label:'  Depreciation — Vehicle Assets',   key:'_depr_veh',     sign:1},
     {type:'line',   label:'  Depreciation — Infrastructure',   key:'_depr_infra',   sign:1},
-    {type:'line',   label:'  SG&A (5% of Revenue)',            key:'_ga',           sign:1},
+    {type:'line',   label:'  SG&A (Head-office overhead)',     key:'_ga',           sign:1},
     {type:'line',   label:'  Sales Network (Markets tab)',     key:'_mkt_net',      sign:1},
     {type:'line',   label:'  Market Entry / Exit',             key:'_mkt_entry',    sign:1},
     {type:'sep'},
@@ -23680,7 +23878,9 @@ function calcPropBizCase() {
         var uQ=Math.round(cr.volume/4), pE=cr.price*1000*(1-cr.discount/100);
         revM=uQ*pE/1e6; cogsM=finalTpcNum>0?uQ*finalTpcNum/1e6:revM*0.70;
       }
-      var gpM=revM-cogsM, sgaM=revM*0.06, rdMq=revM*0.04;
+      // Head-office overhead this model adds (its own admin + the volume-linked share),
+      // not a % of revenue: the team's base overhead is there with or without it.
+      var gpM=revM-cogsM, sgaM=revM>0?_OVERHEAD_E.modelIncrementM(revM):0, rdMq=revM*0.04;
       var ebitM=gpM-sgaM-rdMq-marketingM-_newMkt.runQ, fcfM=ebitM*0.75;
       fcfArr.push({rev:revM,cogs:cogsM,gp:gpM,ebit:ebitM,fcf:fcfM,mktg:marketingM});
     }
