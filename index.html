@@ -24471,10 +24471,13 @@ async function loadMarketsTab() {
   try {
     var movesP = fetch(API_URL + '/sessions/' + sessionId + '/market-moves?team_id=' + teamId)
       .then(function(r){ return r.ok ? r.json() : {moves: []}; }).catch(function(){ return {moves: []}; });
+    var covP = fetch(API_URL + '/sessions/' + sessionId + '/market-coverage?team_id=' + teamId)
+      .then(function(r){ return r.ok ? r.json() : null; }).catch(function(){ return null; });
     var res = await fetch(API_URL + '/sessions/' + sessionId + '/teams/' + teamId + '/markets');
     if (!res.ok) throw new Error('HTTP ' + res.status);
     _mktTab.data = await res.json();
     _mktTab.moves = (await movesP).moves || [];
+    _mktTab.cov = await covP;
     _renderMarketsTab();
   } catch (e) {
     el.innerHTML = '<div style="color:var(--red);font-family:DM Mono,monospace;font-size:11px;padding:16px 0;">Failed to load markets: ' + e.message + '</div>';
@@ -24527,10 +24530,7 @@ function _renderMarketsTab() {
   var h = '<div style="position:relative;border:1px solid var(--border2);border-radius:3px;background:var(--s1);margin-bottom:6px;">'
     + '<div id="mkt-map" style="position:relative;width:100%;min-height:120px;"><div style="color:var(--muted2);' + mono + 'font-size:10px;padding:14px;">Loading map…</div></div></div>'
     + '<div style="display:flex;gap:16px;align-items:center;flex-wrap:wrap;' + mono + 'font-size:9.5px;color:var(--muted2);margin-bottom:14px;">'
-    + '<span>Network coverage</span>'
-    + '<span style="display:inline-flex;align-items:center;gap:6px;">0%<span style="display:inline-block;width:120px;height:8px;background:linear-gradient(90deg,#123a3c,#32ccc0,#dcfffa);"></span>90%+</span>'
-    + '<span><span style="display:inline-block;width:10px;height:8px;background:#1a2030;border:1px solid var(--border2);vertical-align:middle;"></span> not entered</span>'
-    + '<span><span style="display:inline-block;width:10px;height:8px;background:#123a3c;border:1px solid #c8a43c;vertical-align:middle;"></span> entering</span>'
+    + _mktViewSwitch() + _mktLegend()
     + '<span><span style="color:#4ade80;">▲</span> competitor entered · <span style="color:#f87171;">▼</span> exited (last 4 quarters; white edge = a human team) '
     + '<label style="cursor:pointer;"><input type="checkbox" ' + (_mktTab.hideMoves ? '' : 'checked ')
     + 'onchange="_mktTab.hideMoves=!this.checked;_renderMarketsTab()" style="vertical-align:middle;"> show</label></span>'
@@ -24672,6 +24672,69 @@ function _mktMapColor(c) {
     .clamp(true)(c.network_strength || 0);
 }
 
+// ── Map views: Mine / Strongest rival / Gap ──────────────────────────────
+// Rival coverage comes from /market-coverage: the last cleared quarter only, so it
+// lags your own figure (which includes this quarter's decisions) by one quarter.
+function _mktSetView(v) { _mktTab.view = v; _renderMarketsTab(); }
+
+function _mktViewSwitch() {
+  var v = _mktTab.view || 'mine';
+  var b = function(k, l) {
+    var on = v === k;
+    return '<button onclick="_mktSetView(\'' + k + '\')" style="font-family:DM Mono,monospace;font-size:9.5px;padding:3px 9px;'
+      + 'border:1px solid ' + (on ? 'var(--cyan)' : 'var(--border2)') + ';background:' + (on ? 'var(--cyanl)' : 'transparent') + ';'
+      + 'color:' + (on ? 'var(--cyan)' : 'var(--muted2)') + ';cursor:pointer;border-radius:2px;">' + l + '</button>';
+  };
+  var asof = _mktTab.cov && _mktTab.cov.as_of ? ' <span style="color:var(--muted)">rivals as of ' + _mktTab.cov.as_of + '</span>' : '';
+  return '<span style="display:inline-flex;gap:4px;align-items:center;">' + b('mine', 'Mine') + b('rival', 'Strongest rival') + b('gap', 'Gap') + asof + '</span>';
+}
+
+function _mktLegend() {
+  var v = _mktTab.view || 'mine';
+  var sw = function(bg, bd){ return '<span style="display:inline-block;width:10px;height:8px;background:' + bg + ';border:1px solid ' + (bd || 'var(--border2)') + ';vertical-align:middle;"></span>'; };
+  if (v === 'gap')
+    return '<span style="display:inline-flex;align-items:center;gap:6px;">behind<span style="display:inline-block;width:120px;height:8px;background:linear-gradient(90deg,#f87171,#2a3142,#4ade80);"></span>ahead</span>'
+      + '<span>your coverage − strongest rival\'s (±40 pts = full colour)</span>'
+      + '<span>' + sw('#1a2030') + ' nobody there</span>';
+  var ramp = '<span style="display:inline-flex;align-items:center;gap:6px;">0%<span style="display:inline-block;width:120px;height:8px;background:linear-gradient(90deg,#123a3c,#32ccc0,#dcfffa);"></span>90%+</span>';
+  if (v === 'rival')
+    return '<span>Strongest rival\'s coverage</span>' + ramp + '<span>' + sw('#1a2030') + ' no rival there</span>';
+  return '<span>Your network coverage</span>' + ramp
+    + '<span>' + sw('#1a2030') + ' not entered</span>'
+    + '<span>' + sw('#123a3c', '#c8a43c') + ' entering</span>';
+}
+
+function _mktRivalCov(code) {
+  var c = _mktTab.cov && _mktTab.cov.countries && _mktTab.cov.countries[code];
+  return c || {rivals: [], max: 0, avg: 0, count: 0};
+}
+
+function _mktViewColor(c, code) {
+  var v = _mktTab.view || 'mine';
+  if (v === 'mine') return _mktMapColor(c);
+  var r = _mktRivalCov(code);
+  var ramp = d3.scaleLinear().domain([0, 0.45, 0.9]).range(['#123a3c', '#32ccc0', '#dcfffa']).clamp(true);
+  if (v === 'rival') return r.count ? ramp(r.max) : '#1a2030';
+  var mine = (c && c.status !== 'none') ? (c.network_strength || 0) : 0;
+  if (!r.count && !mine) return '#1a2030';
+  return d3.scaleLinear().domain([-0.4, 0, 0.4]).range(['#f87171', '#2a3142', '#4ade80']).clamp(true)(mine - r.max);
+}
+
+function _mktRivalTip(code) {
+  var r = _mktRivalCov(code);
+  if (!_mktTab.cov) return '';
+  if (!r.count) return '<br><span style="color:var(--muted)">No rival network here</span>';
+  var h = '<br><span style="color:var(--muted)">' + r.count + ' rival' + (r.count > 1 ? 's' : '') + ' · strongest '
+    + Math.round(r.max * 100) + '% · avg ' + Math.round(r.avg * 100) + '%</span>';
+  r.rivals.slice(0, 5).forEach(function(x) {
+    h += '<br><span style="color:' + (x.color || 'var(--text)') + '">■</span> ' + x.team
+      + ' <span style="color:var(--muted)">' + (x.is_ai ? 'AI' : 'human') + (x.status === 'entering' ? ', entering' : '') + '</span> '
+      + Math.round(x.coverage * 100) + '%';
+  });
+  if (r.count > 5) h += '<br><span style="color:var(--muted)">+' + (r.count - 5) + ' more</span>';
+  return h;
+}
+
 function _drawMarketsMap() {
   var host = document.getElementById('mkt-map');
   var d = _mktTab.data;
@@ -24696,15 +24759,16 @@ function _drawMarketsMap() {
     .style('border-radius', '3px').style('white-space', 'nowrap');
   svg.append('g').selectAll('path').data(_mktMap.world.features).enter().append('path')
     .attr('d', path)
-    .attr('fill', function(f){ return _mktMapColor(byCode[f.properties.mkt]); })
+    .attr('fill', function(f){ return _mktViewColor(byCode[f.properties.mkt], f.properties.mkt); })
     .attr('stroke', function(f){ var c = byCode[f.properties.mkt]; return c && c.status === 'entering' ? '#c8a43c' : '#07080d'; })
     .attr('stroke-width', function(f){ var c = byCode[f.properties.mkt]; return c && c.status === 'entering' ? 1.2 : 0.4; })
     .style('cursor', 'pointer')
     .on('mousemove', function(ev, f) {
       var c = byCode[f.properties.mkt]; if (!c) return;
       var name = (f.properties.name && f.properties.name !== c.label) ? f.properties.name + ' → ' + c.label : c.label;
-      var st = c.status === 'none' ? 'not entered · entry €' + Math.round(c.entry_fee_m) + 'M'
-        : c.status + ' · coverage ' + Math.round((c.network_strength || 0) * 100) + '% · €' + (c.running_cost_m || 0).toFixed(1) + 'M/qtr';
+      var st = (c.status === 'none' ? 'You: not entered · entry €' + Math.round(c.entry_fee_m) + 'M'
+        : 'You: ' + c.status + ' · coverage ' + Math.round((c.network_strength || 0) * 100) + '% · €' + (c.running_cost_m || 0).toFixed(1) + 'M/qtr')
+        + _mktRivalTip(f.properties.mkt);
       var r = host.getBoundingClientRect();
       tip.style('display', 'block').html('<b>' + name + '</b><br>' + st)
         .style('left', (ev.clientX - r.left + 12) + 'px').style('top', (ev.clientY - r.top + 12) + 'px');
