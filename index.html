@@ -24521,7 +24521,15 @@ function _renderMarketsTab() {
   var needed = {};
   (d.vehicles || []).forEach(function(v){ (v.regions || []).forEach(function(r){ (needed[r] = needed[r] || []).push(v.name); }); });
 
-  var h = '<div style="font-size:11px;color:var(--muted2);margin-bottom:12px;' + mono + 'line-height:1.6;">'
+  var h = '<div style="position:relative;border:1px solid var(--border2);border-radius:3px;background:var(--s1);margin-bottom:6px;">'
+    + '<div id="mkt-map" style="position:relative;width:100%;min-height:120px;"><div style="color:var(--muted2);' + mono + 'font-size:10px;padding:14px;">Loading map…</div></div></div>'
+    + '<div style="display:flex;gap:16px;align-items:center;flex-wrap:wrap;' + mono + 'font-size:9.5px;color:var(--muted2);margin-bottom:14px;">'
+    + '<span>Network coverage</span>'
+    + '<span style="display:inline-flex;align-items:center;gap:6px;">0%<span style="display:inline-block;width:120px;height:8px;background:linear-gradient(90deg,#123a3c,#32ccc0,#dcfffa);"></span>90%+</span>'
+    + '<span><span style="display:inline-block;width:10px;height:8px;background:#1a2030;border:1px solid var(--border2);vertical-align:middle;"></span> not entered</span>'
+    + '<span><span style="display:inline-block;width:10px;height:8px;background:#123a3c;border:1px solid #c8a43c;vertical-align:middle;"></span> entering</span>'
+    + '<span>Smaller countries are shaded with their "Rest of" market. Click a country to jump to its row.</span></div>';
+  h += '<div style="font-size:11px;color:var(--muted2);margin-bottom:12px;' + mono + 'line-height:1.6;">'
     + 'Your team sells a vehicle only in countries where it has a sales network, inside the regions the vehicle\'s commercial plan selects. '
     + 'Entering costs a one-off fee and sales start ' + _MKTNET_E.ENTRY_LEAD_Q + ' quarters later. The network costs at least the country minimum every quarter. '
     + 'More spend builds more coverage, over several quarters and with diminishing returns, and coverage raises your share against the other teams in that country. '
@@ -24575,7 +24583,7 @@ function _renderMarketsTab() {
             + (locked ? '' : ' <a href="javascript:void 0" onclick="_mktPreset(\'' + c.code + '\',0.5)" title="Lean: 0.5× reference">L</a>'
               + ' <a href="javascript:void 0" onclick="_mktPreset(\'' + c.code + '\',1)" title="Standard: 1× reference">S</a>'
               + ' <a href="javascript:void 0" onclick="_mktPreset(\'' + c.code + '\',2)" title="Strong: 2× reference">X</a>');
-        h += '<tr style="border-top:1px solid var(--border2);text-align:right;">'
+        h += '<tr id="mkt-row-' + c.code + '" style="border-top:1px solid var(--border2);text-align:right;' + (_mktTab.focus === c.code ? 'background:var(--cyanl);' : '') + '">'
           + '<td style="text-align:left;padding:4px 10px;">' + c.label + ' <span style="color:var(--muted)">' + c.code + '</span></td>'
           + '<td style="color:' + stCol + '">' + stTxt + '</td>'
           + '<td>' + (c.cost_index || 0).toFixed(2) + (c.barrier > 1 ? ' <span title="Entry barrier ×' + c.barrier + '" style="color:var(--gold)">▲</span>' : '') + '</td>'
@@ -24592,6 +24600,113 @@ function _renderMarketsTab() {
   h += '<div style="font-size:10px;color:var(--muted);' + mono + 'margin-top:6px;">Coverage bar: blue = coverage this quarter, gold mark = where the current spend takes it over time. '
     + 'L / S / X set the spend to 0.5× / 1× / 2× the reference. Doubling a standard budget lifts attraction by about 25%, not 100%.</div>';
   el.innerHTML = h;
+  _drawMarketsMap();
+  if (_mktTab.focus) {
+    var row = document.getElementById('mkt-row-' + _mktTab.focus);
+    if (row) row.scrollIntoView({block: 'center', behavior: 'smooth'});
+    _mktTab.focus = null;
+  }
+}
+
+// ── Markets tab world map: network coverage per country as a heat map ──
+// d3 + topojson + world-atlas are loaded from jsDelivr the first time the tab opens;
+// if they cannot load, the map is hidden and the table works as before. The 32 named
+// markets map to their ISO numeric id; every other country is shaded with its
+// "Rest of X" bucket (ROE / RONA / ROA / ROSA / ROMEA), chosen by its centroid.
+var _mktMap = {ready: null, world: null, failed: false};
+var _MKT_ISO = {
+  '276':'DE', '250':'FR', '826':'GB', '380':'IT', '724':'ES', '792':'TR', '616':'PL', '528':'NL',
+  '056':'BE', '752':'SE', '040':'AT',
+  '840':'US', '124':'CA', '484':'MX',
+  '156':'CN', '392':'JP', '356':'IN', '410':'KR', '036':'AU', '360':'ID', '764':'TH', '458':'MY',
+  '076':'BR', '032':'AR', '152':'CL', '170':'CO', '604':'PE',
+  '682':'SAU', '710':'ZA', '818':'EG', '784':'AE', '504':'MA', '012':'DZ',
+  '643':'ROE'   // Russia: counted with the rest of Europe
+};
+
+function _mktLoadScript(src) {
+  return new Promise(function(res, rej) {
+    var s = document.createElement('script');
+    s.src = src; s.onload = res; s.onerror = function(){ rej(new Error('load ' + src)); };
+    document.head.appendChild(s);
+  });
+}
+
+function _mktMapLib() {
+  if (_mktMap.ready) return _mktMap.ready;
+  _mktMap.ready = (window.d3 ? Promise.resolve() : _mktLoadScript('https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js'))
+    .then(function(){ return window.topojson ? null : _mktLoadScript('https://cdn.jsdelivr.net/npm/topojson-client@3/dist/topojson-client.min.js'); })
+    .then(function(){ return fetch('https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json'); })
+    .then(function(r){ return r.json(); })
+    .then(function(w) {
+      var fc = topojson.feature(w, w.objects.countries);
+      fc.features = fc.features.filter(function(f){ return f.id !== '010'; });   // no Antarctica
+      fc.features.forEach(function(f){ f.properties.mkt = _mktCodeOf(f); });
+      _mktMap.world = fc;
+    })
+    .catch(function(e){ _mktMap.failed = true; console.warn('[markets map]', e); });
+  return _mktMap.ready;
+}
+
+// Game market a map country belongs to: its own code, or its region's "Rest of" bucket.
+function _mktCodeOf(f) {
+  if (f.id && _MKT_ISO[f.id]) return _MKT_ISO[f.id];
+  var c = d3.geoCentroid(f), lon = c[0], lat = c[1];
+  if (lon < -30) return (lat >= 7.5 && !(lon > -75 && lat < 13)) ? 'RONA' : 'ROSA';
+  if (lat > 36 && lon < 50) return 'ROE';
+  if (lon >= -20 && lon < 63 && lat <= 38) return 'ROMEA';
+  return 'ROA';
+}
+
+function _mktMapColor(c) {
+  if (!c || c.status === 'none') return '#1a2030';
+  // Three stops so the common 50-80% band separates: dark teal -> brand cyan -> pale cyan
+  return d3.scaleLinear().domain([0, 0.45, 0.9]).range(['#123a3c', '#32ccc0', '#dcfffa'])
+    .clamp(true)(c.network_strength || 0);
+}
+
+function _drawMarketsMap() {
+  var host = document.getElementById('mkt-map');
+  var d = _mktTab.data;
+  if (!host || !d) return;
+  if (_mktMap.failed) { host.style.display = 'none'; return; }
+  if (!_mktMap.world) {
+    _mktMapLib().then(function(){ if (_mktMap.world) _drawMarketsMap(); else if (host) host.style.display = 'none'; });
+    return;
+  }
+  var byCode = {};
+  (d.countries || []).forEach(function(c){ byCode[c.code] = c; });
+  var W = host.clientWidth || 900, H = Math.round(W * 0.42);
+  var proj = d3.geoNaturalEarth1().fitSize([W, H], _mktMap.world);
+  var path = d3.geoPath(proj);
+  host.innerHTML = '';
+  var svg = d3.select(host).append('svg').attr('width', W).attr('height', H)
+    .attr('viewBox', '0 0 ' + W + ' ' + H).style('display', 'block');
+  var tip = d3.select(host).append('div')
+    .style('position', 'absolute').style('pointer-events', 'none').style('display', 'none')
+    .style('background', 'var(--s3)').style('border', '1px solid var(--border2)').style('padding', '6px 9px')
+    .style('font-family', 'DM Mono,monospace').style('font-size', '10.5px').style('color', 'var(--text)')
+    .style('border-radius', '3px').style('white-space', 'nowrap');
+  svg.append('g').selectAll('path').data(_mktMap.world.features).enter().append('path')
+    .attr('d', path)
+    .attr('fill', function(f){ return _mktMapColor(byCode[f.properties.mkt]); })
+    .attr('stroke', function(f){ var c = byCode[f.properties.mkt]; return c && c.status === 'entering' ? '#c8a43c' : '#07080d'; })
+    .attr('stroke-width', function(f){ var c = byCode[f.properties.mkt]; return c && c.status === 'entering' ? 1.2 : 0.4; })
+    .style('cursor', 'pointer')
+    .on('mousemove', function(ev, f) {
+      var c = byCode[f.properties.mkt]; if (!c) return;
+      var name = (f.properties.name && f.properties.name !== c.label) ? f.properties.name + ' → ' + c.label : c.label;
+      var st = c.status === 'none' ? 'not entered · entry €' + Math.round(c.entry_fee_m) + 'M'
+        : c.status + ' · coverage ' + Math.round((c.network_strength || 0) * 100) + '% · €' + (c.running_cost_m || 0).toFixed(1) + 'M/qtr';
+      var r = host.getBoundingClientRect();
+      tip.style('display', 'block').html('<b>' + name + '</b><br>' + st)
+        .style('left', (ev.clientX - r.left + 12) + 'px').style('top', (ev.clientY - r.top + 12) + 'px');
+    })
+    .on('mouseleave', function(){ tip.style('display', 'none'); })
+    .on('click', function(ev, f) {
+      var c = byCode[f.properties.mkt]; if (!c) return;
+      _mktTab.openReg[c.region] = true; _mktTab.focus = c.code; _renderMarketsTab();
+    });
 }
 
 function _mktLabel(qabs) { return (2025 + Math.floor(qabs / 4)) + ' Q' + (((qabs % 4) + 4) % 4 + 1); }
