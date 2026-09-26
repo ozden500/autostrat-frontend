@@ -6997,7 +6997,7 @@ var _OVERHEAD_E = {
 };
 
 // Warranty, 2026-09-26. Verbatim mirror of financial_engine's WTY_* constants and
-// warranty_unit / warranty_period_factor / warranty_claim_rate_q / warranty_appeal /
+// warranty_unit / warranty_period_factor / warranty_appeal /
 // warranty_policy / vehicle_plant_quality (parity-checked by tools/engine_parity_check.py).
 // Warranty per car = expected claims over the period x cost of one claim; booked in COGS.
 var _WARRANTY_E = {
@@ -7022,11 +7022,6 @@ var _WARRANTY_E = {
     var s = 0, y = _WARRANTY_E._y(years);
     for (var i = 0; i < y; i++) s += _WARRANTY_E.YEAR_PROFILE[i];
     return _WARRANTY_E._r(s, 6);
-  },
-  claimRateQ: function(years) {
-    var y = _WARRANTY_E._y(years), num = 0, den = 0;
-    for (var i = 0; i < y; i++) { var p = _WARRANTY_E.YEAR_PROFILE[i]; num += (i + 0.5) * 4 * p; den += p; }
-    return _WARRANTY_E._r(1 / (num / den), 6);
   },
   appeal: function(years, rep) {
     var base = _WARRANTY_E.APPEAL[parseInt(years, 10)];
@@ -10578,8 +10573,8 @@ function _renderWarrantyTab() {
          '<div style="font-size:9px;color:var(--muted);margin-top:2px;">' + note[y] + '</div></div>';
   });
   h += '</div>';
-  h += '<div style="font-size:9px;color:var(--muted);margin-bottom:16px;line-height:1.5;">A longer warranty covers more claims and moves the cash out later ('
-     + 'provision paid at ' + (((bp[String(d.years)] || {}).claim_rate_q || 0) * 100).toFixed(1) + '%/qtr now). Buyers value it more when your brand\'s '
+  h += '<div style="font-size:9px;color:var(--muted);margin-bottom:16px;line-height:1.5;">A longer warranty covers more claims and moves the cash out later: '
+     + 'each quarter\'s cars are paid out over their own warranty years, so a change only affects cars sold from then on. Buyers value it more when your brand\'s '
      + 'quality reputation is weak (yours: ' + Math.round(d.quality_reputation) + '/100).</div>';
 
   // Per vehicle
