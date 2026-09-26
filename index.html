@@ -11896,6 +11896,14 @@ async function handleLogin() {
 
     // If session already exists in storage, skip step 2 and go straight in
     if (sessionId && teamId && currentUser.role === sessionStorage.getItem('as_role')) {
+      // Re-login: re-assert the claim (idempotent) so a team whose first claim was
+      // lost is not left to the AI.
+      if (currentUser.role !== 'instructor' && !(await _claimTeam(sessionId, teamId))) {
+        err.textContent = 'Could not confirm your team is human-controlled. Check your connection and try again.';
+        btn.disabled = false; btn.textContent = 'Continue →';
+        document.getElementById('login-step1').style.display = 'block';
+        return;
+      }
       enterSimulator();
       return;
     }
@@ -12037,6 +12045,23 @@ async function loadSession() {
 // ══════════════════════════════════════════
 // SESSION — TEAM JOIN
 // ══════════════════════════════════════════
+// Claim a team as human-controlled and confirm it stuck; 3 tries with back-off.
+async function _claimTeam(sid, tid) {
+  for (var i = 0; i < 3; i++) {
+    try {
+      var r = await fetch(API_URL + '/sessions/' + sid + '/teams/' + tid + '/claim', {method: 'POST'});
+      if (r.ok) {
+        var d = await r.json();
+        if (d && d.team && d.team.is_human_claimed) return true;
+      } else if (r.status === 404) {
+        return false;                      // not a team of this session: retrying won't help
+      }
+    } catch (e) { console.warn('Team claim attempt ' + (i + 1) + ' failed:', e); }
+    await new Promise(function(res){ setTimeout(res, 800 * (i + 1)); });
+  }
+  return false;
+}
+
 async function teamJoinSession() {
   const id  = document.getElementById('team-session-input').value.trim();
   const err = document.getElementById('login-error2');
@@ -12074,9 +12099,14 @@ async function teamJoinSession() {
       teamId = tData.team.id;
       await fetch(`${API_URL}/teams/${teamId}/plants/initialize`, {method:'POST'});
     }
-    // Mark this team as human-controlled in this session
-    fetch(`${API_URL}/sessions/${sessionId}/teams/${teamId}/claim`, {method:'POST'})
-      .catch(e => console.warn('Team claim failed:', e));
+    // Mark this team as human-controlled in this session. Must succeed: an unclaimed
+    // team is played by the AI at clearing (market entries/exits, network spend, even
+    // an AI vehicle), on top of whatever the students decide.
+    if (!(await _claimTeam(sessionId, teamId))) {
+      err.textContent = 'Could not register your team as human-controlled. Check your connection and join again (otherwise the AI would make decisions for your team).';
+      sessionId = null; teamId = null; roundId = null;
+      return;
+    }
     enterSimulator();
   } catch(e) {
     err.textContent = 'Error joining: ' + e.message;
