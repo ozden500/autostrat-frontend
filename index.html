@@ -1159,6 +1159,15 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
       style="font-family:'DM Mono',monospace;font-size:10px;padding:8px 20px;border:none;border-bottom:2px solid transparent;background:transparent;color:var(--muted);cursor:pointer;letter-spacing:.5px;">📊 SALES PLAN</button>
     <button id="com-tab-btn-markets" onclick="switchComTab('markets')"
       style="font-family:'DM Mono',monospace;font-size:10px;padding:8px 20px;border:none;border-bottom:2px solid transparent;background:transparent;color:var(--muted);cursor:pointer;letter-spacing:.5px;">🌍 MARKETS</button>
+    <button id="com-tab-btn-warranty" onclick="switchComTab('warranty')"
+      style="font-family:'DM Mono',monospace;font-size:10px;padding:8px 20px;border:none;border-bottom:2px solid transparent;background:transparent;color:var(--muted);cursor:pointer;letter-spacing:.5px;">🛡 WARRANTY</button>
+  </div>
+
+  <!-- ── WARRANTY tab: warranty period (company-wide) and each vehicle's warranty drivers ── -->
+  <div id="com-tab-warranty" style="display:none;">
+    <div id="warranty-content">
+      <div style="color:var(--muted2);font-family:'DM Mono',monospace;font-size:11px;padding:16px 0;">Loading warranty…</div>
+    </div>
   </div>
 
   <!-- ── MARKETS tab: country entry / exit and sales-network spend ── -->
@@ -6987,6 +6996,98 @@ var _OVERHEAD_E = {
   }
 };
 
+// Warranty, 2026-09-26. Verbatim mirror of financial_engine's WTY_* constants and
+// warranty_unit / warranty_period_factor / warranty_claim_rate_q / warranty_appeal /
+// warranty_policy / vehicle_plant_quality (parity-checked by tools/engine_parity_check.py).
+// Warranty per car = expected claims over the period x cost of one claim; booked in COGS.
+var _WARRANTY_E = {
+  BASE_CLAIMS: 0.49, PERIODS: [2, 3, 5, 7], DEFAULT_YEARS: 3,
+  YEAR_PROFILE: [1.00, 0.80, 0.75, 0.80, 0.80, 0.75, 0.70],
+  APPEAL: {2: 0.985, 3: 1.00, 5: 1.03, 7: 1.05},
+  DESIGN_REF: 60.0, DESIGN_HALVING: 30.0, LAUNCH_Q: 4,
+  RAMP_LAUNCH: {SLOW: 0.15, STANDARD: 0.30, FAST: 0.50},
+  NEWNESS: {'new': 1.0, 'modify': 0.5, 'reuse': 0.0},
+  QUALITY_TIER: {BASIC: 1.30, STANDARD: 1.00, PREMIUM: 0.80, WORLD_CLASS: 0.65},
+  QC: {INCOMING: 1.10, PROCESS: 1.00, EOL: 0.90},
+  AUTOMATION: {1: 1.15, 2: 1.00, 3: 0.92, 4: 0.87},
+  SUPPLIER_DEV: {NONE: 1.10, LOW: 1.00, MEDIUM: 0.95, HIGH: 0.90},
+  CLAIM_FIXED_EUR: 120.0, CLAIM_TPC_PCT: 0.02,
+  FIELD_SERVICE: {NONE: 1.10, BASIC: 1.00, PREMIUM: 0.90},
+  SPARE_PARTS: {REACTIVE: 1.00, DEALER_MANAGED: 0.95, PROACTIVE: 0.90},
+  QUALITY_TIER_COST_EUR: {BASIC: -120.0, STANDARD: 0.0, PREMIUM: 160.0, WORLD_CLASS: 380.0},
+  QC_COST_EUR: {INCOMING: -30.0, PROCESS: 0.0, EOL: 30.0},
+  _r: function(x, d) { var f = Math.pow(10, d); return Math.round(x * f) / f; },
+  _y: function(years) { return Math.max(1, Math.min(_WARRANTY_E.YEAR_PROFILE.length, parseInt(years, 10) || 1)); },
+  periodFactor: function(years) {
+    var s = 0, y = _WARRANTY_E._y(years);
+    for (var i = 0; i < y; i++) s += _WARRANTY_E.YEAR_PROFILE[i];
+    return _WARRANTY_E._r(s, 6);
+  },
+  claimRateQ: function(years) {
+    var y = _WARRANTY_E._y(years), num = 0, den = 0;
+    for (var i = 0; i < y; i++) { var p = _WARRANTY_E.YEAR_PROFILE[i]; num += (i + 0.5) * 4 * p; den += p; }
+    return _WARRANTY_E._r(1 / (num / den), 6);
+  },
+  appeal: function(years, rep) {
+    var base = _WARRANTY_E.APPEAL[parseInt(years, 10)];
+    if (base === undefined) base = 1.0;
+    var r = (rep === null || rep === undefined) ? 50.0 : parseFloat(rep);
+    var s = Math.max(0.5, Math.min(1.5, 1.5 - r / 100));
+    return _WARRANTY_E._r(1 + (base - 1) * s, 6);
+  },
+  policy: function(rows, qabs) {
+    var years = _WARRANTY_E.DEFAULT_YEARS, at = -1;
+    (rows || []).forEach(function(r) {
+      var q = (r.qabs === null || r.qabs === undefined) ? 1e6 : parseInt(r.qabs, 10);
+      var y = r.period_years;
+      if (q <= qabs && y !== null && y !== undefined && _WARRANTY_E.PERIODS.indexOf(parseInt(y, 10)) >= 0 && q >= at) {
+        years = parseInt(y, 10); at = q;
+      }
+    });
+    return years;
+  },
+  _auto: function(a) {
+    var n = parseInt(String(a === undefined || a === null ? 2 : a).toUpperCase().replace(/^L+/, ''), 10);
+    return isNaN(n) ? 2 : Math.max(1, Math.min(4, n));
+  },
+  // ops: operations_plan; plants: the confirmed assembly plants building the vehicle
+  plantQuality: function(ops, plants) {
+    ops = ops || {};
+    var tier = String(ops.quality_tier || 'STANDARD').toUpperCase();
+    if (!_WARRANTY_E.QUALITY_TIER[tier]) tier = 'STANDARD';
+    var qc = String(ops.qc_intensity || 'PROCESS').toUpperCase();
+    if (!_WARRANTY_E.QC[qc]) qc = 'PROCESS';
+    var autos = (plants || []).map(function(p) { return _WARRANTY_E.AUTOMATION[_WARRANTY_E._auto(p.automation_level)]; });
+    var autoF = autos.length ? autos.reduce(function(a, b) { return a + b; }, 0) / autos.length : 1.0;
+    return {quality_tier: tier, qc_intensity: qc, automation_f: _WARRANTY_E._r(autoF, 6),
+            mfg_f: _WARRANTY_E._r(_WARRANTY_E.QUALITY_TIER[tier] * _WARRANTY_E.QC[qc] * autoF, 6),
+            cost_delta_eur: _WARRANTY_E.QUALITY_TIER_COST_EUR[tier] + _WARRANTY_E.QC_COST_EUR[qc]};
+  },
+  unit: function(inp) {
+    var E = _WARRANTY_E; inp = inp || {};
+    var rel = (inp.reliability === null || inp.reliability === undefined) ? E.DESIGN_REF : parseFloat(inp.reliability);
+    var design = Math.pow(2, -(rel - E.DESIGN_REF) / E.DESIGN_HALVING);
+    var period = E.periodFactor(inp.years || E.DEFAULT_YEARS);
+    var launch = 1.0;
+    if (inp.launch) {
+      var rl = E.RAMP_LAUNCH[String(inp.ramp || 'STANDARD').toUpperCase()];
+      launch = 1 + (parseFloat(inp.new_share) || 0) * (rl === undefined ? E.RAMP_LAUNCH.STANDARD : rl);
+    }
+    var mfg = (inp.mfg_f === null || inp.mfg_f === undefined) ? 1.0 : parseFloat(inp.mfg_f);
+    var sup = E.SUPPLIER_DEV[String(inp.supplier_dev || 'LOW').toUpperCase()];
+    if (sup === undefined) sup = 1.0;
+    var claims = E.BASE_CLAIMS * period * design * launch * mfg * sup;
+    var fs = E.FIELD_SERVICE[String(inp.field_service || 'BASIC').toUpperCase()];
+    var sp = E.SPARE_PARTS[String(inp.spare_parts || 'REACTIVE').toUpperCase()];
+    var repair = (fs === undefined ? 1.0 : fs) * (sp === undefined ? 1.0 : sp);
+    var perClaim = (E.CLAIM_FIXED_EUR + E.CLAIM_TPC_PCT * Math.max(0, parseFloat(inp.tpc_eur) || 0)) * repair;
+    return {claims_per_car: E._r(claims, 6), cost_per_claim_eur: E._r(perClaim, 4),
+            eur_per_car: E._r(claims * perClaim, 4), period_f: E._r(period, 6),
+            design_f: E._r(design, 6), launch_f: E._r(launch, 6), mfg_f: E._r(mfg, 6),
+            supplier_f: E._r(sup, 6), repair_f: E._r(repair, 6)};
+  }
+};
+
 var _MARKET_E = {
   VERSION: "1.0.0",
 
@@ -10366,7 +10467,7 @@ var _REGION_FLAGS = {EU:'🌍', NA:'🌎', APAC:'🌏', SA:'🌎', MEA:'🌍'};
 
 function switchComTab(tab) {
   _comActiveTab = tab;
-  ['overview','pricing','sales-planning','markets'].forEach(function(t) {
+  ['overview','pricing','sales-planning','markets','warranty'].forEach(function(t) {
     var btn = document.getElementById('com-tab-btn-'+t);
     var pane = document.getElementById('com-tab-'+t);
     var active = t === tab;
@@ -10379,6 +10480,141 @@ function switchComTab(tab) {
   if (tab === 'pricing') renderCommercialPricing();
   if (tab === 'sales-planning') loadSalesPlanTab();
   if (tab === 'markets') loadMarketsTab();
+  if (tab === 'warranty') loadWarrantyTab();
+}
+
+// ── Commercial → 🛡 WARRANTY ─────────────────────────────────────
+// GET/PUT /sessions/{sid}/teams/{tid}/warranty (period) and PUT /vehicles/{vid}/quality (quality
+// system, inspection). The server derives every number (financial_engine.team_warranty); this
+// tab renders them and sends decisions. _wtyTab.data is also read by §10 (_propWarranty).
+var _wtyTab = {data: null, busy: false};
+
+async function loadWarrantyTab() {
+  if (!sessionId || !teamId) return;
+  var el = document.getElementById('warranty-content');
+  try {
+    var res = await fetch(API_URL + '/sessions/' + sessionId + '/teams/' + teamId + '/warranty');
+    var d = await res.json();
+    if (!res.ok) throw new Error(d.detail || ('HTTP ' + res.status));
+    _wtyTab.data = d;
+    _renderWarrantyTab();
+  } catch (e) {
+    if (el) el.innerHTML = '<div style="color:var(--red);font-family:DM Mono,monospace;font-size:11px;padding:16px 0;">Warranty unavailable: ' + _esc(e.message) + '</div>';
+  }
+}
+
+async function _wtySetPeriod(years) {
+  if (_wtyTab.busy) return;
+  _wtyTab.busy = true;
+  try {
+    var res = await fetch(API_URL + '/sessions/' + sessionId + '/teams/' + teamId + '/warranty', {
+      method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({period_years: years})
+    });
+    var d = await res.json();
+    if (!res.ok) throw new Error(d.detail || ('HTTP ' + res.status));
+    _wtyTab.data = d;
+  } catch (e) {
+    toast('Warranty decision failed: ' + e.message);
+  } finally {
+    _wtyTab.busy = false;
+    _renderWarrantyTab();
+  }
+}
+
+async function _wtySetQuality(vid, key, val) {
+  if (_wtyTab.busy) return;
+  _wtyTab.busy = true;
+  var body = {}; body[key] = val;
+  try {
+    var res = await fetch(API_URL + '/vehicles/' + vid + '/quality', {
+      method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)
+    });
+    var d = await res.json();
+    if (!res.ok) throw new Error(d.detail || ('HTTP ' + res.status));
+  } catch (e) {
+    toast('Quality setting failed: ' + e.message);
+  } finally {
+    _wtyTab.busy = false;
+  }
+  loadWarrantyTab();
+}
+
+function _renderWarrantyTab() {
+  var el = document.getElementById('warranty-content');
+  var d = _wtyTab.data;
+  if (!el || !d) return;
+  var E = _WARRANTY_E, cur = d.current || {}, bp = d.by_period || {};
+  var m = function(v) { return '€' + Math.round(parseFloat(v) || 0).toLocaleString() + 'M'; };
+  var eur = function(v) { return '€' + Math.round(parseFloat(v) || 0).toLocaleString(); };
+  var q = d.round ? ('Q' + d.round.quarter + ' ' + d.round.year) : 'this quarter';
+  var head = function(t, sub) {
+    return '<div style="font-family:DM Mono,monospace;font-size:8px;text-transform:uppercase;letter-spacing:1.5px;color:#a78bfa;margin:4px 0 8px;">' + t +
+      (sub ? ' <span style="color:var(--muted);letter-spacing:0;text-transform:none;">· ' + sub + '</span>' : '') + '</div>';
+  };
+  var units = (cur.vehicles || []).reduce(function(s, r) { return s + (r.units || 0); }, 0);
+  var h = '<div style="font-family:DM Mono,monospace;">';
+  h += '<div style="font-size:11px;color:var(--text);margin-bottom:12px;line-height:1.6;">Warranty is part of what each car costs (COGS). '
+     + 'It is <b>expected claims over the warranty period × cost of one claim</b>, booked when the car is sold and paid out as claims come in. '
+     + 'At ' + _esc(d.volume_basis) + ': <b style="color:var(--gold)">' + m(cur.expense_m) + '/qtr</b>'
+     + (units ? ' (' + eur(cur.expense_m * 1e6 / units) + ' per car)' : '') + '.</div>';
+  if (d.locked) {
+    h += '<div style="color:var(--gold);font-size:10px;margin-bottom:10px;">🔒 ' + _esc(q) + ' has cleared. The warranty period can be changed again when the next round starts.</div>';
+  }
+
+  // Warranty period
+  h += head('WARRANTY PERIOD', 'company-wide · applies to cars sold from ' + _esc(q) + ' on · carries forward until changed');
+  h += '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:6px;">';
+  var note = {2: 'EU legal minimum', 3: 'industry standard', 5: 'e.g. Hyundai, many EV brands', 7: 'e.g. Kia'};
+  E.PERIODS.forEach(function(y) {
+    var on = d.years === y, p = bp[String(y)] || {};
+    var ap = ((p.appeal || 1) - 1) * 100;
+    h += '<div ' + (d.locked ? '' : 'onclick="_wtySetPeriod(' + y + ')" ') + 'style="cursor:' + (d.locked ? 'default' : 'pointer') +
+         ';border:1px solid ' + (on ? 'var(--gold)' : 'var(--border)') + ';background:' + (on ? 'rgba(251,191,36,0.08)' : 'var(--s2)') +
+         ';border-radius:6px;padding:8px;">' +
+         '<div style="font-size:12px;font-weight:700;color:' + (on ? 'var(--gold)' : 'var(--text)') + ';">' + (on ? '● ' : '○ ') + y + ' years</div>' +
+         '<div style="font-size:11px;color:var(--text);margin-top:3px;">' + m(p.expense_m) + '/qtr</div>' +
+         '<div style="font-size:9px;color:' + (ap > 0 ? 'var(--green)' : ap < 0 ? 'var(--red)' : 'var(--muted2)') + ';margin-top:3px;">' +
+         (ap === 0 ? 'no demand effect' : (ap > 0 ? '+' : '') + ap.toFixed(1) + '% attraction') + '</div>' +
+         '<div style="font-size:9px;color:var(--muted);margin-top:2px;">' + note[y] + '</div></div>';
+  });
+  h += '</div>';
+  h += '<div style="font-size:9px;color:var(--muted);margin-bottom:16px;line-height:1.5;">A longer warranty covers more claims and moves the cash out later ('
+     + 'provision paid at ' + (((bp[String(d.years)] || {}).claim_rate_q || 0) * 100).toFixed(1) + '%/qtr now). Buyers value it more when your brand\'s '
+     + 'quality reputation is weak (yours: ' + Math.round(d.quality_reputation) + '/100).</div>';
+
+  // Per vehicle
+  h += head('BY VEHICLE', 'what drives each car\'s warranty cost');
+  var sel = function(vid, key, opts, curv) {
+    return '<select onchange="_wtySetQuality(\'' + vid + '\',\'' + key + '\',this.value)" style="background:var(--s2);color:var(--text);border:1px solid var(--border);font-family:DM Mono,monospace;font-size:9px;padding:2px;">' +
+      opts.map(function(o) { return '<option value="' + o[0] + '"' + (o[0] === curv ? ' selected' : '') + '>' + o[1] + '</option>'; }).join('') + '</select>';
+  };
+  var tierOpts = [['BASIC', 'Basic (−€120/car, ×1.30 claims)'], ['STANDARD', 'Standard'], ['PREMIUM', 'Premium (+€160/car, ×0.80)'], ['WORLD_CLASS', 'World-class (+€380/car, ×0.65)']];
+  var qcOpts = [['INCOMING', 'Incoming only (−€30, ×1.10)'], ['PROCESS', 'In-process'], ['EOL', 'End-of-line (+€30, ×0.90)']];
+  var th = function(t, al) { return '<th style="text-align:' + (al || 'right') + ';padding:4px 6px;font-size:8px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;font-weight:400;">' + t + '</th>'; };
+  var td = function(t, al, col) { return '<td style="text-align:' + (al || 'right') + ';padding:5px 6px;font-size:10px;color:' + (col || 'var(--text)') + ';">' + t + '</td>'; };
+  h += '<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;">';
+  h += '<tr style="border-bottom:1px solid var(--border);">' + th('Vehicle', 'left') + th('Units') + th('Reliability') + th('Launch') +
+       th('Quality system', 'left') + th('Inspection', 'left') + th('Claims/car') + th('€/claim') + th('€/car') + th('€M/qtr') + '</tr>';
+  (cur.vehicles || []).forEach(function(r) {
+    var inp = r.inputs || {}, pq = r.quality || {};
+    var relCol = inp.reliability >= 75 ? 'var(--green)' : inp.reliability < 55 ? 'var(--red)' : 'var(--text)';
+    h += '<tr style="border-bottom:1px solid var(--border);">' +
+      td(_esc(r.name || ''), 'left') + td((r.units || 0).toLocaleString()) +
+      td(Math.round(inp.reliability) + ' <span style="color:var(--muted)">×' + r.design_f.toFixed(2) + '</span>', 'right', relCol) +
+      td(inp.launch ? '<span style="color:var(--orange)">×' + r.launch_f.toFixed(2) + '</span>' : '—') +
+      td(sel(r.vehicle_id, 'quality_tier', tierOpts, pq.quality_tier), 'left') +
+      td(sel(r.vehicle_id, 'qc_intensity', qcOpts, pq.qc_intensity), 'left') +
+      td(r.claims_per_car.toFixed(2)) + td(eur(r.cost_per_claim_eur)) +
+      td('<b>' + eur(r.eur_per_car) + '</b>') + td(m(r.cost_m)) + '</tr>';
+  });
+  h += '</table></div>';
+  h += '<div style="font-size:9px;color:var(--muted);margin-top:10px;line-height:1.6;">'
+     + '<b>Reliability</b> comes from the module designs (§2–§5); +30 points halves the claims, and underfunded R&D lowers it. '
+     + '<b>Launch</b>: a model\'s first ' + E.LAUNCH_Q + ' quarters of production carry extra claims in proportion to its new modules. '
+     + '<b>Quality system / inspection</b> apply at every plant building the car, from the next clearing; their per-car cost is in COGS. '
+     + 'Plant automation (§7) also counts: L1 ×1.15 … L4 ×0.87. €/claim = €' + E.CLAIM_FIXED_EUR + ' + ' + (E.CLAIM_TPC_PCT * 100) + '% of the car\'s unit cost.</div>';
+  h += '</div>';
+  el.innerHTML = h;
 }
 
 async function loadCommercialPage() {
@@ -23799,6 +24035,40 @@ async function advanceToBizCase() {
   calcPropBizCase();
 }
 
+// The proposal's warranty inputs, as financial_engine.vehicle_warranty_inputs derives them for
+// a saved vehicle: blended reliability, share of new modules, plant quality set-up, the team's
+// current warranty period (Commercial → Warranty tab, else the default).
+function _propWarranty(tpcEur, plants) {
+  var E = _WARRANTY_E;
+  var getS = function(k) { var p = _prop[k] || {}; return (p.mode === 'new' ? p.specs : (p.module ? p.module.specs : null)) || {}; };
+  var mode = function(k) { return (_prop[k] || {}).mode; };
+  var pwtType = (getS('platform').pwt) || 'ice_only';
+  var hasIce = pwtType === 'ice_only' || pwtType === 'ice_and_bev';
+  var hasBev = pwtType === 'bev_only' || pwtType === 'ice_and_bev';
+  var rel = null;
+  try {
+    var vr = _blendVehicleRatings(
+      {platform:getS('platform'), pwt:getS('pwt'), epwt:getS('epwt'), battery:getS('battery'), tophat:getS('tophat')},
+      {platform:mode('platform'), pwt:mode('pwt'), epwt:mode('epwt'), battery:mode('battery'), tophat:mode('tophat')},
+      hasIce, hasBev);
+    if (vr.reliability != null) rel = vr.reliability * 100;
+  } catch (e) {}
+  var ks = ['platform', 'pwt', 'tophat', 'eands'].filter(function(k) { return _prop[k] && (_prop[k].module || _prop[k].mode); });
+  var newShare = ks.length ? ks.reduce(function(s, k) {
+    var n = E.NEWNESS[String(mode(k) || 'new').toLowerCase()]; return s + (n === undefined ? 1 : n);
+  }, 0) / ks.length : 0;
+  var confirmed = (plants || []).filter(function(p) { return p.vehicle_capacity_yr != null; });
+  var pq = E.plantQuality(_prop.operations || {}, confirmed.length ? confirmed : (plants || []));
+  var years = (_wtyTab && _wtyTab.data && _wtyTab.data.years) || E.DEFAULT_YEARS;
+  var inp = {reliability: rel, years: years, launch: false, new_share: newShare, ramp: 'STANDARD',
+             mfg_f: pq.mfg_f, supplier_dev: 'LOW', tpc_eur: tpcEur, field_service: 'BASIC', spare_parts: 'REACTIVE'};
+  var u = E.unit(inp);
+  inp.launch = true;
+  var ul = E.unit(inp);
+  return {car: u.eur_per_car, launchCar: ul.eur_per_car, unit: u, years: years,
+          reliability: rel == null ? E.DESIGN_REF : rel, pq: pq, qualityDelta: pq.cost_delta_eur};
+}
+
 function calcPropBizCase() {
   var comYears = (_prop.commercial && _prop.commercial.years) || [];
   var marketingM = 0; // Marketing is now brand-level (set in Brand Management page)
@@ -23846,6 +24116,9 @@ function calcPropBizCase() {
     }
   }
   var finalTpcNum = tpcNum + _srcAdj + (_m ? _m.buy_cost_adj : 0) + _manufVarDelta(_m);
+  // Warranty (COGS) and the plant quality system's per-car cost, as clearing and the P&L charge
+  // them (_WARRANTY_E mirrors financial_engine.warranty_unit / vehicle_plant_quality).
+  var _wty = _propWarranty(finalTpcNum, _fcfPl);
 
   // Build quarterly FCF (per-market-year model)
   var _fcfMk=((_prop.commercial&&_prop.commercial.markets)||[]).filter(function(m){return m.selected;});
@@ -23869,7 +24142,8 @@ function calcPropBizCase() {
           var uQ=Math.round(yd.volume/4);
           var nR=_oemUnitRev((mkt.msrp_eur_k||0), yd.discount);
           var lo=plant?(((MARKET_LOGISTICS_COST[plant.region]||{})[mkt.region])||{l:200,t:0}):{l:200,t:0};
-          var landed=tpcNum+_srcAdj+mfr.buy_cost_adj+_manufVarDelta(mfr)+lo.l+nR*lo.t;
+          var landed=tpcNum+_srcAdj+mfr.buy_cost_adj+_manufVarDelta(mfr)+lo.l+nR*lo.t
+                     +_wty.qualityDelta+(fcfArr.length<_WARRANTY_E.LAUNCH_Q?_wty.launchCar:_wty.car);
           revM+=uQ*nR/1e6; cogsM+=uQ*landed/1e6;
         });
         if(tpcNum===0)cogsM=revM*0.70;
@@ -23877,6 +24151,7 @@ function calcPropBizCase() {
         var cr=comYears.find(function(r){return r.year===yr;})||comYears[0]||{price:26,volume:0,discount:5};
         var uQ=Math.round(cr.volume/4), pE=cr.price*1000*(1-cr.discount/100);
         revM=uQ*pE/1e6; cogsM=finalTpcNum>0?uQ*finalTpcNum/1e6:revM*0.70;
+        cogsM+=uQ*(_wty.qualityDelta+(fcfArr.length<_WARRANTY_E.LAUNCH_Q?_wty.launchCar:_wty.car))/1e6;
       }
       // Head-office overhead this model adds (its own admin + the volume-linked share),
       // not a % of revenue: the team's base overhead is there with or without it.
@@ -23972,6 +24247,15 @@ function calcPropBizCase() {
             + _newMkt.countries.slice(0, 8).join(', ') + (_newMkt.countries.length > 8 ? '…' : '') + '): €'
             + Math.round(_newMkt.entryM) + 'M upfront and €' + Math.round(_newMkt.runQ) + 'M/qtr network. '
             + 'Enter them on Commercial → 🌍 Markets, ' + _MKTNET_E.ENTRY_LEAD_Q + ' quarters before SOP.</div>'
+          : '')
+      + '<div style="font-family:DM Mono,monospace;font-size:10px;color:var(--muted2);margin-top:8px;">'
+        + 'Warranty (in COGS): €' + Math.round(_wty.car) + '/car (' + _wty.years + '-year warranty; €'
+        + Math.round(_wty.launchCar) + '/car in the first ' + _WARRANTY_E.LAUNCH_Q + ' quarters of production) · '
+        + _wty.unit.claims_per_car.toFixed(2) + ' claims/car × €' + Math.round(_wty.unit.cost_per_claim_eur) + ' · reliability '
+        + Math.round(_wty.reliability) + ' · quality system ' + _wty.pq.quality_tier.replace('_', ' ').toLowerCase()
+        + (_wty.qualityDelta ? ' (' + (_wty.qualityDelta > 0 ? '+' : '−') + '€' + Math.abs(_wty.qualityDelta) + '/car)' : '')
+        + '. Warranty period and quality system: Commercial → 🛡 Warranty.</div>'
+      + (false ? ''
           : '');
   }
 
