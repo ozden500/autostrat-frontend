@@ -2522,6 +2522,18 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
     </div>
   </div>
 
+  <!-- Market Intelligence visibility -->
+  <div style="background:var(--s1);border:1px solid var(--border);border-radius:10px;padding:20px;margin-bottom:16px;max-width:640px;">
+    <div style="font-family:'DM Mono',monospace;font-size:9px;text-transform:uppercase;letter-spacing:1.5px;color:#a78bfa;margin-bottom:12px;">Market Intelligence</div>
+    <label style="display:flex;gap:10px;align-items:flex-start;cursor:pointer;">
+      <input id="cfg-show-rival-cov" type="checkbox" checked onchange="settingsSaveRivalCoverage(this.checked)" style="margin-top:3px;">
+      <span style="font-size:12px;color:#cbd5e1;">Show rivals' network coverage on teams' Markets maps
+        <span style="display:block;font-size:10px;color:var(--muted2);margin-top:4px;">On: teams get the Strongest rival and Gap views, with each rival's coverage per country (last cleared quarter). Off: teams see only their own coverage. Rivals' network spend is never shown either way. Entries and exits stay visible.</span>
+      </span>
+    </label>
+    <span id="cfg-rival-cov-status" style="font-size:12px;color:#22c55e;display:none;">Saved ✓</span>
+  </div>
+
   <!-- Industrial Operations Lead Times -->
   <div style="background:var(--s1);border:1px solid var(--border);border-radius:10px;padding:20px;margin-bottom:16px;max-width:640px;">
     <div style="font-family:'DM Mono',monospace;font-size:9px;text-transform:uppercase;letter-spacing:1.5px;color:#a78bfa;margin-bottom:16px;">Industrial Operations Lead Times</div>
@@ -13070,7 +13082,27 @@ async function loadSettingsPage() {
     const pfEl = document.getElementById('cfg-eng-prod-factor');
     if (pfEl) pfEl.value = cfg.eng_prod_factor != null ? cfg.eng_prod_factor : 1.0;
     _sessionEngProdFactor = cfg.eng_prod_factor != null ? parseFloat(cfg.eng_prod_factor) : null;
+    const sres = await fetch(`${API_URL}/sessions/${sessionId}`);
+    if (sres.ok) {
+      const sd = await sres.json();
+      const cb = document.getElementById('cfg-show-rival-cov');
+      if (cb) cb.checked = (sd.session || {}).show_rival_coverage !== false;
+    }
   } catch(e) { console.warn('loadSettingsPage:', e); }
+}
+
+async function settingsSaveRivalCoverage(on) {
+  if (!sessionId) return;
+  try {
+    const res = await fetch(`${API_URL}/sessions/${sessionId}/market-visibility`, {
+      method: 'PATCH', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({show_rival_coverage: !!on})
+    });
+    if (!res.ok) throw new Error(await res.text());
+    const st = document.getElementById('cfg-rival-cov-status');
+    if (st) { st.style.display = 'inline'; setTimeout(() => st.style.display = 'none', 3000); }
+    toast(on ? '✓ Rival coverage visible to teams' : '✓ Rival coverage hidden from teams');
+  } catch(e) { toast('❌ Save failed: ' + e.message); }
 }
 
 async function settingsSave() {
@@ -24677,7 +24709,13 @@ function _mktMapColor(c) {
 // lags your own figure (which includes this quarter's decisions) by one quarter.
 function _mktSetView(v) { _mktTab.view = v; _renderMarketsTab(); }
 
+function _mktRivalsHidden() { return !!(_mktTab.cov && _mktTab.cov.hidden); }
+
 function _mktViewSwitch() {
+  if (_mktRivalsHidden()) {
+    _mktTab.view = 'mine';
+    return '<span style="color:var(--muted)">Rival coverage hidden by the instructor</span>';
+  }
   var v = _mktTab.view || 'mine';
   var b = function(k, l) {
     var on = v === k;
@@ -24722,7 +24760,7 @@ function _mktViewColor(c, code) {
 
 function _mktRivalTip(code) {
   var r = _mktRivalCov(code);
-  if (!_mktTab.cov) return '';
+  if (!_mktTab.cov || _mktRivalsHidden()) return '';
   if (!r.count) return '<br><span style="color:var(--muted)">No rival network here</span>';
   var h = '<br><span style="color:var(--muted)">' + r.count + ' rival' + (r.count > 1 ? 's' : '') + ' · strongest '
     + Math.round(r.max * 100) + '% · avg ' + Math.round(r.avg * 100) + '%</span>';
@@ -24826,7 +24864,7 @@ function _drawMarketMoves(svg, path, tip, host, byCode) {
         tip.style('display', 'block').html('<b>' + c.label + '</b> · ' + (up ? 'entries' : 'exits') + '<br>'
           + gr.list.map(function(m){ return '<span style="color:' + (m.color || 'var(--text)') + '">■</span> '
               + m.team + ' <span style="color:var(--muted)">' + (m.is_ai ? 'AI' : 'human') + '</span> · '
-              + m.label + (m.cost_m ? ' · €' + m.cost_m + 'M' : ''); }).join('<br>'))
+              + m.label; }).join('<br>'))
           .style('left', (ev.clientX - r.left + 12) + 'px').style('top', (ev.clientY - r.top + 12) + 'px');
       })
       .on('mouseleave', function(){ tip.style('display', 'none'); })
