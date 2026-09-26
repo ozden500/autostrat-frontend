@@ -1157,6 +1157,15 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
       style="font-family:'DM Mono',monospace;font-size:10px;padding:8px 20px;border:none;border-bottom:2px solid transparent;background:transparent;color:var(--muted);cursor:pointer;letter-spacing:.5px;">PRICING</button>
     <button id="com-tab-btn-sales-planning" onclick="switchComTab('sales-planning')"
       style="font-family:'DM Mono',monospace;font-size:10px;padding:8px 20px;border:none;border-bottom:2px solid transparent;background:transparent;color:var(--muted);cursor:pointer;letter-spacing:.5px;">📊 SALES PLAN</button>
+    <button id="com-tab-btn-markets" onclick="switchComTab('markets')"
+      style="font-family:'DM Mono',monospace;font-size:10px;padding:8px 20px;border:none;border-bottom:2px solid transparent;background:transparent;color:var(--muted);cursor:pointer;letter-spacing:.5px;">🌍 MARKETS</button>
+  </div>
+
+  <!-- ── MARKETS tab: country entry / exit and sales-network spend ── -->
+  <div id="com-tab-markets" style="display:none;">
+    <div id="markets-content">
+      <div style="color:var(--muted2);font-family:'DM Mono',monospace;font-size:11px;padding:16px 0;">Loading markets…</div>
+    </div>
   </div>
 
   <!-- ── SALES PLANNING tab ─────────────────────── -->
@@ -1191,7 +1200,6 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
         <div class="ctrl"><div class="ctrl-lbl"><span>Marketing Budget (€M/qtr)</span><span class="ctrl-v" id="cm-mkt">€380M</span></div><input type="range" min="50" max="800" step="10" value="380" oninput="svm('cm-mkt',this.value)"></div>
         <div class="ctrl"><label class="ctrl-lbl-top">Media Mix</label><select><option>Digital-first</option><option>TV + Digital</option><option>Brand events</option><option>Performance mktg</option></select></div>
         <div class="ctrl"><label class="ctrl-lbl-top">Campaign Theme</label><select><option>Sustainability & EV</option><option>Performance & Design</option><option>Value for money</option><option>Safety & family</option><option>Mobility services</option></select></div>
-        <div class="ctrl"><div class="ctrl-lbl"><span>Dealer Support Fund</span><span class="ctrl-v" id="cm-ds">€95M</span></div><input type="range" min="10" max="300" step="5" value="95" oninput="svm('cm-ds',this.value)"></div>
       </div>
     </div>
   </div>
@@ -6805,7 +6813,103 @@ var SEG_COUNTRY_VOL_K = {
     US:115,  CA:30,   MX:23,   RONA:15,
     CN:350,  JP:26,   IN:19,   KR:11,   AU:8,    ID:8,    TH:4,    MY:4,    ROA:4,
     BR:23,   AR:8,    CL:8,    CO:8,    PE:4,    ROSA:4,
-    SAU:10,  ZA:10,   EG:10,   AE:10,   MA:5,    DZ:5,    ROMEA:0
+    SAU:8,   ZA:8,    EG:8,    AE:8,    MA:4,    DZ:4,    ROMEA:0
+  }
+};
+
+// ════════════════════════════════════════════════════════════════════
+// _MKTNET_E — market entry & sales network (2026-09-26)
+// Mirrors financial_engine.py market_country_terms / network_target /
+// network_multiplier / market_step (Engine Parity Rule; tools/engine_parity_check.py).
+// A team sells in a country only once entered; network spend builds coverage N,
+// which scales its attraction in that country's logit vs external competitors.
+// ════════════════════════════════════════════════════════════════════
+var _MKTNET_E = {
+  SALES_COST_INDEX: {
+    DE:1.00, FR:0.95, GB:0.95, IT:0.85, ES:0.75, TR:0.35, PL:0.45,
+    NL:1.00, BE:0.95, SE:1.00, AT:0.95, ROE:0.60,
+    US:1.05, CA:0.90, MX:0.35, RONA:0.40,
+    CN:0.45, JP:0.90, IN:0.20, KR:0.75, AU:1.00, ID:0.25, TH:0.30,
+    MY:0.35, ROA:0.35,
+    BR:0.40, AR:0.35, CL:0.50, CO:0.30, PE:0.30, ROSA:0.30,
+    SAU:0.70, ZA:0.35, EG:0.20, AE:0.80, MA:0.25, DZ:0.20, ROMEA:0.25
+  },
+  ENTRY_BARRIER: {JP:1.5, KR:1.5, CN:1.3, IN:1.2},
+  ENTRY_FIXED_M: 10.0, ENTRY_K: 4.0,
+  RUN_FIXED_M: 2.0,    RUN_K: 0.15,
+  REF_K: 0.037,        REF_EXP: 0.85,
+  BUILD_UP: 0.30,      BUILD_DOWN: 0.20,
+  ENTRY_LEAD_Q: 2,     EXIT_PCT: 0.40,
+  N_EXT: 1 - Math.exp(-1),
+  NET_ALPHA: {
+    a_segment:0.7, b_segment:0.7, c_segment:0.7, d_segment:0.7, mpv:0.7,
+    e_segment:0.6, f_segment:0.5, sports:0.5,
+    pickup:0.9, c_van:0.9, d_van:0.9, e_van:0.9
+  },
+
+  tivK: function(cc) {
+    var t = 0;
+    Object.keys(SEG_COUNTRY_VOL_K).forEach(function(seg){ t += (SEG_COUNTRY_VOL_K[seg][cc] || 0); });
+    return t;
+  },
+
+  // Entry fee, minimum and reference quarterly spend, exit fee (€M)
+  terms: function(cc, tivK) {
+    var tiv = (tivK == null) ? this.tivK(cc) : tivK;
+    var idx = this.SALES_COST_INDEX[cc] != null ? this.SALES_COST_INDEX[cc] : 0.5;
+    var bar = this.ENTRY_BARRIER[cc] || 1.0;
+    var entry = idx * bar * (this.ENTRY_FIXED_M + this.ENTRY_K * Math.sqrt(tiv));
+    var r4 = function(x){ return Math.round(x * 1e4) / 1e4; };
+    return {
+      cost_index: idx, barrier: bar, tiv_k: tiv,
+      entry_fee_m: r4(entry),
+      min_run_m:   r4(idx * (this.RUN_FIXED_M + this.RUN_K * Math.sqrt(tiv))),
+      ref_spend_m: r4(idx * this.REF_K * Math.pow(tiv, this.REF_EXP)),
+      exit_fee_m:  r4(entry * this.EXIT_PCT)
+    };
+  },
+
+  target: function(spendM, refM) {
+    if (refM <= 0 || spendM <= 0) return 0;
+    return 1 - Math.exp(-spendM / refM);
+  },
+
+  multiplier: function(n, seg) {
+    if (n <= 0) return 0;
+    var a = this.NET_ALPHA[seg] != null ? this.NET_ALPHA[seg] : 0.7;
+    return Math.pow(n / this.N_EXT, a);
+  },
+
+  // One quarter of one country for one team — see financial_engine.market_step
+  step: function(prev, action, spendM, cc, qabs, terms) {
+    var t = terms || this.terms(cc);
+    prev = prev || {};
+    var status  = prev.status || 'none';
+    var nPrev   = parseFloat(prev.network_strength) || 0;
+    var entered = (prev.entered_qabs == null) ? null : prev.entered_qabs;
+    var spend   = (spendM == null) ? (parseFloat(prev.network_spend_m) || 0) : parseFloat(spendM);
+    var entryM = 0, exitM = 0, runM, n;
+    action = action || 'hold';
+    if (action === 'enter' && status === 'none') {
+      status = 'entering'; entered = qabs; nPrev = 0; entryM = t.entry_fee_m;
+      if (spend <= 0) spend = t.ref_spend_m;
+    } else if (action === 'exit' && status !== 'none') {
+      status = 'none'; entered = null; nPrev = 0; exitM = t.exit_fee_m;
+    }
+    if (status === 'entering' || status === 'active') {
+      if (entered == null || qabs >= entered + this.ENTRY_LEAD_Q) status = 'active';
+      runM = Math.max(spend, t.min_run_m);
+      var tg = this.target(runM, t.ref_spend_m);
+      var rate = tg > nPrev ? this.BUILD_UP : this.BUILD_DOWN;
+      n = nPrev + (tg - nPrev) * rate;
+    } else { runM = 0; n = 0; spend = 0; }
+    var r4 = function(x){ return Math.round(x * 1e4) / 1e4; };
+    return {
+      country_code: cc, action: action, status: status, entered_qabs: entered,
+      network_spend_m: r4(spend), network_strength: Math.round(n * 1e6) / 1e6,
+      entry_cost_m: r4(entryM), running_cost_m: r4(runM), exit_cost_m: r4(exitM),
+      sellable: status === 'active' && n > 0
+    };
   }
 };
 
@@ -10187,7 +10291,7 @@ var _REGION_FLAGS = {EU:'🌍', NA:'🌎', APAC:'🌏', SA:'🌎', MEA:'🌍'};
 
 function switchComTab(tab) {
   _comActiveTab = tab;
-  ['overview','pricing','sales-planning'].forEach(function(t) {
+  ['overview','pricing','sales-planning','markets'].forEach(function(t) {
     var btn = document.getElementById('com-tab-btn-'+t);
     var pane = document.getElementById('com-tab-'+t);
     var active = t === tab;
@@ -10199,6 +10303,7 @@ function switchComTab(tab) {
   });
   if (tab === 'pricing') renderCommercialPricing();
   if (tab === 'sales-planning') loadSalesPlanTab();
+  if (tab === 'markets') loadMarketsTab();
 }
 
 async function loadCommercialPage() {
@@ -13914,6 +14019,8 @@ var _FIN_LINES = {
     {l:'  ↳ incl. sustaining engineering', k:'rd_sustaining_m', neg:true, optional:true},
     {l:'SG&A',                   k:'sga_m', neg:true},
     {l:'Brand marketing',        k:'marketing_m', neg:true, optional:true},
+    {l:'Sales network',          k:'sales_network_m', neg:true, optional:true},
+    {l:'Market entry / exit',    k:'market_entry_m', neg:true, optional:true},
     {l:'Depreciation',           k:'depreciation_total_m', neg:true},
     {l:'Supply chain & other',   k:'_pl_other', neg:true, optional:true},
     {l:'EBIT',                   k:'ebit_m', kind:'tot'},
@@ -13995,6 +14102,7 @@ function _finPlOther(s) {
   if (!s) return 0;
   var n = function(k){ return parseFloat(s[k]) || 0; };
   return n('gross_profit_m') - n('rd_expense_m') - n('sga_m') - n('marketing_m')
+       - n('sales_network_m') - n('market_entry_m')
        - n('depreciation_total_m') - n('ebit_m');
 }
 
@@ -14823,7 +14931,9 @@ function renderPLComparison(data) {
     o._depr_veh     = parseFloat(fs.depreciation_vehicle_m|| 0);   // REAL: units-of-prod
     o._depr_infra   = parseFloat(fs.depreciation_infra_m  || 0);   // REAL: straight-line
     o._depr_total   = parseFloat(fs.depreciation_total_m  || 0);   // REAL total
-    o._ga           = parseFloat(fs.sga_m                 || rev * 0.06); // REAL SG&A
+    o._ga           = parseFloat(fs.sga_m                 || rev * 0.05); // REAL SG&A
+    o._mkt_net      = parseFloat(fs.sales_network_m       || 0);   // REAL: country networks
+    o._mkt_entry    = parseFloat(fs.market_entry_m        || 0);   // REAL: entry fees / exit costs
     // EBIT — REAL
     o._ebit         = parseFloat(fs.ebit_m                || o.ebit_m || 0);
     // Non-operating — REAL
@@ -14862,7 +14972,9 @@ function renderPLComparison(data) {
     {type:'line',   label:'  R&D Expense (100% expensed)',     key:'_rd',           sign:1},
     {type:'line',   label:'  Depreciation — Vehicle Assets',   key:'_depr_veh',     sign:1},
     {type:'line',   label:'  Depreciation — Infrastructure',   key:'_depr_infra',   sign:1},
-    {type:'line',   label:'  SG&A (6% of Revenue)',            key:'_ga',           sign:1},
+    {type:'line',   label:'  SG&A (5% of Revenue)',            key:'_ga',           sign:1},
+    {type:'line',   label:'  Sales Network (Markets tab)',     key:'_mkt_net',      sign:1},
+    {type:'line',   label:'  Market Entry / Exit',             key:'_mkt_entry',    sign:1},
     {type:'sep'},
     {type:'total',  label:'EBIT',                              key:'_ebit',         sign:-1, color:'var(--gold)'},
     {type:'sep'},
@@ -19631,6 +19743,12 @@ function buildComponentsSourcingSection() {
 }
 
 function buildCommercialSection() {
+  if(!_mktTab.data&&!_mktTab._fetchingFor9&&sessionId&&teamId){
+    _mktTab._fetchingFor9=true;
+    fetch(API_URL+'/sessions/'+sessionId+'/teams/'+teamId+'/markets')
+      .then(function(r){return r.ok?r.json():null;})
+      .then(function(j){if(j){_mktTab.data=j;buildCommercialSection();}}).catch(function(){});
+  }
   var el = document.getElementById('prop-commercial-content');
   if (!el) return;
   if (!_prop.commercial) _prop.commercial = {};
@@ -19671,6 +19789,12 @@ function buildCommercialSection() {
     html+='<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:'+(sel?'14px':'0')+'">';
     html+='<input type="checkbox"'+(sel?' checked':'')+' data-action="prop-com-mkt-toggle" data-region="'+sm.region+'" style="cursor:pointer;width:14px;height:14px;">';
     html+='<span style="font-family:DM Mono,monospace;font-size:11px;font-weight:600;color:var(--white);">'+sm.label+'</span>';
+    // Sales network: the vehicle sells here only in countries the team has entered (Commercial → Markets)
+    var _mkd=_mktTab.data, _regCs=_mkd?(_mkd.countries||[]).filter(function(c){return c.region===sm.region;}):[];
+    if(_mkd&&_regCs.length){
+      var _nSell=_regCs.filter(function(c){return c.status!=='none';}).length;
+      html+='<span title="Countries in this region where your team has a sales network (Commercial → Markets)" style="font-family:DM Mono,monospace;font-size:8px;padding:1px 5px;border-radius:2px;background:var(--s2);color:'+(_nSell?'var(--muted2)':(sel?'var(--red)':'var(--muted)'))+'">'+(_nSell?('network '+_nSell+'/'+_regCs.length):(sel?'⚠ no sales network':'no sales network'))+'</span>';
+    }
     if(sel&&plants.length>0){
       html+='<select id="prop-com-plant-sel-'+sm.region+'" onchange="onPropComMarketPlant(\''+sm.region+'\',this)" style="background:var(--s2);border:1px solid var(--border2);color:var(--text);border-radius:2px;padding:3px 6px;font-size:10px;font-family:DM Mono,monospace;">';
       plants.forEach(function(p){html+='<option value="'+p.id+'"'+(p.id===mkt.plant_id?' selected':'')+'>'+p.country_name+' ('+p.region+')</option>';});
@@ -23469,6 +23593,10 @@ function calcPropBizCase() {
     ? _fcfMk[0].years.map(function(y){return y.year;})
     : comYears.map(function(r){return r.year;});
   var fcfArr=[];
+  // Countries in this proposal's regions the team has not entered (Markets tab): their entry
+  // fees are an upfront outlay and a standard network there a quarterly cost. The team's
+  // existing network is shared by all its vehicles, so it is not charged again here.
+  var _newMkt = _propNewMarketCosts();
   _fcfYr.forEach(function(yr){
     for(var q=0;q<4;q++){
       var revM=0,cogsM=0;
@@ -23491,7 +23619,7 @@ function calcPropBizCase() {
         revM=uQ*pE/1e6; cogsM=finalTpcNum>0?uQ*finalTpcNum/1e6:revM*0.70;
       }
       var gpM=revM-cogsM, sgaM=revM*0.06, rdMq=revM*0.04;
-      var ebitM=gpM-sgaM-rdMq-marketingM, fcfM=ebitM*0.75;
+      var ebitM=gpM-sgaM-rdMq-marketingM-_newMkt.runQ, fcfM=ebitM*0.75;
       fcfArr.push({rev:revM,cogs:cogsM,gp:gpM,ebit:ebitM,fcf:fcfM,mktg:marketingM});
     }
   })
@@ -23512,7 +23640,7 @@ function calcPropBizCase() {
   ['vehicle_plants','powertrain_plants'].forEach(function(t){(_ops[t]||[]).forEach(function(f){toolingM+=f._computed?f._computed.total_inv_m||0:0;});});
   if(toolingM===0&&_m)toolingM=(_m.grand_total_inv_m||_m.total_investment_m||0);
   if(_ops._sourcingCapexM)toolingM+=_ops._sourcingCapexM;
-  var totalInvM=rdM+toolingM;
+  var totalInvM=rdM+toolingM+_newMkt.entryM;
 
   // NPV
   var rateP    = SESSION_DISCOUNT_RATE || 8;
@@ -23575,7 +23703,14 @@ function calcPropBizCase() {
   var _bcEl=document.getElementById('prop-bc-content');
   if (_bcEl) {
     _bcEl.innerHTML=_buildBizCasePanels(_byYear,_mktEcon,_modTpc,_modRd,_bcMkts,_bcPlants,
-      tpcNum,rdM,toolingM,totalInvM,npv,irr,paybackQ,avgEbitPct,rateP,_cumFcf,fcfArr,_bcYears,marketingM,_dmpMake,_srcAdj);
+      tpcNum,rdM,toolingM,totalInvM,npv,irr,paybackQ,avgEbitPct,rateP,_cumFcf,fcfArr,_bcYears,marketingM,_dmpMake,_srcAdj)
+      + (_newMkt.countries.length
+          ? '<div style="font-family:DM Mono,monospace;font-size:10px;color:var(--gold);margin-top:10px;">'
+            + 'Includes market entry for ' + _newMkt.countries.length + ' countries your team is not in yet ('
+            + _newMkt.countries.slice(0, 8).join(', ') + (_newMkt.countries.length > 8 ? '…' : '') + '): €'
+            + Math.round(_newMkt.entryM) + 'M upfront and €' + Math.round(_newMkt.runQ) + 'M/qtr network. '
+            + 'Enter them on Commercial → 🌍 Markets, ' + _MKTNET_E.ENTRY_LEAD_Q + ' quarters before SOP.</div>'
+          : '');
   }
 
 
@@ -24319,6 +24454,172 @@ var _salesPlanState = {
 // true = expanded (default: all collapsed)
 var _spExpanded = { veh: {}, reg: {} };
 var _opsToolingExpanded = {};
+
+// ── MARKETS tab (2026-09-26): country entry, exit and sales-network spend ──
+// State comes from GET /sessions/{sid}/teams/{tid}/markets, derived server-side by
+// financial_engine.team_market_state (the reader clearing and the P&L use). Every
+// change is PUT at once and the server's recomputed state is re-rendered, so what
+// the tab shows is what the round will charge and clear on.
+var _mktTab = {data: null, busy: false, openReg: {}};
+var _MKT_BTN = 'font-family:DM Mono,monospace;font-size:9.5px;padding:2px 8px;border:1px solid var(--border2);background:transparent;color:var(--cyan);cursor:pointer;border-radius:2px;';
+
+async function loadMarketsTab() {
+  if (!sessionId || !teamId) return;
+  var el = document.getElementById('markets-content');
+  if (!el) return;
+  if (!_mktTab.data) el.innerHTML = '<div style="color:var(--muted2);font-family:DM Mono,monospace;font-size:11px;padding:16px 0;">Loading…</div>';
+  try {
+    var res = await fetch(API_URL + '/sessions/' + sessionId + '/teams/' + teamId + '/markets');
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    _mktTab.data = await res.json();
+    _renderMarketsTab();
+  } catch (e) {
+    el.innerHTML = '<div style="color:var(--red);font-family:DM Mono,monospace;font-size:11px;padding:16px 0;">Failed to load markets: ' + e.message + '</div>';
+  }
+}
+
+async function _mktDecide(cc, action, spendM) {
+  if (_mktTab.busy) return;
+  var d = {country_code: cc};
+  if (action != null) d.action = action;
+  if (spendM != null) d.network_spend_m = Math.max(0, Math.round(spendM * 10) / 10);
+  _mktTab.busy = true;
+  try {
+    var res = await fetch(API_URL + '/sessions/' + sessionId + '/teams/' + teamId + '/markets', {
+      method: 'PUT', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({decisions: [d]})
+    });
+    var body = await res.json();
+    if (!res.ok) throw new Error(body.detail || ('HTTP ' + res.status));
+    _mktTab.data = body;
+  } catch (e) {
+    toast('Market decision failed: ' + e.message);
+  } finally {
+    _mktTab.busy = false;
+    _renderMarketsTab();
+  }
+}
+
+function _mktEnter(cc)  { _mktDecide(cc, 'enter', null); }
+function _mktExit(cc)   { _mktDecide(cc, 'exit', null); }
+function _mktUndo(cc)   { _mktDecide(cc, 'hold', null); }
+function _mktSpend(cc, v) { var x = parseFloat(v); if (!isNaN(x)) _mktDecide(cc, null, x); }
+function _mktPreset(cc, mult) {
+  var c = ((_mktTab.data && _mktTab.data.countries) || []).find(function(r){ return r.code === cc; });
+  if (c) _mktDecide(cc, null, c.ref_spend_m * mult);
+}
+function _mktToggleReg(reg) { _mktTab.openReg[reg] = !_mktTab.openReg[reg]; _renderMarketsTab(); }
+
+function _renderMarketsTab() {
+  var el = document.getElementById('markets-content');
+  var d = _mktTab.data;
+  if (!el || !d) return;
+  var locked = d.round && d.round.phase === 'results';
+  var fm = function(x){ return '€' + (Math.round(x * 10) / 10).toLocaleString() + 'M'; };
+  var mono = 'font-family:DM Mono,monospace;';
+  var sm = d.summary || {};
+  var needed = {};
+  (d.vehicles || []).forEach(function(v){ (v.regions || []).forEach(function(r){ (needed[r] = needed[r] || []).push(v.name); }); });
+
+  var h = '<div style="font-size:11px;color:var(--muted2);margin-bottom:12px;' + mono + 'line-height:1.6;">'
+    + 'Your team sells a vehicle only in countries where it has a sales network, inside the regions the vehicle\'s commercial plan selects. '
+    + 'Entering costs a one-off fee and sales start ' + _MKTNET_E.ENTRY_LEAD_Q + ' quarters later. The network costs at least the country minimum every quarter. '
+    + 'More spend builds more coverage, over several quarters and with diminishing returns, and coverage raises your share against the other teams in that country. '
+    + 'Costs scale with market size and the local cost base.'
+    + (locked ? '<br><span style="color:var(--gold)">This round has cleared. Decisions apply from the next round.</span>' : '')
+    + '</div>';
+
+  h += '<div class="kpi-grid g4" style="margin-bottom:14px;">'
+    + '<div class="kpi kk-c"><div class="kl">Countries active</div><div class="kv">' + (sm.active || 0) + '</div><div class="kd">' + (sm.entering || 0) + ' being entered</div></div>'
+    + '<div class="kpi kk-g"><div class="kl">Network spend this qtr</div><div class="kv">' + fm(sm.network_m || 0) + '</div><div class="kd">P&amp;L: sales network</div></div>'
+    + '<div class="kpi kk-r"><div class="kl">Entry / exit this qtr</div><div class="kv">' + fm((sm.entry_m || 0) + (sm.exit_m || 0)) + '</div><div class="kd">P&amp;L: market entry</div></div>'
+    + '<div class="kpi kk-b"><div class="kl">Round</div><div class="kv">' + (d.round ? d.round.year + ' Q' + d.round.quarter : '—') + '</div><div class="kd">' + (locked ? 'cleared' : 'open for decisions') + '</div></div>'
+    + '</div>';
+
+  var byReg = {};
+  (d.countries || []).forEach(function(c){ (byReg[c.region] = byReg[c.region] || []).push(c); });
+  Object.keys(byReg).forEach(function(reg) {
+    var cs = byReg[reg];
+    var act = cs.filter(function(c){ return c.status !== 'none'; }).length;
+    var spend = cs.reduce(function(s, c){ return s + (c.running_cost_m || 0); }, 0);
+    var need = needed[reg] || [];
+    var gap = need.length && !cs.some(function(c){ return c.sellable; });
+    var open = _mktTab.openReg[reg] != null ? _mktTab.openReg[reg] : (act > 0 || need.length > 0);
+    h += '<div style="border:1px solid var(--border2);border-radius:3px;margin-bottom:8px;">'
+      + '<div onclick="_mktToggleReg(\'' + reg + '\')" style="cursor:pointer;display:flex;gap:14px;align-items:center;padding:8px 12px;background:var(--bg2);' + mono + 'font-size:11px;">'
+      + '<span>' + (open ? '▾' : '▸') + ' ' + ((_REGION_FLAGS && _REGION_FLAGS[reg]) || '') + ' <b>' + reg + '</b></span>'
+      + '<span style="color:var(--muted2)">' + act + '/' + cs.length + ' countries · ' + fm(spend) + '/qtr</span>'
+      + (need.length ? '<span style="color:' + (gap ? 'var(--red)' : 'var(--muted2)') + '">' + (gap ? '⚠ no sellable country for ' : 'needed by ') + need.slice(0, 3).join(', ') + (need.length > 3 ? '…' : '') + '</span>' : '')
+      + '</div>';
+    if (open) {
+      h += '<table style="width:100%;border-collapse:collapse;' + mono + 'font-size:10.5px;">'
+        + '<tr style="color:var(--muted2);text-align:right;"><th style="text-align:left;padding:4px 10px;">Country</th><th>Status</th><th title="Local cost base, Germany = 1.00">Cost idx</th>'
+        + '<th title="Industry volume, k units/yr">Market k/yr</th><th title="Coverage now, and where this spend takes it">Coverage</th>'
+        + '<th title="Network spend per quarter (charged at least the minimum)">Spend €M/qtr</th><th>Min · Ref</th><th style="padding-right:10px;">Action</th></tr>';
+      cs.forEach(function(c) {
+        var n = c.network_strength || 0, tgt = c.status === 'none' ? 0 : _MKTNET_E.target(Math.max(c.network_spend_m || 0, c.min_run_m), c.ref_spend_m);
+        var stCol = c.status === 'active' ? 'var(--green)' : c.status === 'entering' ? 'var(--gold)' : 'var(--muted)';
+        var stTxt = c.status === 'entering' ? 'entering · sells ' + _mktLabel((c.entered_qabs || 0) + _MKTNET_E.ENTRY_LEAD_Q) : c.status;
+        var bar = '<span style="display:inline-block;width:70px;height:6px;background:var(--border2);position:relative;vertical-align:middle;">'
+          + '<span style="position:absolute;left:0;top:0;height:6px;width:' + Math.round(n * 100) + '%;background:var(--cyan);"></span>'
+          + '<span style="position:absolute;top:-2px;height:10px;width:2px;left:' + Math.round(tgt * 100) + '%;background:var(--gold);"></span></span>'
+          + ' ' + (n * 100).toFixed(0) + '%';
+        var act;
+        if (locked) act = '';
+        else if (c.status === 'none' && c.action !== 'exit') act = '<button style="' + _MKT_BTN + '" onclick="_mktEnter(\'' + c.code + '\')">Enter · ' + fm(c.entry_fee_m) + '</button>';
+        else if (c.action === 'enter' || c.action === 'exit') act = '<button style="' + _MKT_BTN + '" onclick="_mktUndo(\'' + c.code + '\')">Undo ' + c.action + '</button>';
+        else act = '<button style="' + _MKT_BTN + '" onclick="_mktExit(\'' + c.code + '\')" title="Dealer compensation">Exit · ' + fm(c.exit_fee_m) + '</button>';
+        var spendCell = c.status === 'none' ? '<span style="color:var(--muted)">—</span>'
+          : '<input type="number" min="0" step="0.5" value="' + (c.network_spend_m || 0).toFixed(1) + '" ' + (locked ? 'disabled ' : '')
+            + 'onchange="_mktSpend(\'' + c.code + '\',this.value)" style="width:64px;text-align:right;' + mono + 'font-size:10.5px;background:var(--bg);color:var(--text);border:1px solid var(--border2);">'
+            + (locked ? '' : ' <a href="javascript:void 0" onclick="_mktPreset(\'' + c.code + '\',0.5)" title="Lean: 0.5× reference">L</a>'
+              + ' <a href="javascript:void 0" onclick="_mktPreset(\'' + c.code + '\',1)" title="Standard: 1× reference">S</a>'
+              + ' <a href="javascript:void 0" onclick="_mktPreset(\'' + c.code + '\',2)" title="Strong: 2× reference">X</a>');
+        h += '<tr style="border-top:1px solid var(--border2);text-align:right;">'
+          + '<td style="text-align:left;padding:4px 10px;">' + c.label + ' <span style="color:var(--muted)">' + c.code + '</span></td>'
+          + '<td style="color:' + stCol + '">' + stTxt + '</td>'
+          + '<td>' + (c.cost_index || 0).toFixed(2) + (c.barrier > 1 ? ' <span title="Entry barrier ×' + c.barrier + '" style="color:var(--gold)">▲</span>' : '') + '</td>'
+          + '<td>' + Math.round(c.tiv_k || 0).toLocaleString() + '</td>'
+          + '<td>' + bar + '</td>'
+          + '<td>' + spendCell + '</td>'
+          + '<td style="color:var(--muted2)">' + (c.min_run_m || 0).toFixed(1) + ' · ' + (c.ref_spend_m || 0).toFixed(1) + '</td>'
+          + '<td style="padding-right:10px;">' + act + '</td></tr>';
+      });
+      h += '</table>';
+    }
+    h += '</div>';
+  });
+  h += '<div style="font-size:10px;color:var(--muted);' + mono + 'margin-top:6px;">Coverage bar: blue = coverage this quarter, gold mark = where the current spend takes it over time. '
+    + 'L / S / X set the spend to 0.5× / 1× / 2× the reference. Doubling a standard budget lifts attraction by about 25%, not 100%.</div>';
+  el.innerHTML = h;
+}
+
+function _mktLabel(qabs) { return (2025 + Math.floor(qabs / 4)) + ' Q' + (((qabs % 4) + 4) % 4 + 1); }
+
+// §10: entry fees and network running costs of the countries this proposal's regions
+// would newly need (the team's existing network is shared, so it is not charged again).
+// Uses the last Markets state fetched; fetches it once if missing and recalculates.
+function _propNewMarketCosts() {
+  var d = _mktTab.data;
+  if (!d) {
+    if (!_mktTab._fetchingForBc && sessionId && teamId) {
+      _mktTab._fetchingForBc = true;
+      fetch(API_URL + '/sessions/' + sessionId + '/teams/' + teamId + '/markets')
+        .then(function(r){ return r.ok ? r.json() : null; })
+        .then(function(j){ if (j) { _mktTab.data = j; if (typeof calcPropBizCase === 'function') calcPropBizCase(); } })
+        .catch(function(){});
+    }
+    return {entryM: 0, runQ: 0, countries: [], known: false};
+  }
+  var regs = ((_prop.commercial && _prop.commercial.markets) || []).filter(function(m){ return m.selected; })
+    .map(function(m){ return (m.region || '').toUpperCase(); });
+  var out = {entryM: 0, runQ: 0, countries: [], known: true};
+  (d.countries || []).forEach(function(c) {
+    if (regs.indexOf(c.region) < 0 || c.status !== 'none') return;
+    out.entryM += c.entry_fee_m; out.runQ += c.ref_spend_m; out.countries.push(c.code);
+  });
+  return out;
+}
 
 async function loadSalesPlanTab() {
   if (!sessionId || !roundId || !teamId) return;
