@@ -6951,11 +6951,28 @@ var _OVERHEAD_E = {
   // head-office country: base = FIXED_M x (1 - HQ_LABOUR_SHARE + HQ_LABOUR_SHARE x salary vs DE);
   // salaries = financial_engine.ENG_FTE_EUR_MO. Per-country cost at local cost index / COUNTRY_INDEX_REF.
   HQ_DEFAULT: 'DE', HQ_LABOUR_SHARE: 0.65, COUNTRY_INDEX_REF: 0.68,
+  // base grows with the company: FIXED_M x (last-year revenue / BASE_REF_REV_M)^BASE_ELASTICITY, floored
+  BASE_REF_REV_M: 60000.0, BASE_ELASTICITY: 0.6, BASE_FLOOR_M: 12.0,
   FTE_EUR_MO: {US: 13333, CA: 11000, MX: 4500, DE: 9500, GB: 8800, FR: 8200, PL: 4800, RO: 3200,
                JP: 10500, KR: 7000, CN: 5200, IN: 2600, BR: 3800, ZA: 3400},
   HQ_LABELS: {US: 'United States', CA: 'Canada', MX: 'Mexico', DE: 'Germany', GB: 'United Kingdom',
               FR: 'France', PL: 'Poland', RO: 'Romania', JP: 'Japan', KR: 'South Korea', CN: 'China',
               IN: 'India', BR: 'Brazil', ZA: 'South Africa'},
+  // financial_engine.overhead_scale_rev_m: previous 4 quarters' revenue, annualised; none = now x 4
+  scaleRevM: function(history, qabs, revNowM) {
+    var prev = (history || []).filter(function(h) { return parseInt(h[0], 10) >= qabs - 4 && parseInt(h[0], 10) < qabs; })
+                              .map(function(h) { return parseFloat(h[1]) || 0; });
+    var r4 = function(x) { return Math.round(x * 1e4) / 1e4; };
+    if (prev.length) return r4(prev.reduce(function(a, b) { return a + b; }, 0) * 4 / prev.length);
+    return r4(Math.max(0, parseFloat(revNowM) || 0) * 4);
+  },
+  // financial_engine.overhead_base_m
+  baseM: function(scaleRevM, hqCountry) {
+    var E = _OVERHEAD_E, core;
+    if (scaleRevM === null || scaleRevM === undefined) core = E.FIXED_M;
+    else core = Math.max(E.BASE_FLOOR_M, E.FIXED_M * Math.pow(Math.max(0, parseFloat(scaleRevM)) / E.BASE_REF_REV_M, E.BASE_ELASTICITY));
+    return Math.round(core * E.hqFactor(hqCountry) * 1e4) / 1e4;
+  },
   hqFactor: function(cc) {
     var E = _OVERHEAD_E, ref = E.FTE_EUR_MO[E.HQ_DEFAULT];
     var w = (E.FTE_EUR_MO[String(cc || E.HQ_DEFAULT).toUpperCase()] || ref) / ref;
@@ -7001,7 +7018,7 @@ var _OVERHEAD_E = {
   },
   cost: function(drivers, revM, level, savingPct, launchNow, severanceSteps) {
     var d = drivers || {};
-    var base = _OVERHEAD_E.FIXED_M * _OVERHEAD_E.hqFactor(d.hq_country);
+    var base = _OVERHEAD_E.baseM(d.scale_rev_m, d.hq_country);
     var countryUnits = (d.country_index !== null && d.country_index !== undefined)
       ? parseFloat(d.country_index) / _OVERHEAD_E.COUNTRY_INDEX_REF : parseInt(d.countries || 0, 10);
     var cplx = countryUnits * _OVERHEAD_E.PER_COUNTRY_M
@@ -14788,8 +14805,9 @@ function _ovhRender() {
   h += head('WHAT DRIVES IT', 'at standard staffing');
   h += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px;margin-bottom:14px;">';
   var hqLbl = E.HQ_LABELS[d.hq_country] || d.hq_country || 'Germany';
-  h += cell('Running the company', 'head office in ' + _esc(hqLbl) + ' (×' + (d.hq_factor || 1).toFixed(2) +
-            ' vs Germany: salaries) · board, finance, HR, IT, legal', c.base_m);
+  var srev = dr.scale_rev_m;
+  h += cell('Running the company', 'sized to last-year revenue ' + (srev != null ? '€' + (srev / 1000).toFixed(1) + 'B' : '—') +
+            ' · head office in ' + _esc(hqLbl) + ' (salaries ×' + (d.hq_factor || 1).toFixed(2) + ' vs Germany) · board, finance, HR, IT, legal', c.base_m);
   var ci = dr.country_index != null ? dr.country_index : dr.countries * E.COUNTRY_INDEX_REF;
   h += cell('Countries', dr.countries + ' countries at local cost (avg ' + (dr.countries ? (ci / dr.countries).toFixed(2) : '—') +
             ' vs ' + E.COUNTRY_INDEX_REF + ' ref) · Markets tab', E.PER_COUNTRY_M * ci / E.COUNTRY_INDEX_REF);
@@ -26168,8 +26186,8 @@ function renderStartCondEditor(team) {
       '<select id="sc-hq-' + team.id + '" style="padding:5px 7px;background:var(--s2);border:1px solid var(--border);color:var(--text);border-radius:3px;font-family:DM Mono,monospace;font-size:9px;">' +
       Object.keys(_OVERHEAD_E.HQ_LABELS).sort(function(a, b) { return _OVERHEAD_E.hqFactor(b) - _OVERHEAD_E.hqFactor(a); }).map(function(cc) {
         var sel = (team.hq_country_code || _OVERHEAD_E.HQ_DEFAULT) === cc ? ' selected' : '';
-        return '<option value="' + cc + '"' + sel + '>' + _OVERHEAD_E.HQ_LABELS[cc] + ' — base €' +
-               Math.round(_OVERHEAD_E.FIXED_M * _OVERHEAD_E.hqFactor(cc)) + 'M/qtr' + (cc === _OVERHEAD_E.HQ_DEFAULT ? ' (default)' : '') + '</option>';
+        return '<option value="' + cc + '"' + sel + '>' + _OVERHEAD_E.HQ_LABELS[cc] + ' — head-office cost ×' +
+               _OVERHEAD_E.hqFactor(cc).toFixed(2) + (cc === _OVERHEAD_E.HQ_DEFAULT ? ' (default)' : '') + '</option>';
       }).join('') + '</select></div>' +
     '<div style="display:flex;flex-direction:column;gap:4px;">' +
       '<label style="display:flex;align-items:center;gap:5px;color:var(--muted2);"><input type="checkbox" id="sc-skipplants-' + team.id + '" ' + (team.skip_initial_plants?'checked':'') + '> Skip initial plants</label>' +
