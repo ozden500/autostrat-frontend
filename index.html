@@ -10866,6 +10866,12 @@ async function renderCommercialPricing() {
   var MONO = 'font-family:DM Mono,monospace;';
 
   var h = '<div style="display:flex;flex-direction:column;gap:16px;">';
+  h += '<div style="font-family:DM Mono,monospace;font-size:10px;color:var(--muted2);line-height:1.6;">'
+     + 'Retail discounts are a round decision: set them per region, or per country, before the round closes. '
+     + 'The discount in your business case was only the starting point. Buyers compare transaction prices: a discount '
+     + 'deeper than the market norm (~4%) wins buyers, a shallower one loses them. Price-sensitive segments (A/B/C, MPV) '
+     + 'respond strongly, premium and luxury much less, so a deep premium discount mostly gives margin away. '
+     + 'Revenue is booked country by country at the discount you set there.</div>';
 
   vehicles.forEach(function(v) {
     var vid  = v.id;
