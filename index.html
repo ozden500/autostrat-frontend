@@ -6954,21 +6954,39 @@ var _OVERHEAD_E = {
     generous: {cost: 1.15, appeal: 1.03, price: 1.0025, label: 'Generous'}
   },
   EFF_SAVING: 0.10, EFF_RAMP_Q: 4, EFF_COST_MULT: 0.60, EFF_MAX_SAVING: 0.20, EFF_COOLDOWN_Q: 8,
-  policy: function(rows, qabs) {
-    var level = 'standard', levelQ = -1, launches = [];
+  SWITCH_SEVERANCE_Q: 2.0, SWITCH_RAMP: 0.5,
+  levelAt: function(rows, qabs) {
+    var level = 'standard', levelQ = -1;
     (rows || []).forEach(function(r) {
       var q = (r.qabs === null || r.qabs === undefined) ? 1e6 : parseInt(r.qabs, 10);
-      if (q > qabs) return;
-      if (_OVERHEAD_E.LEVELS[r.staffing_level] && q >= levelQ) { level = r.staffing_level; levelQ = q; }
-      if (r.launch_programme) launches.push(q);
+      if (q <= qabs && _OVERHEAD_E.LEVELS[r.staffing_level] && q >= levelQ) { level = r.staffing_level; levelQ = q; }
     });
-    launches.sort(function(a, b) { return a - b; });
-    var saving = 0;
-    launches.forEach(function(L) { saving += _OVERHEAD_E.EFF_SAVING * Math.min(1, (qabs - L) / _OVERHEAD_E.EFF_RAMP_Q); });
-    return {level: level, launches: launches, launch_now: launches.indexOf(qabs) >= 0,
-            saving_pct: Math.round(Math.min(_OVERHEAD_E.EFF_MAX_SAVING, saving) * 1e6) / 1e6};
+    return level;
   },
-  cost: function(drivers, revM, level, savingPct, launchNow) {
+  // financial_engine.overhead_switch: moving down = severance; moving up = benefits ramp in
+  switchFx: function(prevLevel, level) {
+    var L = _OVERHEAD_E.LEVELS, p = L[prevLevel] || L.standard, n = L[level] || L.standard;
+    var r6 = function(x) { return Math.round(x * 1e6) / 1e6; };
+    if (n.cost > p.cost) {
+      var f = _OVERHEAD_E.SWITCH_RAMP;
+      return {severance_steps: 0.0, appeal: r6(p.appeal + f * (n.appeal - p.appeal)),
+              price: r6(p.price + f * (n.price - p.price))};
+    }
+    return {severance_steps: r6(Math.max(0, p.cost - n.cost)), appeal: n.appeal, price: n.price};
+  },
+  policy: function(rows, qabs) {
+    var E = _OVERHEAD_E, level = E.levelAt(rows, qabs), prev = E.levelAt(rows, qabs - 1);
+    var launches = (rows || []).filter(function(r) {
+      return r.launch_programme && r.qabs !== null && r.qabs !== undefined && parseInt(r.qabs, 10) <= qabs;
+    }).map(function(r) { return parseInt(r.qabs, 10); }).sort(function(a, b) { return a - b; });
+    var saving = 0;
+    launches.forEach(function(L) { saving += E.EFF_SAVING * Math.min(1, (qabs - L) / E.EFF_RAMP_Q); });
+    var sw = E.switchFx(prev, level);
+    return {level: level, prev_level: prev, severance_steps: sw.severance_steps, appeal: sw.appeal,
+            price: sw.price, launches: launches, launch_now: launches.indexOf(qabs) >= 0,
+            saving_pct: Math.round(Math.min(E.EFF_MAX_SAVING, saving) * 1e6) / 1e6};
+  },
+  cost: function(drivers, revM, level, savingPct, launchNow, severanceSteps) {
     var d = drivers || {};
     var base = _OVERHEAD_E.FIXED_M;
     var cplx = (parseInt(d.countries || 0, 10)) * _OVERHEAD_E.PER_COUNTRY_M
@@ -6980,10 +6998,11 @@ var _OVERHEAD_E = {
     var before = gross * lvl;
     var savings = before * Math.max(0, Math.min(_OVERHEAD_E.EFF_MAX_SAVING, parseFloat(savingPct || 0)));
     var prog = launchNow ? before * _OVERHEAD_E.EFF_COST_MULT : 0;
+    var sev = gross * Math.max(0, parseFloat(severanceSteps || 0)) * _OVERHEAD_E.SWITCH_SEVERANCE_Q;
     var r4 = function(x) { return Math.round(x * 1e4) / 1e4; };
     return {base_m: r4(base), complexity_m: r4(cplx), variable_m: r4(v),
             level_adj_m: r4(gross * (lvl - 1)), savings_m: r4(savings),
-            programme_m: r4(prog), total_m: r4(before - savings + prog)};
+            programme_m: r4(prog), severance_m: r4(sev), total_m: r4(before - savings + prog + sev)};
   },
   appeal: function(level) {
     return (_OVERHEAD_E.LEVELS[level || 'standard'] || _OVERHEAD_E.LEVELS.standard).appeal;
@@ -6991,10 +7010,12 @@ var _OVERHEAD_E = {
   price: function(level) {
     return (_OVERHEAD_E.LEVELS[level || 'standard'] || _OVERHEAD_E.LEVELS.standard).price;
   },
-  // financial_engine.discount_with_staffing_m: planned discount + the level's leakage / premium
-  discountM: function(grossM, discountPct, level) {
+  // financial_engine.discount_with_staffing_m: planned discount + leakage / premium at priceFactor
+  // (policy(...).price, which includes the ramp after a move up)
+  discountM: function(grossM, discountPct, priceFactor) {
     var planned = grossM * (parseFloat(discountPct) || 0) / 100;
-    return Math.round((planned + (grossM - planned) * (1 - _OVERHEAD_E.price(level))) * 1e4) / 1e4;
+    var pf = parseFloat(priceFactor); if (isNaN(pf) || !pf) pf = 1.0;
+    return Math.round((planned + (grossM - planned) * (1 - pf)) * 1e4) / 1e4;
   },
   // What one more model adds to the head office in a quarter: its own admin plus the
   // volume-linked share of its revenue (standard staffing). The §10 business case and the
@@ -14388,6 +14409,7 @@ var _FIN_LINES = {
     {l:'  ↳ staffing level',             k:'ga_level_adj_m', neg:true, optional:true},
     {l:'  ↳ efficiency savings',         k:'ga_savings_m', optional:true},
     {l:'  ↳ efficiency programme (one-off)', k:'ga_programme_m', neg:true, optional:true},
+    {l:'  ↳ severance (staffing cut, one-off)', k:'ga_severance_m', neg:true, optional:true},
     {l:'Brand marketing',        k:'marketing_m', neg:true, optional:true},
     {l:'Sales network',          k:'sales_network_m', neg:true, optional:true},
     {l:'Market entry / exit',    k:'market_entry_m', neg:true, optional:true},
@@ -14763,18 +14785,26 @@ function _ovhRender() {
     standard: 'the industry norm · no effect on price or demand',
     generous: 'overhead +15% · stronger pricing &amp; dealer support: +0.25% realised price on every car, and your cars are ~3% more attractive'
   };
-  h += head('STAFFING LEVEL', 'applies from this quarter and carries forward until changed');
+  h += head('STAFFING LEVEL', 'applies from this quarter and carries forward until changed · last quarter: ' +
+            E.LEVELS[pol.prev_level || 'standard'].label);
   h += '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:6px;">';
   ['lean', 'standard', 'generous'].forEach(function(lv) {
     var on = pol.level === lv;
     var cost = ((d.cost_by_level || {})[lv] || {}).total_m;
+    var sevM = ((d.cost_by_level || {})[lv] || {}).severance_m || 0;
+    var fx = (d.effects_by_level || {})[lv] || {};
+    var up = E.LEVELS[lv].cost > E.LEVELS[pol.prev_level || 'standard'].cost;
+    var sw = sevM > 0 ? '<div style="font-size:9px;color:var(--orange);margin-top:3px;">incl. one-off severance ' + m(sevM) +
+                        ' (' + E.SWITCH_SEVERANCE_Q + ' quarters of the saving)</div>'
+           : up ? '<div style="font-size:9px;color:var(--orange);margin-top:3px;">new staff ramp up: benefits ' +
+                  (E.SWITCH_RAMP * 100) + '% effective this quarter, full from next</div>' : '';
     h += '<div ' + (d.locked ? '' : 'onclick="_ovhDecide({staffing_level:\'' + lv + '\'})" ') +
          'style="cursor:' + (d.locked ? 'default' : 'pointer') + ';border:1px solid ' +
          (on ? 'var(--gold)' : 'var(--border)') + ';background:' + (on ? 'rgba(251,191,36,0.08)' : 'var(--s2)') +
          ';border-radius:6px;padding:8px;">' +
          '<div style="font-size:11px;font-weight:700;color:' + (on ? 'var(--gold)' : 'var(--text)') + ';">' +
          (on ? '● ' : '○ ') + E.LEVELS[lv].label + '</div>' +
-         '<div style="font-size:11px;color:var(--text);margin-top:3px;">' + m(cost) + '/qtr</div>' +
+         '<div style="font-size:11px;color:var(--text);margin-top:3px;">' + m(cost) + (sevM > 0 ? ' this quarter' : '/qtr') + '</div>' + sw +
          '<div style="font-size:9px;color:var(--muted2);margin-top:3px;line-height:1.4;">' + effect[lv] + '</div></div>';
   });
   h += '</div>';
