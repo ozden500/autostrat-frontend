@@ -6948,6 +6948,19 @@ var _MKTNET_E = {
 // + a volume-linked share, x the staffing level, less efficiency-programme savings.
 var _OVERHEAD_E = {
   FIXED_M: 200.0, PER_COUNTRY_M: 4.0, PER_MODEL_M: 10.0, PER_SITE_M: 20.0, VAR_PCT: 0.025,
+  // head-office country: base = FIXED_M x (1 - HQ_LABOUR_SHARE + HQ_LABOUR_SHARE x salary vs DE);
+  // salaries = financial_engine.ENG_FTE_EUR_MO. Per-country cost at local cost index / COUNTRY_INDEX_REF.
+  HQ_DEFAULT: 'DE', HQ_LABOUR_SHARE: 0.65, COUNTRY_INDEX_REF: 0.68,
+  FTE_EUR_MO: {US: 13333, CA: 11000, MX: 4500, DE: 9500, GB: 8800, FR: 8200, PL: 4800, RO: 3200,
+               JP: 10500, KR: 7000, CN: 5200, IN: 2600, BR: 3800, ZA: 3400},
+  HQ_LABELS: {US: 'United States', CA: 'Canada', MX: 'Mexico', DE: 'Germany', GB: 'United Kingdom',
+              FR: 'France', PL: 'Poland', RO: 'Romania', JP: 'Japan', KR: 'South Korea', CN: 'China',
+              IN: 'India', BR: 'Brazil', ZA: 'South Africa'},
+  hqFactor: function(cc) {
+    var E = _OVERHEAD_E, ref = E.FTE_EUR_MO[E.HQ_DEFAULT];
+    var w = (E.FTE_EUR_MO[String(cc || E.HQ_DEFAULT).toUpperCase()] || ref) / ref;
+    return Math.round((1 - E.HQ_LABOUR_SHARE + E.HQ_LABOUR_SHARE * w) * 1e6) / 1e6;
+  },
   LEVELS: {
     lean:     {cost: 0.85, appeal: 0.97, price: 0.995,  label: 'Lean'},
     standard: {cost: 1.00, appeal: 1.00, price: 1.000,  label: 'Standard'},
@@ -6988,8 +7001,10 @@ var _OVERHEAD_E = {
   },
   cost: function(drivers, revM, level, savingPct, launchNow, severanceSteps) {
     var d = drivers || {};
-    var base = _OVERHEAD_E.FIXED_M;
-    var cplx = (parseInt(d.countries || 0, 10)) * _OVERHEAD_E.PER_COUNTRY_M
+    var base = _OVERHEAD_E.FIXED_M * _OVERHEAD_E.hqFactor(d.hq_country);
+    var countryUnits = (d.country_index !== null && d.country_index !== undefined)
+      ? parseFloat(d.country_index) / _OVERHEAD_E.COUNTRY_INDEX_REF : parseInt(d.countries || 0, 10);
+    var cplx = countryUnits * _OVERHEAD_E.PER_COUNTRY_M
              + (parseInt(d.models || 0, 10)) * _OVERHEAD_E.PER_MODEL_M
              + (parseInt(d.sites || 0, 10)) * _OVERHEAD_E.PER_SITE_M;
     var v = _OVERHEAD_E.VAR_PCT * Math.max(0, parseFloat(revM || 0));
@@ -14772,8 +14787,12 @@ function _ovhRender() {
   };
   h += head('WHAT DRIVES IT', 'at standard staffing');
   h += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px;margin-bottom:14px;">';
-  h += cell('Running the company', 'board, finance, HR, IT, legal', E.FIXED_M);
-  h += cell('Countries', dr.countries + ' × ' + m(E.PER_COUNTRY_M) + ' (Markets tab)', dr.countries * E.PER_COUNTRY_M);
+  var hqLbl = E.HQ_LABELS[d.hq_country] || d.hq_country || 'Germany';
+  h += cell('Running the company', 'head office in ' + _esc(hqLbl) + ' (×' + (d.hq_factor || 1).toFixed(2) +
+            ' vs Germany: salaries) · board, finance, HR, IT, legal', c.base_m);
+  var ci = dr.country_index != null ? dr.country_index : dr.countries * E.COUNTRY_INDEX_REF;
+  h += cell('Countries', dr.countries + ' countries at local cost (avg ' + (dr.countries ? (ci / dr.countries).toFixed(2) : '—') +
+            ' vs ' + E.COUNTRY_INDEX_REF + ' ref) · Markets tab', E.PER_COUNTRY_M * ci / E.COUNTRY_INDEX_REF);
   h += cell('Models on sale', dr.models + ' × ' + m(E.PER_MODEL_M), dr.models * E.PER_MODEL_M);
   h += cell('Assembly countries', dr.sites + ' × ' + m(E.PER_SITE_M), dr.sites * E.PER_SITE_M);
   h += cell('Volume-linked admin', (E.VAR_PCT * 100).toFixed(1) + '% of revenue', c.variable_m);
@@ -26109,7 +26128,8 @@ function renderArchetypeTable(teams) {
     var isAI = team.team_type === 'ai';
     var hasOverride = team.starting_cash_m != null || team.starting_ppe_gross_m != null
                     || team.starting_lt_debt_m != null || team.starting_share_capital_m != null
-                    || !!team.skip_initial_plants || !!team.skip_initial_vehicles;
+                    || !!team.skip_initial_plants || !!team.skip_initial_vehicles
+                    || (team.hq_country_code && team.hq_country_code !== _OVERHEAD_E.HQ_DEFAULT);
     html += '<tr style="border-bottom:1px solid var(--border);">' +
       '<td style="padding:7px 10px;font-weight:600;font-size:11px;">' + team.name + '</td>' +
       '<td style="padding:7px 10px;font-family:DM Mono,monospace;font-size:9px;color:var(--muted2);">' + (isAI ? 'AI' : 'Human') + '</td>' +
@@ -26144,6 +26164,13 @@ function renderStartCondEditor(team) {
       inp('sc-debt-' + team.id, team.starting_lt_debt_m, '500 (default)') + '</div>' +
     '<div><label style="display:block;color:var(--muted2);margin-bottom:3px;">Starting Equity (€M)</label>' +
       inp('sc-equity-' + team.id, team.starting_share_capital_m, '5000 (default)') + '</div>' +
+    '<div><label style="display:block;color:var(--muted2);margin-bottom:3px;">Head-office country (overhead)</label>' +
+      '<select id="sc-hq-' + team.id + '" style="padding:5px 7px;background:var(--s2);border:1px solid var(--border);color:var(--text);border-radius:3px;font-family:DM Mono,monospace;font-size:9px;">' +
+      Object.keys(_OVERHEAD_E.HQ_LABELS).sort(function(a, b) { return _OVERHEAD_E.hqFactor(b) - _OVERHEAD_E.hqFactor(a); }).map(function(cc) {
+        var sel = (team.hq_country_code || _OVERHEAD_E.HQ_DEFAULT) === cc ? ' selected' : '';
+        return '<option value="' + cc + '"' + sel + '>' + _OVERHEAD_E.HQ_LABELS[cc] + ' — base €' +
+               Math.round(_OVERHEAD_E.FIXED_M * _OVERHEAD_E.hqFactor(cc)) + 'M/qtr' + (cc === _OVERHEAD_E.HQ_DEFAULT ? ' (default)' : '') + '</option>';
+      }).join('') + '</select></div>' +
     '<div style="display:flex;flex-direction:column;gap:4px;">' +
       '<label style="display:flex;align-items:center;gap:5px;color:var(--muted2);"><input type="checkbox" id="sc-skipplants-' + team.id + '" ' + (team.skip_initial_plants?'checked':'') + '> Skip initial plants</label>' +
       '<label style="display:flex;align-items:center;gap:5px;color:var(--muted2);"><input type="checkbox" id="sc-skipveh-' + team.id + '" ' + (team.skip_initial_vehicles?'checked':'') + '> Skip initial vehicles</label>' +
@@ -26181,6 +26208,7 @@ async function saveStartCond(teamId) {
     starting_share_capital_m: val('sc-equity-' + teamId),
     skip_initial_plants:   document.getElementById('sc-skipplants-' + teamId).checked,
     skip_initial_vehicles: document.getElementById('sc-skipveh-'    + teamId).checked,
+    hq_country_code: (document.getElementById('sc-hq-' + teamId) || {}).value || null,
   };
   try {
     const res = await fetch(API_URL + '/sessions/' + sessionId + '/teams/' + teamId + '/starting-conditions', {
