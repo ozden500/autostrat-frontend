@@ -1164,6 +1164,15 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
       style="font-family:'DM Mono',monospace;font-size:10px;padding:8px 20px;border:none;border-bottom:2px solid transparent;background:transparent;color:var(--muted);cursor:pointer;letter-spacing:.5px;">🚀 LAUNCHES</button>
     <button id="com-tab-btn-brand" onclick="switchComTab('brand')"
       style="font-family:'DM Mono',monospace;font-size:10px;padding:8px 20px;border:none;border-bottom:2px solid transparent;background:transparent;color:var(--muted);cursor:pointer;letter-spacing:.5px;">◆ BRAND</button>
+    <button id="com-tab-btn-fleet" onclick="switchComTab('fleet')"
+      style="font-family:'DM Mono',monospace;font-size:10px;padding:8px 20px;border:none;border-bottom:2px solid transparent;background:transparent;color:var(--muted);cursor:pointer;letter-spacing:.5px;">🚚 FLEET</button>
+  </div>
+
+  <!-- ── FLEET tab: fleet policy per model, order book, deliveries ── -->
+  <div id="com-tab-fleet" style="display:none;">
+    <div id="fleet-content">
+      <div style="color:var(--muted2);font-family:'DM Mono',monospace;font-size:11px;padding:16px 0;">Loading fleet…</div>
+    </div>
   </div>
 
   <!-- ── BRAND tab: brand management (moved from its own page, 2026-09-27) ── -->
@@ -10577,7 +10586,7 @@ var _REGION_FLAGS = {EU:'🌍', NA:'🌎', APAC:'🌏', SA:'🌎', MEA:'🌍'};
 
 function switchComTab(tab) {
   _comActiveTab = tab;
-  ['overview','pricing','sales-planning','markets','warranty','launches','brand'].forEach(function(t) {
+  ['overview','pricing','sales-planning','markets','warranty','launches','brand','fleet'].forEach(function(t) {
     var btn = document.getElementById('com-tab-btn-'+t);
     var pane = document.getElementById('com-tab-'+t);
     var active = t === tab;
@@ -10593,6 +10602,112 @@ function switchComTab(tab) {
   if (tab === 'warranty') loadWarrantyTab();
   if (tab === 'launches') loadLaunchesTab();
   if (tab === 'brand') loadBrandsPage();
+  if (tab === 'fleet') loadFleetTab();
+}
+
+// ── Commercial → 🚚 FLEET ────────────────────────────────────────
+// GET/PUT /sessions/{sid}/teams/{tid}/fleet. Per model the team sets a fleet policy (offer to
+// fleets, discount, most fleet cars a quarter); each quarter the fleet market clears per country
+// and contracts deliver for the next 4 quarters (the order book). Server-derived; this renders.
+var _flTab = {data: null, busy: false};
+
+async function loadFleetTab() {
+  if (!sessionId || !teamId) return;
+  var el = document.getElementById('fleet-content');
+  try {
+    var res = await fetch(API_URL + '/sessions/' + sessionId + '/teams/' + teamId + '/fleet');
+    var d = await res.json();
+    if (!res.ok) throw new Error(d.detail || ('HTTP ' + res.status));
+    _flTab.data = d;
+    _renderFleetTab();
+  } catch (e) {
+    if (el) el.innerHTML = '<div style="color:var(--red);font-family:DM Mono,monospace;font-size:11px;padding:16px 0;">Fleet unavailable: ' + _esc(e.message) + '</div>';
+  }
+}
+
+async function _flSave(vid) {
+  if (_flTab.busy) return;
+  var on = document.getElementById('fl-on-' + vid), dsc = document.getElementById('fl-disc-' + vid), mx = document.getElementById('fl-max-' + vid);
+  var body = {vehicle_id: vid, active: !!(on && on.checked), discount_pct: parseFloat(dsc && dsc.value) || 0,
+              max_units_q: (mx && mx.value !== '') ? Math.max(0, Math.round(parseFloat(mx.value))) : null};
+  _flTab.busy = true;
+  try {
+    var res = await fetch(API_URL + '/sessions/' + sessionId + '/teams/' + teamId + '/fleet', {
+      method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)
+    });
+    var d = await res.json();
+    if (!res.ok) throw new Error(d.detail || ('HTTP ' + res.status));
+    _flTab.data = d;
+    toast('✓ Fleet policy saved');
+  } catch (e) {
+    toast('Fleet policy failed: ' + e.message);
+  } finally {
+    _flTab.busy = false;
+    _renderFleetTab();
+  }
+}
+
+function _renderFleetTab() {
+  var el = document.getElementById('fleet-content');
+  var d = _flTab.data;
+  if (!el || !d) return;
+  var C = d.constants || {};
+  var n = function(v) { return Math.round(parseFloat(v) || 0).toLocaleString(); };
+  var m = function(v) { return '€' + (Math.round((parseFloat(v) || 0) * 10) / 10).toLocaleString() + 'M'; };
+  var q = d.round ? ('Q' + d.round.quarter + ' ' + d.round.year) : 'this quarter';
+  var h = '<div style="font-family:DM Mono,monospace;">';
+  h += '<div style="font-size:11px;color:var(--text);margin-bottom:12px;line-height:1.6;">Part of every segment\'s market is <b>fleet</b>: rental companies, corporate fleets and leasing '
+     + '(from 5% of sports cars to 75% of vans). Fleet buyers are not served by the retail market: each quarter, in every country, the fleet contracts renewing that quarter are '
+     + 'shared among all makers\' offers by <b>fleet discount</b> (the market norm is ' + (C.FLEET_NORM_DISCOUNT_PCT || 20) + '%), product and running costs, and <b>delivery reputation</b>; brand counts little. '
+     + 'A contract delivers the same number of cars in each of the next ' + (C.FLEET_CONTRACT_Q || 4) + ' quarters at a fixed price, and fleet cars are delivered <b>before</b> retail. '
+     + 'You set a policy without seeing rivals\' offers; what you win shows up in the order book after the round clears. A missed delivery costs '
+     + Math.round((C.FLEET_PENALTY_PCT || 0.1) * 100) + '% of its value and lowers your reputation.</div>';
+  if (d.locked) h += '<div style="color:var(--gold);font-size:10px;margin-bottom:10px;">🔒 ' + _esc(q) + ' has cleared. Policies open again when the next round starts.</div>';
+
+  var dl = d.delivery_last_4q || {};
+  var repCol = d.reputation >= 0.97 ? 'var(--green)' : d.reputation >= 0.85 ? 'var(--gold)' : 'var(--red)';
+  h += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin-bottom:14px;">';
+  var tile = function(lbl, val, sub, col) {
+    return '<div style="background:var(--s2);border-radius:6px;padding:8px;"><div style="font-size:8px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);">' + lbl + '</div>'
+      + '<div style="font-size:13px;font-weight:700;color:' + (col || 'var(--text)') + ';margin-top:2px;">' + val + '</div><div style="font-size:9px;color:var(--muted2);margin-top:2px;">' + sub + '</div></div>';
+  };
+  h += tile('Delivery reputation', Math.round((d.reputation || 1) * 100) + '%', 'last 4 quarters: ' + n(dl.delivered) + ' of ' + n(dl.due) + ' cars delivered', repCol);
+  h += tile('Fleet revenue', m(dl.revenue_m), 'last 4 quarters', null);
+  h += tile('Penalties', m(dl.penalty_m), 'last 4 quarters', dl.penalty_m > 0 ? 'var(--red)' : null);
+  h += '</div>';
+
+  // order book total
+  var ob = d.order_book_total || [];
+  h += '<div style="font-size:8px;text-transform:uppercase;letter-spacing:1.5px;color:#a78bfa;margin-bottom:6px;">ORDER BOOK <span style="color:var(--muted);letter-spacing:0;text-transform:none;">· contracted fleet cars per quarter (won in earlier rounds)</span></div>';
+  h += '<table style="border-collapse:collapse;margin-bottom:14px;"><tr>' + ob.map(function(o) {
+    return '<td style="padding:4px 10px;font-size:9px;color:var(--muted);text-align:right;">' + _esc(o.label) + '</td>'; }).join('') + '</tr><tr>'
+    + ob.map(function(o) { return '<td style="padding:4px 10px;font-size:11px;color:var(--text);text-align:right;"><b>' + n(o.units) + '</b></td>'; }).join('') + '</tr></table>';
+
+  (d.models || []).forEach(function(md) {
+    var p = md.policy || {}, dis = d.locked ? ' disabled' : '';
+    h += '<div style="border:1px solid var(--border);border-radius:6px;padding:10px 12px;margin-bottom:10px;background:var(--s2);">';
+    h += '<div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:6px;align-items:baseline;">'
+       + '<div style="font-size:12px;font-weight:700;color:var(--text);">' + _esc(md.name || '') + ' <span style="font-size:9px;color:var(--muted2);font-weight:400;">'
+       + _esc(md.segment_code || '') + ' · fleet is ' + Math.round((md.fleet_share_of_segment || 0) * 100) + '% of this segment</span></div>'
+       + (md.is_default ? '<div style="font-size:9px;color:var(--gold);">default policy — not yet reviewed</div>' : '<div style="font-size:9px;color:var(--green);">your policy</div>') + '</div>';
+    h += '<div style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;margin:8px 0;">'
+       + '<label style="font-size:10px;color:var(--text);display:flex;align-items:center;gap:5px;"><input type="checkbox" id="fl-on-' + md.vehicle_id + '"' + (p.active ? ' checked' : '') + dis + '> Offer to fleets</label>'
+       + '<div><div style="font-size:8px;color:var(--muted);text-transform:uppercase;">Fleet discount %</div><input type="number" min="0" max="' + (C.FLEET_MAX_DISCOUNT_PCT || 40) + '" step="0.5" id="fl-disc-' + md.vehicle_id + '" value="' + (p.discount_pct != null ? p.discount_pct : 20) + '"' + dis
+       + ' style="width:70px;background:var(--s1);color:var(--text);border:1px solid var(--border);font-family:DM Mono,monospace;font-size:10px;padding:3px 5px;border-radius:4px;"></div>'
+       + '<div><div style="font-size:8px;color:var(--muted);text-transform:uppercase;">Max fleet cars / quarter</div><input type="number" min="0" step="100" id="fl-max-' + md.vehicle_id + '" value="' + (p.max_units_q != null ? p.max_units_q : '') + '" placeholder="no limit"' + dis
+       + ' style="width:110px;background:var(--s1);color:var(--text);border:1px solid var(--border);font-family:DM Mono,monospace;font-size:10px;padding:3px 5px;border-radius:4px;"></div>'
+       + (d.locked ? '' : '<button onclick="_flSave(\'' + md.vehicle_id + '\')" style="background:var(--gold);color:#000;font-family:DM Mono,monospace;font-size:9px;font-weight:700;padding:5px 12px;border:none;border-radius:4px;cursor:pointer;">SAVE</button>')
+       + '</div>';
+    h += '<div style="font-size:9px;color:var(--muted2);">Last quarter ' + n(md.last_quarter_units) + ' cars sold · contracts in ' + (md.countries || []).length + ' countries'
+       + (md.avg_contract_discount != null ? ' · average contract discount ' + md.avg_contract_discount + '%' : '') + ' · order book: '
+       + (md.order_book || []).map(function(o) { return _esc(o.label) + ' ' + n(o.units); }).join(' · ') + '</div>';
+    h += '</div>';
+  });
+  h += '<div style="font-size:9px;color:var(--muted);line-height:1.6;">A deeper discount wins a lot more fleet volume (fleet buyers are very price-sensitive) but every contract keeps that price for a year. '
+     + 'The cap limits what you commit: with plants near full, fleet cars take capacity from higher-margin retail cars, and a delivery you cannot make is penalised. '
+     + 'Fleet cars earn list price net of VAT, less a ' + Math.round((C.FLEET_DELIVERY_FEE || 0.03) * 100) + '% delivery fee and the discount; no dealer margin.</div>';
+  h += '</div>';
+  el.innerHTML = h;
 }
 
 // ── Commercial → 🚀 LAUNCHES ─────────────────────────────────────
@@ -14596,6 +14711,9 @@ var _finStmts = {
 var _FIN_LINES = {
   pl: [
     {l:'Revenue',                k:'net_revenue_m'},
+    {l:'  ↳ incl. fleet sales',  k:'fleet_revenue_m', optional:true},
+    {l:'  ↳ fleet discounts given', k:'fleet_discount_m', neg:true, optional:true},
+    {l:'  ↳ fleet delivery penalties', k:'fleet_penalty_m', neg:true, optional:true},
     {l:'Cost of Goods Sold',     k:'cogs_m', neg:true},
     {l:'Warranty',               k:'warranty_expense_m', neg:true, optional:true},
     {l:'Gross Profit',           k:'gross_profit_m', kind:'sub'},
