@@ -6973,6 +6973,14 @@ var _OVERHEAD_E = {
   HQ_DEFAULT: 'DE', HQ_LABOUR_SHARE: 0.65, COUNTRY_INDEX_REF: 0.68,
   // base grows with the company: FIXED_M x (last-year revenue / BASE_REF_REV_M)^BASE_ELASTICITY, floored
   BASE_REF_REV_M: 60000.0, BASE_ELASTICITY: 0.6, BASE_FLOOR_M: 12.0,
+  CPLX_ELASTICITY: 0.4, CPLX_MIN: 0.2, CPLX_MAX: 1.5,
+  // financial_engine.overhead_complexity_factor
+  cplxFactor: function(scaleRevM) {
+    var E = _OVERHEAD_E;
+    if (scaleRevM === null || scaleRevM === undefined) return 1.0;
+    var f = Math.pow(Math.max(0, parseFloat(scaleRevM)) / E.BASE_REF_REV_M, E.CPLX_ELASTICITY);
+    return Math.round(Math.max(E.CPLX_MIN, Math.min(E.CPLX_MAX, f)) * 1e6) / 1e6;
+  },
   FTE_EUR_MO: {US: 13333, CA: 11000, MX: 4500, DE: 9500, GB: 8800, FR: 8200, PL: 4800, RO: 3200,
                JP: 10500, KR: 7000, CN: 5200, IN: 2600, BR: 3800, ZA: 3400},
   HQ_LABELS: {US: 'United States', CA: 'Canada', MX: 'Mexico', DE: 'Germany', GB: 'United Kingdom',
@@ -7041,9 +7049,10 @@ var _OVERHEAD_E = {
     var base = _OVERHEAD_E.baseM(d.scale_rev_m, d.hq_country);
     var countryUnits = (d.country_index !== null && d.country_index !== undefined)
       ? parseFloat(d.country_index) / _OVERHEAD_E.COUNTRY_INDEX_REF : parseInt(d.countries || 0, 10);
+    var sizeF = _OVERHEAD_E.cplxFactor(d.scale_rev_m);
     var cplx = countryUnits * _OVERHEAD_E.PER_COUNTRY_M
-             + (parseInt(d.models || 0, 10)) * _OVERHEAD_E.PER_MODEL_M
-             + (parseInt(d.sites || 0, 10)) * _OVERHEAD_E.PER_SITE_M;
+             + ((parseInt(d.models || 0, 10)) * _OVERHEAD_E.PER_MODEL_M
+                + (parseInt(d.sites || 0, 10)) * _OVERHEAD_E.PER_SITE_M) * sizeF;
     var v = _OVERHEAD_E.VAR_PCT * Math.max(0, parseFloat(revM || 0));
     var gross = base + cplx + v;
     var lvl = (_OVERHEAD_E.LEVELS[level] || _OVERHEAD_E.LEVELS.standard).cost;
@@ -7171,6 +7180,7 @@ var _WARRANTY_E = {
 var _LAUNCH_E = {
   STD_PCT: 0.025, GAP_MAX: 0.40, AWARE_OFFSET: 1.25, CLOSE_Q: 0.35, WINDOW: [-2, 1], FADE_Q: 8,
   AUTO_PHASE: {'-1': 0.25, '0': 0.50, '1': 0.25}, FALLBACK_UNITS_YR: 100000.0, OEM_SHARE: 0.73,
+  STD_CAP_M: 250.0,
   stdBudgetM: function(commercialPlan, sopYear, priceK) {
     var L = _LAUNCH_E, rows = [];
     ((commercialPlan || {}).markets || []).forEach(function(m) {
@@ -7191,7 +7201,7 @@ var _LAUNCH_E = {
     } else {
       rev = (parseFloat(priceK) || 0) * 1000 * L.OEM_SHARE * L.FALLBACK_UNITS_YR;
     }
-    return Math.round(L.STD_PCT * rev / 1e6 * 1e4) / 1e4;
+    return Math.round(Math.min(L.STD_CAP_M, L.STD_PCT * rev / 1e6) * 1e4) / 1e4;
   },
   gap: function(sopQ, q, awareness, spendByQ, stdM) {
     var L = _LAUNCH_E, t = q - sopQ;
