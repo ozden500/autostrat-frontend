@@ -1161,6 +1161,15 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
       style="font-family:'DM Mono',monospace;font-size:10px;padding:8px 20px;border:none;border-bottom:2px solid transparent;background:transparent;color:var(--muted);cursor:pointer;letter-spacing:.5px;">🌍 MARKETS</button>
     <button id="com-tab-btn-warranty" onclick="switchComTab('warranty')"
       style="font-family:'DM Mono',monospace;font-size:10px;padding:8px 20px;border:none;border-bottom:2px solid transparent;background:transparent;color:var(--muted);cursor:pointer;letter-spacing:.5px;">🛡 WARRANTY</button>
+    <button id="com-tab-btn-launches" onclick="switchComTab('launches')"
+      style="font-family:'DM Mono',monospace;font-size:10px;padding:8px 20px;border:none;border-bottom:2px solid transparent;background:transparent;color:var(--muted);cursor:pointer;letter-spacing:.5px;">🚀 LAUNCHES</button>
+  </div>
+
+  <!-- ── LAUNCHES tab: launch-campaign budgets per model, decided each round ── -->
+  <div id="com-tab-launches" style="display:none;">
+    <div id="launches-content">
+      <div style="color:var(--muted2);font-family:'DM Mono',monospace;font-size:11px;padding:16px 0;">Loading launches…</div>
+    </div>
   </div>
 
   <!-- ── WARRANTY tab: warranty period (company-wide) and each vehicle's warranty drivers ── -->
@@ -7144,6 +7153,49 @@ var _WARRANTY_E = {
   }
 };
 
+// Model launch campaigns, 2026-09-27. Verbatim mirror of financial_engine's LAUNCH_* constants,
+// launch_std_budget_m / launch_gap / launch_auto_spend (parity-checked). A new model starts with a
+// new-model awareness gap (smaller for a well-known brand) that launch spend shrinks and word of
+// mouth closes. Budgets are round decisions on Commercial -> Launches; §10 assumes the standard.
+var _LAUNCH_E = {
+  STD_PCT: 0.025, GAP_MAX: 0.40, AWARE_OFFSET: 1.25, CLOSE_Q: 0.35, WINDOW: [-2, 1], FADE_Q: 8,
+  AUTO_PHASE: {'-1': 0.25, '0': 0.50, '1': 0.25}, FALLBACK_UNITS_YR: 100000.0, OEM_SHARE: 0.73,
+  stdBudgetM: function(commercialPlan, sopYear, priceK) {
+    var L = _LAUNCH_E, rows = [];
+    ((commercialPlan || {}).markets || []).forEach(function(m) {
+      if (!m.selected) return;
+      var msrp = parseFloat(m.msrp_eur_k || 0);
+      (m.years || []).forEach(function(y) {
+        rows.push([parseInt(y.year || 0, 10), msrp, parseFloat(y.volume || 0), parseFloat(y.discount || 0)]);
+      });
+    });
+    var years = [];
+    rows.forEach(function(r) { if (r[2] > 0 && years.indexOf(r[0]) < 0) years.push(r[0]); });
+    years.sort(function(a, b) { return a - b; });
+    var rev;
+    if (years.length) {
+      var yr = (sopYear && years.indexOf(parseInt(sopYear, 10)) >= 0) ? parseInt(sopYear, 10) : years[0];
+      rev = 0;
+      rows.forEach(function(r) { if (r[0] === yr) rev += r[2] * r[1] * 1000 * L.OEM_SHARE * (1 - r[3] / 100); });
+    } else {
+      rev = (parseFloat(priceK) || 0) * 1000 * L.OEM_SHARE * L.FALLBACK_UNITS_YR;
+    }
+    return Math.round(L.STD_PCT * rev / 1e6 * 1e4) / 1e4;
+  },
+  gap: function(sopQ, q, awareness, spendByQ, stdM) {
+    var L = _LAUNCH_E, t = q - sopQ;
+    if (t < 0 || t > L.FADE_Q) return 0;
+    var a = (awareness === null || awareness === undefined) ? 50 : parseFloat(awareness);
+    var gap0 = L.GAP_MAX * Math.max(0, Math.min(L.AWARE_OFFSET, L.AWARE_OFFSET - a / 100));
+    var lo = sopQ + L.WINDOW[0], hi = Math.min(q, sopQ + L.WINDOW[1]), spent = 0;
+    Object.keys(spendByQ || {}).forEach(function(k) {
+      var qq = parseInt(k, 10); if (qq >= lo && qq <= hi) spent += parseFloat(spendByQ[k]) || 0;
+    });
+    var eff = stdM > 0 ? Math.exp(-spent / stdM) : 1;
+    return Math.round(gap0 * eff * Math.pow(1 - L.CLOSE_Q, t) * 1e6) / 1e6;
+  }
+};
+
 var _MARKET_E = {
   VERSION: "1.0.0",
 
@@ -10523,7 +10575,7 @@ var _REGION_FLAGS = {EU:'🌍', NA:'🌎', APAC:'🌏', SA:'🌎', MEA:'🌍'};
 
 function switchComTab(tab) {
   _comActiveTab = tab;
-  ['overview','pricing','sales-planning','markets','warranty'].forEach(function(t) {
+  ['overview','pricing','sales-planning','markets','warranty','launches'].forEach(function(t) {
     var btn = document.getElementById('com-tab-btn-'+t);
     var pane = document.getElementById('com-tab-'+t);
     var active = t === tab;
@@ -10537,6 +10589,113 @@ function switchComTab(tab) {
   if (tab === 'sales-planning') loadSalesPlanTab();
   if (tab === 'markets') loadMarketsTab();
   if (tab === 'warranty') loadWarrantyTab();
+  if (tab === 'launches') loadLaunchesTab();
+}
+
+// ── Commercial → 🚀 LAUNCHES ─────────────────────────────────────
+// GET/PUT /sessions/{sid}/teams/{tid}/launches. Each model in its launch window (SOP-2 .. SOP+1)
+// gets this quarter's launch-campaign budget; the server derives the standard budget and the
+// new-model awareness gap each choice leads to (financial_engine.launch_gap).
+var _lcTab = {data: null, busy: false};
+
+async function loadLaunchesTab() {
+  if (!sessionId || !teamId) return;
+  var el = document.getElementById('launches-content');
+  try {
+    var res = await fetch(API_URL + '/sessions/' + sessionId + '/teams/' + teamId + '/launches');
+    var d = await res.json();
+    if (!res.ok) throw new Error(d.detail || ('HTTP ' + res.status));
+    _lcTab.data = d;
+    _renderLaunchesTab();
+  } catch (e) {
+    if (el) el.innerHTML = '<div style="color:var(--red);font-family:DM Mono,monospace;font-size:11px;padding:16px 0;">Launches unavailable: ' + _esc(e.message) + '</div>';
+  }
+}
+
+async function _lcSet(vid, spendM) {
+  if (_lcTab.busy) return;
+  var x = parseFloat(spendM);
+  if (isNaN(x) || x < 0) { toast('Enter a budget of 0 or more (€M)'); return; }
+  _lcTab.busy = true;
+  try {
+    var res = await fetch(API_URL + '/sessions/' + sessionId + '/teams/' + teamId + '/launches', {
+      method: 'PUT', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({vehicle_id: vid, spend_m: Math.round(x * 10) / 10})
+    });
+    var d = await res.json();
+    if (!res.ok) throw new Error(d.detail || ('HTTP ' + res.status));
+    _lcTab.data = d;
+  } catch (e) {
+    toast('Launch budget failed: ' + e.message);
+  } finally {
+    _lcTab.busy = false;
+    _renderLaunchesTab();
+  }
+}
+
+function _renderLaunchesTab() {
+  var el = document.getElementById('launches-content');
+  var d = _lcTab.data;
+  if (!el || !d) return;
+  var m = function(v) { return '€' + (Math.round((parseFloat(v) || 0) * 10) / 10).toLocaleString() + 'M'; };
+  var pc = function(g) { return g > 0.0005 ? '−' + Math.round(g * 100) + '%' : '0%'; };
+  var q = d.round ? ('Q' + d.round.quarter + ' ' + d.round.year) : 'this quarter';
+  var h = '<div style="font-family:DM Mono,monospace;">';
+  h += '<div style="font-size:11px;color:var(--text);margin-bottom:12px;line-height:1.6;">A new model is not known the day it goes on sale: '
+     + 'in its first quarters it is <b>less attractive than its product alone would make it</b>, and word of mouth closes the gap by about a third a quarter. '
+     + 'Your brand awareness (<b>' + Math.round(d.brand_awareness) + '/100</b>) sets how big the gap starts; a launch campaign shrinks it. '
+     + 'Budgets are set per model, per quarter, from 2 quarters before launch to 1 after, and are charged in that quarter. '
+     + 'Brand marketing (Brands page) builds the whole brand slowly; this launches one model.</div>';
+  if (d.locked) {
+    h += '<div style="color:var(--gold);font-size:10px;margin-bottom:10px;">🔒 ' + _esc(q) + ' has cleared. Budgets open again when the next round starts.</div>';
+  }
+  if (!d.claimed) {
+    h += '<div style="color:var(--muted2);font-size:10px;margin-bottom:10px;">AI-run team: every launch gets the standard budget automatically.</div>';
+  }
+  if (!(d.vehicles || []).length) {
+    h += '<div style="color:var(--muted2);font-size:11px;padding:10px 0;">No model launches within the next 4 quarters.</div></div>';
+    el.innerHTML = h;
+    return;
+  }
+  (d.vehicles || []).forEach(function(v) {
+    var off = v.offset, status = off < -2 ? 'launch window opens ' + (-2 - off) + ' quarter(s) from now'
+      : off === -2 ? '2 quarters before launch' : off === -1 ? 'quarter before launch (teaser)'
+      : off === 0 ? 'LAUNCH QUARTER' : 'quarter after launch (last chance)';
+    var gw = v.gaps_with_decisions || [], g0 = v.gaps_if_no_more_spend || [], gs = v.gaps_if_standard || [];
+    var gapRow = function(lbl, arr, col) {
+      return '<tr><td style="padding:3px 6px;font-size:9px;color:var(--muted2);">' + lbl + '</td>' + arr.map(function(g) {
+        return '<td style="padding:3px 6px;text-align:right;font-size:10px;color:' + col + ';">' + pc(g.gap) + '</td>';
+      }).join('') + '</tr>';
+    };
+    h += '<div style="border:1px solid ' + (v.in_window ? 'var(--gold)' : 'var(--border)') + ';border-radius:6px;padding:10px 12px;margin-bottom:10px;background:var(--s2);">';
+    h += '<div style="display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:6px;">'
+       + '<div style="font-size:12px;font-weight:700;color:var(--text);">' + _esc(v.name || '') + ' <span style="font-size:9px;color:var(--muted2);font-weight:400;">launch ' + _esc(v.sop_label) + '</span></div>'
+       + '<div style="font-size:9px;color:' + (v.in_window ? 'var(--gold)' : 'var(--muted2)') + ';">' + status + '</div></div>';
+    h += '<div style="font-size:10px;color:var(--muted2);margin:6px 0;">Standard budget ' + m(v.std_budget_m) + ' (2.5% of planned first-year revenue) · spent so far '
+       + m(v.spent_to_date_m) + ' · this quarter <b style="color:var(--gold)">' + m(v.this_quarter_m) + '</b></div>';
+    if (v.in_window && !d.locked && !v.auto) {
+      var sug = v.suggested_now_m;
+      var btn = function(lbl, val) {
+        return '<button onclick="_lcSet(\'' + v.vehicle_id + '\',' + val + ')" style="background:var(--s1);border:1px solid var(--border);color:var(--text);font-family:DM Mono,monospace;font-size:9px;padding:4px 8px;border-radius:4px;cursor:pointer;">' + lbl + '</button>';
+      };
+      h += '<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:8px;">'
+         + '<span style="font-size:9px;color:var(--muted2);">This quarter:</span>'
+         + btn('None', 0) + btn('Half ' + m(sug / 2), (sug / 2).toFixed(2)) + btn('Standard ' + m(sug), sug.toFixed(2)) + btn('Double ' + m(sug * 2), (sug * 2).toFixed(2))
+         + '<input type="number" min="0" step="1" value="' + (Math.round(v.this_quarter_m * 10) / 10) + '" onchange="_lcSet(\'' + v.vehicle_id + '\',this.value)" '
+         + 'style="width:80px;background:var(--s1);color:var(--text);border:1px solid var(--border);font-family:DM Mono,monospace;font-size:10px;padding:3px 5px;border-radius:4px;"> €M</div>';
+    }
+    h += '<table style="border-collapse:collapse;"><tr><td style="padding:3px 6px;font-size:8px;color:var(--muted);text-transform:uppercase;">Awareness gap</td>'
+       + gw.map(function(g) { return '<td style="padding:3px 6px;text-align:right;font-size:8px;color:var(--muted);">' + _esc(g.label) + '</td>'; }).join('') + '</tr>'
+       + gapRow('with budgets set so far', gw, 'var(--gold)')
+       + gapRow('if nothing more is spent', g0, 'var(--red)')
+       + gapRow('with the standard phasing', gs, 'var(--green)') + '</table>';
+    h += '</div>';
+  });
+  h += '<div style="font-size:9px;color:var(--muted);margin-top:4px;line-height:1.6;">Spend before or at launch shrinks the gap from day one; spend after launch only helps the quarters still to come. '
+     + 'Doubling a budget buys less than double (diminishing returns). A campaign is wasted if your plants cannot build the extra demand, and a launch that slips wastes its teaser spend. '
+     + 'This quarter\'s launch budgets: <b>' + m(d.quarter_total_m) + '</b> (P&amp;L line "Launch marketing").</div>';
+  h += '</div>';
+  el.innerHTML = h;
 }
 
 // ── Commercial → 🛡 WARRANTY ─────────────────────────────────────
@@ -14443,6 +14602,7 @@ var _FIN_LINES = {
     {l:'  ↳ efficiency programme (one-off)', k:'ga_programme_m', neg:true, optional:true},
     {l:'  ↳ severance (staffing cut, one-off)', k:'ga_severance_m', neg:true, optional:true},
     {l:'Brand marketing',        k:'marketing_m', neg:true, optional:true},
+    {l:'Launch marketing',       k:'launch_marketing_m', neg:true, optional:true},
     {l:'Sales network',          k:'sales_network_m', neg:true, optional:true},
     {l:'Market entry / exit',    k:'market_entry_m', neg:true, optional:true},
     {l:'Depreciation',           k:'depreciation_total_m', neg:true},
@@ -14525,7 +14685,7 @@ function switchFinTab(tab) {
 function _finPlOther(s) {
   if (!s) return 0;
   var n = function(k){ return parseFloat(s[k]) || 0; };
-  return n('gross_profit_m') - n('rd_expense_m') - n('sga_m') - n('marketing_m')
+  return n('gross_profit_m') - n('rd_expense_m') - n('sga_m') - n('marketing_m') - n('launch_marketing_m')
        - n('sales_network_m') - n('market_entry_m')
        - n('depreciation_total_m') - n('ebit_m');
 }
@@ -24189,6 +24349,8 @@ function calcPropBizCase() {
   // Warranty (COGS) and the plant quality system's per-car cost, as clearing and the P&L charge
   // them (_WARRANTY_E mirrors financial_engine.warranty_unit / vehicle_plant_quality).
   var _wty = _propWarranty(finalTpcNum, _fcfPl);
+  var _lcStd = _LAUNCH_E.stdBudgetM(_prop.commercial, _prop.study && _prop.study.start_year,
+                                    _prop.study && _prop.study.rolled_up_specs && _prop.study.rolled_up_specs.price_eur_k);
 
   // Build quarterly FCF (per-market-year model)
   var _fcfMk=((_prop.commercial&&_prop.commercial.markets)||[]).filter(function(m){return m.selected;});
@@ -24226,8 +24388,10 @@ function calcPropBizCase() {
       // Head-office overhead this model adds (its own admin + the volume-linked share),
       // not a % of revenue: the team's base overhead is there with or without it.
       var gpM=revM-cogsM, sgaM=revM>0?_OVERHEAD_E.modelIncrementM(revM):0, rdMq=revM*0.04;
-      var ebitM=gpM-sgaM-rdMq-marketingM-_newMkt.runQ, fcfM=ebitM*0.75;
-      fcfArr.push({rev:revM,cogs:cogsM,gp:gpM,ebit:ebitM,fcf:fcfM,mktg:marketingM});
+      // Standard launch campaign (planning assumption; the real budget is a round decision)
+      var launchM=fcfArr.length===0?_lcStd*0.75:fcfArr.length===1?_lcStd*0.25:0;
+      var ebitM=gpM-sgaM-rdMq-marketingM-launchM-_newMkt.runQ, fcfM=ebitM*0.75;
+      fcfArr.push({rev:revM,cogs:cogsM,gp:gpM,ebit:ebitM,fcf:fcfM,mktg:marketingM+launchM});
     }
   })
 
@@ -24325,6 +24489,10 @@ function calcPropBizCase() {
         + Math.round(_wty.reliability) + ' · quality system ' + _wty.pq.quality_tier.replace('_', ' ').toLowerCase()
         + (_wty.qualityDelta ? ' (' + (_wty.qualityDelta > 0 ? '+' : '−') + '€' + Math.abs(_wty.qualityDelta) + '/car)' : '')
         + '. Warranty period and quality system: Commercial → 🛡 Warranty.</div>'
+      + '<div style="font-family:DM Mono,monospace;font-size:10px;color:var(--muted2);margin-top:4px;">'
+        + 'Launch campaign (planning assumption): standard budget €' + Math.round(_lcStd) + 'M = '
+        + (_LAUNCH_E.STD_PCT * 100) + '% of first-year revenue, in the first two quarters. The actual budget is '
+        + 'decided each round on Commercial → 🚀 Launches; with none, an average brand\'s new model starts ~30% less attractive.</div>'
       + (false ? ''
           : '');
   }
