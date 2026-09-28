@@ -14408,7 +14408,9 @@ async function mcAdvanceRound() {
 
   if (btn) { btn.disabled=true; btn.textContent='⏳ Advancing...'; }
   try {
-    var res  = await fetch(API_URL + '/sessions/' + sessionId + '/rounds/next', { method: 'POST' });
+    // from_round_id: a re-click after a dropped response must not advance a second time
+    var res  = await fetch(API_URL + '/sessions/' + sessionId + '/rounds/next'
+                           + (roundId ? '?from_round_id=' + encodeURIComponent(roundId) : ''), { method: 'POST' });
     var data = await res.json();
     if (!data.success && !data.round) throw new Error(data.detail || 'Failed');
     var rnd = data.round;
@@ -14417,7 +14419,8 @@ async function mcAdvanceRound() {
     updateRoundDisplay(rnd);
     var aiNote = '';
     if (data.ai_sim_teams && data.ai_sim_teams.length) aiNote = ' · AI ran for ' + data.ai_sim_teams.length + ' team(s)';
-    toast('✓ Round ' + rnd.round_number + ' · Y'+(rnd.year-2024)+'Q'+rnd.quarter + (data.market_clearing?' · market cleared':'') + aiNote);
+    if (data.already_advanced) toast('ℹ Already advanced — now on Round ' + rnd.round_number + ' · Y'+(rnd.year-2024)+'Q'+rnd.quarter + '. Nothing was skipped.');
+    else toast('✓ Round ' + rnd.round_number + ' · Y'+(rnd.year-2024)+'Q'+rnd.quarter + (data.market_clearing?' · market cleared':'') + aiNote);
     await refreshInstructorHub();
     _refreshEngLabIfVisible();
   } catch(e) {
