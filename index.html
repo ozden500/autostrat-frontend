@@ -819,7 +819,7 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
 .sgc-score { font-family:'Orbitron',sans-serif;font-size:14px;font-weight:700;margin-bottom:2px; }
 .sgc-share { font-family:'DM Mono',monospace;font-size:8px;color:var(--muted2); }
 /* Rankings table */
-.rk-row { display:grid;grid-template-columns:24px 1fr 70px 50px 50px;gap:0;padding:5px 0;border-bottom:1px solid rgba(255,255,255,.04);align-items:center; }
+.rk-row { display:grid;grid-template-columns:24px 1fr 64px 46px 50px 36px;gap:0;padding:5px 0;border-bottom:1px solid rgba(255,255,255,.04);align-items:center; }
 .rk-hdr { font-family:'DM Mono',monospace;font-size:7px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;border-bottom:1px solid var(--border2);padding-bottom:6px;margin-bottom:4px; }
 /* History table */
 .ht { width:100%;border-collapse:collapse;font-family:'DM Mono',monospace;font-size:9px; }
@@ -1398,6 +1398,9 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
       <button onclick="loadFinancePanel()" style="background:none;border:1px solid var(--border);color:var(--muted2);font-family:DM Mono,monospace;font-size:9px;padding:3px 10px;border-radius:4px;cursor:pointer;">↻ Refresh</button>
     </div>
 
+    <!-- Credit rating, share price, dividend policy (loadCorpFinance) -->
+    <div id="fin-corpfin-body" style="font-family:DM Mono,monospace;font-size:10px;color:var(--muted2);margin-bottom:14px;">Loading…</div>
+
     <!-- Current BS snapshot -->
     <div id="fin-bs-snapshot" style="display:grid;grid-template-columns:repeat(6,1fr);gap:8px;margin-bottom:16px;padding:10px;background:var(--s2);border-radius:6px;">
       <div style="text-align:center"><div style="font-size:8px;color:var(--muted);font-family:DM Mono,monospace;text-transform:uppercase;">Cash</div><div id="fcp-cash" style="font-size:13px;font-weight:700;color:var(--cyan);font-family:DM Mono,monospace;">—</div></div>
@@ -1430,7 +1433,7 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
           <input type="range" min="0" max="5000" step="100" value="0" id="fcp-iss" oninput="fcpUpd('iss',this.value)" style="width:100%"></div>
         <div class="ctrl"><div class="ctrl-lbl"><span>Share Repurchase (€M)</span><span class="ctrl-v" id="fcp-rep-v">0</span></div>
           <input type="range" min="0" max="2000" step="50" value="0" id="fcp-rep" oninput="fcpUpd('rep',this.value)" style="width:100%"></div>
-        <div class="ctrl"><div class="ctrl-lbl"><span>Dividend Payment (€M)</span><span class="ctrl-v" id="fcp-div-v">0</span></div>
+        <div class="ctrl"><div class="ctrl-lbl"><span>Special dividend, one-off (€M)</span><span class="ctrl-v" id="fcp-div-v">0</span></div>
           <input type="range" min="0" max="2000" step="50" value="0" id="fcp-div" oninput="fcpUpd('div',this.value)" style="width:100%"></div>
       </div>
     </div>
@@ -2087,7 +2090,7 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
 
       <!-- Team Rankings -->
       <div class="perf-card">
-        <div class="perf-card-title">Current Round — All-Team Revenue Rankings</div>
+        <div class="perf-card-title" id="perf-rankings-title">Current Round — All-Team Rankings</div>
         <div id="perf-rankings" style="margin-top:6px;">
           <div style="color:var(--muted2);font-size:11px;padding:8px 0;">No ranking data yet.</div>
         </div>
@@ -14749,6 +14752,7 @@ var _FIN_LINES = {
     {l:'Supply chain & other',   k:'_pl_other', neg:true, optional:true},
     {l:'EBIT',                   k:'ebit_m', kind:'tot'},
     {l:'Interest',               k:'interest_total_m', neg:true},
+    {l:'Interest income on cash', k:'interest_income_m', optional:true},
     {l:'Profit Before Tax',      k:'pbt_m', kind:'sub'},
     {l:'Tax',                    k:'tax_m', neg:true},
     {l:'Net Income',             k:'net_income_m', kind:'tot'}
@@ -14942,6 +14946,7 @@ function renderFinStatement() {
 async function loadFinancePanel() {
   if (!sessionId || !teamId) return;
   loadOverheadPanel();
+  loadCorpFinance();
   try {
     var res = await fetch(API_URL + '/sessions/' + sessionId + '/financial-statements');
     if (!res.ok) return;
@@ -15170,6 +15175,151 @@ function _ovhRender() {
   } else {
     h += '<div style="color:var(--muted);font-size:10px;">' + _esc(d.programme_blocked_reason || 'Not available') + '</div>';
   }
+  el.innerHTML = h;
+}
+
+// ── CORPORATE FINANCE: credit rating, share price, dividend policy ──────────
+// Everything shown is read from GET /sessions/{id}/teams/{tid}/finance, which reports what
+// the backend's financial_engine (leverage_metrics / team_valuation / payout_policy) wrote on
+// the last cleared statement. Nothing is recomputed here, so there is no JS engine to keep
+// in parity.
+var _cfPanel = {data: null, busy: false};
+
+var _CF_RATING_COL = {AA: 'var(--green)', A: 'var(--green)', BBB: 'var(--cyan)',
+                      BB: 'var(--gold)', B: 'var(--orange)', CCC: 'var(--red)'};
+
+async function loadCorpFinance() {
+  if (!sessionId || !teamId) return;
+  var body = document.getElementById('fin-corpfin-body');
+  try {
+    var res = await fetch(API_URL + '/sessions/' + sessionId + '/teams/' + teamId + '/finance');
+    var d = await res.json();
+    if (!res.ok) throw new Error(d.detail || ('HTTP ' + res.status));
+    _cfPanel.data = d;
+    _cfRender();
+  } catch (e) {
+    if (body) body.textContent = 'Credit rating and share price unavailable: ' + e.message;
+  }
+}
+
+async function _cfDecide(pct) {
+  if (_cfPanel.busy) return;
+  _cfPanel.busy = true;
+  var ok = false;
+  try {
+    var res = await fetch(API_URL + '/sessions/' + sessionId + '/teams/' + teamId + '/finance', {
+      method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({payout_pct: pct})
+    });
+    var d = await res.json();
+    if (!res.ok) throw new Error(d.detail || ('HTTP ' + res.status));
+    _cfPanel.data = d;
+    ok = true;
+  } catch (e) {
+    toast('Dividend policy failed: ' + e.message);
+  } finally {
+    _cfPanel.busy = false;
+    _cfRender();
+  }
+  if (ok) loadFinancePanel();    // the pro-forma column pays the new dividend
+}
+
+function _cfRender() {
+  var el = document.getElementById('fin-corpfin-body');
+  var d = _cfPanel.data;
+  if (!el || !d) return;
+  var C = d.constants || {};
+  var m = d.metrics || {};
+  var v = d.valuation || {};
+  var t = d.tsr || {};
+  var num = function(x) { return x == null ? null : parseFloat(x); };
+  var eur = function(x) { return x == null ? '—' : (x < 0 ? '−' : '') + '€' + Math.abs(x).toLocaleString(undefined, {maximumFractionDigits: 0}) + 'M'; };
+  var pct = function(x, dp) { return x == null ? '—' : (x * 100).toFixed(dp == null ? 1 : dp) + '%'; };
+  var head = function(title, sub) {
+    return '<div style="font-size:8px;text-transform:uppercase;letter-spacing:1.5px;color:#a78bfa;margin:4px 0 8px;">' +
+           title + (sub ? ' <span style="color:var(--muted);letter-spacing:0;text-transform:none;">· ' + sub + '</span>' : '') + '</div>';
+  };
+  var tile = function(lbl, val, col, sub) {
+    return '<div style="background:var(--s2);border-radius:6px;padding:8px;">' +
+      '<div style="font-size:8px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);">' + lbl + '</div>' +
+      '<div style="font-size:13px;font-weight:700;color:' + (col || 'var(--text)') + ';margin-top:2px;">' + val + '</div>' +
+      (sub ? '<div style="font-size:9px;color:var(--muted2);margin-top:2px;line-height:1.4;">' + sub + '</div>' : '') + '</div>';
+  };
+  if (!d.as_of) {
+    el.innerHTML = '<div>No cleared quarter yet: the rating and share price appear after the first clearing.</div>';
+    return;
+  }
+  var r = d.rating;
+  var h = head('CREDIT RATING &amp; SHARE PRICE', 'as of ' + d.as_of + ' · what investors and lenders see');
+  h += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(125px,1fr));gap:8px;margin-bottom:12px;">';
+  var nde = num(m.nd_ebitda), cov = num(m.interest_cover);
+  h += tile('Credit rating', r, _CF_RATING_COL[r] || 'var(--text)',
+            'new LT debt ' + pct(d.rates_now.lt_pa) + ' · revolver ' + pct(d.rates_now.st_pa));
+  h += tile('Net debt / EBITDA', num(m.net_debt_m) <= 0 ? 'net cash' : (nde == null ? 'n/a' : nde.toFixed(2) + '×'),
+            null, 'net debt ' + eur(num(m.net_debt_m)) + ' · EBITDA (12m) ' + eur(num(m.ebitda_ltm_m)));
+  h += tile('Interest cover', cov == null ? 'no interest' : cov.toFixed(1) + '×', null, 'EBIT ÷ interest, last 12 months');
+  var sp = num(v.share_price_eur), sp0 = num(t.start_price_eur);
+  h += tile('Share price', sp == null ? '—' : '€' + sp.toFixed(2), 'var(--cyan)',
+            (sp0 != null ? 'game start €' + sp0.toFixed(2) : '') + (v.ev_multiple != null ? ' · EV ' + parseFloat(v.ev_multiple).toFixed(1) + '× EBITDA' : ''));
+  var tsr = num(t.tsr_pct);
+  h += tile('Shareholder return', tsr == null ? '—' : (tsr >= 0 ? '+' : '') + tsr.toFixed(1) + '%',
+            tsr == null ? null : (tsr >= 0 ? 'var(--green)' : 'var(--red)'),
+            'since ' + (t.since || 'game start') + ', dividends reinvested' +
+            (d.tsr_rank ? ' · #' + d.tsr_rank + ' of ' + d.teams_ranked : ''));
+  h += '</div>';
+
+  // What sets the rating, and what each rating costs
+  h += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px;">';
+  h += '<div style="line-height:1.6;">The rating weighs <b style="color:var(--text)">net debt / EBITDA</b> (40%), ' +
+       '<b style="color:var(--text)">interest cover</b> (30%) and <b style="color:var(--text)">EBIT margin</b> (30%), ' +
+       'over the last 12 months. It prices the interest on <i>new</i> long-term debt (fixed from then on) and the ' +
+       'revolver every quarter, and moves the share price multiple. LT debt may not exceed ' + C.DEBT_COVENANT +
+       '× equity. Cash below €' + (C.EMERGENCY_CASH_FLOOR || 100) + 'M is topped up automatically: above the €' +
+       (C.ST_REVOLVER_LIMIT_M || 1000).toLocaleString() + 'M revolver that costs ' + pct(d.rates_now.emergency_pa) +
+       ' a year. Cash above the ' + eur(num(d.treasury_buffer_m)) + ' buffer repays the revolver and earns ' +
+       pct(C.FIN_CASH_YIELD_PA) + ', but investors value surplus cash at ' + Math.round((C.VAL_EXCESS_CASH || 0.75) * 100) + 'c on the euro.</div>';
+  h += '<table style="border-collapse:collapse;font-size:9px;width:100%;"><tr style="color:var(--muted);">' +
+       '<td style="padding:2px 6px;">Rating</td><td style="padding:2px 6px;text-align:right;">New LT debt</td>' +
+       '<td style="padding:2px 6px;text-align:right;">Revolver</td><td style="padding:2px 6px;text-align:right;">Multiple</td></tr>';
+  (C.RATING_LADDER || []).forEach(function(rt) {
+    var rr = (d.rates_by_rating || {})[rt] || {};
+    var on = rt === r;
+    var adj = (C.VAL_RATING_ADJ || {})[rt] || 0;
+    h += '<tr style="' + (on ? 'background:rgba(251,191,36,0.08);' : '') + '">' +
+         '<td style="padding:2px 6px;font-weight:700;color:' + (_CF_RATING_COL[rt] || 'var(--text)') + ';">' + (on ? '● ' : '') + rt + '</td>' +
+         '<td style="padding:2px 6px;text-align:right;color:var(--text);">' + pct(rr.lt_pa) + '</td>' +
+         '<td style="padding:2px 6px;text-align:right;color:var(--text);">' + pct(rr.st_pa) + '</td>' +
+         '<td style="padding:2px 6px;text-align:right;color:' + (adj >= 0 ? 'var(--green)' : 'var(--red)') + ';">' + (adj >= 0 ? '+' : '') + adj.toFixed(2) + '×</td></tr>';
+  });
+  h += '</table></div>';
+
+  // Dividend policy
+  var P = d.payout || {};
+  h += head('DIVIDEND POLICY', 'share of each quarter\'s net income paid out · carries forward until changed');
+  var effect = {
+    0:    'keeps every euro for new models and plants; no payer premium in the share price',
+    0.25: 'the industry norm; a regular payer earns +' + (C.VAL_PAYER_PREMIUM || 0.2) + '× on the multiple',
+    0.40: 'returns more cash; less headroom for investment and a lower cash buffer',
+    0.60: 'a high yield; only sustainable with steady profits and little debt'
+  };
+  h += '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:6px;">';
+  (P.levels || []).forEach(function(lv) {
+    var on = Math.abs((P.in_force || 0) - lv) < 1e-6;
+    var cut = lv < (P.last_quarter || 0) - 1e-6;
+    h += '<div ' + (d.locked ? '' : 'onclick="_cfDecide(' + lv + ')" ') +
+         'style="cursor:' + (d.locked ? 'default' : 'pointer') + ';border:1px solid ' + (on ? 'var(--gold)' : 'var(--border)') +
+         ';background:' + (on ? 'rgba(251,191,36,0.08)' : 'var(--s2)') + ';border-radius:6px;padding:8px;">' +
+         '<div style="font-size:11px;font-weight:700;color:' + (on ? 'var(--gold)' : 'var(--text)') + ';">' + (on ? '● ' : '○ ') + Math.round(lv * 100) + '%</div>' +
+         '<div style="font-size:9px;color:var(--muted2);margin-top:3px;line-height:1.4;">' + (effect[lv] || '') + '</div>' +
+         (cut ? '<div style="font-size:9px;color:var(--orange);margin-top:3px;">a cut: −' + (C.VAL_CUT_PENALTY || 0.6) + '× on the multiple, fading over ' + (C.VAL_CUT_FADE_Q || 4) + ' quarters</div>' : '') +
+         '</div>';
+  });
+  h += '</div>';
+  var paid = num(m.policy_dividend_m);
+  h += '<div style="font-size:9px;color:var(--muted);">Last quarter paid ' + eur(paid) + ' under the policy' +
+       (v.dps_eur != null ? ' (€' + parseFloat(v.dps_eur).toFixed(2) + ' a share)' : '') +
+       '. A dividend never takes cash below €' + (C.DIVIDEND_CASH_FLOOR_M || 500) + 'M or exceeds retained earnings. ' +
+       'Buybacks and special dividends are one-off amounts below.</div>';
+  if (d.locked) h += '<div style="color:var(--gold);font-size:9px;margin-top:4px;">This round has cleared; set the policy in the next one.</div>';
   el.innerHTML = h;
 }
 
@@ -15806,7 +15956,8 @@ function renderPLComparison(data) {
     o._interest_lt  = parseFloat(fs.interest_lt_m         || 0);
     o._interest_st  = parseFloat(fs.interest_st_m         || 0);
     o._interest     = parseFloat(fs.interest_total_m      || 0);
-    o._pretax       = parseFloat(fs.pbt_m                 || (o._ebit - o._interest));
+    o._interest_inc = parseFloat(fs.interest_income_m     || 0);   // REAL: interest earned on cash
+    o._pretax       = parseFloat(fs.pbt_m                 || (o._ebit - o._interest + o._interest_inc));
     o._tax          = parseFloat(fs.tax_m                 || Math.max(0, o._pretax * 0.25));
     o._net_income   = parseFloat(fs.net_income_m          || (o._pretax - o._tax));
     // Covenant warning flag
@@ -15845,8 +15996,9 @@ function renderPLComparison(data) {
     {type:'total',  label:'EBIT',                              key:'_ebit',         sign:-1, color:'var(--gold)'},
     {type:'sep'},
     {type:'header', label:'NON-OPERATING'},
-    {type:'line',   label:'  Interest — LT Term Loan (4% pa)', key:'_interest_lt',  sign:1},
-    {type:'line',   label:'  Interest — ST Revolver (5% pa)',  key:'_interest_st',  sign:1},
+    {type:'line',   label:'  Interest — LT debt (fixed at issue, by rating)', key:'_interest_lt',  sign:1},
+    {type:'line',   label:'  Interest — ST revolver (floats with rating)',    key:'_interest_st',  sign:1},
+    {type:'line',   label:'  Interest income on cash',         key:'_interest_inc', sign:0},
     {type:'total',  label:'Pre-Tax Income (PBT)',               key:'_pretax',       sign:-1, color:'var(--gold)'},
     {type:'sep'},
     {type:'line',   label:'  Income Tax (25%)',                key:'_tax',          sign:1},
@@ -17239,7 +17391,7 @@ async function loadPerformanceData() {
       _setText('pk-gm',    (kpis.gross_margin_pct || 0).toFixed(1) + '%');
       _setText('pk-ebit',  '€' + (kpis.ebit_m||0).toFixed(1) + 'M');
       _setText('pk-units', (kpis.total_units||0).toLocaleString());
-      _setText('pk-rank',  kpis.revenue_rank ? '#' + kpis.revenue_rank : '—');
+      _setText('pk-rank',  (kpis.rank || kpis.revenue_rank) ? '#' + (kpis.rank || kpis.revenue_rank) : '—');
       _setText('pk-rank-sub', 'of ' + (kpis.total_teams||'—') + ' teams');
       _setText('pk-util',  kpis.avg_utility != null ? kpis.avg_utility : '—');
       // BEI tile (updated below after beiData fetch)
@@ -17252,7 +17404,7 @@ async function loadPerformanceData() {
       // Also update Command Center KPI tiles if they're visible
       _setText('kpi-revenue', '€' + kpis.revenue_m.toFixed(1) + 'M');
       _setText('kpi-ebit',    (kpis.gross_margin_pct||0).toFixed(1) + '%');
-      _setText('kpi-rank',    kpis.revenue_rank ? '#' + kpis.revenue_rank : '#—');
+      _setText('kpi-rank',    (kpis.rank || kpis.revenue_rank) ? '#' + (kpis.rank || kpis.revenue_rank) : '#—');
     }
     function _setText(id, val) { var e=document.getElementById(id); if(e) e.textContent=val; }
 
@@ -17490,24 +17642,33 @@ function renderRankings(rankings, myTeamId) {
   var el = document.getElementById('perf-rankings');
   if (!el) return;
   if (!rankings || !rankings.length) { el.innerHTML = '<div style="color:var(--muted2);font-size:11px;">No ranking data.</div>'; return; }
-  var SEG_NL = typeof SEG_NAMES !== 'undefined' ? SEG_NAMES : {};
+  // Order and basis come from the backend (financial_engine.rank_teams): revenue, TSR, or the
+  // scorecard (50% TSR rank, 25% revenue rank, 25% EBIT-margin rank).
+  var basis = rankings[0].ranking_basis || 'revenue';
+  var BASIS_LBL = {revenue: 'ranked on revenue', tsr: 'ranked on shareholder return since game start',
+                   scorecard: 'scorecard: 50% shareholder return · 25% revenue · 25% EBIT margin'};
+  var ttl = document.getElementById('perf-rankings-title');
+  if (ttl) ttl.textContent = 'Current Round — All-Team Rankings (' + (BASIS_LBL[basis] || basis) + ')';
   var h = '<div class="rk-row rk-hdr">'
     + '<span>#</span><span>Team</span><span style="text-align:right;">Revenue</span>'
-    + '<span style="text-align:right;">Margin</span><span style="text-align:right;">Units</span></div>';
+    + '<span style="text-align:right;">EBIT %</span><span style="text-align:right;">TSR</span>'
+    + '<span style="text-align:right;">Rating</span></div>';
   rankings.forEach(function(ro, i) {
     var isMe  = ro.team_id === myTeamId;
     var rev   = parseFloat(ro.revenue_m||0);
-    var gm    = ro.gross_margin_pct != null ? parseFloat(ro.gross_margin_pct).toFixed(1)+'%'
-              : (ro.cogs_m && rev > 0 ? ((1-parseFloat(ro.cogs_m)/rev)*100).toFixed(1)+'%' : '—');
-    var gmCol = parseFloat(gm) > 20 ? 'var(--green)' : parseFloat(gm) > 10 ? 'var(--gold)' : 'var(--red)';
+    var em    = ro.ebit_margin_pct != null ? parseFloat(ro.ebit_margin_pct) : null;
+    var emCol = em == null ? 'var(--muted2)' : em >= 8 ? 'var(--green)' : em >= 3 ? 'var(--gold)' : 'var(--red)';
+    var tsr   = ro.tsr_pct != null ? parseFloat(ro.tsr_pct) : null;
+    var tsrCol = tsr == null ? 'var(--muted2)' : tsr >= 0 ? 'var(--green)' : 'var(--red)';
     var rankCol = i === 0 ? '#e8c060' : i === 1 ? '#b0c0d0' : i === 2 ? '#c8a060' : 'var(--muted2)';
     h += '<div class="rk-row" style="'+(isMe?'background:rgba(50,204,192,.06);border-radius:3px;':'')+'">'
-      + '<span style="font-family:Orbitron,monospace;font-size:11px;font-weight:700;color:'+rankCol+';">'+(i+1)+'</span>'
+      + '<span style="font-family:Orbitron,monospace;font-size:11px;font-weight:700;color:'+rankCol+';">'+(ro.rank||i+1)+'</span>'
       + '<span style="font-size:11px;color:'+(isMe?'var(--cyan)':'var(--text)')+';font-weight:'+(isMe?'700':'400')+';">'
         +(ro.team_name||'?')+(isMe?' ★':'')+'</span>'
-      + '<span style="text-align:right;font-family:DM Mono,monospace;font-size:9px;color:var(--cyan);">€'+rev.toFixed(1)+'M</span>'
-      + '<span style="text-align:right;font-family:DM Mono,monospace;font-size:9px;color:'+gmCol+';">'+gm+'</span>'
-      + '<span style="text-align:right;font-family:DM Mono,monospace;font-size:9px;color:var(--muted2);">'+parseInt(ro.total_units_sold||0).toLocaleString()+'</span>'
+      + '<span style="text-align:right;font-family:DM Mono,monospace;font-size:9px;color:var(--cyan);">€'+(rev/1000).toFixed(1)+'B</span>'
+      + '<span style="text-align:right;font-family:DM Mono,monospace;font-size:9px;color:'+emCol+';">'+(em==null?'—':em.toFixed(1)+'%')+'</span>'
+      + '<span style="text-align:right;font-family:DM Mono,monospace;font-size:9px;color:'+tsrCol+';">'+(tsr==null?'—':(tsr>=0?'+':'')+tsr.toFixed(1)+'%')+'</span>'
+      + '<span style="text-align:right;font-family:DM Mono,monospace;font-size:9px;color:var(--muted2);">'+(ro.credit_rating||'—')+'</span>'
       + '</div>';
   });
   el.innerHTML = h;
@@ -26843,7 +27004,7 @@ async function loadCommandCenterKPIs() {
     var ebitMargin = kpis.revenue_m > 0 ? (kpis.ebit_m / kpis.revenue_m * 100) : 0;
     set('kpi-ebit', ebitMargin.toFixed(1) + '%');
     set('kpi-ebit-delta', 'EBIT margin');
-    set('kpi-rank', kpis.revenue_rank ? '#' + kpis.revenue_rank : '#—');
+    set('kpi-rank', (kpis.rank || kpis.revenue_rank) ? '#' + (kpis.rank || kpis.revenue_rank) : '#—');
     set('kpi-rank-sub', 'of ' + (kpis.total_teams || 12) + ' OEMs');
 
     // Market share = sum of this team's vehicle shares in the latest round
