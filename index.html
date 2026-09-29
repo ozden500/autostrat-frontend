@@ -15403,6 +15403,7 @@ function _cfCaptiveHtml(d, head, eur, pct, num, card, row) {
       var t = offers[o] || {};
       var lbl = o === 'off' ? 'Off' : o + '% APR';
       var sub = o === 'off' ? 'buyers finance with banks; no cost, no effect'
+        : !(t.subsidy_pct > 0) ? 'market-rate lending: ' + Math.round((t.takeup || 0) * 100) + '% of buyers finance with you · no subsidy, no extra buyers · the book earns the spread over your funding cost'
         : Math.round((t.takeup || 0) * 100) + '% finance · subsidy ' + (t.subsidy_pct || 0).toFixed(1) + '% of price per loan · demand like a ' +
           (t.eq_discount_pts || 0).toFixed(1) + '-pt discount · losses ' + pct(t.loss_pa || 0);
       var payload = '{captive_offers:{' + reg + ':\'' + o + '\'}}';
