@@ -14739,6 +14739,7 @@ var _FIN_LINES = {
     {l:'  ↳ incl. fleet sales',  k:'fleet_revenue_m', optional:true},
     {l:'  ↳ fleet discounts given', k:'fleet_discount_m', neg:true, optional:true},
     {l:'  ↳ fleet delivery penalties', k:'fleet_penalty_m', neg:true, optional:true},
+    {l:'  ↳ loan subsidies (captive offers)', k:'finance_subsidy_m', neg:true, optional:true},
     {l:'Cost of Goods Sold',     k:'cogs_m', neg:true},
     {l:'Warranty',               k:'warranty_expense_m', neg:true, optional:true},
     {l:'Supplier terms premium', k:'supplier_terms_m', neg:true, optional:true},
@@ -14763,6 +14764,7 @@ var _FIN_LINES = {
     {l:'Depreciation',           k:'depreciation_total_m', neg:true},
     {l:'Factoring & reverse-factoring fees', k:'_wc_fin', neg:true, optional:true},
     {l:'Lease rent (sale-and-leaseback)', k:'lease_rent_m', neg:true, optional:true},
+    {l:'Financial services (captive, after losses)', k:'fs_ebit_m', optional:true},
     {l:'Supply chain & other',   k:'_pl_other', neg:true, optional:true},
     {l:'EBIT',                   k:'ebit_m', kind:'tot'},
     {l:'Interest',               k:'interest_total_m', neg:true},
@@ -14776,6 +14778,7 @@ var _FIN_LINES = {
     {l:'Cash',                       k:'cash_m'},
     {l:'Accounts Receivable',        k:'accounts_receivable_m'},
     {l:'Inventory',                  k:'inventory_m'},
+    {l:'Finance receivables (captive loans)', k:'finance_receivables_m', optional:true},
     {l:'Prepaid Expenses',           k:'prepaid_m', optional:true},
     {l:'Total Current Assets',       k:'total_current_assets_m', kind:'sub'},
     {l:'PP&E (gross)',               k:'ppe_gross_m'},
@@ -14845,7 +14848,8 @@ function _finPlOther(s) {
   var n = function(k){ return parseFloat(s[k]) || 0; };
   return n('gross_profit_m') - n('rd_expense_m') - n('sga_m') - n('marketing_m') - n('launch_marketing_m')
        - n('sales_network_m') - n('market_entry_m')
-       - n('depreciation_total_m') - n('factoring_fee_m') - n('rf_fee_m') - n('lease_rent_m') - n('ebit_m');
+       - n('depreciation_total_m') - n('factoring_fee_m') - n('rf_fee_m') - n('lease_rent_m')
+       + n('fs_ebit_m') - n('ebit_m');
 }
 
 function _finVal(s, key) {
@@ -15377,6 +15381,48 @@ function _cfRender() {
   if (rst) rst.max = Math.max(1000, parseFloat((d.metrics || {}).short_term_debt_m) || 0);
 }
 
+// Captive finance offers by region (financial_engine.captive_offer_at / captive_terms)
+function _cfCaptiveHtml(d, head, eur, pct, num, card, row) {
+  var C = d.constants || {};
+  var m = d.metrics || {};
+  var cap = d.captive || {};
+  var by = cap.by_region || {};
+  var offers = cap.offers || {};
+  var mkt = (C.CAPTIVE_MARKET_APR_PA || 0.069);
+  var h = '<div style="margin-top:14px;"></div>' +
+          head('CAPTIVE FINANCE', 'subsidised loans for your retail buyers · per region · carries forward until changed');
+  h += '<div style="margin-bottom:6px;line-height:1.6;">Banks lend to car buyers at ' + pct(mkt) + '. Your captive can offer less: buyers treat the ' +
+       'subsidy like a discount (' + (C.CAPTIVE_SALIENCE || 1.3) + '× as persuasive per euro), the subsidy is deducted from revenue when the car is sold, ' +
+       'and the loans (' + Math.round((C.CAPTIVE_LTV || 0.8) * 100) + '% of the price, ~4 years) sit on your balance sheet earning ' + pct(mkt) +
+       ' less credit losses. You fund them at your own borrowing rate (now ' + pct(d.rates_now.lt_pa) + ' at ' + d.rating + '): a strong rating makes the captive pay.</div>';
+  var regs = Object.keys(by);
+  regs.forEach(function(reg) {
+    var cur = (by[reg] || {}).offer || 'off';
+    var cards = [];
+    (C.CAPTIVE_OFFERS || ['off']).forEach(function(o) {
+      var t = offers[o] || {};
+      var lbl = o === 'off' ? 'Off' : o + '% APR';
+      var sub = o === 'off' ? 'buyers finance with banks; no cost, no effect'
+        : Math.round((t.takeup || 0) * 100) + '% finance · subsidy ' + (t.subsidy_pct || 0).toFixed(1) + '% of price per loan · demand like a ' +
+          (t.eq_discount_pts || 0).toFixed(1) + '-pt discount · losses ' + pct(t.loss_pa || 0);
+      var payload = '{captive_offers:{' + reg + ':\'' + o + '\'}}';
+      cards.push(card(cur === o, lbl, sub, '_cfDecide(' + payload + ')'));
+    });
+    h += row(reg, cards);
+  });
+  var book = num(m.finance_receivables_m) || 0;
+  if (book > 0 || (num(m.finance_subsidy_m) || 0) > 0) {
+    var fs = num(m.fs_ebit_m) || 0;
+    var fundQ = book * d.rates_now.lt_pa / 4;
+    h += '<div style="font-size:9px;color:var(--muted);margin-top:6px;">Loan book ' + eur(book) + ' (new last quarter ' + eur(num(m.captive_new_loans_m)) +
+         ') · financial services ' + eur(fs) + ' after credit losses ' + eur(num(m.captive_losses_m)) + ' · subsidies ' + eur(num(m.finance_subsidy_m)) +
+         ' in revenue · funding the book costs ~' + eur(fundQ) + ' a quarter at your rate (' + (fs - fundQ >= 0 ? '<span style="color:var(--green)">the captive pays</span>'
+         : '<span style="color:var(--red)">the captive loses money</span>') + '). Rating agencies treat ' + Math.round((C.CAPTIVE_SELF_FUNDED || 0.9) * 100) +
+         '% of the book as self-funded.</div>';
+  }
+  return h;
+}
+
 // Working-capital programme and credit line (financial_engine.treasury_policy / wc_programme)
 function _cfTreasuryHtml(d, head, eur, pct, num) {
   var C = d.constants || {};
@@ -15492,6 +15538,7 @@ function _cfTreasuryHtml(d, head, eur, pct, num) {
          '% of your original buildings &amp; land; rent ' + eur(LB.rent_q_m) + ' a quarter (' + pct(C.LEASE_RATE_PA || 0.07) +
          ' a year on the sale price). At most ' + Math.round((C.LEASEBACK_MAX_SOLD || 0.75) * 100) + '% can be sold.</div>';
   }
+  h += _cfCaptiveHtml(d, head, eur, pct, num, card, row);
   var cost = (num(m.supplier_terms_m) || 0) + (num(m.factoring_fee_m) || 0) + (num(m.rf_fee_m) || 0) + (num(m.line_fee_m) || 0);
   h += '<div style="font-size:9px;color:var(--muted);margin-top:6px;">Last quarter the programme cost ' + eur(cost) +
        ' (terms premium ' + eur(num(m.supplier_terms_m)) + ', factoring ' + eur(num(m.factoring_fee_m)) + ', reverse factoring ' +
