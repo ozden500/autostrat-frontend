@@ -1418,9 +1418,13 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
       <div>
         <div style="font-family:DM Mono,monospace;font-size:8px;text-transform:uppercase;letter-spacing:1.5px;color:#a78bfa;margin-bottom:8px;">DEBT MANAGEMENT</div>
-        <div class="ctrl"><div class="ctrl-lbl"><span>Borrow — LT Term Loan (€M)</span><span class="ctrl-v" id="fcp-blt-v">0</span></div>
-          <input type="range" min="0" max="2000" step="100" value="0" id="fcp-blt" oninput="fcpUpd('blt',this.value)" style="width:100%"></div>
-        <div class="ctrl"><div class="ctrl-lbl"><span>Repay — LT Term Loan (€M)</span><span class="ctrl-v" id="fcp-rlt-v">0</span></div>
+        <div class="ctrl"><div class="ctrl-lbl"><span>Issue a bond (€M)</span><span class="ctrl-v" id="fcp-blt-v">0</span></div>
+          <input type="range" min="0" max="5000" step="100" value="0" id="fcp-blt" oninput="fcpUpd('blt',this.value)" style="width:100%"></div>
+        <div class="ctrl"><div class="ctrl-lbl"><span>Bond tenor</span><span class="ctrl-v" id="fcp-tenor-v">5 years</span></div>
+          <select id="fcp-tenor" onchange="fcpUpd('tenor',this.value)" style="width:100%;background:var(--s2);color:var(--text);border:1px solid var(--border);font-family:DM Mono,monospace;font-size:10px;padding:3px;">
+            <option value="3">3 years (−0.3% vs 5y)</option><option value="5" selected>5 years</option><option value="10">10 years (+0.6% vs 5y)</option>
+          </select></div>
+        <div class="ctrl"><div class="ctrl-lbl"><span>Buy back bonds early (€M, dearest first)</span><span class="ctrl-v" id="fcp-rlt-v">0</span></div>
           <input type="range" min="0" max="2000" step="100" value="0" id="fcp-rlt" oninput="fcpUpd('rlt',this.value)" style="width:100%"></div>
         <div class="ctrl"><div class="ctrl-lbl"><span>Draw — ST Revolver (€M)</span><span class="ctrl-v" id="fcp-bst-v">0</span></div>
           <input type="range" min="0" max="1000" step="50" value="0" id="fcp-bst" oninput="fcpUpd('bst',this.value)" style="width:100%"></div>
@@ -1435,6 +1439,10 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
           <input type="range" min="0" max="2000" step="50" value="0" id="fcp-rep" oninput="fcpUpd('rep',this.value)" style="width:100%"></div>
         <div class="ctrl"><div class="ctrl-lbl"><span>Special dividend, one-off (€M)</span><span class="ctrl-v" id="fcp-div-v">0</span></div>
           <input type="range" min="0" max="2000" step="50" value="0" id="fcp-div" oninput="fcpUpd('div',this.value)" style="width:100%"></div>
+        <div class="ctrl"><div class="ctrl-lbl"><span>Sale-and-leaseback of buildings &amp; land</span><span class="ctrl-v" id="fcp-lb-v">none</span></div>
+          <select id="fcp-lb" onchange="fcpUpd('lb',this.value)" style="width:100%;background:var(--s2);color:var(--text);border:1px solid var(--border);font-family:DM Mono,monospace;font-size:10px;padding:3px;">
+            <option value="0" selected>None</option><option value="0.25">Sell 25% of what you own, lease it back</option><option value="0.5">Sell 50% of what you own, lease it back</option>
+          </select></div>
       </div>
     </div>
 
@@ -14650,14 +14658,15 @@ async function renderBalanceSheet(data) {
 }
 
 // ── FINANCE & CAPITAL PANEL ──────────────────────────────────────────────────
-var _fcpDecision = {blt:0, rlt:0, bst:0, rst:0, iss:0, rep:0, div:0};
+var _fcpDecision = {blt:0, rlt:0, bst:0, rst:0, iss:0, rep:0, div:0, tenor:5, lb:0};
 var _fcpCurrent  = {};   // latest financial statement for this team
 
 function fcpUpd(key, val) {
   val = parseFloat(val) || 0;
   _fcpDecision[key] = val;
-  var labels = {blt:'Borrow LT',rlt:'Repay LT',bst:'Draw ST',rst:'Repay ST',iss:'Issue Shares',rep:'Buyback',div:'Dividend'};
   var el = document.getElementById('fcp-'+key+'-v');
+  if (key === 'tenor') { if (el) el.textContent = val + ' years'; return; }
+  if (key === 'lb') { if (el) el.textContent = val > 0 ? Math.round(val * 100) + '% of owned' : 'none'; _fcpRenderProforma(); return; }
   if (el) el.textContent = val > 0 ? '€'+val.toFixed(0)+'M' : '0';
   _fcpRenderProforma();
 }
@@ -14667,7 +14676,7 @@ function _fcpRenderProforma() {
   var cont = document.getElementById('fcp-pf-content');
   if (!pf || !cont) return;
   var d = _fcpDecision;
-  var hasAny = Object.values(d).some(function(v){ return v > 0; });
+  var hasAny = ['blt','rlt','bst','rst','iss','rep','div','lb'].some(function(k){ return d[k] > 0; });
   if (!hasAny) { pf.style.display='none'; return; }
   pf.style.display = 'block';
 
@@ -14751,6 +14760,7 @@ var _FIN_LINES = {
     {l:'Market entry / exit',    k:'market_entry_m', neg:true, optional:true},
     {l:'Depreciation',           k:'depreciation_total_m', neg:true},
     {l:'Factoring & reverse-factoring fees', k:'_wc_fin', neg:true, optional:true},
+    {l:'Lease rent (sale-and-leaseback)', k:'lease_rent_m', neg:true, optional:true},
     {l:'Supply chain & other',   k:'_pl_other', neg:true, optional:true},
     {l:'EBIT',                   k:'ebit_m', kind:'tot'},
     {l:'Interest',               k:'interest_total_m', neg:true},
@@ -14833,7 +14843,7 @@ function _finPlOther(s) {
   var n = function(k){ return parseFloat(s[k]) || 0; };
   return n('gross_profit_m') - n('rd_expense_m') - n('sga_m') - n('marketing_m') - n('launch_marketing_m')
        - n('sales_network_m') - n('market_entry_m')
-       - n('depreciation_total_m') - n('factoring_fee_m') - n('rf_fee_m') - n('ebit_m');
+       - n('depreciation_total_m') - n('factoring_fee_m') - n('rf_fee_m') - n('lease_rent_m') - n('ebit_m');
 }
 
 function _finVal(s, key) {
@@ -15432,6 +15442,32 @@ function _cfTreasuryHtml(d, head, eur, pct, num) {
                  '_cfDecide({credit_line_m:' + L + '})'));
   });
   h += row('Committed credit line (the revolver; beyond it, shortfalls are emergency funding at ' + pct(d.rates_now.emergency_pa) + ')', lc);
+  // Debt maturity profile (team_debt_tranches) and sale-and-leaseback state
+  var prof = d.debt_profile || [];
+  if (prof.length) {
+    var byYear = {};
+    prof.forEach(function(t) {
+      var y = 2025 + Math.floor(t.maturity_qabs / 4);
+      var b = byYear[y] = byYear[y] || {p: 0, w: 0};
+      b.p += t.principal_m; b.w += t.principal_m * t.rate_pa;
+    });
+    h += '<div style="font-size:9px;color:var(--muted);margin:10px 0 4px;">Long-term debt by maturity year (repaid from cash when due; ' +
+         'what cash cannot cover rolls into a ' + (C.ROLLOVER_TENOR_Y || 5) + '-year bond at the rate for your rating then)</div>' +
+         '<table style="border-collapse:collapse;font-size:9px;"><tr style="color:var(--muted);"><td style="padding:2px 8px 2px 0;">Matures</td>';
+    var ys = Object.keys(byYear).sort();
+    ys.forEach(function(y) { h += '<td style="padding:2px 8px;text-align:right;">' + y + '</td>'; });
+    h += '</tr><tr><td style="padding:2px 8px 2px 0;color:var(--muted);">Amount</td>';
+    ys.forEach(function(y) { h += '<td style="padding:2px 8px;text-align:right;color:var(--text);">' + eur(byYear[y].p) + '</td>'; });
+    h += '</tr><tr><td style="padding:2px 8px 2px 0;color:var(--muted);">Rate</td>';
+    ys.forEach(function(y) { h += '<td style="padding:2px 8px;text-align:right;color:var(--muted2);">' + pct(byYear[y].w / Math.max(byYear[y].p, 1e-9)) + '</td>'; });
+    h += '</tr></table>';
+  }
+  var LB = d.leaseback || {};
+  if ((LB.events || []).length) {
+    h += '<div style="font-size:9px;color:var(--muted);margin-top:8px;">Sale-and-leaseback: you own ' + Math.round((LB.keep || 1) * 100) +
+         '% of your original buildings &amp; land; rent ' + eur(LB.rent_q_m) + ' a quarter (' + pct(C.LEASE_RATE_PA || 0.07) +
+         ' a year on the sale price). At most ' + Math.round((C.LEASEBACK_MAX_SOLD || 0.75) * 100) + '% can be sold.</div>';
+  }
   var cost = (num(m.supplier_terms_m) || 0) + (num(m.factoring_fee_m) || 0) + (num(m.rf_fee_m) || 0) + (num(m.line_fee_m) || 0);
   h += '<div style="font-size:9px;color:var(--muted);margin-top:6px;">Last quarter the programme cost ' + eur(cost) +
        ' (terms premium ' + eur(num(m.supplier_terms_m)) + ', factoring ' + eur(num(m.factoring_fee_m)) + ', reverse factoring ' +
@@ -15443,7 +15479,7 @@ function _cfTreasuryHtml(d, head, eur, pct, num) {
 async function submitFinancingDecision() {
   if (!sessionId || !teamId) { alert('No session or team active.'); return; }
   var d = _fcpDecision;
-  var hasAny = Object.values(d).some(function(v){ return v > 0; });
+  var hasAny = ['blt','rlt','bst','rst','iss','rep','div','lb'].some(function(k){ return d[k] > 0; });
   if (!hasAny) { alert('Set at least one financing action before submitting.'); return; }
 
   var btn = document.getElementById('fcp-submit');
@@ -15459,6 +15495,8 @@ async function submitFinancingDecision() {
       shares_issued_m:      d.iss,
       shares_repurchased_m: d.rep,
       dividend_m:           d.div,
+      bond_tenor_years:     parseInt(d.tenor) || 5,
+      leaseback_share:      d.lb || 0,
     };
     var res = await fetch(API_URL + '/teams/' + teamId + '/financing-decisions', {
       method: 'POST',
