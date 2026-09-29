@@ -14732,6 +14732,7 @@ var _FIN_LINES = {
     {l:'  ↳ fleet delivery penalties', k:'fleet_penalty_m', neg:true, optional:true},
     {l:'Cost of Goods Sold',     k:'cogs_m', neg:true},
     {l:'Warranty',               k:'warranty_expense_m', neg:true, optional:true},
+    {l:'Supplier terms premium', k:'supplier_terms_m', neg:true, optional:true},
     {l:'Gross Profit',           k:'gross_profit_m', kind:'sub'},
     {l:'R&D Expense',            k:'rd_expense_m', neg:true},
     {l:'  ↳ incl. idle engineering', k:'eng_idle_m', neg:true, optional:true},
@@ -14749,6 +14750,7 @@ var _FIN_LINES = {
     {l:'Sales network',          k:'sales_network_m', neg:true, optional:true},
     {l:'Market entry / exit',    k:'market_entry_m', neg:true, optional:true},
     {l:'Depreciation',           k:'depreciation_total_m', neg:true},
+    {l:'Factoring & reverse-factoring fees', k:'_wc_fin', neg:true, optional:true},
     {l:'Supply chain & other',   k:'_pl_other', neg:true, optional:true},
     {l:'EBIT',                   k:'ebit_m', kind:'tot'},
     {l:'Interest',               k:'interest_total_m', neg:true},
@@ -14831,12 +14833,13 @@ function _finPlOther(s) {
   var n = function(k){ return parseFloat(s[k]) || 0; };
   return n('gross_profit_m') - n('rd_expense_m') - n('sga_m') - n('marketing_m') - n('launch_marketing_m')
        - n('sales_network_m') - n('market_entry_m')
-       - n('depreciation_total_m') - n('ebit_m');
+       - n('depreciation_total_m') - n('factoring_fee_m') - n('rf_fee_m') - n('ebit_m');
 }
 
 function _finVal(s, key) {
   if (!s) return null;
   if (key === '_pl_other') return _finPlOther(s);
+  if (key === '_wc_fin') return (parseFloat(s.factoring_fee_m) || 0) + (parseFloat(s.rf_fee_m) || 0);
   var v = s[key];
   return (v === null || v === undefined) ? null : (parseFloat(v) || 0);
 }
@@ -15188,6 +15191,35 @@ var _cfPanel = {data: null, busy: false};
 var _CF_RATING_COL = {AA: 'var(--green)', A: 'var(--green)', BBB: 'var(--cyan)',
                       BB: 'var(--gold)', B: 'var(--orange)', CCC: 'var(--red)'};
 
+// §10 hurdle rate: the higher of the session discount rate and the team's cost of capital
+// (financial_engine.team_wacc, from GET .../finance). NPV stays at the session rate.
+var _teamWacc = null;   // {wacc_pa, rating}
+async function _ensureTeamWacc() {
+  if (_teamWacc || !sessionId || !teamId) return _teamWacc;
+  try {
+    var res = await fetch(API_URL + '/sessions/' + sessionId + '/teams/' + teamId + '/finance');
+    if (res.ok) {
+      var d = await res.json();
+      if (d.wacc && d.as_of) _teamWacc = {wacc_pa: d.wacc.wacc_pa, rating: d.rating};
+    }
+  } catch (e) { /* the hurdle falls back to the session rate */ }
+  return _teamWacc;
+}
+function _propIrrHurdle() {
+  var el = document.getElementById('prop-bc-irr');
+  if (!el) return;
+  var irr = el.dataset.irr === '' ? null : parseFloat(el.dataset.irr);
+  var rate = parseFloat(el.dataset.rate) || 0;
+  var w = _teamWacc ? _teamWacc.wacc_pa * 100 : null;
+  var hurdle = w != null ? Math.max(rate, w) : rate;
+  el.style.color = irr !== null && irr > hurdle ? 'var(--green)' : 'var(--red)';
+  var sub = document.getElementById('prop-bc-irr-sub');
+  if (sub) sub.textContent = 'hurdle ' + hurdle.toFixed(1) + '%' +
+    (w != null ? ' · your cost of capital ' + w.toFixed(1) + '% at ' + _teamWacc.rating + ' · session rate ' + rate.toFixed(1) + '%'
+               : ' (session discount rate)');
+  if (!_teamWacc) _ensureTeamWacc().then(function(t) { if (t) _propIrrHurdle(); });
+}
+
 async function loadCorpFinance() {
   if (!sessionId || !teamId) return;
   var body = document.getElementById('fin-corpfin-body');
@@ -15196,19 +15228,20 @@ async function loadCorpFinance() {
     var d = await res.json();
     if (!res.ok) throw new Error(d.detail || ('HTTP ' + res.status));
     _cfPanel.data = d;
+    if (d.wacc && d.as_of) _teamWacc = {wacc_pa: d.wacc.wacc_pa, rating: d.rating};
     _cfRender();
   } catch (e) {
     if (body) body.textContent = 'Credit rating and share price unavailable: ' + e.message;
   }
 }
 
-async function _cfDecide(pct) {
+async function _cfDecide(payload) {
   if (_cfPanel.busy) return;
   _cfPanel.busy = true;
   var ok = false;
   try {
     var res = await fetch(API_URL + '/sessions/' + sessionId + '/teams/' + teamId + '/finance', {
-      method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({payout_pct: pct})
+      method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload)
     });
     var d = await res.json();
     if (!res.ok) throw new Error(d.detail || ('HTTP ' + res.status));
@@ -15257,6 +15290,9 @@ function _cfRender() {
   h += tile('Net debt / EBITDA', num(m.net_debt_m) <= 0 ? 'net cash' : (nde == null ? 'n/a' : nde.toFixed(2) + '×'),
             null, 'net debt ' + eur(num(m.net_debt_m)) + ' · EBITDA (12m) ' + eur(num(m.ebitda_ltm_m)));
   h += tile('Interest cover', cov == null ? 'no interest' : cov.toFixed(1) + '×', null, 'EBIT ÷ interest, last 12 months');
+  if (d.wacc) h += tile('Cost of capital', pct(d.wacc.wacc_pa), null,
+            'debt ' + pct(d.wacc.kd_after_tax_pa) + ' after tax · equity ' + pct(d.wacc.ke_pa) + ' (beta ' +
+            d.wacc.beta.toFixed(2) + ') · §10 hurdle for new programmes');
   var sp = num(v.share_price_eur), sp0 = num(t.start_price_eur);
   h += tile('Share price', sp == null ? '—' : '€' + sp.toFixed(2), 'var(--cyan)',
             (sp0 != null ? 'game start €' + sp0.toFixed(2) : '') + (v.ev_multiple != null ? ' · EV ' + parseFloat(v.ev_multiple).toFixed(1) + '× EBITDA' : ''));
@@ -15305,7 +15341,7 @@ function _cfRender() {
   (P.levels || []).forEach(function(lv) {
     var on = Math.abs((P.in_force || 0) - lv) < 1e-6;
     var cut = lv < (P.last_quarter || 0) - 1e-6;
-    h += '<div ' + (d.locked ? '' : 'onclick="_cfDecide(' + lv + ')" ') +
+    h += '<div ' + (d.locked ? '' : 'onclick="_cfDecide({payout_pct:' + lv + '})" ') +
          'style="cursor:' + (d.locked ? 'default' : 'pointer') + ';border:1px solid ' + (on ? 'var(--gold)' : 'var(--border)') +
          ';background:' + (on ? 'rgba(251,191,36,0.08)' : 'var(--s2)') + ';border-radius:6px;padding:8px;">' +
          '<div style="font-size:11px;font-weight:700;color:' + (on ? 'var(--gold)' : 'var(--text)') + ';">' + (on ? '● ' : '○ ') + Math.round(lv * 100) + '%</div>' +
@@ -15320,7 +15356,88 @@ function _cfRender() {
        '. A dividend never takes cash below €' + (C.DIVIDEND_CASH_FLOOR_M || 500) + 'M or exceeds retained earnings. ' +
        'Buybacks and special dividends are one-off amounts below.</div>';
   if (d.locked) h += '<div style="color:var(--gold);font-size:9px;margin-top:4px;">This round has cleared; set the policy in the next one.</div>';
+  h += _cfTreasuryHtml(d, head, eur, pct, num);
   el.innerHTML = h;
+  // the revolver draw slider can only draw what the committed line allows
+  var bst = document.getElementById('fcp-bst'), rst = document.getElementById('fcp-rst');
+  var line = (d.treasury || {}).credit_line_m;
+  if (bst && line != null) bst.max = Math.max(0, line);
+  if (rst) rst.max = Math.max(1000, parseFloat((d.metrics || {}).short_term_debt_m) || 0);
+}
+
+// Working-capital programme and credit line (financial_engine.treasury_policy / wc_programme)
+function _cfTreasuryHtml(d, head, eur, pct, num) {
+  var C = d.constants || {};
+  var m = d.metrics || {};
+  var T = d.treasury || {};
+  var h = '<div style="margin-top:14px;"></div>' +
+          head('WORKING CAPITAL &amp; CREDIT LINE', 'cash tied up in the business · carries forward until changed');
+  var dso = num(m.weighted_dso_days), dpo = num(m.dpo_days), dio = num(m.dio_days);
+  h += '<div style="margin-bottom:8px;line-height:1.6;">Last quarter: customers paid in <b style="color:var(--text)">' +
+       (dso == null ? '—' : dso.toFixed(0)) + ' days</b> (receivables ' + eur(num(m.accounts_receivable_m)) +
+       '), stock turned in <b style="color:var(--text)">' + (dio == null ? '—' : dio.toFixed(0)) + ' days</b> (' +
+       eur(num(m.inventory_m)) + '), suppliers were paid in <b style="color:var(--text)">' + (dpo == null ? '—' : dpo.toFixed(0)) +
+       ' days</b> (payables ' + eur(num(m.accounts_payable_m)) + '). Every day of payables is cash the suppliers lend you; ' +
+       'every day of receivables is cash you lend your dealers.</div>';
+  var card = function(on, label, sub, click, disabled, warn) {
+    return '<div ' + (d.locked || disabled ? '' : 'onclick="' + click + '" ') +
+      'style="cursor:' + (d.locked || disabled ? 'default' : 'pointer') + ';opacity:' + (disabled ? 0.45 : 1) +
+      ';border:1px solid ' + (on ? 'var(--gold)' : 'var(--border)') + ';background:' + (on ? 'rgba(251,191,36,0.08)' : 'var(--s2)') +
+      ';border-radius:6px;padding:7px;">' +
+      '<div style="font-size:10px;font-weight:700;color:' + (on ? 'var(--gold)' : 'var(--text)') + ';">' + (on ? '● ' : '○ ') + label + '</div>' +
+      '<div style="font-size:9px;color:var(--muted2);margin-top:2px;line-height:1.35;">' + sub + '</div>' +
+      (warn ? '<div style="font-size:9px;color:var(--orange);margin-top:2px;">' + warn + '</div>' : '') + '</div>';
+  };
+  var row = function(title, cards) {
+    return '<div style="font-size:9px;color:var(--muted);margin:6px 0 4px;">' + title + '</div>' +
+           '<div style="display:grid;grid-template-columns:repeat(' + cards.length + ',1fr);gap:6px;">' + cards.join('') + '</div>';
+  };
+  // Supplier payment terms
+  var terms = T.supplier_terms_days;
+  var tc = [card(!terms, 'Standard', 'derived from your make/buy mix (~' + (dpo == null ? '50' : dpo.toFixed(0)) + ' days), no premium',
+                 '_cfDecide({supplier_terms_days:0})')];
+  (C.WC_TERMS_DAYS || []).forEach(function(dd) {
+    var p = (C.WC_TERMS_PREMIUM || {})[dd] || 0;
+    tc.push(card(terms === dd, dd + ' days',
+                 p < 0 ? 'early-payment discount ' + pct(-p, 2) + ' on bought parts'
+                       : p > 0 ? 'suppliers add ' + pct(p, 2) + ' to bought parts' : 'no price effect',
+                 '_cfDecide({supplier_terms_days:' + dd + '})'));
+  });
+  h += row('Supplier payment terms', tc);
+  // Reverse factoring
+  var rfOk = !!T.rf_available;
+  var rfRes = (C.RF_RESIDUAL || {})[d.rating];
+  h += row('Reverse factoring (a bank pays your suppliers early at your rating; they drop most of the terms premium)', [
+    card(!T.reverse_factoring, 'Off', 'suppliers carry the wait themselves', '_cfDecide({reverse_factoring:false})'),
+    card(!!T.reverse_factoring, 'On', rfOk ? 'at ' + d.rating + ' suppliers keep ' + Math.round((rfRes || 0) * 100) +
+         '% of the premium · €' + (C.RF_FEE_Q_M || 1.5) + 'M a quarter' : 'needs a BBB rating or better',
+         '_cfDecide({reverse_factoring:true})', !rfOk && !T.reverse_factoring,
+         T.reverse_factoring && !rfOk ? 'not running: your rating is below BBB' : '')
+  ]);
+  // Factoring
+  var fc = [];
+  (C.FACTORING_LEVELS || []).forEach(function(f) {
+    var rate = ((C.FIN_BASE_RATE_PA || 0.03) + (C.FACTOR_SPREAD_PA || 0.015));
+    fc.push(card(Math.abs((T.factoring_pct || 0) - f) < 1e-6, f ? Math.round(f * 100) + '% sold' : 'None',
+                 f ? 'receivables fall ' + Math.round(f * 100) + '%; the bank charges ' + pct(rate) + ' a year for the days they run, +' + pct(C.FACTOR_ADMIN_PCT || 0.0025, 2)
+                   : 'dealers pay you directly', '_cfDecide({factoring_pct:' + f + '})'));
+  });
+  h += row('Factoring (sell receivables for cash now)', fc);
+  // Credit line
+  var lc = [];
+  (C.CREDIT_LINES_M || []).forEach(function(L) {
+    lc.push(card(Math.abs((T.credit_line_m || 0) - L) < 1e-6, L ? '€' + (L / 1000).toFixed(1) + 'B line' : 'No line',
+                 L ? 'draw at ' + pct(d.rates_now.st_pa) + '; unused part costs ' + pct(C.LINE_FEE_PA || 0.003) + ' (~' + eur(L * (C.LINE_FEE_PA || 0.003) / 4) + '/qtr)'
+                   : 'no fee; any shortfall is emergency funding at ' + pct(d.rates_now.emergency_pa),
+                 '_cfDecide({credit_line_m:' + L + '})'));
+  });
+  h += row('Committed credit line (the revolver; beyond it, shortfalls are emergency funding at ' + pct(d.rates_now.emergency_pa) + ')', lc);
+  var cost = (num(m.supplier_terms_m) || 0) + (num(m.factoring_fee_m) || 0) + (num(m.rf_fee_m) || 0) + (num(m.line_fee_m) || 0);
+  h += '<div style="font-size:9px;color:var(--muted);margin-top:6px;">Last quarter the programme cost ' + eur(cost) +
+       ' (terms premium ' + eur(num(m.supplier_terms_m)) + ', factoring ' + eur(num(m.factoring_fee_m)) + ', reverse factoring ' +
+       eur(num(m.rf_fee_m)) + ', line fee ' + eur(num(m.line_fee_m)) + '). Compare it with what the cash would cost as debt at ' +
+       pct(d.rates_now.lt_pa) + '.</div>';
+  return h;
 }
 
 async function submitFinancingDecision() {
@@ -24811,7 +24928,9 @@ function calcPropBizCase() {
   var irrEl = document.getElementById('prop-bc-irr');
   if (irrEl) {
     irrEl.textContent = irr !== null ? irr.toFixed(1) + '%' : '\u2014';
-    irrEl.style.color = irr !== null && irr > rateP ? 'var(--green)' : 'var(--red)';
+    irrEl.dataset.irr = irr !== null ? irr : '';
+    irrEl.dataset.rate = rateP;
+    _propIrrHurdle();
   }
 
   var pbEl = document.getElementById('prop-bc-payback');
@@ -28901,11 +29020,11 @@ function _renderScTacticsTab() {
            content + '</div>';
   };
 
-  // [G] Working Capital — ACTIVE
-  var wcContent = sc('Supplier DPO', 'supplier_dpo_days', [30,45,60,90], {30:'30 days',45:'45 days',60:'60 days',90:'90 days'}) +
-    sc('SC Financing', 'supply_chain_financing', ['NONE','FACTORING','REVERSE_FACTORING'], {NONE:'None',FACTORING:'Factoring',REVERSE_FACTORING:'Reverse Factoring'}) +
-    sc('Inventory Financing', 'inventory_financing', ['NONE','FLOOR_PLAN'], {NONE:'None',FLOOR_PLAN:'Floor Plan'});
-  html += section('[G] Working Capital', wcContent);
+  // [G] Working Capital — moved to Finance (team-level working-capital programme, 2026-09-29):
+  // supplier payment terms, factoring and reverse factoring are one decision for the whole team.
+  html += section('[G] Working Capital', '<div style="font-family:DM Mono,monospace;font-size:10px;color:var(--muted2);line-height:1.6;">' +
+    'Supplier payment terms, factoring and reverse factoring are set once for the whole company on ' +
+    '<a href="#" onclick="nav(\'financial\');return false;" style="color:var(--cyan);">Finance → Working capital &amp; credit line</a>.</div>');
 
   // [A] Procurement & Sourcing — ACTIVE
   var procContent = sc('Sourcing Strategy', 'sourcing_strategy', ['LOCAL','BALANCED','GLOBAL']) +
