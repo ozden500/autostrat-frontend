@@ -14742,6 +14742,8 @@ var _FIN_LINES = {
     {l:'Cost of Goods Sold',     k:'cogs_m', neg:true},
     {l:'Warranty',               k:'warranty_expense_m', neg:true, optional:true},
     {l:'Supplier terms premium', k:'supplier_terms_m', neg:true, optional:true},
+    {l:'Supplier price-downs (net of inflation)', k:'pricedown_saving_m', optional:true},
+    {l:'Supplier distress (bail-outs, lost production)', k:'supplier_distress_m', neg:true, optional:true},
     {l:'Gross Profit',           k:'gross_profit_m', kind:'sub'},
     {l:'R&D Expense',            k:'rd_expense_m', neg:true},
     {l:'  ↳ incl. idle engineering', k:'eng_idle_m', neg:true, optional:true},
@@ -15442,6 +15444,28 @@ function _cfTreasuryHtml(d, head, eur, pct, num) {
                  '_cfDecide({credit_line_m:' + L + '})'));
   });
   h += row('Committed credit line (the revolver; beyond it, shortfalls are emergency funding at ' + pct(d.rates_now.emergency_pa) + ')', lc);
+  // Supplier price-down programme (financial_engine.pricedown_index / supplier_relationship)
+  var pdNow = T.pricedown_pct != null ? T.pricedown_pct : (C.PRICEDOWN_DEFAULT || 2);
+  var infl = (C.SUPPLIER_INFLATION_PA || 0.02) * 100;
+  var pdTxt = {0: 'no squeeze: prices creep up ' + infl.toFixed(0) + '%/yr; partner suppliers heal the relationship and ship fewer faults',
+               2: 'the industry norm: offsets supplier inflation, no strain',
+               3: 'net saving builds up; the relationship wears slowly: more warranty claims and distress risk',
+               5: 'fast saving, fast wear: best in short bursts, costly if held'};
+  var pc = [];
+  (C.PRICEDOWN_LEVELS || []).forEach(function(lv) {
+    pc.push(card(Math.abs(pdNow - lv) < 1e-6, lv + '%/yr', pdTxt[lv] || '', '_cfDecide({pricedown_pct:' + lv + '})'));
+  });
+  h += row('Supplier price-downs (annual target on bought parts; suppliers raise prices ' + infl.toFixed(0) + '%/yr and claw ' +
+           Math.round((C.SUPPLIER_CLAWBACK_Q || 0.08) * 100) + '% of any saving back each quarter)', pc);
+  var rel = num(m.supplier_rel);
+  if (rel != null) {
+    var relCol = rel >= 0.8 ? 'var(--green)' : rel >= 0.5 ? 'var(--gold)' : 'var(--red)';
+    h += '<div style="font-size:9px;color:var(--muted);margin-top:4px;">Supplier relationship <b style="color:' + relCol + '">' +
+         Math.round(rel * 100) + '%</b> · bought-parts price index ' + (num(m.pricedown_index) || 1).toFixed(3) +
+         ' · last quarter ' + (num(m.pricedown_saving_m) >= 0 ? 'saved ' : 'cost ') + eur(Math.abs(num(m.pricedown_saving_m) || 0)) +
+         ((num(m.supplier_distress_m) || 0) > 0 ? ' · <span style="color:var(--red)">a supplier-distress event cost ' + eur(num(m.supplier_distress_m)) + '</span>' : '') +
+         '. A worn relationship raises distress odds and warranty claims until it heals.</div>';
+  }
   // Debt maturity profile (team_debt_tranches) and sale-and-leaseback state
   var prof = d.debt_profile || [];
   if (prof.length) {
