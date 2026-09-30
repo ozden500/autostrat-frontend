@@ -10911,6 +10911,13 @@ function _renderWarrantyTab() {
      + 'It is <b>expected claims over the warranty period × cost of one claim</b>, booked when the car is sold and paid out as claims come in. '
      + 'At ' + _esc(d.volume_basis) + ': <b style="color:var(--gold)">' + m(cur.expense_m) + '/qtr</b>'
      + (units ? ' (' + eur(cur.expense_m * 1e6 / units) + ' per car)' : '') + '.</div>';
+  var st = d.supplier_strain || {};
+  if (st.factor != null && Math.abs(st.factor - 1) > 0.001) {
+    var up = st.factor > 1;
+    h += '<div style="font-size:10px;color:' + (up ? 'var(--orange)' : 'var(--green)') + ';margin:-6px 0 12px;line-height:1.5;">' +
+         (up ? '▲ ' : '▼ ') + 'All figures include ' + (up ? '+' : '') + ((st.factor - 1) * 100).toFixed(1) + '% from your supplier programme (' +
+         st.pricedown_pct + '%/yr price-downs, supplier relationship ' + Math.round((st.supplier_rel || 1) * 100) + '%) · Finance → Working capital.</div>';
+  }
   if (d.locked) {
     h += '<div style="color:var(--gold);font-size:10px;margin-bottom:10px;">🔒 ' + _esc(q) + ' has cleared. The warranty period can be changed again when the next round starts.</div>';
   }
