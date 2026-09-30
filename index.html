@@ -25042,6 +25042,13 @@ function calcPropBizCase() {
   var npvSub = document.getElementById('prop-bc-npv-sub');
   if (npvSub) npvSub.textContent = 'at ' + rateP.toFixed(1) + '% discount rate';
 
+  // Keep the business case with the proposal: confirmProposal() saves it in
+  // rolled_up_specs.business_case, and the round checklist (P6) compares its IRR with the
+  // team's hurdle (max of this rate and its cost of capital at the time of the check).
+  if (typeof _prop !== 'undefined' && _prop) {
+    _prop._bizcase = {npv_m: npv, irr_pct: irr, rate_pct: rateP, payback_q: paybackQ || null,
+                      total_inv_m: totalInvM, computed_at: new Date().toISOString()};
+  }
   var irrEl = document.getElementById('prop-bc-irr');
   if (irrEl) {
     irrEl.textContent = irr !== null ? irr.toFixed(1) + '%' : '\u2014';
@@ -25253,6 +25260,7 @@ async function confirmProposal(acceptedSop) {
     if (_perf) { _rolledSpecs.t_0_100_s=_perf.t_0_100_s; _rolledSpecs.top_speed_kmh=_perf.top_speed_kmh; _rolledSpecs.perf_class=_perf.perf_class; }
     var _spPlan=_prop.operations&&_prop.operations.supply_plan;
     if(_spPlan){_calcSupplyPlanTotals();_rolledSpecs.supply_risk_score=_spPlan._risk_score||0.25;}
+    if (_prop._bizcase) _rolledSpecs.business_case = _prop._bizcase;   // §10 NPV / IRR (checklist P6)
 
     var _comPlan = _prop.commercial || null;
     // Extract primary MSRP: EU market from new multi-market format, or first-year price from old format
