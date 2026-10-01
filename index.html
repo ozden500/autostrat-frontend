@@ -1419,26 +1419,23 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
       <div>
         <div style="font-family:DM Mono,monospace;font-size:8px;text-transform:uppercase;letter-spacing:1.5px;color:#a78bfa;margin-bottom:8px;">DEBT MANAGEMENT</div>
         <div class="ctrl"><div class="ctrl-lbl"><span>Issue a bond (€M)</span><span class="ctrl-v" id="fcp-blt-v">0</span></div>
-          <input type="range" min="0" max="5000" step="100" value="0" id="fcp-blt" oninput="fcpUpd('blt',this.value)" style="width:100%"></div>
+          <input type="range" min="0" max="20000" step="250" value="0" id="fcp-blt" oninput="fcpUpd('blt',this.value)" style="width:100%"></div>
         <div class="ctrl"><div class="ctrl-lbl"><span>Bond tenor</span><span class="ctrl-v" id="fcp-tenor-v">5 years</span></div>
           <select id="fcp-tenor" onchange="fcpUpd('tenor',this.value)" style="width:100%;background:var(--s2);color:var(--text);border:1px solid var(--border);font-family:DM Mono,monospace;font-size:10px;padding:3px;">
             <option value="3">3 years (−0.3% vs 5y)</option><option value="5" selected>5 years</option><option value="10">10 years (+0.6% vs 5y)</option>
           </select></div>
         <div class="ctrl"><div class="ctrl-lbl"><span>Buy back bonds early (€M, dearest first)</span><span class="ctrl-v" id="fcp-rlt-v">0</span></div>
-          <input type="range" min="0" max="2000" step="100" value="0" id="fcp-rlt" oninput="fcpUpd('rlt',this.value)" style="width:100%"></div>
-        <div class="ctrl"><div class="ctrl-lbl"><span>Draw — ST Revolver (€M)</span><span class="ctrl-v" id="fcp-bst-v">0</span></div>
-          <input type="range" min="0" max="1000" step="50" value="0" id="fcp-bst" oninput="fcpUpd('bst',this.value)" style="width:100%"></div>
-        <div class="ctrl"><div class="ctrl-lbl"><span>Repay — ST Revolver (€M)</span><span class="ctrl-v" id="fcp-rst-v">0</span></div>
-          <input type="range" min="0" max="1000" step="50" value="0" id="fcp-rst" oninput="fcpUpd('rst',this.value)" style="width:100%"></div>
+          <input type="range" min="0" max="10000" step="250" value="0" id="fcp-rlt" oninput="fcpUpd('rlt',this.value)" style="width:100%"></div>
+        <div style="font-family:DM Mono,monospace;font-size:9px;color:var(--muted2);line-height:1.5;margin-top:6px;">The credit line runs itself: a cash shortfall draws it automatically (beyond the line: emergency funding), and cash above your buffer repays it each quarter. Choose the line size under Working capital &amp; credit line.</div>
       </div>
       <div>
         <div style="font-family:DM Mono,monospace;font-size:8px;text-transform:uppercase;letter-spacing:1.5px;color:#a78bfa;margin-bottom:8px;">EQUITY &amp; RETURNS</div>
-        <div class="ctrl"><div class="ctrl-lbl"><span>Issue Shares / IPO (€M)</span><span class="ctrl-v" id="fcp-iss-v">0</span></div>
-          <input type="range" min="0" max="5000" step="100" value="0" id="fcp-iss" oninput="fcpUpd('iss',this.value)" style="width:100%"></div>
-        <div class="ctrl"><div class="ctrl-lbl"><span>Share Repurchase (€M)</span><span class="ctrl-v" id="fcp-rep-v">0</span></div>
-          <input type="range" min="0" max="2000" step="50" value="0" id="fcp-rep" oninput="fcpUpd('rep',this.value)" style="width:100%"></div>
+        <div class="ctrl"><div class="ctrl-lbl"><span>Issue new shares (€M, 8% below market)</span><span class="ctrl-v" id="fcp-iss-v">0</span></div>
+          <input type="range" min="0" max="10000" step="250" value="0" id="fcp-iss" oninput="fcpUpd('iss',this.value)" style="width:100%"></div>
+        <div class="ctrl"><div class="ctrl-lbl"><span>Buy back shares (€M, max 20% of capital)</span><span class="ctrl-v" id="fcp-rep-v">0</span></div>
+          <input type="range" min="0" max="5000" step="100" value="0" id="fcp-rep" oninput="fcpUpd('rep',this.value)" style="width:100%"></div>
         <div class="ctrl"><div class="ctrl-lbl"><span>Special dividend, one-off (€M)</span><span class="ctrl-v" id="fcp-div-v">0</span></div>
-          <input type="range" min="0" max="2000" step="50" value="0" id="fcp-div" oninput="fcpUpd('div',this.value)" style="width:100%"></div>
+          <input type="range" min="0" max="5000" step="100" value="0" id="fcp-div" oninput="fcpUpd('div',this.value)" style="width:100%"></div>
         <div class="ctrl"><div class="ctrl-lbl"><span>Sale-and-leaseback of buildings &amp; land</span><span class="ctrl-v" id="fcp-lb-v">none</span></div>
           <select id="fcp-lb" onchange="fcpUpd('lb',this.value)" style="width:100%;background:var(--s2);color:var(--text);border:1px solid var(--border);font-family:DM Mono,monospace;font-size:10px;padding:3px;">
             <option value="0" selected>None</option><option value="0.25">Sell 25% of what you own, lease it back</option><option value="0.5">Sell 50% of what you own, lease it back</option>
@@ -1448,7 +1445,7 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
 
     <!-- Pro-forma preview -->
     <div id="fcp-proforma" style="margin-top:12px;padding:10px;background:rgba(167,139,250,0.06);border-radius:6px;display:none;">
-      <div style="font-family:DM Mono,monospace;font-size:8px;text-transform:uppercase;letter-spacing:1.5px;color:#a78bfa;margin-bottom:6px;">PRO-FORMA IMPACT (next round BS)</div>
+      <div style="font-family:DM Mono,monospace;font-size:8px;text-transform:uppercase;letter-spacing:1.5px;color:#a78bfa;margin-bottom:6px;">IMMEDIATE IMPACT OF THESE DECISIONS (before the quarter's trading)</div>
       <div id="fcp-pf-content" style="font-family:DM Mono,monospace;font-size:10px;color:var(--text);"></div>
     </div>
 
@@ -14713,30 +14710,28 @@ function _fcpRenderProforma() {
   var cont = document.getElementById('fcp-pf-content');
   if (!pf || !cont) return;
   var d = _fcpDecision;
-  var hasAny = ['blt','rlt','bst','rst','iss','rep','div','lb'].some(function(k){ return d[k] > 0; });
+  var hasAny = ['blt','rlt','iss','rep','div','lb'].some(function(k){ return d[k] > 0; });
   if (!hasAny) { pf.style.display='none'; return; }
   pf.style.display = 'block';
 
-  var cash   = parseFloat(_fcpCurrent.cash_m || 4000);
-  var ltDebt = parseFloat(_fcpCurrent.long_term_debt_m || 500);
-  var stDebt = parseFloat(_fcpCurrent.short_term_debt_m || 0);
-  var sc     = parseFloat(_fcpCurrent.share_capital_m || 5000);
+  var cash   = parseFloat(_fcpCurrent.cash_m || 0);
+  var ltDebt = parseFloat(_fcpCurrent.long_term_debt_m || 0);
+  var sc     = parseFloat(_fcpCurrent.share_capital_m || 0);
   var re     = parseFloat(_fcpCurrent.retained_earnings_m || 0);
 
-  var newCash   = cash + d.blt - d.rlt + d.bst - d.rst + d.iss - d.rep - d.div;
+  var newCash   = cash + d.blt - d.rlt + d.iss - d.rep - d.div;
   var newLt     = ltDebt + d.blt - d.rlt;
-  var newSt     = stDebt + d.bst - d.rst;
   var newSc     = sc + d.iss - d.rep;
-  var newEq     = newSc + re;
+  var newEq     = newSc + re - d.div;
+  var deBefore  = (sc + re) > 0 ? (ltDebt / (sc + re)).toFixed(2) : '∞';
   var deRatio   = newEq > 0 ? (newLt / newEq).toFixed(2) : '∞';
-  var covenant  = newEq > 0 && (newLt / newEq) > 2.5;
+  var covenant  = newEq <= 0 || (newLt / newEq) > 2.5;
 
   var lines = [
-    {lbl:'Cash',          before: cash,   after: newCash, good: newCash > 500},
-    {lbl:'LT Term Loan',  before: ltDebt, after: newLt,   good: newLt < ltDebt || d.blt > 0},
-    {lbl:'ST Revolver',   before: stDebt, after: newSt,   good: true},
-    {lbl:'Share Capital', before: sc,     after: newSc,   good: true},
-    {lbl:'D/E Ratio',     before: (ltDebt/(sc+re)||0).toFixed(2)+'x', after: deRatio+'x', good: !covenant},
+    {lbl:'Cash',                 before: cash,   after: newCash, good: newCash > 500},
+    {lbl:'Long-term debt',       before: ltDebt, after: newLt,   good: !covenant},
+    {lbl:'Share capital',        before: sc,     after: newSc,   good: true},
+    {lbl:'LT debt / equity',     before: deBefore + 'x', after: deRatio + 'x', good: !covenant},
   ];
   var html = '<table style="font-size:9px;border-collapse:collapse;">';
   lines.forEach(function(l) {
@@ -14751,8 +14746,16 @@ function _fcpRenderProforma() {
     html += '<td style="padding:2px 0">'+chgStr+'</td></tr>';
   });
   html += '</table>';
-  if (covenant) html += '<div style="color:#ef4444;margin-top:6px;font-size:9px;">⚠ Warning: LT Debt / Equity would breach 2.5× covenant</div>';
-  if (newCash < 200) html += '<div style="color:#ef4444;margin-top:4px;font-size:9px;">⚠ Warning: Cash would fall below €200M safety floor</div>';
+  var rates = (_cfPanel.data || {}).rates_now, C = ((_cfPanel.data || {}).constants || {});
+  if (d.blt > 0 && rates) {
+    var prem = (C.BOND_TERM_PREMIUM_PA || {})[String(parseInt(d.tenor) || 5)] || 0;
+    html += '<div style="color:var(--muted2);margin-top:6px;font-size:9px;">New ' + (parseInt(d.tenor) || 5) + '-year bond at ~' +
+            ((rates.lt_pa + prem) * 100).toFixed(1) + '% a year (your rating ' + _cfPanel.data.rating + '), fixed for its life.</div>';
+  }
+  if (d.lb > 0) html += '<div style="color:var(--muted2);margin-top:4px;font-size:9px;">Plus the sale-and-leaseback proceeds (book value of ' +
+                        Math.round(d.lb * 100) + '% of the buildings &amp; land you own); rent at 7% a year from next quarter.</div>';
+  if (covenant) html += '<div style="color:#ef4444;margin-top:6px;font-size:9px;">⚠ LT debt / equity would breach the 2.5× covenant: new bonds will be refused</div>';
+  if (newCash < 500) html += '<div style="color:#ef4444;margin-top:4px;font-size:9px;">⚠ Cash would fall below €500M: buybacks and dividends are capped there, and a shortfall draws the credit line</div>';
   cont.innerHTML = html;
 }
 
@@ -15411,11 +15414,10 @@ function _cfRender() {
   if (d.locked) h += '<div style="color:var(--gold);font-size:9px;margin-top:4px;">This round has cleared; set the policy in the next one.</div>';
   h += _cfTreasuryHtml(d, head, eur, pct, num);
   el.innerHTML = h;
-  // the revolver draw slider can only draw what the committed line allows
-  var bst = document.getElementById('fcp-bst'), rst = document.getElementById('fcp-rst');
-  var line = (d.treasury || {}).credit_line_m;
-  if (bst && line != null) bst.max = Math.max(0, line);
-  if (rst) rst.max = Math.max(1000, parseFloat((d.metrics || {}).short_term_debt_m) || 0);
+  // a bond buy-back can retire at most the long-term debt outstanding
+  var rlt = document.getElementById('fcp-rlt');
+  var ltd = parseFloat((d.metrics || {}).long_term_debt_m);
+  if (rlt && ltd >= 0) rlt.max = Math.max(250, Math.ceil(ltd / 250) * 250);
 }
 
 // Captive finance offers by region (financial_engine.captive_offer_at / captive_terms)
@@ -15588,7 +15590,7 @@ function _cfTreasuryHtml(d, head, eur, pct, num) {
 async function submitFinancingDecision() {
   if (!sessionId || !teamId) { alert('No session or team active.'); return; }
   var d = _fcpDecision;
-  var hasAny = ['blt','rlt','bst','rst','iss','rep','div','lb'].some(function(k){ return d[k] > 0; });
+  var hasAny = ['blt','rlt','iss','rep','div','lb'].some(function(k){ return d[k] > 0; });
   if (!hasAny) { alert('Set at least one financing action before submitting.'); return; }
 
   var btn = document.getElementById('fcp-submit');
