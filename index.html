@@ -7174,16 +7174,23 @@ var _AFTERSALES_E = {
     }
     return E._r(Math.min(E.RET_MAX, r * logF * fldF * netF), 6);
   },
+  COHORT_SPREAD: [-0.375, -0.125, 0.125, 0.375],
+  // a sales-year cohort: retention averaged over its four quarterly sub-cohorts
+  cohortRetention: function(age, years, policy, netF) {
+    var E = _AFTERSALES_E, t = 0;
+    E.COHORT_SPREAD.forEach(function(d) { t += E.retention(Math.max(0, age + d), years, policy, netF); });
+    return E._r(t / E.COHORT_SPREAD.length, 6);
+  },
   networkFactor: function(strength) {
     var E = _AFTERSALES_E, n = parseFloat(strength) || 0;
     if (n <= 0) return E.ORPHAN_RET;
     return E._r(Math.max(E.ORPHAN_RET, Math.min(E.NET_MAX, Math.pow(n / E.N_EXT, E.NET_EXP))), 6);
   },
   // one cohort-quarter (€M) from its spend base (units x MSRP €k x powertrain factor)
-  unit: function(spendBaseK, age, years, policy, netF) {
+  unit: function(spendBaseK, age, years, policy, netF, cohort) {
     var E = _AFTERSALES_E, p = E._pol(policy);
     var surv = E.survival(age);
-    var ret = E.retention(age, years, p, netF);
+    var ret = cohort ? E.cohortRetention(age, years, p, netF) : E.retention(age, years, p, netF);
     var price = E.PRICE_INDEX[p.parts_price] || 1.0;
     var dem = spendBaseK * 1000 * E.SPEND_PCT * surv * E.spendFactor(age) / 4 / 1e6;
     return {revenue_m: dem * ret * price, cogs_m: dem * ret * E.PARTS_COST_SHARE, retention: ret, survival: surv};
