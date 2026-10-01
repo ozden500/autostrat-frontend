@@ -1160,6 +1160,8 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
       style="font-family:'DM Mono',monospace;font-size:10px;padding:8px 20px;border:none;border-bottom:2px solid transparent;background:transparent;color:var(--muted);cursor:pointer;letter-spacing:.5px;">🌍 MARKETS</button>
     <button id="com-tab-btn-warranty" onclick="switchComTab('warranty')"
       style="font-family:'DM Mono',monospace;font-size:10px;padding:8px 20px;border:none;border-bottom:2px solid transparent;background:transparent;color:var(--muted);cursor:pointer;letter-spacing:.5px;">🛡 WARRANTY</button>
+    <button id="com-tab-btn-aftersales" onclick="switchComTab('aftersales')"
+      style="font-family:'DM Mono',monospace;font-size:10px;padding:8px 20px;border:none;border-bottom:2px solid transparent;background:transparent;color:var(--muted);cursor:pointer;letter-spacing:.5px;">🔧 AFTERSALES</button>
     <button id="com-tab-btn-launches" onclick="switchComTab('launches')"
       style="font-family:'DM Mono',monospace;font-size:10px;padding:8px 20px;border:none;border-bottom:2px solid transparent;background:transparent;color:var(--muted);cursor:pointer;letter-spacing:.5px;">🚀 LAUNCHES</button>
     <button id="com-tab-btn-brand" onclick="switchComTab('brand')"
@@ -1188,6 +1190,13 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
   <div id="com-tab-launches" style="display:none;">
     <div id="launches-content">
       <div style="color:var(--muted2);font-family:'DM Mono',monospace;font-size:11px;padding:16px 0;">Loading launches…</div>
+    </div>
+  </div>
+
+  <!-- ── AFTERSALES tab: car parc, parts price / retention programme per region, logistics ── -->
+  <div id="com-tab-aftersales" style="display:none;">
+    <div id="aftersales-content">
+      <div style="color:var(--muted2);font-family:'DM Mono',monospace;font-size:11px;padding:16px 0;">Loading aftersales…</div>
     </div>
   </div>
 
@@ -7112,6 +7121,88 @@ var _OVERHEAD_E = {
 // warranty_unit / warranty_period_factor / warranty_appeal /
 // warranty_policy / vehicle_plant_quality (parity-checked by tools/engine_parity_check.py).
 // Warranty per car = expected claims over the period x cost of one claim; booked in COGS.
+// Aftersales engine (2026-10-01) — mirrors financial_engine aftersales_survival /
+// aftersales_retention / aftersales_network_factor / aftersales_unit / aftersales_loyalty /
+// aftersales_car_value_eur (parity-checked by tools/engine_parity_check.py). §10 adds a car's
+// lifetime parts contribution (carValue) per car sold; the Aftersales tab is server-derived.
+var _AFTERSALES_E = {
+  MAX_AGE: 15,
+  SURVIVAL: [1.00, 1.00, 1.00, 0.99, 0.98, 0.97, 0.95, 0.92, 0.88, 0.82, 0.75, 0.66, 0.55, 0.42, 0.28, 0.14],
+  SPEND_AGE: [0.45, 0.60, 0.75, 0.95, 1.05, 1.15, 1.20, 1.25, 1.25, 1.20, 1.15, 1.10, 1.00, 0.90, 0.80, 0.70],
+  SPEND_PCT: 0.0095,
+  PWT: {ice_only: 1.00, ice_and_bev: 0.85, bev_only: 0.60},
+  RET_WARRANTY: 0.85, RET_POST: [[6, 0.55], [10, 0.35], [99, 0.20]], RET_MAX: 0.95,
+  ORPHAN_RET: 0.35, NET_EXP: 0.5, NET_MAX: 1.10, N_EXT: 1 - Math.exp(-1),
+  PRICE_INDEX: {value: 0.90, market: 1.00, premium: 1.10, premium_plus: 1.20},
+  ELAST_POST: 2.2, ELAST_WTY: 0.5,
+  PROGRAMME: {none: {ret: 0.82, eur_car_yr: 0}, standard: {ret: 1.00, eur_car_yr: 8}, intensive: {ret: 1.22, eur_car_yr: 16}},
+  LOGISTICS: {reactive: {ret: 0.95, dio: 100, opex_pct: 0.030}, dealer_managed: {ret: 1.00, dio: 75, opex_pct: 0.045},
+              proactive: {ret: 1.05, dio: 55, opex_pct: 0.065}},
+  FIELD: {basic: {ret: 1.00, eur_car_yr: 0}, premium: {ret: 1.03, eur_car_yr: 6}},
+  PARTS_COST_SHARE: 0.58,
+  DEFAULTS: {parts_price: 'market', retention_programme: 'standard', parts_logistics: 'dealer_managed', field_service: 'basic'},
+  TO_WTY_SPARE: {reactive: 'REACTIVE', dealer_managed: 'DEALER_MANAGED', proactive: 'PROACTIVE'},
+  TO_WTY_FIELD: {basic: 'BASIC', premium: 'PREMIUM'},
+  LOYALTY_K: 0.06, LOYALTY_MIN: 0.975, LOYALTY_MAX: 1.03,
+  _r: function(x, d) { var f = Math.pow(10, d); return Math.round(x * f) / f; },
+  _pol: function(p) { var o = {}, D = _AFTERSALES_E.DEFAULTS; for (var k in D) o[k] = (p && p[k]) || D[k]; return o; },
+  survival: function(age) {
+    var a = Math.floor(Math.max(0, age));
+    return a <= _AFTERSALES_E.MAX_AGE ? _AFTERSALES_E.SURVIVAL[a] : 0;
+  },
+  retention: function(age, years, policy, netF) {
+    var E = _AFTERSALES_E, p = E._pol(policy);
+    var price = E.PRICE_INDEX[p.parts_price] || 1.0;
+    var logF = (E.LOGISTICS[p.parts_logistics] || E.LOGISTICS.dealer_managed).ret;
+    var fldF = (E.FIELD[p.field_service] || E.FIELD.basic).ret;
+    var r;
+    if (age < (parseInt(years, 10) || 3)) {
+      r = E.RET_WARRANTY * Math.pow(price, -E.ELAST_WTY);
+    } else {
+      var base = 0.2;
+      for (var i = 0; i < E.RET_POST.length; i++) { if (age < E.RET_POST[i][0]) { base = E.RET_POST[i][1]; break; } }
+      var prog = (E.PROGRAMME[p.retention_programme] || E.PROGRAMME.standard).ret;
+      r = base * prog * Math.pow(price, -E.ELAST_POST);
+    }
+    return E._r(Math.min(E.RET_MAX, r * logF * fldF * netF), 6);
+  },
+  networkFactor: function(strength) {
+    var E = _AFTERSALES_E, n = parseFloat(strength) || 0;
+    if (n <= 0) return E.ORPHAN_RET;
+    return E._r(Math.max(E.ORPHAN_RET, Math.min(E.NET_MAX, Math.pow(n / E.N_EXT, E.NET_EXP))), 6);
+  },
+  // one cohort-quarter (€M) from its spend base (units x MSRP €k x powertrain factor)
+  unit: function(spendBaseK, age, years, policy, netF) {
+    var E = _AFTERSALES_E, p = E._pol(policy);
+    var surv = E.survival(age), a = Math.min(E.MAX_AGE, Math.floor(Math.max(0, age)));
+    var ret = E.retention(age, years, p, netF);
+    var price = E.PRICE_INDEX[p.parts_price] || 1.0;
+    var dem = spendBaseK * 1000 * E.SPEND_PCT * surv * E.SPEND_AGE[a] / 4 / 1e6;
+    return {revenue_m: dem * ret * price, cogs_m: dem * ret * E.PARTS_COST_SHARE, retention: ret, survival: surv};
+  },
+  loyalty: function(retIndex) {
+    var E = _AFTERSALES_E;
+    if (retIndex === null || retIndex === undefined) return 1.0;
+    return E._r(Math.max(E.LOYALTY_MIN, Math.min(E.LOYALTY_MAX, 1 + E.LOYALTY_K * (parseFloat(retIndex) - 1))), 6);
+  },
+  // a car's lifetime parts contribution (€) on a standard network, and its value at the sale
+  carValue: function(msrpK, pwtType, years, policy, ratePa) {
+    var E = _AFTERSALES_E, p = E._pol(policy);
+    var base = (parseFloat(msrpK) || 0) * 1000 * E.SPEND_PCT * (E.PWT[pwtType || 'ice_only'] || 1.0);
+    var price = E.PRICE_INDEX[p.parts_price] || 1.0;
+    var log = E.LOGISTICS[p.parts_logistics] || E.LOGISTICS.dealer_managed;
+    var perCar = (E.PROGRAMME[p.retention_programme] || E.PROGRAMME.standard).eur_car_yr + (E.FIELD[p.field_service] || E.FIELD.basic).eur_car_yr;
+    var life = 0, npv = 0, r = (ratePa === undefined || ratePa === null) ? 0.08 : parseFloat(ratePa);
+    for (var a = 0; a <= E.MAX_AGE; a++) {
+      var age = a + 0.5, surv = E.survival(age), ret = E.retention(age, years, p, 1.0);
+      var dem = base * surv * E.SPEND_AGE[a], rev = dem * ret * price;
+      var c = rev - dem * ret * E.PARTS_COST_SHARE - rev * log.opex_pct - surv * perCar;
+      life += c; npv += c / Math.pow(1 + r, age);
+    }
+    return {life_eur: E._r(life, 4), npv_eur: E._r(npv, 4)};
+  }
+};
+
 var _WARRANTY_E = {
   BASE_CLAIMS: 0.49, PERIODS: [2, 3, 5, 7], DEFAULT_YEARS: 3,
   YEAR_PROFILE: [1.00, 0.80, 0.75, 0.80, 0.80, 0.75, 0.70],
@@ -10618,7 +10709,7 @@ var _REGION_FLAGS = {EU:'🌍', NA:'🌎', APAC:'🌏', SA:'🌎', MEA:'🌍'};
 
 function switchComTab(tab) {
   _comActiveTab = tab;
-  ['overview','pricing','sales-planning','markets','warranty','launches','brand','fleet'].forEach(function(t) {
+  ['overview','pricing','sales-planning','markets','warranty','aftersales','launches','brand','fleet'].forEach(function(t) {
     var btn = document.getElementById('com-tab-btn-'+t);
     var pane = document.getElementById('com-tab-'+t);
     var active = t === tab;
@@ -10632,6 +10723,7 @@ function switchComTab(tab) {
   if (tab === 'sales-planning') loadSalesPlanTab();
   if (tab === 'markets') loadMarketsTab();
   if (tab === 'warranty') loadWarrantyTab();
+  if (tab === 'aftersales') loadAftersalesTab();
   if (tab === 'launches') loadLaunchesTab();
   if (tab === 'brand') loadBrandsPage();
   if (tab === 'fleet') loadFleetTab();
@@ -10848,6 +10940,141 @@ function _renderLaunchesTab() {
   el.innerHTML = h;
 }
 
+// ── Commercial → 🔧 AFTERSALES ───────────────────────────────────
+// GET/PUT /sessions/{sid}/teams/{tid}/aftersales. The car parc (every car the team has sold
+// that is still on the road) buys genuine parts in the team's network: parts price and the
+// service-retention programme per region, parts logistics and field service company-wide.
+// The server derives every number (financial_engine.team_aftersales); this tab renders them.
+var _asTab = {data: null, busy: false};
+var _AS_LABELS = {
+  parts_price: {value: 'Value −10%', market: 'Market', premium: 'Premium +10%', premium_plus: 'Premium +20%'},
+  retention_programme: {none: 'None', standard: 'Standard', intensive: 'Intensive'},
+  parts_logistics: {reactive: 'Reactive', dealer_managed: 'Dealer-managed', proactive: 'Proactive (parts centres)'},
+  field_service: {basic: 'Basic', premium: 'Premium'}
+};
+
+async function loadAftersalesTab() {
+  if (!sessionId || !teamId) return;
+  var el = document.getElementById('aftersales-content');
+  try {
+    var res = await fetch(API_URL + '/sessions/' + sessionId + '/teams/' + teamId + '/aftersales');
+    var d = await res.json();
+    if (!res.ok) throw new Error(d.detail || ('HTTP ' + res.status));
+    _asTab.data = d;
+    _renderAftersalesTab();
+  } catch (e) {
+    if (el) el.innerHTML = '<div style="color:var(--red);font-family:DM Mono,monospace;font-size:11px;padding:16px 0;">Aftersales unavailable: ' + _esc(e.message) + '</div>';
+  }
+}
+
+async function _asSet(body) {
+  if (_asTab.busy) return;
+  _asTab.busy = true;
+  try {
+    var res = await fetch(API_URL + '/sessions/' + sessionId + '/teams/' + teamId + '/aftersales', {
+      method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)
+    });
+    var d = await res.json();
+    if (!res.ok) throw new Error(d.detail || ('HTTP ' + res.status));
+    _asTab.data = d;
+  } catch (e) {
+    toast('Aftersales decision failed: ' + e.message);
+  } finally {
+    _asTab.busy = false;
+    _renderAftersalesTab();
+  }
+}
+
+function _renderAftersalesTab() {
+  var el = document.getElementById('aftersales-content');
+  var d = _asTab.data;
+  if (!el || !d) return;
+  var cur = d.current || {}, last = d.last || {};
+  var m = function(v) { return '€' + Math.round(parseFloat(v) || 0).toLocaleString() + 'M'; };
+  var dm = function(v) { var x = Math.round(parseFloat(v) || 0); return (x > 0 ? '+' : x < 0 ? '−' : '±') + '€' + Math.abs(x).toLocaleString() + 'M'; };
+  var pct = function(v) { return v == null ? '—' : (parseFloat(v) * 100).toFixed(0) + '%'; };
+  var q = d.round ? ('Q' + d.round.quarter + ' ' + d.round.year) : 'this quarter';
+  var head = function(t, sub) {
+    return '<div style="font-family:DM Mono,monospace;font-size:8px;text-transform:uppercase;letter-spacing:1.5px;color:#a78bfa;margin:4px 0 8px;">' + t +
+      (sub ? ' <span style="color:var(--muted);letter-spacing:0;text-transform:none;">· ' + sub + '</span>' : '') + '</div>';
+  };
+  var contrib = (cur.revenue_m || 0) - (cur.cogs_m || 0) - (cur.opex_m || 0);
+  var h = '<div style="font-family:DM Mono,monospace;">';
+  h += '<div style="font-size:11px;color:var(--text);margin-bottom:12px;line-height:1.6;">Every car you have sold stays on the road for up to 15 years and needs parts. '
+     + 'Your dealers buy <b>genuine parts</b> from you for the owners they keep. Under warranty most owners stay; after it they drift to independent garages. '
+     + 'Parc today: <b style="color:var(--gold)">' + ((cur.parc_units || 0) / 1e6).toFixed(1) + 'M cars</b> · '
+     + q + ' estimate on the current parc: <b>' + m(cur.revenue_m) + '</b> parts revenue, <b>' + m(contrib) + '</b> contribution after parts cost and aftersales opex'
+     + ' · post-warranty retention <b>' + pct(cur.ret_post) + '</b>.'
+     + (last.aftersales_revenue_m != null ? ' <span style="color:var(--muted)">Last quarter booked ' + m(last.aftersales_revenue_m) + '.</span>' : '') + '</div>';
+  if (d.locked) h += '<div style="color:var(--gold);font-size:10px;margin-bottom:10px;">🔒 ' + _esc(q) + ' has cleared. Decide again when the next round starts.</div>';
+  if (!d.claimed) h += '<div style="color:var(--muted);font-size:10px;margin-bottom:10px;">AI-run team: shown with its AI aftersales policy.</div>';
+
+  // Per region: price + programme
+  h += head('BY REGION', 'parts price & service-retention programme · carry forward until changed · contribution = this quarter, that region');
+  var th = function(t, al) { return '<th style="text-align:' + (al || 'right') + ';padding:4px 6px;font-size:8px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;font-weight:400;">' + t + '</th>'; };
+  var td = function(t, al, col) { return '<td style="text-align:' + (al || 'right') + ';padding:5px 6px;font-size:10px;vertical-align:top;color:' + (col || 'var(--text)') + ';">' + t + '</td>'; };
+  var chips = function(reg, field, opts) {
+    var on = (d.policies[reg] || {})[field], base = opts[on] || {};
+    return Object.keys(_AS_LABELS[field]).map(function(o) {
+      var x = opts[o] || {}, sel = o === on;
+      var dc = (x.contribution_m || 0) - (base.contribution_m || 0), dl = ((x.loyalty || 1) - (base.loyalty || 1)) * 100;
+      var click = (d.locked || !d.claimed) ? '' : 'onclick="_asSet({region:\'' + reg + '\',' + field + ':\'' + o + '\'})" ';
+      return '<div ' + click + 'style="display:inline-block;margin:0 4px 4px 0;padding:4px 6px;border-radius:5px;cursor:' + (click ? 'pointer' : 'default') +
+        ';border:1px solid ' + (sel ? 'var(--gold)' : 'var(--border)') + ';background:' + (sel ? 'rgba(251,191,36,0.08)' : 'var(--s2)') + ';min-width:92px;">' +
+        '<div style="font-size:10px;color:' + (sel ? 'var(--gold)' : 'var(--text)') + ';">' + (sel ? '● ' : '○ ') + _AS_LABELS[field][o] + '</div>' +
+        (sel ? '<div style="font-size:9px;color:var(--muted2);">' + m(x.contribution_m) + '/qtr</div>'
+             : '<div style="font-size:9px;color:' + (dc >= 0 ? 'var(--green)' : 'var(--red)') + ';">' + dm(dc) + '/qtr</div>') +
+        '<div style="font-size:9px;color:' + (Math.abs(dl) < 0.05 ? 'var(--muted2)' : dl > 0 ? 'var(--green)' : 'var(--red)') + ';">' +
+        (sel ? 'loyalty ' + (((x.loyalty || 1) - 1) * 100).toFixed(1) + '%' : (Math.abs(dl) < 0.05 ? 'loyalty —' : 'loyalty ' + (dl > 0 ? '+' : '') + dl.toFixed(1) + '%')) + '</div></div>';
+    }).join('');
+  };
+  h += '<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;margin-bottom:6px;">';
+  h += '<tr style="border-bottom:1px solid var(--border);">' + th('Region', 'left') + th('Parc (k cars) by age') + th('Retention') + th('Parts price', 'left') + th('Retention programme', 'left') + '</tr>';
+  ['EU', 'NA', 'APAC', 'SA', 'MEA'].forEach(function(reg) {
+    var g = (cur.regions || {})[reg];
+    if (!g) return;
+    var ages = (d.parc_by_age_k || {})[reg] || {};
+    var ageTxt = ['0-3', '4-6', '7-10', '11-15'].map(function(k) { return '<span style="color:var(--muted)">' + k + 'y</span> ' + Math.round(ages[k] || 0).toLocaleString(); }).join('<br>');
+    var opt = (d.options || {})[reg] || {};
+    h += '<tr style="border-bottom:1px solid var(--border);">' +
+      td((_REGION_FLAGS[reg] || '') + ' <b>' + reg + '</b><div style="font-size:9px;color:var(--muted);">' + m(g.revenue_m) + ' rev</div>', 'left') +
+      td(ageTxt) +
+      td(pct(g.ret_post) + '<div style="font-size:9px;color:var(--muted);">index ' + (g.ret_index || 1).toFixed(2) + '</div>') +
+      td(chips(reg, 'parts_price', opt.parts_price || {}), 'left') +
+      td(chips(reg, 'retention_programme', opt.retention_programme || {}), 'left') + '</tr>';
+  });
+  h += '</table></div>';
+
+  // Company-wide: logistics + field service
+  h += head('COMPANY-WIDE', 'parts logistics & field-service network · also set the repair cost of your warranty claims');
+  var co = d.company_options || {}, p0 = d.policies.EU || {};
+  ['parts_logistics', 'field_service'].forEach(function(field) {
+    var opts = co[field] || {}, on = p0[field], base = opts[on] || {};
+    h += '<div style="margin-bottom:8px;"><span style="font-size:9px;color:var(--muted);display:inline-block;width:120px;">' + (field === 'parts_logistics' ? 'Parts logistics' : 'Field service') + '</span>';
+    Object.keys(_AS_LABELS[field]).forEach(function(o) {
+      var x = opts[o] || {}, sel = o === on;
+      var dc = (x.contribution_m || 0) - (base.contribution_m || 0), di = (x.inventory_m || 0) - (base.inventory_m || 0);
+      var click = (d.locked || !d.claimed) ? '' : 'onclick="_asSet({' + field + ':\'' + o + '\'})" ';
+      h += '<div ' + click + 'style="display:inline-block;vertical-align:top;margin:0 4px 4px 0;padding:4px 6px;border-radius:5px;cursor:' + (click ? 'pointer' : 'default') +
+        ';border:1px solid ' + (sel ? 'var(--gold)' : 'var(--border)') + ';background:' + (sel ? 'rgba(251,191,36,0.08)' : 'var(--s2)') + ';min-width:120px;">' +
+        '<div style="font-size:10px;color:' + (sel ? 'var(--gold)' : 'var(--text)') + ';">' + (sel ? '● ' : '○ ') + _AS_LABELS[field][o] + '</div>' +
+        '<div style="font-size:9px;color:' + (sel ? 'var(--muted2)' : dc >= 0 ? 'var(--green)' : 'var(--red)') + ';">' + (sel ? m(x.contribution_m) + '/qtr' : dm(dc) + '/qtr') + '</div>' +
+        (field === 'parts_logistics' ? '<div style="font-size:9px;color:var(--muted2);">parts stock ' + (sel ? m(x.inventory_m) : dm(di)) + '</div>' : '') + '</div>';
+    });
+    h += '</div>';
+  });
+  var K = d.constants || {};
+  h += '<div style="font-size:9px;color:var(--muted);margin-top:10px;line-height:1.6;">'
+     + '<b>Parts price</b>: owners under warranty barely react, but after warranty they compare with independent garages, so a higher price earns more per part and keeps fewer owners. '
+     + '<b>Retention programme</b> (fixed-price service menus, older-car service plans, dealer incentives) costs € per parc car a year and lifts post-warranty retention. '
+     + '<b>Loyalty</b>: owners you keep come back for their next car. Next quarter every model you sell in the region gets ×(1 + ' + (K.AS_LOYALTY_K || 0.06) + ' × (retention index − 1)) attraction, within '
+     + ((K.AS_LOYALTY_MIN || 0.975) * 100 - 100).toFixed(1) + '% … +' + ((K.AS_LOYALTY_MAX || 1.03) * 100 - 100).toFixed(1) + '%. '
+     + '<b>Network</b>: retention also follows your sales-network strength in each country. In a country you leave, the cars already sold mostly go to other garages. '
+     + '<b>Warranty</b> (🛡 tab): a longer period keeps owners in the network for longer. BEVs need about 40% fewer parts.</div>';
+  h += '</div>';
+  el.innerHTML = h;
+}
+
 // ── Commercial → 🛡 WARRANTY ─────────────────────────────────────
 // GET/PUT /sessions/{sid}/teams/{tid}/warranty (period) and PUT /vehicles/{vid}/quality (quality
 // system, inspection). The server derives every number (financial_engine.team_warranty); this
@@ -14780,7 +15007,9 @@ var _FIN_LINES = {
     {l:'  ↳ fleet discounts given', k:'fleet_discount_m', neg:true, optional:true},
     {l:'  ↳ fleet delivery penalties', k:'fleet_penalty_m', neg:true, optional:true},
     {l:'  ↳ loan subsidies (captive offers)', k:'finance_subsidy_m', neg:true, optional:true},
+    {l:'  ↳ incl. aftersales parts', k:'aftersales_revenue_m', optional:true},
     {l:'Cost of Goods Sold',     k:'cogs_m', neg:true},
+    {l:'  ↳ incl. aftersales parts cost', k:'aftersales_cogs_m', neg:true, optional:true},
     {l:'Warranty',               k:'warranty_expense_m', neg:true, optional:true},
     {l:'Supplier terms premium', k:'supplier_terms_m', neg:true, optional:true},
     {l:'Supplier price-downs (net of inflation)', k:'pricedown_saving_m', optional:true},
@@ -14801,6 +15030,7 @@ var _FIN_LINES = {
     {l:'Launch marketing',       k:'launch_marketing_m', neg:true, optional:true},
     {l:'Sales network',          k:'sales_network_m', neg:true, optional:true},
     {l:'Market entry / exit',    k:'market_entry_m', neg:true, optional:true},
+    {l:'Aftersales programmes & parts logistics', k:'aftersales_opex_m', neg:true, optional:true},
     {l:'Depreciation',           k:'depreciation_total_m', neg:true},
     {l:'Factoring & reverse-factoring fees', k:'_wc_fin', neg:true, optional:true},
     {l:'Lease rent (sale-and-leaseback)', k:'lease_rent_m', neg:true, optional:true},
@@ -14818,6 +15048,7 @@ var _FIN_LINES = {
     {l:'Cash',                       k:'cash_m'},
     {l:'Accounts Receivable',        k:'accounts_receivable_m'},
     {l:'Inventory',                  k:'inventory_m'},
+    {l:'  ↳ incl. aftersales parts stock', k:'parts_inventory_m', optional:true},
     {l:'Finance receivables (captive loans)', k:'finance_receivables_m', optional:true},
     {l:'Prepaid Expenses',           k:'prepaid_m', optional:true},
     {l:'Total Current Assets',       k:'total_current_assets_m', kind:'sub'},
@@ -14887,7 +15118,7 @@ function _finPlOther(s) {
   if (!s) return 0;
   var n = function(k){ return parseFloat(s[k]) || 0; };
   return n('gross_profit_m') - n('rd_expense_m') - n('sga_m') - n('marketing_m') - n('launch_marketing_m')
-       - n('sales_network_m') - n('market_entry_m')
+       - n('sales_network_m') - n('market_entry_m') - n('aftersales_opex_m')
        - n('depreciation_total_m') - n('factoring_fee_m') - n('rf_fee_m') - n('lease_rent_m')
        + n('fs_ebit_m') - n('ebit_m');
 }
@@ -16203,7 +16434,10 @@ function renderPLComparison(data) {
     o._manuf_var= hasCogsBd ? parseFloat(fs.cogs_manufacturing_m  || 0) : cogs * 0.22;   // manuf variable
     o._buycost  = hasCogsBd ? parseFloat(fs.cogs_buycost_m        || 0) : cogs * 0.10;   // purchased components
     o._log_tar  = hasCogsBd ? parseFloat(fs.cogs_logistics_tariff_m||0) : cogs * 0.10;   // logistics + tariff
-    o._warranty_cogs = cogs - o._mat - o._manuf_var - o._buycost - o._log_tar;           // warranty residual
+    o._as_rev   = parseFloat(fs.aftersales_revenue_m || 0);                               // genuine parts sold
+    o._as_cogs  = parseFloat(fs.aftersales_cogs_m    || 0);                               // their cost
+    o._as_opex  = parseFloat(fs.aftersales_opex_m    || 0);                               // programmes, logistics
+    o._warranty_cogs = cogs - o._mat - o._manuf_var - o._buycost - o._log_tar - o._as_cogs;  // warranty residual
     o._warranty_cogs = Math.max(o._warranty_cogs, 0);
     o._cogs_adj = cogs;          // REAL total COGS from MCE
     // Gross profit
@@ -16239,6 +16473,7 @@ function renderPLComparison(data) {
     {type:'header', label:'REVENUE'},
     {type:'line',   label:'  Gross Revenue',                   key:'_gross_rev',     sign:-1},
     {type:'line',   label:'  (Less) Sales Discounts',          key:'_discount',      sign:1, pct_base:'_gross_rev'},
+    {type:'line',   label:'  incl. Aftersales Parts',          key:'_as_rev',        sign:-1},
     {type:'total',  label:'Net Revenue',                       key:'_net_rev',       sign:-1, color:'var(--cyan)'},
     {type:'sep'},
     {type:'header', label:'COST OF GOODS SOLD'},
@@ -16246,6 +16481,7 @@ function renderPLComparison(data) {
     {type:'line',   label:'  Manufacturing Variable',          key:'_manuf_var',    sign:1},
     {type:'line',   label:'  Purchased Components (Buy)',      key:'_buycost',      sign:1},
     {type:'line',   label:'  Logistics & Customs/Tariff',      key:'_log_tar',      sign:1},
+    {type:'line',   label:'  Aftersales Parts (cost)',         key:'_as_cogs',      sign:1},
     {type:'line',   label:'  Warranty & Other',                key:'_warranty_cogs',sign:1,  est:true},
     {type:'total',  label:'Total COGS',                        key:'_cogs_adj',     sign:1,  color:'var(--red)'},
     {type:'sep'},
@@ -16258,6 +16494,7 @@ function renderPLComparison(data) {
     {type:'line',   label:'  SG&A (Head-office overhead)',     key:'_ga',           sign:1},
     {type:'line',   label:'  Sales Network (Markets tab)',     key:'_mkt_net',      sign:1},
     {type:'line',   label:'  Market Entry / Exit',             key:'_mkt_entry',    sign:1},
+    {type:'line',   label:'  Aftersales Programmes & Logistics', key:'_as_opex',    sign:1},
     {type:'sep'},
     {type:'total',  label:'EBIT',                              key:'_ebit',         sign:-1, color:'var(--gold)'},
     {type:'sep'},
@@ -24857,13 +25094,25 @@ function _propWarranty(tpcEur, plants) {
   var confirmed = (plants || []).filter(function(p) { return p.vehicle_capacity_yr != null; });
   var pq = E.plantQuality(_prop.operations || {}, confirmed.length ? confirmed : (plants || []));
   var years = (_wtyTab && _wtyTab.data && _wtyTab.data.years) || E.DEFAULT_YEARS;
+  var asPol = _propAftersalesPolicy();
   var inp = {reliability: rel, years: years, launch: false, new_share: newShare, ramp: 'STANDARD',
-             mfg_f: pq.mfg_f, supplier_dev: 'LOW', tpc_eur: tpcEur, field_service: 'BASIC', spare_parts: 'REACTIVE'};
+             mfg_f: pq.mfg_f, supplier_dev: 'LOW', tpc_eur: tpcEur,
+             field_service: _AFTERSALES_E.TO_WTY_FIELD[asPol.field_service] || 'BASIC',
+             spare_parts: _AFTERSALES_E.TO_WTY_SPARE[asPol.parts_logistics] || 'DEALER_MANAGED'};
   var u = E.unit(inp);
   inp.launch = true;
   var ul = E.unit(inp);
   return {car: u.eur_per_car, launchCar: ul.eur_per_car, unit: u, years: years,
           reliability: rel == null ? E.DESIGN_REF : rel, pq: pq, qualityDelta: pq.cost_delta_eur};
+}
+
+// The team's aftersales decisions for a region (Commercial → Aftersales, loaded on first use);
+// none loaded = the defaults, which is what a team that never decided runs.
+function _propAftersalesPolicy(region) {
+  var d = _asTab && _asTab.data;
+  if (!d && !_asTab._tried && sessionId && teamId) { _asTab._tried = true; loadAftersalesTab().then(function() { if (_asTab.data) calcPropBizCase(); }); }
+  var pols = (d && d.policies) || {};
+  return _AFTERSALES_E._pol(pols[region || 'EU'] || pols.EU);
 }
 
 function calcPropBizCase() {
@@ -24929,9 +25178,12 @@ function calcPropBizCase() {
   // fees are an upfront outlay and a standard network there a quarterly cost. The team's
   // existing network is shared by all its vehicles, so it is not charged again here.
   var _newMkt = _propNewMarketCosts();
+  var _asPwt = (_prop.study && _prop.study.rolled_up_specs && _prop.study.rolled_up_specs.pwt_type) || 'ice_only';
+  if (!_AFTERSALES_E.PWT[_asPwt]) _asPwt = 'ice_only';
+  var _asRate = (SESSION_DISCOUNT_RATE || 8) / 100;
   _fcfYr.forEach(function(yr){
     for(var q=0;q<4;q++){
-      var revM=0,cogsM=0;
+      var revM=0,cogsM=0,asTailM=0;
       if(_fcfMk.length>0){
         _fcfMk.forEach(function(mkt){
           var yd=(mkt.years||[]).find(function(y){return y.year===yr;})||{discount:5,volume:0};
@@ -24944,12 +25196,14 @@ function calcPropBizCase() {
           var landed=tpcNum+_srcAdj+mfr.buy_cost_adj+_manufVarDelta(mfr)+lo.l+nR*lo.t
                      +_wty.qualityDelta+(fcfArr.length<_WARRANTY_E.LAUNCH_Q?_wty.launchCar:_wty.car);
           revM+=uQ*nR/1e6; cogsM+=uQ*landed/1e6;
+          asTailM+=uQ*_AFTERSALES_E.carValue(mkt.msrp_eur_k||0,_asPwt,_wty.years,_propAftersalesPolicy(mkt.region),_asRate).npv_eur/1e6;
         });
         if(tpcNum===0)cogsM=revM*0.70;
       } else {
         var cr=comYears.find(function(r){return r.year===yr;})||comYears[0]||{price:26,volume:0,discount:5};
         var uQ=Math.round(cr.volume/4), pE=cr.price*1000*(1-cr.discount/100);
         revM=uQ*pE/1e6; cogsM=finalTpcNum>0?uQ*finalTpcNum/1e6:revM*0.70;
+        asTailM=uQ*_AFTERSALES_E.carValue(cr.price,_asPwt,_wty.years,_propAftersalesPolicy(),_asRate).npv_eur/1e6;
         cogsM+=uQ*(_wty.qualityDelta+(fcfArr.length<_WARRANTY_E.LAUNCH_Q?_wty.launchCar:_wty.car))/1e6;
       }
       // Head-office overhead this model adds (its own admin + the volume-linked share),
@@ -24957,8 +25211,10 @@ function calcPropBizCase() {
       var gpM=revM-cogsM, sgaM=revM>0?_OVERHEAD_E.modelIncrementM(revM):0, rdMq=revM*0.04;
       // Standard launch campaign (planning assumption; the real budget is a round decision)
       var launchM=fcfArr.length===0?_lcStd*0.75:fcfArr.length===1?_lcStd*0.25:0;
-      var ebitM=gpM-sgaM-rdMq-marketingM-launchM-_newMkt.runQ, fcfM=ebitM*0.75;
-      fcfArr.push({rev:revM,cogs:cogsM,gp:gpM,ebit:ebitM,fcf:fcfM,mktg:marketingM+launchM});
+      // + the lifetime parts contribution of the cars sold this quarter, valued at the sale
+      // (_AFTERSALES_E.carValue at the hurdle), after tax. Not in EBIT: it arrives over 15 years.
+      var ebitM=gpM-sgaM-rdMq-marketingM-launchM-_newMkt.runQ, fcfM=ebitM*0.75+asTailM*0.75;
+      fcfArr.push({rev:revM,cogs:cogsM,gp:gpM,ebit:ebitM,fcf:fcfM,mktg:marketingM+launchM,asTail:asTailM});
     }
   })
 
@@ -25049,6 +25305,12 @@ function calcPropBizCase() {
             + Math.round(_newMkt.entryM) + 'M upfront and €' + Math.round(_newMkt.runQ) + 'M/qtr network. '
             + 'Enter them on Commercial → 🌍 Markets, ' + _MKTNET_E.ENTRY_LEAD_Q + ' quarters before SOP.</div>'
           : '')
+      + (function() {
+          var tail = fcfArr.reduce(function(t, f) { return t + (f.asTail || 0); }, 0);
+          return tail > 0 ? '<div style="font-family:DM Mono,monospace;font-size:10px;color:var(--green);margin-top:8px;">'
+            + 'Includes the aftersales tail: €' + Math.round(tail).toLocaleString() + 'M (before tax) of lifetime genuine-parts contribution from the cars this plan sells, '
+            + 'valued at the sale at ' + rateP + '% (Commercial → 🔧 Aftersales decisions, ' + _wty.years + '-year warranty). It is in FCF / NPV, not in EBIT: it arrives over 15 years.</div>' : '';
+        })()
       + '<div style="font-family:DM Mono,monospace;font-size:10px;color:var(--muted2);margin-top:8px;">'
         + 'Warranty (in COGS): €' + Math.round(_wty.car) + '/car (' + _wty.years + '-year warranty; €'
         + Math.round(_wty.launchCar) + '/car in the first ' + _WARRANTY_E.LAUNCH_Q + ' quarters of production) · '
