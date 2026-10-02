@@ -7903,7 +7903,7 @@ function engView(tab) {
 // the moves on. The server derives every number (financial_engine.commodity_cost_eur /
 // vehicle_unit_cost_eur, the readers clearing uses); this tab renders them.
 // ════════════════════════════════════════════════════════════════
-var _lcTab = {data: null, busy: false};
+var _plmTab = {data: null, busy: false};
 
 async function loadLifecycleTab() {
   var el = document.getElementById('lifecycle-content');
@@ -7915,16 +7915,16 @@ async function loadLifecycleTab() {
     var res = await fetch(API_URL + '/sessions/' + sessionId + '/teams/' + teamId + '/commodities');
     var d = await res.json();
     if (!res.ok) throw new Error(d.detail || ('HTTP ' + res.status));
-    _lcTab.data = d;
+    _plmTab.data = d;
     _renderLifecycleTab();
   } catch (e) {
     if (el) el.innerHTML = '<div style="color:var(--red);font-family:DM Mono,monospace;font-size:11px;padding:16px 0;">Lifecycle view unavailable: ' + _esc(e.message) + '</div>';
   }
 }
 
-async function _lcSetContract(commodity, contract) {
-  if (_lcTab.busy) return;
-  _lcTab.busy = true;
+async function _plmSetContract(commodity, contract) {
+  if (_plmTab.busy) return;
+  _plmTab.busy = true;
   try {
     var res = await fetch(API_URL + '/sessions/' + sessionId + '/teams/' + teamId + '/commodities', {
       method: 'PUT', headers: {'Content-Type': 'application/json'},
@@ -7932,18 +7932,18 @@ async function _lcSetContract(commodity, contract) {
     });
     var d = await res.json();
     if (!res.ok) throw new Error(d.detail || ('HTTP ' + res.status));
-    _lcTab.data = d;
+    _plmTab.data = d;
   } catch (e) {
     toast('Supply contract change failed: ' + e.message);
   } finally {
-    _lcTab.busy = false;
+    _plmTab.busy = false;
     _renderLifecycleTab();
   }
 }
 
 // One-series sparkline of an index (100 = the engines' prices, dashed): 2px line, last point
 // marked, a hover title on every point.
-function _lcSpark(points, key) {
+function _plmSpark(points, key) {
   var W = 132, H = 34, P = 3;
   var vals = points.map(function(p) { return parseFloat(p[key]) || 100; });
   if (!vals.length) return '';
@@ -7965,7 +7965,7 @@ function _lcSpark(points, key) {
 
 function _renderLifecycleTab() {
   var el = document.getElementById('lifecycle-content');
-  var d = _lcTab.data;
+  var d = _plmTab.data;
   if (!el || !d) return;
   var C = d.constants || {}, labels = C.labels || {}, contracts = C.contracts || {};
   var eur = function(v) { var x = Math.round(parseFloat(v) || 0); return '€' + x.toLocaleString(); };
@@ -8005,7 +8005,7 @@ function _renderLifecycleTab() {
       var chips = Object.keys(contracts).map(function(k) {
         var sel = pol.contract === k;
         var eff = models.reduce(function(s, m) { return s + (((m.options || {})[k] || {})[c] || 0); }, 0) / Math.max(1, models.length);
-        var click = d.locked ? '' : 'onclick="_lcSetContract(\'' + c + '\',\'' + k + '\')" ';
+        var click = d.locked ? '' : 'onclick="_plmSetContract(\'' + c + '\',\'' + k + '\')" ';
         var tip = (contracts[k].pass * 100) + '% of index moves passed on' + (contracts[k].fix_q ? ', price fixed for ' + contracts[k].fix_q + ' quarters at a time' : ', one quarter late') +
                   (contracts[k].premium ? '; +' + (contracts[k].premium * 100).toFixed(1) + '% premium on this material' : '');
         return '<div ' + click + 'title="' + _esc(tip) + '" style="display:inline-block;margin:0 4px 4px 0;padding:3px 6px;border-radius:5px;cursor:' + (click ? 'pointer' : 'default') +
@@ -8016,7 +8016,7 @@ function _renderLifecycleTab() {
       var fixedNote = (pol.contract === 'fixed' && pol.since_qabs != null) ? '<div style="font-size:9px;color:var(--muted);">priced at the ' + _esc(pol.reference_label) + ' index</div>' : '';
       h += '<tr style="border-bottom:1px solid var(--border);">' +
         td('<b>' + _esc(labels[c] || c) + '</b>', 'left') +
-        td(_lcSpark(hist, 'world'), 'left') +
+        td(_plmSpark(hist, 'world'), 'left') +
         td(now.world.toFixed(1)) +
         td((chg >= 0 ? '+' : '') + chg.toFixed(1) + '%', 'right', Math.abs(chg) < 0.5 ? 'var(--muted2)' : chg > 0 ? 'var(--red)' : 'var(--green)') +
         regs.map(function(r) { return td((parseFloat(now[r]) || 100).toFixed(1)); }).join('') +
