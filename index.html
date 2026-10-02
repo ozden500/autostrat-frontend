@@ -1491,6 +1491,9 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
     <div class="eng-view-tab" data-tab="validation" onclick="engView('validation')"
       style="font-family:DM Mono,monospace;font-size:9px;letter-spacing:1px;padding:7px 18px;cursor:pointer;
       border-bottom:2px solid transparent;color:var(--muted2);transition:all .15s;">🧪 VALIDATION</div>
+    <div class="eng-view-tab" data-tab="lifecycle" onclick="engView('lifecycle')"
+      style="font-family:DM Mono,monospace;font-size:9px;letter-spacing:1px;padding:7px 18px;cursor:pointer;
+      border-bottom:2px solid transparent;color:var(--muted2);transition:all .15s;">🔄 LIFECYCLE</div>
   </div>
 
   <!-- ── DASHBOARD VIEW ── -->
@@ -1710,6 +1713,11 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
   </div>
 
   <!-- ── VALIDATION LABS VIEW ── -->
+  <!-- ── LIFECYCLE VIEW (docs/LIFECYCLE_SPEC.md) ── -->
+  <div id="eng-lifecycle-view" style="display:none;">
+    <div id="lifecycle-content"></div>
+  </div>
+
   <div id="eng-validation-view" style="display:none;">
     <div id="eng-validation-content">
       <div style="text-align:center;padding:40px;color:var(--muted2);font-family:DM Mono,monospace;font-size:11px;">Select a team to manage validation labs.</div>
@@ -2601,6 +2609,18 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
     </select>
     <div style="font-size:10px;color:var(--muted2);margin-top:6px;line-height:1.5;">Used by the Performance dashboard's rankings and every team's rank tile. Shareholder return is share price change plus dividends since the last quarter before round 1. Sessions without share prices fall back to revenue.</div>
     <span id="cfg-ranking-status" style="font-size:12px;color:#22c55e;display:none;">Saved ✓</span>
+  </div>
+
+  <!-- Commodity markets: live cost (sessions.commodity_markets, docs/LIFECYCLE_SPEC.md) -->
+  <div style="background:var(--s1);border:1px solid var(--border);border-radius:10px;padding:20px;margin-bottom:16px;max-width:640px;">
+    <div style="font-family:'DM Mono',monospace;font-size:9px;text-transform:uppercase;letter-spacing:1.5px;color:#a78bfa;margin-bottom:12px;">Commodity Markets</div>
+    <label style="display:flex;gap:10px;align-items:flex-start;cursor:pointer;margin-bottom:12px;">
+      <input id="cfg-cmd-enabled" type="checkbox" onchange="_cmdAdminCall('PATCH','/commodity-markets',{enabled:this.checked})" style="margin-top:3px;">
+      <span style="font-size:12px;color:#cbd5e1;">Commodity prices move during the game
+        <span style="display:block;font-size:10px;color:var(--muted2);margin-top:4px;">Each model's parts cost follows steel, aluminium, copper, battery materials, polymers, glass, chips and energy where it buys them, as far as the team's supply contracts pass moves on (Engineering &gt; Lifecycle). Approved costs are at index 100. Add shocks below to create a crisis in a future quarter.</span>
+      </span>
+    </label>
+    <div id="cfg-commodity-content"></div>
   </div>
 
   <!-- Industrial Operations Lead Times -->
@@ -7862,6 +7882,7 @@ function engView(tab) {
   document.getElementById('eng-lab-view').style.display        = tab==='lab'       ?'block':'none';
   document.getElementById('eng-capacity-view').style.display   = tab==='capacity'  ?'block':'none';
   document.getElementById('eng-validation-view').style.display = tab==='validation'?'block':'none';
+  document.getElementById('eng-lifecycle-view').style.display  = tab==='lifecycle' ?'block':'none';
   document.querySelectorAll('.eng-view-tab').forEach(function(t){
     var active = t.dataset.tab===tab;
     t.style.borderBottomColor = active?'var(--gold)':'transparent';
@@ -7872,6 +7893,173 @@ function engView(tab) {
   if (tab==='lab')        { loadBaseConfigs(currentModType); if(teamId) loadModuleLibrary(); }
   if (tab==='capacity')   buildEngCapacityTab();
   if (tab==='validation') buildValidationLabsTab();
+  if (tab==='lifecycle')  loadLifecycleTab();
+}
+
+// ════════════════════════════════════════════════════════════════
+// ENGINEERING → 🔄 LIFECYCLE TAB (docs/LIFECYCLE_SPEC.md)
+// Phase 0: material cost. A model's approved cost is its cost at commodity index 100; in
+// production its parts move with commodity markets, by how the team's supply contracts pass
+// the moves on. The server derives every number (financial_engine.commodity_cost_eur /
+// vehicle_unit_cost_eur, the readers clearing uses); this tab renders them.
+// ════════════════════════════════════════════════════════════════
+var _lcTab = {data: null, busy: false};
+
+async function loadLifecycleTab() {
+  var el = document.getElementById('lifecycle-content');
+  if (!sessionId || !teamId) {
+    if (el) el.innerHTML = '<div style="text-align:center;padding:40px;color:var(--muted2);font-family:DM Mono,monospace;font-size:11px;">Select a team and session to load the lifecycle view.</div>';
+    return;
+  }
+  try {
+    var res = await fetch(API_URL + '/sessions/' + sessionId + '/teams/' + teamId + '/commodities');
+    var d = await res.json();
+    if (!res.ok) throw new Error(d.detail || ('HTTP ' + res.status));
+    _lcTab.data = d;
+    _renderLifecycleTab();
+  } catch (e) {
+    if (el) el.innerHTML = '<div style="color:var(--red);font-family:DM Mono,monospace;font-size:11px;padding:16px 0;">Lifecycle view unavailable: ' + _esc(e.message) + '</div>';
+  }
+}
+
+async function _lcSetContract(commodity, contract) {
+  if (_lcTab.busy) return;
+  _lcTab.busy = true;
+  try {
+    var res = await fetch(API_URL + '/sessions/' + sessionId + '/teams/' + teamId + '/commodities', {
+      method: 'PUT', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({commodity: commodity, contract: contract})
+    });
+    var d = await res.json();
+    if (!res.ok) throw new Error(d.detail || ('HTTP ' + res.status));
+    _lcTab.data = d;
+  } catch (e) {
+    toast('Supply contract change failed: ' + e.message);
+  } finally {
+    _lcTab.busy = false;
+    _renderLifecycleTab();
+  }
+}
+
+// One-series sparkline of an index (100 = the engines' prices, dashed): 2px line, last point
+// marked, a hover title on every point.
+function _lcSpark(points, key) {
+  var W = 132, H = 34, P = 3;
+  var vals = points.map(function(p) { return parseFloat(p[key]) || 100; });
+  if (!vals.length) return '';
+  var lo = Math.min(90, Math.min.apply(null, vals)), hi = Math.max(110, Math.max.apply(null, vals));
+  var x = function(i) { return P + (vals.length < 2 ? 0 : i * (W - 2 * P) / (vals.length - 1)); };
+  var y = function(v) { return H - P - (v - lo) * (H - 2 * P) / (hi - lo); };
+  var path = vals.map(function(v, i) { return (i ? 'L' : 'M') + x(i).toFixed(1) + ' ' + y(v).toFixed(1); }).join(' ');
+  var hits = points.map(function(p, i) {
+    return '<circle cx="' + x(i).toFixed(1) + '" cy="' + y(vals[i]).toFixed(1) + '" r="5" fill="transparent"><title>' +
+      _esc(p.label) + ': ' + vals[i].toFixed(1) + '</title></circle>';
+  }).join('');
+  var last = vals.length - 1;
+  return '<svg width="' + W + '" height="' + H + '" style="display:block;overflow:visible;" role="img" aria-label="index history">' +
+    '<line x1="' + P + '" x2="' + (W - P) + '" y1="' + y(100).toFixed(1) + '" y2="' + y(100).toFixed(1) + '" stroke="var(--border)" stroke-width="1" stroke-dasharray="3 3"/>' +
+    '<path d="' + path + '" fill="none" stroke="var(--gold)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>' +
+    '<circle cx="' + x(last).toFixed(1) + '" cy="' + y(vals[last]).toFixed(1) + '" r="4" fill="var(--gold)" stroke="var(--s1)" stroke-width="2"/>' +
+    hits + '</svg>';
+}
+
+function _renderLifecycleTab() {
+  var el = document.getElementById('lifecycle-content');
+  var d = _lcTab.data;
+  if (!el || !d) return;
+  var C = d.constants || {}, labels = C.labels || {}, contracts = C.contracts || {};
+  var eur = function(v) { var x = Math.round(parseFloat(v) || 0); return '€' + x.toLocaleString(); };
+  var deur = function(v) { var x = Math.round(parseFloat(v) || 0); return (x > 0 ? '+' : x < 0 ? '−' : '±') + '€' + Math.abs(x).toLocaleString(); };
+  var col = function(v) { var x = Math.round(parseFloat(v) || 0); return x > 0 ? 'var(--red)' : x < 0 ? 'var(--green)' : 'var(--muted2)'; };
+  var head = function(t, sub) {
+    return '<div style="font-family:DM Mono,monospace;font-size:8px;text-transform:uppercase;letter-spacing:1.5px;color:#a78bfa;margin:14px 0 8px;">' + t +
+      (sub ? ' <span style="color:var(--muted);letter-spacing:0;text-transform:none;">· ' + sub + '</span>' : '') + '</div>';
+  };
+  var th = function(t, al) { return '<th style="text-align:' + (al || 'right') + ';padding:4px 6px;font-size:8px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;font-weight:400;">' + t + '</th>'; };
+  var td = function(t, al, c) { return '<td style="text-align:' + (al || 'right') + ';padding:5px 6px;font-size:10px;vertical-align:middle;color:' + (c || 'var(--text)') + ';">' + t + '</td>'; };
+  var models = d.models || [];
+  var h = '<div style="font-family:DM Mono,monospace;">';
+  h += '<div style="font-size:11px;color:var(--text);margin-bottom:10px;line-height:1.6;">A model\'s <b>approved cost</b> is what its business case priced: '
+     + 'the parts at today\'s reference commodity prices (index 100). Once in production its parts follow the <b>commodity markets</b> '
+     + 'where they are bought — steel, aluminium, copper, battery materials, polymers, glass, chips, energy — as far as your '
+     + '<b>supply contracts</b> pass the moves on. That gap is the difference between the plan and the <b>live cost</b> you are charged.</div>';
+  if (!d.enabled) {
+    h += '<div style="color:var(--muted2);font-size:10px;margin-bottom:10px;">Commodity markets are off in this session: every index stays at 100, so live cost = approved cost (plus plant and sourcing adjustments).</div>';
+  }
+  if (d.locked) h += '<div style="color:var(--gold);font-size:10px;margin-bottom:10px;">🔒 ' + _esc(d.label) + ' has cleared. Decide again when the next round starts.</div>';
+
+  // ── Commodity markets + contracts ──
+  if (d.enabled) {
+    var regs = d.regions || [];
+    h += head('MATERIAL COST · ' + _esc(d.label), 'indices: 100 = approved cost · last 12 quarters · your sourcing region' + (regs.length > 1 ? 's' : '') + ': ' + regs.join(', '));
+    h += '<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;">';
+    h += '<tr style="border-bottom:1px solid var(--border);">' + th('Commodity', 'left') + th('Index (world)', 'left') + th('Now') + th('vs 4q ago') +
+         regs.map(function(r) { return th(r); }).join('') + th('Your exposure / car') + th('Supply contract · this quarter\'s effect per car', 'left') + '</tr>';
+    (C.commodities || []).forEach(function(c) {
+      var hist = (d.history || {})[c] || [];
+      if (!hist.length) return;
+      var now = hist[hist.length - 1], prev = hist.length > 4 ? hist[hist.length - 5] : hist[0];
+      var chg = ((now.world / prev.world) - 1) * 100;
+      var expo = models.reduce(function(s, m) { return s + ((((m.by_commodity || {})[c]) || {}).exposure_eur || 0); }, 0) / Math.max(1, models.length);
+      var pol = (d.policy || {})[c] || {};
+      var chips = Object.keys(contracts).map(function(k) {
+        var sel = pol.contract === k;
+        var eff = models.reduce(function(s, m) { return s + (((m.options || {})[k] || {})[c] || 0); }, 0) / Math.max(1, models.length);
+        var click = d.locked ? '' : 'onclick="_lcSetContract(\'' + c + '\',\'' + k + '\')" ';
+        var tip = (contracts[k].pass * 100) + '% of index moves passed on' + (contracts[k].fix_q ? ', price fixed for ' + contracts[k].fix_q + ' quarters at a time' : ', one quarter late') +
+                  (contracts[k].premium ? '; +' + (contracts[k].premium * 100).toFixed(1) + '% premium on this material' : '');
+        return '<div ' + click + 'title="' + _esc(tip) + '" style="display:inline-block;margin:0 4px 4px 0;padding:3px 6px;border-radius:5px;cursor:' + (click ? 'pointer' : 'default') +
+          ';border:1px solid ' + (sel ? 'var(--gold)' : 'var(--border)') + ';background:' + (sel ? 'rgba(251,191,36,0.08)' : 'var(--s2)') + ';min-width:84px;">' +
+          '<div style="font-size:10px;color:' + (sel ? 'var(--gold)' : 'var(--text)') + ';">' + (sel ? '● ' : '○ ') + _esc(contracts[k].label) + '</div>' +
+          '<div style="font-size:9px;color:' + col(eff) + ';">' + deur(eff) + '/car</div></div>';
+      }).join('');
+      var fixedNote = (pol.contract === 'fixed' && pol.since_qabs != null) ? '<div style="font-size:9px;color:var(--muted);">priced at the ' + _esc(pol.reference_label) + ' index</div>' : '';
+      h += '<tr style="border-bottom:1px solid var(--border);">' +
+        td('<b>' + _esc(labels[c] || c) + '</b>', 'left') +
+        td(_lcSpark(hist, 'world'), 'left') +
+        td(now.world.toFixed(1)) +
+        td((chg >= 0 ? '+' : '') + chg.toFixed(1) + '%', 'right', Math.abs(chg) < 0.5 ? 'var(--muted2)' : chg > 0 ? 'var(--red)' : 'var(--green)') +
+        regs.map(function(r) { return td((parseFloat(now[r]) || 100).toFixed(1)); }).join('') +
+        td(eur(expo)) +
+        td(chips + fixedNote, 'left') + '</tr>';
+    });
+    h += '</table></div>';
+    h += '<div style="font-size:9px;color:var(--muted);margin-top:4px;">Effect per car = this quarter\'s drift vs the approved cost plus any contract premium, averaged over your models on sale. '
+       + 'Index-linked passes moves on a quarter late; partial passes half for a 0.5% premium; fixed price holds four quarters at a time for a 1.5% premium, then resets to the market.</div>';
+  }
+
+  // ── Cost bridge per model ──
+  h += head('COST BRIDGE BY MODEL', 'approved (business case) → live cost per car this quarter');
+  if (!models.length) {
+    h += '<div style="color:var(--muted2);font-size:10px;">No model on sale this quarter.</div>';
+  } else {
+    h += '<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;">';
+    h += '<tr style="border-bottom:1px solid var(--border);">' + th('Model', 'left') + th('Approved') + th('Plant & sourcing') + th('Commodity drift') + th('Contract premium') + th('Live cost') + th('vs approved') + th('Biggest movers', 'left') + '</tr>';
+    models.forEach(function(m) {
+      var gap = m.live_eur - m.approved_eur;
+      var movers = Object.keys(m.by_commodity || {}).map(function(c) { return [c, m.by_commodity[c].drift_eur + m.by_commodity[c].premium_eur]; })
+        .filter(function(x) { return Math.abs(x[1]) >= 1; })
+        .sort(function(a, b) { return Math.abs(b[1]) - Math.abs(a[1]); }).slice(0, 3)
+        .map(function(x) { return _esc(labels[x[0]] || x[0]) + ' <span style="color:' + col(x[1]) + '">' + deur(x[1]) + '</span>'; }).join('<br>');
+      h += '<tr style="border-bottom:1px solid var(--border);">' +
+        td('<b>' + _esc(m.name || m.segment_code || 'model') + '</b><div style="font-size:9px;color:var(--muted);">parts bought in ' + _esc(m.region) +
+           (m.exposure_source === 'profile' ? ' · exposure estimated from its powertrain' : '') + '</div>', 'left') +
+        td(eur(m.approved_eur)) +
+        td(deur(m.plant_sourcing_eur), 'right', col(m.plant_sourcing_eur)) +
+        td(deur(m.commodity_drift_eur), 'right', col(m.commodity_drift_eur)) +
+        td(deur(m.contract_premium_eur), 'right', col(m.contract_premium_eur)) +
+        td('<b>' + eur(m.live_eur) + '</b>') +
+        td((gap >= 0 ? '+' : '−') + (Math.abs(gap) / Math.max(1, m.approved_eur) * 100).toFixed(1) + '%', 'right', col(gap)) +
+        td(movers || '<span style="color:var(--muted2)">—</span>', 'left') + '</tr>';
+    });
+    h += '</table></div>';
+  }
+  if (d.last_quarter && d.last_quarter.cogs_commodity_m != null) {
+    h += '<div style="font-size:10px;color:var(--muted2);margin-top:8px;">Last quarter (Q' + d.last_quarter.quarter + ' ' + d.last_quarter.year + ') commodity markets ' +
+         (d.last_quarter.cogs_commodity_m >= 0 ? 'added' : 'saved') + ' <b>€' + Math.abs(parseFloat(d.last_quarter.cogs_commodity_m) || 0).toFixed(1) + 'M</b> of cost of goods sold.</div>';
+  }
+  h += '</div>';
+  el.innerHTML = h;
 }
 
 // ════════════════════════════════════════════════════════════════
@@ -14039,9 +14227,119 @@ async function loadSettingsPage() {
       const rb = document.getElementById('cfg-ranking-basis');
       if (rb) rb.value = (sd.session || {}).ranking_basis || 'scorecard';
     }
+    loadCommodityMarketAdmin();
   } catch(e) { console.warn('loadSettingsPage:', e); }
 }
 
+// ── Commodity markets (instructor, docs/LIFECYCLE_SPEC.md Phase 0) ──
+// The index path is derived from the session; the instructor turns markets on/off and adds
+// shocks (presets) in future quarters. Past and current quarters are never rewritten.
+var _cmdAdmin = {data: null, busy: false};
+
+async function loadCommodityMarketAdmin() {
+  var el = document.getElementById('cfg-commodity-content');
+  if (!el || !sessionId) return;
+  try {
+    var res = await fetch(API_URL + '/sessions/' + sessionId + '/commodity-market?ahead=12');
+    var d = await res.json();
+    if (!res.ok) throw new Error(d.detail || ('HTTP ' + res.status));
+    _cmdAdmin.data = d;
+    _renderCommodityMarketAdmin();
+  } catch (e) {
+    el.innerHTML = '<div style="color:var(--red);font-size:11px;">Commodity markets unavailable: ' + _esc(e.message) + '</div>';
+  }
+}
+
+async function _cmdAdminCall(method, path, body) {
+  if (_cmdAdmin.busy) return;
+  _cmdAdmin.busy = true;
+  try {
+    var res = await fetch(API_URL + '/sessions/' + sessionId + path, {
+      method: method, headers: {'Content-Type': 'application/json'}, body: body ? JSON.stringify(body) : undefined
+    });
+    var d = await res.json();
+    if (!res.ok) throw new Error(d.detail || ('HTTP ' + res.status));
+    _cmdAdmin.data = d;
+  } catch (e) {
+    toast('❌ ' + e.message);
+  } finally {
+    _cmdAdmin.busy = false;
+    _renderCommodityMarketAdmin();
+  }
+}
+
+function _cmdAdminAddPreset() {
+  var p = (document.getElementById('cfg-cmd-preset') || {}).value;
+  var q = parseInt((document.getElementById('cfg-cmd-start') || {}).value, 10);
+  if (!p || isNaN(q)) return;
+  _cmdAdminCall('POST', '/commodity-shocks', {preset: p, start_qabs: q});
+}
+
+// Index path sparkline: past (solid) up to the open quarter, the future the instructor sees
+// (dashed); 100 baseline dashed and recessive.
+function _cmdAdminSpark(points, nowQ) {
+  var W = 220, H = 36, P = 3;
+  var vals = points.map(function(p) { return parseFloat(p.world) || 100; });
+  if (!vals.length) return '';
+  var lo = Math.min(85, Math.min.apply(null, vals)), hi = Math.max(115, Math.max.apply(null, vals));
+  var x = function(i) { return P + (vals.length < 2 ? 0 : i * (W - 2 * P) / (vals.length - 1)); };
+  var y = function(v) { return H - P - (v - lo) * (H - 2 * P) / (hi - lo); };
+  var k = points.findIndex(function(p) { return p.qabs === nowQ; });
+  if (k < 0) k = vals.length - 1;
+  var seg = function(a, b) { var s = ''; for (var i = a; i <= b; i++) s += (i === a ? 'M' : 'L') + x(i).toFixed(1) + ' ' + y(vals[i]).toFixed(1) + ' '; return s; };
+  var hits = points.map(function(p, i) {
+    return '<circle cx="' + x(i).toFixed(1) + '" cy="' + y(vals[i]).toFixed(1) + '" r="4" fill="transparent"><title>' + _esc(p.label) + ': ' + vals[i].toFixed(1) + (i > k ? ' (future)' : '') + '</title></circle>';
+  }).join('');
+  return '<svg width="' + W + '" height="' + H + '" style="display:block;overflow:visible;" role="img" aria-label="index path">' +
+    '<line x1="' + P + '" x2="' + (W - P) + '" y1="' + y(100).toFixed(1) + '" y2="' + y(100).toFixed(1) + '" stroke="var(--border)" stroke-dasharray="3 3"/>' +
+    '<path d="' + seg(0, k) + '" fill="none" stroke="#a78bfa" stroke-width="2" stroke-linejoin="round"/>' +
+    (k < vals.length - 1 ? '<path d="' + seg(k, vals.length - 1) + '" fill="none" stroke="#a78bfa" stroke-width="2" stroke-dasharray="4 3" opacity="0.7"/>' : '') +
+    '<circle cx="' + x(k).toFixed(1) + '" cy="' + y(vals[k]).toFixed(1) + '" r="4" fill="#a78bfa" stroke="var(--s1)" stroke-width="2"/>' +
+    hits + '</svg>';
+}
+
+function _renderCommodityMarketAdmin() {
+  var el = document.getElementById('cfg-commodity-content');
+  var d = _cmdAdmin.data;
+  if (!el || !d) return;
+  var C = d.constants || {}, labels = C.labels || {}, presets = C.presets || {};
+  var cb = document.getElementById('cfg-cmd-enabled');
+  if (cb) cb.checked = !!d.enabled;
+  if (!d.enabled) {
+    el.innerHTML = '<div style="font-size:11px;color:var(--muted2);">Off: every index stays at 100 and live cost equals approved cost. Turn on to let commodity prices move.</div>';
+    return;
+  }
+  var h = '<table style="width:100%;border-collapse:collapse;font-family:DM Mono,monospace;">';
+  (C.commodities || []).forEach(function(c) {
+    var pts = (d.path || {})[c] || [];
+    var now = pts.find(function(p) { return p.qabs === d.qabs; }) || pts[pts.length - 1] || {world: 100};
+    h += '<tr style="border-bottom:1px solid var(--border);"><td style="font-size:11px;color:#cbd5e1;padding:4px 6px;">' + _esc(labels[c] || c) + '</td>' +
+         '<td style="padding:4px 6px;">' + _cmdAdminSpark(pts, d.qabs) + '</td>' +
+         '<td style="font-size:11px;color:#cbd5e1;text-align:right;padding:4px 6px;">' + (parseFloat(now.world) || 100).toFixed(1) + '</td></tr>';
+  });
+  h += '</table><div style="font-size:10px;color:var(--muted2);margin:4px 0 12px;">World index, 2025 Q1 → 12 quarters ahead; solid = what teams have seen (to ' + _esc(d.label) + '), dashed = still to come.</div>';
+  // shocks
+  h += '<div style="font-size:12px;color:#94a3b8;margin-bottom:6px;">Shocks</div>';
+  if (!(d.shocks || []).length) h += '<div style="font-size:11px;color:var(--muted2);margin-bottom:8px;">None — the markets follow their normal path.</div>';
+  (d.shocks || []).forEach(function(s) {
+    var q = parseInt(s.start_qabs, 10);
+    h += '<div style="display:flex;gap:8px;align-items:center;font-size:11px;color:#cbd5e1;margin-bottom:4px;">' +
+         '<span>' + _esc(s.label || '') + ' · ' + _esc(labels[s.commodity] || s.commodity) + ' ' + (s.peak_pct > 0 ? '+' : '') + s.peak_pct + '%' +
+         (s.region ? ' (' + _esc(s.region) + ')' : '') + ' from ' + (2025 + Math.floor(q / 4)) + ' Q' + (q % 4 + 1) + '</span>' +
+         (s.editable ? '<button onclick="_cmdAdminCall(\'DELETE\',\'/commodity-shocks/' + s.id + '\')" style="background:none;border:1px solid var(--border);color:var(--muted2);border-radius:5px;padding:1px 8px;cursor:pointer;font-size:10px;">remove</button>'
+                     : '<span style="color:var(--muted);font-size:10px;">started</span>') + '</div>';
+  });
+  var opts = Object.keys(presets).map(function(k) { return '<option value="' + k + '">' + _esc(presets[k].label) + '</option>'; }).join('');
+  var qs = '';
+  for (var q = d.qabs + 1; q <= d.qabs + 12; q++) qs += '<option value="' + q + '">' + (2025 + Math.floor(q / 4)) + ' Q' + (q % 4 + 1) + '</option>';
+  var sel = 'background:var(--s2);border:1px solid var(--border);border-radius:6px;color:#f1f5f9;padding:6px 8px;font-size:12px;font-family:DM Mono,monospace;';
+  h += '<div style="display:flex;gap:8px;align-items:center;margin-top:8px;flex-wrap:wrap;">' +
+       '<select id="cfg-cmd-preset" style="' + sel + '">' + opts + '</select>' +
+       '<span style="font-size:11px;color:#94a3b8;">from</span><select id="cfg-cmd-start" style="' + sel + '">' + qs + '</select>' +
+       '<button onclick="_cmdAdminAddPreset()" style="background:#4c1d95;color:#c4b5fd;border:1px solid #7c3aed;border-radius:7px;padding:6px 14px;font-size:12px;cursor:pointer;">+ Add shock</button></div>';
+  el.innerHTML = h;
+}
+
 async function settingsSaveRivalCoverage(on) {
   if (!sessionId) return;
   try {
@@ -21026,6 +21324,25 @@ function _computeBaseTpc() {
 
 // Returns {dmp, make, matEur, labEur} summed from actual BOM split data across all modules.
 // Falls back to 85/15 flat split per module when dmp/make not yet computed.
+// A vehicle's commodity exposure (EUR/car at index 100): the sum of its slots' dmp.commodity_eur.
+// Twin of cost_engines.sum_commodity_exposure. Returns null unless every costed slot carries one
+// (a library module cached before 2026-10-02 may not): the server then estimates it from the
+// powertrain profile instead of storing an understated figure.
+function _computeCommodityExposure() {
+  var out = {}, ok = true, any = false;
+  COMMODITIES.forEach(function(c) { out[c] = 0; });
+  ['platform','pwt','epwt','battery','tophat','eands'].forEach(function(k) {
+    var p = _prop[k]; if (!p || !p.module) return;
+    var ce = p.module.dmp && p.module.dmp.commodity_eur;
+    if (!ce) { ok = false; return; }
+    any = true;
+    COMMODITIES.forEach(function(c) { out[c] += parseFloat(ce[c] || 0); });
+  });
+  if (!ok || !any) return null;
+  COMMODITIES.forEach(function(c) { out[c] = Math.round(out[c] * 100) / 100; });
+  return out;
+}
+
 function _computeDmpMake() {
   var dmp=0, make=0, mat=0, lab=0;
   ['platform','pwt','epwt','battery','tophat','eands'].forEach(function(k) {
@@ -21601,6 +21918,113 @@ var PROC_MAKE_BUY = {
   ELECTRODE_MIXING:'BUY', CELL_ASSEMBLY:'BUY', CELL_FORMATION:'BUY',
 };
 
+// Commodity exposure (2026-10-02, docs/LIFECYCLE_SPEC.md Phase 0): share of each BOM line's cost
+// that moves with a commodity index. Verbatim copy of cost_engines.COMMODITY_SHARE (parity-checked).
+var COMMODITIES = ['steel','aluminium','copper','battery','polymers','glass','electronics','energy'];
+var COMMODITY_SHARE = {
+  UHSS:{steel:1.0},
+  UHSS_PILLAR:{steel:1.0},
+  HSS_STAMPED:{steel:1.0},
+  BODY_STEEL:{steel:1.0},
+  MILD_STEEL:{steel:1.0},
+  FRAME_STEEL:{steel:1.0},
+  FORGED_STEEL:{steel:1.0},
+  STEEL_ALLOY:{steel:1.0},
+  STEEL_SHAFT:{steel:1.0},
+  MOTOR_STEEL:{steel:1.0},
+  ELEC_STEEL_LAMI:{steel:1.0},
+  CAST_IRON_BLOCK:{steel:1.0},
+  FASTENERS:{steel:0.6},
+  CELL_CAN:{steel:0.6},
+  ALU_STAMP:{aluminium:1.0},
+  ALU_ALLOY_HEAD:{aluminium:1.0},
+  ALU_CAST:{aluminium:1.0},
+  ALU_EXTRUSION:{aluminium:1.0},
+  ALU_HOUSING:{aluminium:1.0},
+  ALU_PISTON:{aluminium:1.0},
+  ALU_FOIL:{aluminium:1.0},
+  ALU_OXIDE:{aluminium:1.0},
+  MODULE_ALU:{aluminium:1.0},
+  BATTERY_HOUSING:{aluminium:0.8},
+  PACK_STRUCT:{aluminium:0.7},
+  COOLING_PLATE:{aluminium:0.8},
+  COPPER_WINDING:{copper:1.0},
+  COPPER_FOIL:{copper:1.0},
+  WIRING:{copper:0.6,polymers:0.2},
+  HV_WIRING:{copper:0.6,polymers:0.2},
+  PURCHASED_CELLS:{battery:0.7},
+  NICKEL_SULFATE:{battery:1.0},
+  COBALT_SULFATE:{battery:1.0},
+  LITHIUM_SALT:{battery:1.0},
+  GRAPHITE:{battery:1.0},
+  IRON_PHOSPHATE:{battery:1.0},
+  MANGANESE_OXIDE:{battery:1.0},
+  ELECTROLYTE:{battery:1.0},
+  SOLID_ELECTROLYTE:{battery:1.0},
+  SEPARATOR:{battery:0.6,polymers:0.4},
+  RARE_EARTH_MAG:{battery:0.8},
+  INT_PLASTIC:{polymers:1.0},
+  NVH_RUBBER:{polymers:1.0},
+  RUBBER_EPDM:{polymers:1.0},
+  RUBBER_SEAL:{polymers:1.0},
+  WEATHERSTRIP:{polymers:1.0},
+  SEAT_FOAM:{polymers:1.0},
+  INSULATION_POLY:{polymers:1.0},
+  STRUCT_ADHESIVE:{polymers:1.0},
+  SEALANT:{polymers:1.0},
+  THERMAL_FILM:{polymers:1.0},
+  TRIM_TEXTILE:{polymers:0.6},
+  PAINT_MATERIAL:{polymers:0.6},
+  CFRP:{polymers:0.8},
+  DASH_STRUCT:{polymers:0.6},
+  GLASS_UNIT:{glass:1.0},
+  LIDAR_HW:{electronics:0.7},
+  RADAR_HW:{electronics:0.7},
+  CAMERA_HW:{electronics:0.7},
+  DISPLAY_HW:{electronics:0.7},
+  COMMS_HW:{electronics:0.7},
+  SECURE_HW:{electronics:0.7},
+  AUDIO_HW:{electronics:0.7},
+  HPC_UNIT:{electronics:0.8},
+  ZONE_CTRL:{electronics:0.8},
+  DOMAIN_ECU:{electronics:0.8},
+  BMS_ELECTRONICS:{electronics:0.7},
+  ADAS_SENSOR_SUITE:{electronics:0.6},
+  INFOTAINMENT_AUDIO:{electronics:0.5},
+  EDRIVE_POWER_ELEC:{electronics:0.5,copper:0.15},
+  ELEC_ANCILLARY:{electronics:0.5,copper:0.1},
+  SUSPENSION_STEER:{steel:0.4,aluminium:0.1},
+  WHEELS_TYRES:{steel:0.15,aluminium:0.15,polymers:0.25},
+  BRAKE_SYSTEM:{steel:0.4},
+  DRIVELINE:{steel:0.45,aluminium:0.05},
+  ENGINE_ANCILLARIES:{steel:0.2,aluminium:0.15,electronics:0.1},
+  FUEL_EXHAUST:{steel:0.45},
+  EV_THERMAL:{aluminium:0.25,copper:0.1,electronics:0.1},
+  COOLING_MODULE:{aluminium:0.4},
+  WIRING_HARNESS:{copper:0.45,polymers:0.1},
+  INTERIOR_MODULES:{polymers:0.35},
+  HVAC_MODULE:{aluminium:0.2,copper:0.05,polymers:0.1,electronics:0.05},
+  LIGHTING:{electronics:0.25,polymers:0.15},
+  BUMPER_FASCIA:{polymers:0.5},
+  AIRBAG_MODULE:{polymers:0.2,electronics:0.1},
+  WINDOW_REG:{steel:0.3,electronics:0.1},
+  CLOSURE_MECH:{steel:0.5},
+  SEATBELT_ASY:{steel:0.2,polymers:0.2},
+  SEAT_FRAME:{steel:0.6},
+  SEAT_MECH:{steel:0.5},
+  EXT_MIRROR:{glass:0.1,polymers:0.2,electronics:0.1}
+};
+function _commodityEur(matLines, procLines) {
+  var out = {}; COMMODITIES.forEach(function(c){ out[c] = 0; });
+  matLines.forEach(function(l) {
+    var sh = COMMODITY_SHARE[l.material_code] || {};
+    Object.keys(sh).forEach(function(c){ out[c] += (l.material_cost_eur || 0) * sh[c]; });
+  });
+  procLines.forEach(function(l){ out.energy += (l.energy_cost_eur || 0); });
+  COMMODITIES.forEach(function(c){ out[c] = Math.round(out[c]*100)/100; });
+  return out;
+}
+
 // Shared BOM split helper — called by all 6 cost engines after BOM is fully built.
 // makeBuyOverride: null (use PROC_MAKE_BUY table) | 'BUY' (entire module bought)
 function _calcBomSplit(matLines, procLines, makeBuyOverride) {
@@ -21638,6 +22062,7 @@ function _calcBomSplit(matLines, procLines, makeBuyOverride) {
       overhead_eur:     r2(buy_oh),
       profit_eur:       r2(buy_prof),
       total_eur:        r2(dmp_tot),
+      commodity_eur:    _commodityEur(matLines, procLines),
     },
     make: {
       labor_eur:     r2(mk_lbr),
@@ -25555,6 +25980,7 @@ async function confirmProposal(acceptedSop) {
       pwt_type: _pwtType, platform_size: _plS.size||'medium',
       body_type: _bodyC, segment_code: _prop.study.segment_code,
       dmp_total_eur: Math.round(_bom.dmp), make_total_eur: Math.round(_bom.make),
+      commodity_exposure: _computeCommodityExposure(),
       brand_name:  (_prop.study.rolled_up_specs && _prop.study.rolled_up_specs.brand_name) || '',
       safety:      _vrC.safety      != null ? Math.round(_vrC.safety*100)      : parseFloat(_thS.safety||_plS.safety||50),
       comfort:     _vrC.comfort     != null ? Math.round(_vrC.comfort*100)     : parseFloat(_thS.comfort||_plS.comfort||50),
