@@ -7910,7 +7910,8 @@ var _plmTab = {data: null, busy: false};
 // ── Lifecycle portfolio (Phase 1): the team sets the envelope, the simulation funds projects by
 // benefit/cost (financial_engine.session_lifecycle_plan, a dry run of what clearing persists).
 var _PLM_REASON = {below_hurdle: 'below your hurdle', no_budget: 'budget used up', no_fte: 'no engineering room'};
-var _PLM_PHASE = {engineering: 'Engineering', industrialising: 'Tooling & PPAP', ramping: 'Change-over', live: 'Live', planned: 'Planned'};
+var _PLM_PHASE = {engineering: 'Engineering', industrialising: 'Tooling & PPAP', ramping: 'Change-over', live: 'Live', planned: 'Planned',
+                  campaign: 'Campaign running', ended: 'Campaign over'};
 
 async function _plmSetEnvelope(body) {
   if (_plmTab.busy) return;
@@ -7930,11 +7931,12 @@ async function _plmSetEnvelope(body) {
   }
 }
 
-function _plmBudgetSet() {
-  var el = document.getElementById('plm-budget-input');
+function _plmBudgetSet(which) {
+  var mkt = which === 'mkt';
+  var el = document.getElementById(mkt ? 'plm-mkt-input' : 'plm-budget-input');
   var v = el ? parseFloat(el.value) : NaN;
   if (isNaN(v) || v < 0) { toast('Enter a budget in €M a year'); return; }
-  _plmSetEnvelope({capex_envelope_m: v});
+  _plmSetEnvelope(mkt ? {mkt_envelope_m: v} : {capex_envelope_m: v});
 }
 
 // Frontier: cumulative estimated benefit (NPV) vs cumulative spend over every candidate, best
@@ -7991,10 +7993,19 @@ function _plmPortfolioHtml(head, th, td, eur, deur, col) {
        '<input id="plm-budget-input" type="number" min="0" step="10" value="' + Math.round(P.capex_envelope_m || 0) + '"' + (lock ? ' disabled' : '') +
        ' style="width:90px;background:var(--s2);border:1px solid var(--border);border-radius:5px;color:var(--text);padding:4px 6px;font-family:DM Mono,monospace;font-size:11px;">' +
        '<span style="font-size:10px;color:var(--muted2);">€M</span>' +
-       (lock ? '' : '<button onclick="_plmBudgetSet()" style="background:var(--s2);border:1px solid var(--gold);color:var(--gold);border-radius:5px;padding:3px 8px;cursor:pointer;font-size:10px;">Set</button>') +
+       (lock ? '' : '<button onclick="_plmBudgetSet(\'capex\')" style="background:var(--s2);border:1px solid var(--gold);color:var(--gold);border-radius:5px;padding:3px 8px;cursor:pointer;font-size:10px;">Set</button>') +
        (lock || !P.custom ? '' : '<button onclick="_plmSetEnvelope({use_standard:true})" style="background:none;border:1px solid var(--border);color:var(--muted2);border-radius:5px;padding:3px 8px;cursor:pointer;font-size:10px;">Standard</button>') +
        '</div><div style="font-size:9px;color:var(--muted2);margin-top:3px;">' + (P.custom ? 'your budget' : 'standard') + ' · standard = ' + Math.round((C.standard || {}).capex_pct * 100 || 1) + '% of last year\'s revenue = ' + m(P.standard_capex_m) +
        '<br>committed this year ' + m(L.committed_year_m) + ' · left ' + m(L.budget_left_m) + '</div></div>';
+  h += '<div><div style="font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;">Refresh marketing ' + _esc(yr) + ' (special series)</div>' +
+       '<div style="display:flex;gap:6px;align-items:center;">' +
+       '<input id="plm-mkt-input" type="number" min="0" step="5" value="' + Math.round(P.mkt_envelope_m || 0) + '"' + (lock ? ' disabled' : '') +
+       ' style="width:80px;background:var(--s2);border:1px solid var(--border);border-radius:5px;color:var(--text);padding:4px 6px;font-family:DM Mono,monospace;font-size:11px;">' +
+       '<span style="font-size:10px;color:var(--muted2);">€M</span>' +
+       (lock ? '' : '<button onclick="_plmBudgetSet(\'mkt\')" style="background:var(--s2);border:1px solid var(--gold);color:var(--gold);border-radius:5px;padding:3px 8px;cursor:pointer;font-size:10px;">Set</button>') +
+       (lock || !P.custom_mkt ? '' : '<button onclick="_plmSetEnvelope({use_standard_mkt:true})" style="background:none;border:1px solid var(--border);color:var(--muted2);border-radius:5px;padding:3px 8px;cursor:pointer;font-size:10px;">Standard</button>') +
+       '</div><div style="font-size:9px;color:var(--muted2);margin-top:3px;">' + (P.custom_mkt ? 'your budget' : 'standard') + ' · standard = 0.3% of revenue = ' + m(P.standard_mkt_m) +
+       '<br>committed this year ' + m(L.committed_mkt_m) + ' · left ' + m(L.mkt_left_m) + '</div></div>';
   h += '<div><div style="font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;">Engineering cap (share of capacity)</div>' +
        (C.fte_caps || []).map(function(f) { return chip(Math.round(f * 100) + '%', Math.abs((P.fte_cap_pct || 0) - f) < 1e-6, '_plmSetEnvelope({fte_cap_pct:' + f + '})'); }).join('') +
        '<div style="font-size:9px;color:var(--muted2);">' + (L.human ? 'reserved before new-model development · ' + Math.round(L.fte.reserved_fte_mo) + ' of ' + Math.round(L.fte.cap_fte_mo) + ' FTE-months this quarter (capacity ' + Math.round(L.fte.capacity_fte_mo) + ')' : 'AI-run team: no engineering cap') + '</div></div>';
@@ -8002,7 +8013,7 @@ function _plmPortfolioHtml(head, th, td, eur, deur, col) {
        (C.hurdles || []).map(function(x) { return chip('≥ ' + x.toFixed(1), Math.abs((P.hurdle || 0) - x) < 1e-6, '_plmSetEnvelope({hurdle:' + x + '})'); }).join('') + '</div>';
   h += '<div><div style="font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;">Emphasis</div>' +
        (C.emphasis || []).map(function(e) { return chip(e, P.emphasis === e, '_plmSetEnvelope({emphasis:\'' + e + '\'})'); }).join('') +
-       '<div style="font-size:9px;color:var(--muted2);">cost: +15% weight on savings · quality: +30% on quality (brand)</div></div>';
+       '<div style="font-size:9px;color:var(--muted2);">cost: +15% on savings · quality: +30% on quality (brand) · growth: +30% on refreshes</div></div>';
   h += '</div>';
   // frontier + summary
   var tq = L.this_quarter || {};
@@ -8026,12 +8037,14 @@ function _plmPortfolioHtml(head, th, td, eur, deur, col) {
       var f = r.f, e = f.effect || {};
       var effect = f.type === 'vave' ? '−€' + Math.round(e.saving_eur || 0) + '/car' + (e.risk_f > 1 ? ' · claims +' + Math.round((e.risk_f - 1) * 100) + '% for 4 q' : '')
                  : f.type === 'quality' ? 'claims −' + Math.round((1 - (e.claim_f || 1)) * 100) + '% · reliability +' + (e.rel_pts || 0) + (e.content_eur ? ' · +€' + Math.round(e.content_eur) + '/car parts' : '')
-                 : f.type === 'material' ? (e.commodity || f.commodity || '') + ' exposure −' + Math.round((e.cut || 0) * 100) + '%' : '';
+                 : f.type === 'material' ? (e.commodity || f.commodity || '') + ' exposure −' + Math.round((e.cut || 0) * 100) + '%'
+                 : f.type === 'series' ? 'demand +' + ((e.bonus0 || 0) * 100).toFixed(1) + '% at launch, fading over 3 q' + (e.fatigue < 1 ? ' (repeat: half effect)' : '')
+                 : f.type === 'facelift' ? 'model ' + (e.age_credit_q || 12) + ' quarters younger · launch claims return for 4 q' : '';
       h += '<tr style="border-bottom:1px solid var(--border);opacity:' + (r.ok ? 1 : 0.6) + ';">' +
         td(r.ok ? '<span style="color:var(--green);">✓ funded</span>' : '<span style="color:var(--muted2);">✗ ' + _esc(_PLM_REASON[f.reason] || f.reason) + '</span>', 'left') +
         td(_esc(f.vehicle_name || ''), 'left') +
         td(_esc((C.types || {})[f.type] || f.label || f.type) + (f.commodity ? ' (' + _esc(f.commodity) + ')' : '') + ' <b>' + f.level + '</b>', 'left') +
-        td(m(f.cost_m != null ? f.cost_m : (f.capex_m + f.eng_m))) +
+        td(m(f.cost_m != null ? f.cost_m : (f.capex_m + f.eng_m + (f.mkt_m || 0)))) +
         td(m(f.est_benefit_m != null ? f.est_benefit_m : f.benefit_m)) +
         td(((f.est_bc != null ? f.est_bc : f.bc) || 0).toFixed(2), 'right', ((f.est_bc != null ? f.est_bc : f.bc) || 0) >= (P.hurdle || 1) ? 'var(--green)' : 'var(--muted2)') +
         td(r.ok ? _esc(f.changeover) : '—') +
@@ -8049,7 +8062,7 @@ function _plmPortfolioHtml(head, th, td, eur, deur, col) {
       h += '<tr style="border-bottom:1px solid var(--border);">' + td(_esc(p.vehicle_name || ''), 'left') +
         td(_esc(p.label) + (p.commodity ? ' (' + _esc(p.commodity) + ')' : '') + ' <b>' + p.level + '</b>', 'left') +
         td(_esc(p.decided)) + td('<span style="color:' + phCol + ';">' + _esc(_PLM_PHASE[p.phase] || p.phase) + '</span>', 'left') +
-        td(_esc(p.changeover)) + td(m(p.capex_m + p.eng_m)) + td((p.est_bc || 0).toFixed(2)) + '</tr>';
+        td(_esc(p.changeover)) + td(m(p.capex_m + p.eng_m + (p.mkt_m || 0))) + td((p.est_bc || 0).toFixed(2)) + '</tr>';
     });
     h += '</table></div>';
   }
@@ -8057,7 +8070,7 @@ function _plmPortfolioHtml(head, th, td, eur, deur, col) {
   if ((L.models || []).length) {
     h += head('MODELS ON SALE', 'cost-down pool = cost the design stage did not optimise (Cost Optimization in §2–§5)');
     h += '<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;">';
-    h += '<tr style="border-bottom:1px solid var(--border);">' + th('Model', 'left') + th('Cars / qtr') + th('Left (q)') + th('Cost-down pool', 'left') + th('Saving now') + th('Claims factor') + th('Reliability +') + '</tr>';
+    h += '<tr style="border-bottom:1px solid var(--border);">' + th('Model', 'left') + th('Cars / qtr') + th('Age / left (q)') + th('Cost-down pool', 'left') + th('Saving now') + th('Claims factor') + th('Reliability +') + th('Refresh now') + '</tr>';
     L.models.forEach(function(md) {
       var pl = md.pool || {}, ef = md.effects_now || {};
       var used = pl.pool_eur > 0 ? Math.min(1, (pl.captured_eur || 0) / pl.pool_eur) : 0;
@@ -8065,8 +8078,9 @@ function _plmPortfolioHtml(head, th, td, eur, deur, col) {
                 '<div style="width:' + Math.round(used * 100) + '%;height:100%;background:var(--gold);"></div></div>' +
                 '<span style="font-size:9px;color:var(--muted2);">€' + Math.round(pl.left_eur || 0) + '/car left of €' + Math.round(pl.pool_eur || 0) + ' · design opt. ' + Math.round((pl.co_weighted || 0) * 100) + '%</span></div>';
       h += '<tr style="border-bottom:1px solid var(--border);">' + td(_esc(md.name || ''), 'left') + td(Math.round(md.units_q).toLocaleString()) +
-        td(md.quarters_left) + td(bar, 'left') + td(ef.saving_eur ? '−€' + Math.round(ef.saving_eur) + '/car' : '—') +
-        td((ef.claim_f * ef.risk_f).toFixed(2)) + td(ef.rel_pts ? '+' + ef.rel_pts : '—') + '</tr>';
+        td((md.age_q != null ? md.age_q + ' / ' : '') + md.quarters_left) + td(bar, 'left') + td(ef.saving_eur ? '−€' + Math.round(ef.saving_eur) + '/car' : '—') +
+        td((ef.claim_f * ef.risk_f).toFixed(2)) + td(ef.rel_pts ? '+' + ef.rel_pts : '—') +
+        td((ef.buzz ? 'demand +' + (ef.buzz * 100).toFixed(1) + '%' : '') + (ef.age_credit_q ? (ef.buzz ? ' · ' : '') + Math.round(ef.age_credit_q) + ' q younger' : '') || '—') + '</tr>';
     });
     h += '</table></div>';
   }
@@ -15527,6 +15541,7 @@ var _FIN_LINES = {
     {l:'  ↳ severance (staffing cut, one-off)', k:'ga_severance_m', neg:true, optional:true},
     {l:'Brand marketing',        k:'marketing_m', neg:true, optional:true},
     {l:'Launch marketing',       k:'launch_marketing_m', neg:true, optional:true},
+    {l:'Special series campaigns', k:'lifecycle_mkt_m',  neg:true, optional:true},
     {l:'Sales network',          k:'sales_network_m', neg:true, optional:true},
     {l:'Market entry / exit',    k:'market_entry_m', neg:true, optional:true},
     {l:'Aftersales programmes & parts logistics', k:'aftersales_opex_m', neg:true, optional:true},
@@ -15616,7 +15631,7 @@ function switchFinTab(tab) {
 function _finPlOther(s) {
   if (!s) return 0;
   var n = function(k){ return parseFloat(s[k]) || 0; };
-  return n('gross_profit_m') - n('rd_expense_m') - n('sga_m') - n('marketing_m') - n('launch_marketing_m')
+  return n('gross_profit_m') - n('rd_expense_m') - n('sga_m') - n('marketing_m') - n('launch_marketing_m') - n('lifecycle_mkt_m')
        - n('sales_network_m') - n('market_entry_m') - n('aftersales_opex_m')
        - n('depreciation_total_m') - n('factoring_fee_m') - n('rf_fee_m') - n('lease_rent_m')
        + n('fs_ebit_m') - n('ebit_m');
