@@ -7309,7 +7309,9 @@ var _WARRANTY_E = {
     var mfg = (inp.mfg_f === null || inp.mfg_f === undefined) ? 1.0 : parseFloat(inp.mfg_f);
     var sup = E.SUPPLIER_DEV[String(inp.supplier_dev || 'LOW').toUpperCase()];
     if (sup === undefined) sup = 1.0;
-    var claims = E.BASE_CLAIMS * period * design * launch * mfg * sup;
+    // lifecycle quality projects (and an L cost-down's temporary risk) scale claims
+    var life = (inp.lifecycle_f === null || inp.lifecycle_f === undefined) ? 1.0 : parseFloat(inp.lifecycle_f);
+    var claims = E.BASE_CLAIMS * period * design * launch * mfg * sup * life;
     var fs = E.FIELD_SERVICE[String(inp.field_service || 'BASIC').toUpperCase()];
     var sp = E.SPARE_PARTS[String(inp.spare_parts || 'REACTIVE').toUpperCase()];
     var repair = (fs === undefined ? 1.0 : fs) * (sp === undefined ? 1.0 : sp);
@@ -7317,7 +7319,7 @@ var _WARRANTY_E = {
     return {claims_per_car: E._r(claims, 6), cost_per_claim_eur: E._r(perClaim, 4),
             eur_per_car: E._r(claims * perClaim, 4), period_f: E._r(period, 6),
             design_f: E._r(design, 6), launch_f: E._r(launch, 6), mfg_f: E._r(mfg, 6),
-            supplier_f: E._r(sup, 6), repair_f: E._r(repair, 6)};
+            supplier_f: E._r(sup, 6), repair_f: E._r(repair, 6), lifecycle_f: E._r(life, 6)};
   }
 };
 
@@ -7905,6 +7907,172 @@ function engView(tab) {
 // ════════════════════════════════════════════════════════════════
 var _plmTab = {data: null, busy: false};
 
+// ── Lifecycle portfolio (Phase 1): the team sets the envelope, the simulation funds projects by
+// benefit/cost (financial_engine.session_lifecycle_plan, a dry run of what clearing persists).
+var _PLM_REASON = {below_hurdle: 'below your hurdle', no_budget: 'budget used up', no_fte: 'no engineering room'};
+var _PLM_PHASE = {engineering: 'Engineering', industrialising: 'Tooling & PPAP', ramping: 'Change-over', live: 'Live', planned: 'Planned'};
+
+async function _plmSetEnvelope(body) {
+  if (_plmTab.busy) return;
+  _plmTab.busy = true;
+  try {
+    var res = await fetch(API_URL + '/sessions/' + sessionId + '/teams/' + teamId + '/lifecycle', {
+      method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)
+    });
+    var d = await res.json();
+    if (!res.ok) throw new Error(d.detail || ('HTTP ' + res.status));
+    _plmTab.lc = d;
+  } catch (e) {
+    toast('Lifecycle budget change failed: ' + e.message);
+  } finally {
+    _plmTab.busy = false;
+    _renderLifecycleTab();
+  }
+}
+
+function _plmBudgetSet() {
+  var el = document.getElementById('plm-budget-input');
+  var v = el ? parseFloat(el.value) : NaN;
+  if (isNaN(v) || v < 0) { toast('Enter a budget in €M a year'); return; }
+  _plmSetEnvelope({capex_envelope_m: v});
+}
+
+// Frontier: cumulative estimated benefit (NPV) vs cumulative spend over every candidate, best
+// benefit/cost first. Marks the year's budget left and the hurdle slope (benefit = hurdle x spend).
+function _plmFrontier(L) {
+  var pts = L.frontier || [];
+  if (pts.length < 2) return '<div style="font-size:10px;color:var(--muted2);">No improvement opportunities this quarter.</div>';
+  var W = 520, H = 190, PL = 48, PR = 12, PT = 10, PB = 30;
+  var maxX = Math.max(pts[pts.length - 1].cost_m, L.budget_left_m || 0) * 1.05 || 1;
+  var maxY = Math.max(pts[pts.length - 1].benefit_m, maxX * (L.policy.hurdle || 1)) * 1.05 || 1;
+  maxY = Math.max(pts[pts.length - 1].benefit_m * 1.1, 1);
+  var x = function(v) { return PL + v / maxX * (W - PL - PR); };
+  var y = function(v) { return H - PB - v / maxY * (H - PT - PB); };
+  var funded = L.spent_m || 0;
+  var path = pts.map(function(p, i) { return (i ? 'L' : 'M') + x(p.cost_m).toFixed(1) + ' ' + y(p.benefit_m).toFixed(1); }).join(' ');
+  var hx = Math.min(maxX, maxY / (L.policy.hurdle || 1));
+  var ticks = [0, 0.5, 1].map(function(f) {
+    return '<text x="' + (PL - 6) + '" y="' + (y(maxY * f) + 3).toFixed(1) + '" text-anchor="end" font-size="9" fill="var(--muted)">€' + Math.round(maxY * f) + 'M</text>' +
+           '<text x="' + x(maxX * f).toFixed(1) + '" y="' + (H - PB + 14) + '" text-anchor="middle" font-size="9" fill="var(--muted)">€' + Math.round(maxX * f) + 'M</text>';
+  }).join('');
+  var dots = pts.slice(1).map(function(p, i) {
+    var inBudget = p.cost_m <= funded + 1e-6;
+    return '<circle cx="' + x(p.cost_m).toFixed(1) + '" cy="' + y(p.benefit_m).toFixed(1) + '" r="' + (inBudget ? 4 : 3) + '" fill="' + (inBudget ? 'var(--gold)' : 'var(--s1)') +
+           '" stroke="var(--gold)" stroke-width="2"><title>Spend €' + p.cost_m.toFixed(1) + 'M → benefit €' + p.benefit_m.toFixed(1) + 'M (this step B/C ' + (p.bc || 0).toFixed(2) + ')</title></circle>';
+  }).join('');
+  return '<svg width="100%" viewBox="0 0 ' + W + ' ' + H + '" style="max-width:' + W + 'px;display:block;" role="img" aria-label="benefit vs spend">' +
+    '<line x1="' + PL + '" x2="' + (W - PR) + '" y1="' + y(0) + '" y2="' + y(0) + '" stroke="var(--border)"/>' +
+    '<line x1="' + x(0) + '" x2="' + x(hx).toFixed(1) + '" y1="' + y(0) + '" y2="' + y(hx * (L.policy.hurdle || 1)).toFixed(1) + '" stroke="var(--muted)" stroke-dasharray="4 4"><title>Hurdle: benefit = ' + L.policy.hurdle + ' × spend</title></line>' +
+    (L.budget_left_m > 0 ? '<line x1="' + x(L.budget_left_m).toFixed(1) + '" x2="' + x(L.budget_left_m).toFixed(1) + '" y1="' + PT + '" y2="' + y(0) + '" stroke="#a78bfa" stroke-dasharray="3 3"><title>Budget left this year: €' + L.budget_left_m.toFixed(1) + 'M</title></line>' +
+      '<text x="' + (x(L.budget_left_m) + 4).toFixed(1) + '" y="' + (PT + 9) + '" font-size="9" fill="#a78bfa">budget left</text>' : '') +
+    '<path d="' + path + '" fill="none" stroke="var(--gold)" stroke-width="2" stroke-linejoin="round"/>' + dots + ticks +
+    '<text x="' + (W - PR) + '" y="' + (H - 2) + '" text-anchor="end" font-size="9" fill="var(--muted)">cumulative spend (capex + engineering)</text>' +
+    '<text x="' + PL + '" y="' + (PT - 1) + '" font-size="9" fill="var(--muted)">estimated benefit (NPV)</text></svg>';
+}
+
+function _plmPortfolioHtml(head, th, td, eur, deur, col) {
+  var L = _plmTab.lc;
+  if (!L) return '';
+  if (!L.enabled) return '<div style="color:var(--muted2);font-size:10px;margin:8px 0 12px;">Lifecycle improvement projects are off in this session.</div>';
+  var P = L.policy || {}, C = L.constants || {};
+  var m = function(v) { return '€' + (Math.round((parseFloat(v) || 0) * 10) / 10).toLocaleString() + 'M'; };
+  var lock = L.locked;
+  var chip = function(label, sel, click, sub) {
+    return '<div ' + (lock ? '' : 'onclick="' + click + '" ') + 'style="display:inline-block;margin:0 4px 4px 0;padding:3px 8px;border-radius:5px;cursor:' + (lock ? 'default' : 'pointer') +
+      ';border:1px solid ' + (sel ? 'var(--gold)' : 'var(--border)') + ';background:' + (sel ? 'rgba(251,191,36,0.08)' : 'var(--s2)') + ';">' +
+      '<span style="font-size:10px;color:' + (sel ? 'var(--gold)' : 'var(--text)') + ';">' + (sel ? '● ' : '○ ') + label + '</span>' + (sub ? '<div style="font-size:9px;color:var(--muted2);">' + sub + '</div>' : '') + '</div>';
+  };
+  var h = head('IMPROVEMENT PORTFOLIO · ' + _esc(L.label), 'you set the budget · the simulation funds the best benefit/cost projects across your models');
+  // envelope
+  var yr = String(L.label || '').split(' ')[0];
+  h += '<div style="display:flex;flex-wrap:wrap;gap:18px;margin-bottom:10px;">';
+  h += '<div><div style="font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;">Budget ' + _esc(yr) + ' (capex + engineering)</div>' +
+       '<div style="display:flex;gap:6px;align-items:center;">' +
+       '<input id="plm-budget-input" type="number" min="0" step="10" value="' + Math.round(P.capex_envelope_m || 0) + '"' + (lock ? ' disabled' : '') +
+       ' style="width:90px;background:var(--s2);border:1px solid var(--border);border-radius:5px;color:var(--text);padding:4px 6px;font-family:DM Mono,monospace;font-size:11px;">' +
+       '<span style="font-size:10px;color:var(--muted2);">€M</span>' +
+       (lock ? '' : '<button onclick="_plmBudgetSet()" style="background:var(--s2);border:1px solid var(--gold);color:var(--gold);border-radius:5px;padding:3px 8px;cursor:pointer;font-size:10px;">Set</button>') +
+       (lock || !P.custom ? '' : '<button onclick="_plmSetEnvelope({use_standard:true})" style="background:none;border:1px solid var(--border);color:var(--muted2);border-radius:5px;padding:3px 8px;cursor:pointer;font-size:10px;">Standard</button>') +
+       '</div><div style="font-size:9px;color:var(--muted2);margin-top:3px;">' + (P.custom ? 'your budget' : 'standard') + ' · standard = ' + Math.round((C.standard || {}).capex_pct * 100 || 1) + '% of last year\'s revenue = ' + m(P.standard_capex_m) +
+       '<br>committed this year ' + m(L.committed_year_m) + ' · left ' + m(L.budget_left_m) + '</div></div>';
+  h += '<div><div style="font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;">Engineering cap (share of capacity)</div>' +
+       (C.fte_caps || []).map(function(f) { return chip(Math.round(f * 100) + '%', Math.abs((P.fte_cap_pct || 0) - f) < 1e-6, '_plmSetEnvelope({fte_cap_pct:' + f + '})'); }).join('') +
+       '<div style="font-size:9px;color:var(--muted2);">' + (L.human ? 'reserved before new-model development · ' + Math.round(L.fte.reserved_fte_mo) + ' of ' + Math.round(L.fte.cap_fte_mo) + ' FTE-months this quarter (capacity ' + Math.round(L.fte.capacity_fte_mo) + ')' : 'AI-run team: no engineering cap') + '</div></div>';
+  h += '<div><div style="font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;">Hurdle (benefit ÷ cost)</div>' +
+       (C.hurdles || []).map(function(x) { return chip('≥ ' + x.toFixed(1), Math.abs((P.hurdle || 0) - x) < 1e-6, '_plmSetEnvelope({hurdle:' + x + '})'); }).join('') + '</div>';
+  h += '<div><div style="font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;">Emphasis</div>' +
+       (C.emphasis || []).map(function(e) { return chip(e, P.emphasis === e, '_plmSetEnvelope({emphasis:\'' + e + '\'})'); }).join('') +
+       '<div style="font-size:9px;color:var(--muted2);">cost: +15% weight on savings · quality: +30% on quality (brand)</div></div>';
+  h += '</div>';
+  // frontier + summary
+  var tq = L.this_quarter || {};
+  h += '<div style="display:flex;flex-wrap:wrap;gap:16px;align-items:flex-start;">';
+  h += '<div style="flex:1 1 420px;min-width:300px;">' + _plmFrontier(L) + '</div>';
+  h += '<div style="flex:0 1 260px;font-size:10px;color:var(--text);line-height:1.7;">' +
+       'This quarter funds <b>' + (L.funded || []).length + '</b> project' + ((L.funded || []).length === 1 ? '' : 's') + ' for <b>' + m(L.spent_m) + '</b>' +
+       (L.marginal_bc != null ? '<br>last funded step B/C <b>' + L.marginal_bc.toFixed(2) + '</b>' : '') +
+       '<br>spend this quarter: engineering ' + m(tq.eng_m) + ', tooling ' + m(tq.capex_m) +
+       '<br><span style="color:var(--muted2);">Benefits are estimates (NPV after tax at your ' + ((L.wacc_pa || 0) * 100).toFixed(1) + '% cost of capital, at most ' + 12 + ' quarters after change-over). Nothing pays off before change-over.</span></div>';
+  h += '</div>';
+  // this quarter's allocation
+  h += head('THIS QUARTER\'S ALLOCATION', (lock ? 'decided at clearing' : 'what your budget buys if the round cleared now'));
+  var rows = (L.funded || []).map(function(f) { return {f: f, ok: true}; }).concat((L.rejected || []).slice(0, 12).map(function(r) { return {f: r, ok: false}; }));
+  if (!rows.length) {
+    h += '<div style="font-size:10px;color:var(--muted2);">No candidates: models need a quarter of sales and enough life left (change-over at least ' + 2 + ' quarters before end of production).</div>';
+  } else {
+    h += '<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;">';
+    h += '<tr style="border-bottom:1px solid var(--border);">' + th('', 'left') + th('Model', 'left') + th('Project', 'left') + th('Cost') + th('Est. benefit') + th('B/C') + th('Change-over') + th('Effect', 'left') + '</tr>';
+    rows.forEach(function(r) {
+      var f = r.f, e = f.effect || {};
+      var effect = f.type === 'vave' ? '−€' + Math.round(e.saving_eur || 0) + '/car' + (e.risk_f > 1 ? ' · claims +' + Math.round((e.risk_f - 1) * 100) + '% for 4 q' : '')
+                 : f.type === 'quality' ? 'claims −' + Math.round((1 - (e.claim_f || 1)) * 100) + '% · reliability +' + (e.rel_pts || 0) + (e.content_eur ? ' · +€' + Math.round(e.content_eur) + '/car parts' : '')
+                 : f.type === 'material' ? (e.commodity || f.commodity || '') + ' exposure −' + Math.round((e.cut || 0) * 100) + '%' : '';
+      h += '<tr style="border-bottom:1px solid var(--border);opacity:' + (r.ok ? 1 : 0.6) + ';">' +
+        td(r.ok ? '<span style="color:var(--green);">✓ funded</span>' : '<span style="color:var(--muted2);">✗ ' + _esc(_PLM_REASON[f.reason] || f.reason) + '</span>', 'left') +
+        td(_esc(f.vehicle_name || ''), 'left') +
+        td(_esc((C.types || {})[f.type] || f.label || f.type) + (f.commodity ? ' (' + _esc(f.commodity) + ')' : '') + ' <b>' + f.level + '</b>', 'left') +
+        td(m(f.cost_m != null ? f.cost_m : (f.capex_m + f.eng_m))) +
+        td(m(f.est_benefit_m != null ? f.est_benefit_m : f.benefit_m)) +
+        td(((f.est_bc != null ? f.est_bc : f.bc) || 0).toFixed(2), 'right', ((f.est_bc != null ? f.est_bc : f.bc) || 0) >= (P.hurdle || 1) ? 'var(--green)' : 'var(--muted2)') +
+        td(r.ok ? _esc(f.changeover) : '—') +
+        td(effect, 'left') + '</tr>';
+    });
+    h += '</table></div>';
+  }
+  // committed projects
+  if ((L.committed || []).length) {
+    h += head('PROJECTS UNDERWAY', 'engineering → tooling & supplier approval (PPAP) → change-over (50%) → live');
+    h += '<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;">';
+    h += '<tr style="border-bottom:1px solid var(--border);">' + th('Model', 'left') + th('Project', 'left') + th('Decided') + th('Phase', 'left') + th('Change-over') + th('Cost') + th('Est. B/C') + '</tr>';
+    L.committed.forEach(function(p) {
+      var phCol = p.phase === 'live' ? 'var(--green)' : p.phase === 'ramping' ? 'var(--gold)' : 'var(--text)';
+      h += '<tr style="border-bottom:1px solid var(--border);">' + td(_esc(p.vehicle_name || ''), 'left') +
+        td(_esc(p.label) + (p.commodity ? ' (' + _esc(p.commodity) + ')' : '') + ' <b>' + p.level + '</b>', 'left') +
+        td(_esc(p.decided)) + td('<span style="color:' + phCol + ';">' + _esc(_PLM_PHASE[p.phase] || p.phase) + '</span>', 'left') +
+        td(_esc(p.changeover)) + td(m(p.capex_m + p.eng_m)) + td((p.est_bc || 0).toFixed(2)) + '</tr>';
+    });
+    h += '</table></div>';
+  }
+  // per model
+  if ((L.models || []).length) {
+    h += head('MODELS ON SALE', 'cost-down pool = cost the design stage did not optimise (Cost Optimization in §2–§5)');
+    h += '<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;">';
+    h += '<tr style="border-bottom:1px solid var(--border);">' + th('Model', 'left') + th('Cars / qtr') + th('Left (q)') + th('Cost-down pool', 'left') + th('Saving now') + th('Claims factor') + th('Reliability +') + '</tr>';
+    L.models.forEach(function(md) {
+      var pl = md.pool || {}, ef = md.effects_now || {};
+      var used = pl.pool_eur > 0 ? Math.min(1, (pl.captured_eur || 0) / pl.pool_eur) : 0;
+      var bar = '<div style="display:flex;align-items:center;gap:6px;"><div style="width:90px;height:6px;border-radius:3px;background:var(--s2);overflow:hidden;">' +
+                '<div style="width:' + Math.round(used * 100) + '%;height:100%;background:var(--gold);"></div></div>' +
+                '<span style="font-size:9px;color:var(--muted2);">€' + Math.round(pl.left_eur || 0) + '/car left of €' + Math.round(pl.pool_eur || 0) + ' · design opt. ' + Math.round((pl.co_weighted || 0) * 100) + '%</span></div>';
+      h += '<tr style="border-bottom:1px solid var(--border);">' + td(_esc(md.name || ''), 'left') + td(Math.round(md.units_q).toLocaleString()) +
+        td(md.quarters_left) + td(bar, 'left') + td(ef.saving_eur ? '−€' + Math.round(ef.saving_eur) + '/car' : '—') +
+        td((ef.claim_f * ef.risk_f).toFixed(2)) + td(ef.rel_pts ? '+' + ef.rel_pts : '—') + '</tr>';
+    });
+    h += '</table></div>';
+  }
+  return h;
+}
+
 async function loadLifecycleTab() {
   var el = document.getElementById('lifecycle-content');
   if (!sessionId || !teamId) {
@@ -7912,10 +8080,13 @@ async function loadLifecycleTab() {
     return;
   }
   try {
-    var res = await fetch(API_URL + '/sessions/' + sessionId + '/teams/' + teamId + '/commodities');
-    var d = await res.json();
-    if (!res.ok) throw new Error(d.detail || ('HTTP ' + res.status));
+    var base = API_URL + '/sessions/' + sessionId + '/teams/' + teamId;
+    var rs = await Promise.all([fetch(base + '/commodities'), fetch(base + '/lifecycle')]);
+    var d = await rs[0].json();
+    if (!rs[0].ok) throw new Error(d.detail || ('HTTP ' + rs[0].status));
+    var l = await rs[1].json();
     _plmTab.data = d;
+    _plmTab.lc = rs[1].ok ? l : null;
     _renderLifecycleTab();
   } catch (e) {
     if (el) el.innerHTML = '<div style="color:var(--red);font-family:DM Mono,monospace;font-size:11px;padding:16px 0;">Lifecycle view unavailable: ' + _esc(e.message) + '</div>';
@@ -7979,7 +8150,9 @@ function _renderLifecycleTab() {
   var td = function(t, al, c) { return '<td style="text-align:' + (al || 'right') + ';padding:5px 6px;font-size:10px;vertical-align:middle;color:' + (c || 'var(--text)') + ';">' + t + '</td>'; };
   var models = d.models || [];
   var h = '<div style="font-family:DM Mono,monospace;">';
-  h += '<div style="font-size:11px;color:var(--text);margin-bottom:10px;line-height:1.6;">A model\'s <b>business case</b> priced its parts at the commodity prices '
+  h += '<div style="font-size:11px;color:var(--text);margin-bottom:10px;line-height:1.6;">Models in production keep improving: <b>cost-downs</b>, <b>quality fixes</b> and <b>material substitutions</b>, '
+     + 'funded each year from a lifecycle budget. You set the budget, the engineering you can spare and the return you demand; the simulation picks the projects. '
+     + 'A model\'s <b>business case</b> priced its parts at the commodity prices '
      + 'of the quarter it was approved, and keeps them. Once in production its parts follow the <b>commodity markets</b> '
      + 'where they are bought — steel, aluminium, copper, battery materials, polymers, glass, chips, energy — as far as your '
      + '<b>supply contracts</b> pass the moves on. That gap is the difference between the plan and the <b>live cost</b> you are charged.</div>';
@@ -7987,6 +8160,9 @@ function _renderLifecycleTab() {
     h += '<div style="color:var(--muted2);font-size:10px;margin-bottom:10px;">Commodity markets are off in this session: every index stays at 100, so live cost = approved cost (plus plant and sourcing adjustments).</div>';
   }
   if (d.locked) h += '<div style="color:var(--gold);font-size:10px;margin-bottom:10px;">🔒 ' + _esc(d.label) + ' has cleared. Decide again when the next round starts.</div>';
+
+  // ── Improvement portfolio (Phase 1) ──
+  h += _plmPortfolioHtml(head, th, td, eur, deur, col);
 
   // ── Commodity markets + contracts ──
   if (d.enabled) {
