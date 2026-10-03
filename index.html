@@ -14235,115 +14235,121 @@ async function loadSettingsPage() {
   } catch(e) { console.warn('loadSettingsPage:', e); }
 }
 
-// ── Commodity markets (instructor, docs/LIFECYCLE_SPEC.md Phase 0) ──
-// The index path is derived from the session; the instructor turns markets on/off and adds
-// shocks (presets) in future quarters. Past and current quarters are never rewritten.
-var _cmdAdmin = {data: null, busy: false};
-
-async function loadCommodityMarketAdmin() {
-  var el = document.getElementById('cfg-commodity-content');
-  if (!el || !sessionId) return;
-  try {
-    var res = await fetch(API_URL + '/sessions/' + sessionId + '/commodity-market?ahead=12');
-    var d = await res.json();
-    if (!res.ok) throw new Error(d.detail || ('HTTP ' + res.status));
-    _cmdAdmin.data = d;
-    _renderCommodityMarketAdmin();
-  } catch (e) {
-    el.innerHTML = '<div style="color:var(--red);font-size:11px;">Commodity markets unavailable: ' + _esc(e.message) + '</div>';
-  }
-}
-
-async function _cmdAdminCall(method, path, body) {
-  if (_cmdAdmin.busy) return;
-  _cmdAdmin.busy = true;
-  try {
-    var res = await fetch(API_URL + '/sessions/' + sessionId + path, {
-      method: method, headers: {'Content-Type': 'application/json'}, body: body ? JSON.stringify(body) : undefined
-    });
-    var d = await res.json();
-    if (!res.ok) throw new Error(d.detail || ('HTTP ' + res.status));
-    _cmdAdmin.data = d;
-  } catch (e) {
-    toast('❌ ' + e.message);
-  } finally {
-    _cmdAdmin.busy = false;
-    _renderCommodityMarketAdmin();
-  }
-}
-
-function _cmdAdminAddPreset() {
-  var p = (document.getElementById('cfg-cmd-preset') || {}).value;
-  var q = parseInt((document.getElementById('cfg-cmd-start') || {}).value, 10);
-  if (!p || isNaN(q)) return;
-  _cmdAdminCall('POST', '/commodity-shocks', {preset: p, start_qabs: q});
-}
-
-// Index path sparkline: past (solid) up to the open quarter, the future the instructor sees
-// (dashed); 100 baseline dashed and recessive.
-function _cmdAdminSpark(points, nowQ) {
-  var W = 220, H = 36, P = 3;
-  var vals = points.map(function(p) { return parseFloat(p.world) || 100; });
-  if (!vals.length) return '';
-  var lo = Math.min(85, Math.min.apply(null, vals)), hi = Math.max(115, Math.max.apply(null, vals));
-  var x = function(i) { return P + (vals.length < 2 ? 0 : i * (W - 2 * P) / (vals.length - 1)); };
-  var y = function(v) { return H - P - (v - lo) * (H - 2 * P) / (hi - lo); };
-  var k = points.findIndex(function(p) { return p.qabs === nowQ; });
-  if (k < 0) k = vals.length - 1;
-  var seg = function(a, b) { var s = ''; for (var i = a; i <= b; i++) s += (i === a ? 'M' : 'L') + x(i).toFixed(1) + ' ' + y(vals[i]).toFixed(1) + ' '; return s; };
-  var hits = points.map(function(p, i) {
-    return '<circle cx="' + x(i).toFixed(1) + '" cy="' + y(vals[i]).toFixed(1) + '" r="4" fill="transparent"><title>' + _esc(p.label) + ': ' + vals[i].toFixed(1) + (i > k ? ' (future)' : '') + '</title></circle>';
-  }).join('');
-  return '<svg width="' + W + '" height="' + H + '" style="display:block;overflow:visible;" role="img" aria-label="index path">' +
-    '<line x1="' + P + '" x2="' + (W - P) + '" y1="' + y(100).toFixed(1) + '" y2="' + y(100).toFixed(1) + '" stroke="var(--border)" stroke-dasharray="3 3"/>' +
-    '<path d="' + seg(0, k) + '" fill="none" stroke="#a78bfa" stroke-width="2" stroke-linejoin="round"/>' +
-    (k < vals.length - 1 ? '<path d="' + seg(k, vals.length - 1) + '" fill="none" stroke="#a78bfa" stroke-width="2" stroke-dasharray="4 3" opacity="0.7"/>' : '') +
-    '<circle cx="' + x(k).toFixed(1) + '" cy="' + y(vals[k]).toFixed(1) + '" r="4" fill="#a78bfa" stroke="var(--s1)" stroke-width="2"/>' +
-    hits + '</svg>';
-}
-
-function _renderCommodityMarketAdmin() {
-  var el = document.getElementById('cfg-commodity-content');
-  var d = _cmdAdmin.data;
-  if (!el || !d) return;
-  var C = d.constants || {}, labels = C.labels || {}, presets = C.presets || {};
-  var cb = document.getElementById('cfg-cmd-enabled');
-  if (cb) cb.checked = !!d.enabled;
-  if (!d.enabled) {
-    el.innerHTML = '<div style="font-size:11px;color:var(--muted2);">Off: every index stays at 100 and live cost equals approved cost. Turn on to let commodity prices move.</div>';
-    return;
-  }
-  var h = '<table style="width:100%;border-collapse:collapse;font-family:DM Mono,monospace;">';
-  (C.commodities || []).forEach(function(c) {
-    var pts = (d.path || {})[c] || [];
-    var now = pts.find(function(p) { return p.qabs === d.qabs; }) || pts[pts.length - 1] || {world: 100};
-    h += '<tr style="border-bottom:1px solid var(--border);"><td style="font-size:11px;color:#cbd5e1;padding:4px 6px;">' + _esc(labels[c] || c) + '</td>' +
-         '<td style="padding:4px 6px;">' + _cmdAdminSpark(pts, d.qabs) + '</td>' +
-         '<td style="font-size:11px;color:#cbd5e1;text-align:right;padding:4px 6px;">' + (parseFloat(now.world) || 100).toFixed(1) + '</td></tr>';
-  });
-  h += '</table><div style="font-size:10px;color:var(--muted2);margin:4px 0 12px;">World index, 2025 Q1 → 12 quarters ahead; solid = what teams have seen (to ' + _esc(d.label) + '), dashed = still to come.</div>';
-  // shocks
-  h += '<div style="font-size:12px;color:#94a3b8;margin-bottom:6px;">Shocks</div>';
-  if (!(d.shocks || []).length) h += '<div style="font-size:11px;color:var(--muted2);margin-bottom:8px;">None — the markets follow their normal path.</div>';
-  (d.shocks || []).forEach(function(s) {
-    var q = parseInt(s.start_qabs, 10);
-    h += '<div style="display:flex;gap:8px;align-items:center;font-size:11px;color:#cbd5e1;margin-bottom:4px;">' +
-         '<span>' + _esc(s.label || '') + ' · ' + _esc(labels[s.commodity] || s.commodity) + ' ' + (s.peak_pct > 0 ? '+' : '') + s.peak_pct + '%' +
-         (s.region ? ' (' + _esc(s.region) + ')' : '') + ' from ' + (2025 + Math.floor(q / 4)) + ' Q' + (q % 4 + 1) + '</span>' +
-         (s.editable ? '<button onclick="_cmdAdminCall(\'DELETE\',\'/commodity-shocks/' + s.id + '\')" style="background:none;border:1px solid var(--border);color:var(--muted2);border-radius:5px;padding:1px 8px;cursor:pointer;font-size:10px;">remove</button>'
-                     : '<span style="color:var(--muted);font-size:10px;">started</span>') + '</div>';
-  });
-  var opts = Object.keys(presets).map(function(k) { return '<option value="' + k + '">' + _esc(presets[k].label) + '</option>'; }).join('');
-  var qs = '';
-  for (var q = d.qabs + 1; q <= d.qabs + 12; q++) qs += '<option value="' + q + '">' + (2025 + Math.floor(q / 4)) + ' Q' + (q % 4 + 1) + '</option>';
-  var sel = 'background:var(--s2);border:1px solid var(--border);border-radius:6px;color:#f1f5f9;padding:6px 8px;font-size:12px;font-family:DM Mono,monospace;';
-  h += '<div style="display:flex;gap:8px;align-items:center;margin-top:8px;flex-wrap:wrap;">' +
-       '<select id="cfg-cmd-preset" style="' + sel + '">' + opts + '</select>' +
-       '<span style="font-size:11px;color:#94a3b8;">from</span><select id="cfg-cmd-start" style="' + sel + '">' + qs + '</select>' +
-       '<button onclick="_cmdAdminAddPreset()" style="background:#4c1d95;color:#c4b5fd;border:1px solid #7c3aed;border-radius:7px;padding:6px 14px;font-size:12px;cursor:pointer;">+ Add shock</button></div>';
-  el.innerHTML = h;
-}
-
+// ── Commodity markets (instructor, docs/LIFECYCLE_SPEC.md Phase 0) ──
+// The index path is derived from the session; the instructor turns markets on/off and adds
+// shocks (presets) in future quarters. Past and current quarters are never rewritten.
+var _cmdAdmin = {data: null, busy: false};
+// The backend shows the future path and scheduled shocks only to an instructor PIN.
+function _cmdAdminHeaders(json) {
+  var h = {'X-Instructor-Pin': (typeof currentUser !== 'undefined' && currentUser && currentUser.pin) || ''};
+  if (json) h['Content-Type'] = 'application/json';
+  return h;
+}
+
+async function loadCommodityMarketAdmin() {
+  var el = document.getElementById('cfg-commodity-content');
+  if (!el || !sessionId) return;
+  try {
+    var res = await fetch(API_URL + '/sessions/' + sessionId + '/commodity-market?ahead=12', {headers: _cmdAdminHeaders(false)});
+    var d = await res.json();
+    if (!res.ok) throw new Error(d.detail || ('HTTP ' + res.status));
+    _cmdAdmin.data = d;
+    _renderCommodityMarketAdmin();
+  } catch (e) {
+    el.innerHTML = '<div style="color:var(--red);font-size:11px;">Commodity markets unavailable: ' + _esc(e.message) + '</div>';
+  }
+}
+
+async function _cmdAdminCall(method, path, body) {
+  if (_cmdAdmin.busy) return;
+  _cmdAdmin.busy = true;
+  try {
+    var res = await fetch(API_URL + '/sessions/' + sessionId + path, {
+      method: method, headers: _cmdAdminHeaders(true), body: body ? JSON.stringify(body) : undefined
+    });
+    var d = await res.json();
+    if (!res.ok) throw new Error(d.detail || ('HTTP ' + res.status));
+    _cmdAdmin.data = d;
+  } catch (e) {
+    toast('❌ ' + e.message);
+  } finally {
+    _cmdAdmin.busy = false;
+    _renderCommodityMarketAdmin();
+  }
+}
+
+function _cmdAdminAddPreset() {
+  var p = (document.getElementById('cfg-cmd-preset') || {}).value;
+  var q = parseInt((document.getElementById('cfg-cmd-start') || {}).value, 10);
+  if (!p || isNaN(q)) return;
+  _cmdAdminCall('POST', '/commodity-shocks', {preset: p, start_qabs: q});
+}
+
+// Index path sparkline: past (solid) up to the open quarter, the future the instructor sees
+// (dashed); 100 baseline dashed and recessive.
+function _cmdAdminSpark(points, nowQ) {
+  var W = 220, H = 36, P = 3;
+  var vals = points.map(function(p) { return parseFloat(p.world) || 100; });
+  if (!vals.length) return '';
+  var lo = Math.min(85, Math.min.apply(null, vals)), hi = Math.max(115, Math.max.apply(null, vals));
+  var x = function(i) { return P + (vals.length < 2 ? 0 : i * (W - 2 * P) / (vals.length - 1)); };
+  var y = function(v) { return H - P - (v - lo) * (H - 2 * P) / (hi - lo); };
+  var k = points.findIndex(function(p) { return p.qabs === nowQ; });
+  if (k < 0) k = vals.length - 1;
+  var seg = function(a, b) { var s = ''; for (var i = a; i <= b; i++) s += (i === a ? 'M' : 'L') + x(i).toFixed(1) + ' ' + y(vals[i]).toFixed(1) + ' '; return s; };
+  var hits = points.map(function(p, i) {
+    return '<circle cx="' + x(i).toFixed(1) + '" cy="' + y(vals[i]).toFixed(1) + '" r="4" fill="transparent"><title>' + _esc(p.label) + ': ' + vals[i].toFixed(1) + (i > k ? ' (future)' : '') + '</title></circle>';
+  }).join('');
+  return '<svg width="' + W + '" height="' + H + '" style="display:block;overflow:visible;" role="img" aria-label="index path">' +
+    '<line x1="' + P + '" x2="' + (W - P) + '" y1="' + y(100).toFixed(1) + '" y2="' + y(100).toFixed(1) + '" stroke="var(--border)" stroke-dasharray="3 3"/>' +
+    '<path d="' + seg(0, k) + '" fill="none" stroke="#a78bfa" stroke-width="2" stroke-linejoin="round"/>' +
+    (k < vals.length - 1 ? '<path d="' + seg(k, vals.length - 1) + '" fill="none" stroke="#a78bfa" stroke-width="2" stroke-dasharray="4 3" opacity="0.7"/>' : '') +
+    '<circle cx="' + x(k).toFixed(1) + '" cy="' + y(vals[k]).toFixed(1) + '" r="4" fill="#a78bfa" stroke="var(--s1)" stroke-width="2"/>' +
+    hits + '</svg>';
+}
+
+function _renderCommodityMarketAdmin() {
+  var el = document.getElementById('cfg-commodity-content');
+  var d = _cmdAdmin.data;
+  if (!el || !d) return;
+  var C = d.constants || {}, labels = C.labels || {}, presets = C.presets || {};
+  var cb = document.getElementById('cfg-cmd-enabled');
+  if (cb) cb.checked = !!d.enabled;
+  if (!d.enabled) {
+    el.innerHTML = '<div style="font-size:11px;color:var(--muted2);">Off: every index stays at 100 and live cost equals approved cost. Turn on to let commodity prices move.</div>';
+    return;
+  }
+  var h = '<table style="width:100%;border-collapse:collapse;font-family:DM Mono,monospace;">';
+  (C.commodities || []).forEach(function(c) {
+    var pts = (d.path || {})[c] || [];
+    var now = pts.find(function(p) { return p.qabs === d.qabs; }) || pts[pts.length - 1] || {world: 100};
+    h += '<tr style="border-bottom:1px solid var(--border);"><td style="font-size:11px;color:#cbd5e1;padding:4px 6px;">' + _esc(labels[c] || c) + '</td>' +
+         '<td style="padding:4px 6px;">' + _cmdAdminSpark(pts, d.qabs) + '</td>' +
+         '<td style="font-size:11px;color:#cbd5e1;text-align:right;padding:4px 6px;">' + (parseFloat(now.world) || 100).toFixed(1) + '</td></tr>';
+  });
+  h += '</table><div style="font-size:10px;color:var(--muted2);margin:4px 0 12px;">World index, 2025 Q1 → 12 quarters ahead; solid = what teams have seen (to ' + _esc(d.label) + '), dashed = still to come.</div>';
+  // shocks
+  h += '<div style="font-size:12px;color:#94a3b8;margin-bottom:6px;">Shocks</div>';
+  if (!(d.shocks || []).length) h += '<div style="font-size:11px;color:var(--muted2);margin-bottom:8px;">None — the markets follow their normal path.</div>';
+  (d.shocks || []).forEach(function(s) {
+    var q = parseInt(s.start_qabs, 10);
+    h += '<div style="display:flex;gap:8px;align-items:center;font-size:11px;color:#cbd5e1;margin-bottom:4px;">' +
+         '<span>' + _esc(s.label || '') + ' · ' + _esc(labels[s.commodity] || s.commodity) + ' ' + (s.peak_pct > 0 ? '+' : '') + s.peak_pct + '%' +
+         (s.region ? ' (' + _esc(s.region) + ')' : '') + ' from ' + (2025 + Math.floor(q / 4)) + ' Q' + (q % 4 + 1) + '</span>' +
+         (s.editable ? '<button onclick="_cmdAdminCall(\'DELETE\',\'/commodity-shocks/' + s.id + '\')" style="background:none;border:1px solid var(--border);color:var(--muted2);border-radius:5px;padding:1px 8px;cursor:pointer;font-size:10px;">remove</button>'
+                     : '<span style="color:var(--muted);font-size:10px;">started</span>') + '</div>';
+  });
+  var opts = Object.keys(presets).map(function(k) { return '<option value="' + k + '">' + _esc(presets[k].label) + '</option>'; }).join('');
+  var qs = '';
+  for (var q = d.qabs + 1; q <= d.qabs + 12; q++) qs += '<option value="' + q + '">' + (2025 + Math.floor(q / 4)) + ' Q' + (q % 4 + 1) + '</option>';
+  var sel = 'background:var(--s2);border:1px solid var(--border);border-radius:6px;color:#f1f5f9;padding:6px 8px;font-size:12px;font-family:DM Mono,monospace;';
+  h += '<div style="display:flex;gap:8px;align-items:center;margin-top:8px;flex-wrap:wrap;">' +
+       '<select id="cfg-cmd-preset" style="' + sel + '">' + opts + '</select>' +
+       '<span style="font-size:11px;color:#94a3b8;">from</span><select id="cfg-cmd-start" style="' + sel + '">' + qs + '</select>' +
+       '<button onclick="_cmdAdminAddPreset()" style="background:#4c1d95;color:#c4b5fd;border:1px solid #7c3aed;border-radius:7px;padding:6px 14px;font-size:12px;cursor:pointer;">+ Add shock</button></div>';
+  el.innerHTML = h;
+}
+
 async function settingsSaveRivalCoverage(on) {
   if (!sessionId) return;
   try {
