@@ -7979,8 +7979,8 @@ function _renderLifecycleTab() {
   var td = function(t, al, c) { return '<td style="text-align:' + (al || 'right') + ';padding:5px 6px;font-size:10px;vertical-align:middle;color:' + (c || 'var(--text)') + ';">' + t + '</td>'; };
   var models = d.models || [];
   var h = '<div style="font-family:DM Mono,monospace;">';
-  h += '<div style="font-size:11px;color:var(--text);margin-bottom:10px;line-height:1.6;">A model\'s <b>approved cost</b> is what its business case priced: '
-     + 'the parts at today\'s reference commodity prices (index 100). Once in production its parts follow the <b>commodity markets</b> '
+  h += '<div style="font-size:11px;color:var(--text);margin-bottom:10px;line-height:1.6;">A model\'s <b>business case</b> priced its parts at the commodity prices '
+     + 'of the quarter it was approved, and keeps them. Once in production its parts follow the <b>commodity markets</b> '
      + 'where they are bought — steel, aluminium, copper, battery materials, polymers, glass, chips, energy — as far as your '
      + '<b>supply contracts</b> pass the moves on. That gap is the difference between the plan and the <b>live cost</b> you are charged.</div>';
   if (!d.enabled) {
@@ -8028,31 +8028,34 @@ function _renderLifecycleTab() {
        + 'Index-linked passes moves on a quarter late; partial passes half for a 0.5% premium; fixed price holds four quarters at a time for a 1.5% premium, then resets to the market.</div>';
   }
 
-  // ── Cost bridge per model ──
-  h += head('COST BRIDGE BY MODEL', 'approved (business case) → live cost per car this quarter');
+  // ── Cost bridge per model: approved business case → live ──
+  h += head('COST VS BUSINESS CASE BY MODEL', 'business case = commodity prices frozen at approval · live = this quarter\'s prices under your contracts');
   if (!models.length) {
     h += '<div style="color:var(--muted2);font-size:10px;">No model on sale this quarter.</div>';
   } else {
     h += '<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;">';
-    h += '<tr style="border-bottom:1px solid var(--border);">' + th('Model', 'left') + th('Approved') + th('Plant & sourcing') + th('Commodity drift') + th('Contract premium') + th('Live cost') + th('vs approved') + th('Biggest movers', 'left') + '</tr>';
+    h += '<tr style="border-bottom:1px solid var(--border);">' + th('Model', 'left') + th('Business case') + th('Commodity variance') + th('Live cost') + th('vs business case') + th('Biggest variances', 'left') + '</tr>';
     models.forEach(function(m) {
-      var gap = m.live_eur - m.approved_eur;
-      var movers = Object.keys(m.by_commodity || {}).map(function(c) { return [c, m.by_commodity[c].drift_eur + m.by_commodity[c].premium_eur]; })
+      var gap = m.live_eur - m.bc_eur;
+      var movers = Object.keys(m.by_commodity || {}).map(function(c) { return [c, m.by_commodity[c].variance_eur]; })
         .filter(function(x) { return Math.abs(x[1]) >= 1; })
         .sort(function(a, b) { return Math.abs(b[1]) - Math.abs(a[1]); }).slice(0, 3)
-        .map(function(x) { return _esc(labels[x[0]] || x[0]) + ' <span style="color:' + col(x[1]) + '">' + deur(x[1]) + '</span>'; }).join('<br>');
+        .map(function(x) {
+          var bcI = m.by_commodity[x[0]].bc_index, nowI = m.by_commodity[x[0]].index;
+          return _esc(labels[x[0]] || x[0]) + ' <span style="color:var(--muted)">' + bcI.toFixed(0) + '→' + nowI.toFixed(0) + '</span> <span style="color:' + col(x[1]) + '">' + deur(x[1]) + '</span>';
+        }).join('<br>');
       h += '<tr style="border-bottom:1px solid var(--border);">' +
-        td('<b>' + _esc(m.name || m.segment_code || 'model') + '</b><div style="font-size:9px;color:var(--muted);">parts bought in ' + _esc(m.region) +
-           (m.exposure_source === 'profile' ? ' · exposure estimated from its powertrain' : '') + '</div>', 'left') +
-        td(eur(m.approved_eur)) +
-        td(deur(m.plant_sourcing_eur), 'right', col(m.plant_sourcing_eur)) +
-        td(deur(m.commodity_drift_eur), 'right', col(m.commodity_drift_eur)) +
-        td(deur(m.contract_premium_eur), 'right', col(m.contract_premium_eur)) +
+        td('<b>' + _esc(m.name || m.segment_code || 'model') + '</b><div style="font-size:9px;color:var(--muted);">approved at ' + _esc(m.bc_basis.label) +
+           ' prices · parts bought in ' + _esc(m.region) + (m.exposure_source === 'profile' ? ' · exposure estimated from its powertrain' : '') + '</div>', 'left') +
+        td(eur(m.bc_eur) + '<div style="font-size:9px;color:var(--muted);">commodities ' + deur(m.bc_commodity_eur) + '</div>') +
+        td(deur(m.commodity_variance_eur), 'right', col(m.commodity_variance_eur)) +
         td('<b>' + eur(m.live_eur) + '</b>') +
-        td((gap >= 0 ? '+' : '−') + (Math.abs(gap) / Math.max(1, m.approved_eur) * 100).toFixed(1) + '%', 'right', col(gap)) +
+        td((gap >= 0 ? '+' : '−') + (Math.abs(gap) / Math.max(1, m.bc_eur) * 100).toFixed(1) + '%', 'right', col(gap)) +
         td(movers || '<span style="color:var(--muted2)">—</span>', 'left') + '</tr>';
     });
     h += '</table></div>';
+    h += '<div style="font-size:9px;color:var(--muted);margin-top:4px;">Business case = the cost approved in §10, with commodities at the prices of the approval quarter (index 100 for models approved before commodity markets). '
+       + 'Variance = what this quarter\'s prices, passed on by your supply contracts, add or save against it.</div>';
   }
   if (d.last_quarter && d.last_quarter.cogs_commodity_m != null) {
     h += '<div style="font-size:10px;color:var(--muted2);margin-top:8px;">Last quarter (Q' + d.last_quarter.quarter + ' ' + d.last_quarter.year + ') commodity markets ' +
@@ -22014,6 +22017,26 @@ var COMMODITY_SHARE = {
   SEAT_MECH:{steel:0.5},
   EXT_MIRROR:{glass:0.1,polymers:0.2,electronics:0.1}
 };
+// Commodity cost of one car with every index held at a level (a business case's approval-quarter
+// prices): twin of financial_engine.commodity_cost_eur on a FixedIndexMarket (parity-checked).
+// CONTRACTS copies CMD_CONTRACTS. exposure: {commodity: EUR/car at index 100}; index:
+// {commodity: level}; contracts: {commodity: index|partial|fixed} (missing = index-linked).
+var _COMMODITY_E = {
+  CONTRACTS: {index: {pass: 1.0, premium: 0.0, fix_q: 0}, partial: {pass: 0.5, premium: 0.005, fix_q: 0},
+              fixed: {pass: 1.0, premium: 0.015, fix_q: 4}},
+  cost: function(exposure, index, contracts) {
+    var by = {}, tot = 0;
+    COMMODITIES.forEach(function(c) {
+      var e = parseFloat((exposure || {})[c] || 0), ix = parseFloat((index || {})[c] || 100);
+      var k = _COMMODITY_E.CONTRACTS[(contracts || {})[c]] || _COMMODITY_E.CONTRACTS.index;
+      var v = e * (ix / 100 - 1) * k.pass + e * ix / 100 * k.premium;
+      by[c] = Math.round(v * 100) / 100;
+      tot += v;
+    });
+    return {eur: Math.round(tot * 100) / 100, by: by};
+  }
+};
+
 function _commodityEur(matLines, procLines) {
   var out = {}; COMMODITIES.forEach(function(c){ out[c] = 0; });
   matLines.forEach(function(l) {
@@ -25555,6 +25578,48 @@ function _propAftersalesPolicy(region) {
   return _AFTERSALES_E._pol(pols[region || 'EU'] || pols.EU);
 }
 
+// §10 commodity prices: the business case is costed at this quarter's indices in the plant's region
+// (GET .../commodities current_index) under the team's supply contracts, held flat over the model's
+// life. confirmProposal freezes them as rolled_up_specs.commodity_basis: the approved scenario
+// production variances are measured against (financial_engine.commodity_bc_cost_eur).
+var _propCmdData = null, _propCmdLoading = false;
+async function _ensurePropCommodity() {
+  if (_propCmdData || _propCmdLoading || !sessionId || !teamId) return _propCmdData;
+  _propCmdLoading = true;
+  try {
+    var res = await fetch(API_URL + '/sessions/' + sessionId + '/teams/' + teamId + '/commodities');
+    if (res.ok) _propCmdData = await res.json();
+  } catch (e) { /* the business case falls back to index 100 */ }
+  _propCmdLoading = false;
+  return _propCmdData;
+}
+function _propCmdRegion(plants) {
+  var r = String(((plants || [])[0] || {}).region || 'EU').toUpperCase();
+  return {AP: 'APAC', ME: 'MEA'}[r] || (['EU', 'NA', 'APAC', 'SA', 'MEA'].indexOf(r) >= 0 ? r : 'EU');
+}
+function _propCommodity(plants) {
+  var d = _propCmdData;
+  var region = _propCmdRegion(plants);
+  var expo = _computeCommodityExposure();
+  if (!d) {
+    _ensurePropCommodity().then(function(x) { if (x) { try { calcPropBizCase(); } catch (e) {} } });
+    return {eur: 0, by: {}, index: null, region: region, qabs: null, label: null, enabled: false, exposure: expo, contracts: {}};
+  }
+  var index = ((d.current_index || {})[region]) || {};
+  var contracts = {};
+  COMMODITIES.forEach(function(c) { contracts[c] = ((d.policy || {})[c] || {}).contract || 'index'; });
+  var r = expo ? _COMMODITY_E.cost(expo, index, contracts) : {eur: 0, by: {}};
+  return {eur: r.eur, by: r.by, index: index, region: region, qabs: d.qabs, label: d.label,
+          enabled: !!d.enabled, exposure: expo, contracts: contracts};
+}
+// Per-car commodity cost with every approval index scaled by f (the ±20% sensitivity).
+function _propCommodityScaled(cmd, f) {
+  if (!cmd.exposure || !cmd.index) return cmd.eur;
+  var ix = {};
+  COMMODITIES.forEach(function(c) { ix[c] = (parseFloat(cmd.index[c]) || 100) * f; });
+  return _COMMODITY_E.cost(cmd.exposure, ix, cmd.contracts).eur;
+}
+
 function calcPropBizCase() {
   var comYears = (_prop.commercial && _prop.commercial.years) || [];
   var marketingM = 0; // Marketing is now brand-level (set in Brand Management page)
@@ -25605,6 +25670,7 @@ function calcPropBizCase() {
   // Warranty (COGS) and the plant quality system's per-car cost, as clearing and the P&L charge
   // them (_WARRANTY_E mirrors financial_engine.warranty_unit / vehicle_plant_quality).
   var _wty = _propWarranty(finalTpcNum, _fcfPl);
+  var _cmd = _propCommodity(_fcfPl);   // commodity prices of this (approval) quarter, held flat
   var _lcStd = _LAUNCH_E.stdBudgetM(_prop.commercial, _prop.study && _prop.study.start_year,
                                     _prop.study && _prop.study.rolled_up_specs && _prop.study.rolled_up_specs.price_eur_k);
 
@@ -25623,7 +25689,7 @@ function calcPropBizCase() {
   var _asRate = (SESSION_DISCOUNT_RATE || 8) / 100;
   _fcfYr.forEach(function(yr){
     for(var q=0;q<4;q++){
-      var revM=0,cogsM=0,asTailM=0;
+      var revM=0,cogsM=0,asTailM=0,unitsQ=0;
       if(_fcfMk.length>0){
         _fcfMk.forEach(function(mkt){
           var yd=(mkt.years||[]).find(function(y){return y.year===yr;})||{discount:5,volume:0};
@@ -25634,8 +25700,9 @@ function calcPropBizCase() {
           var nR=_oemUnitRev((mkt.msrp_eur_k||0), yd.discount);
           var lo=plant?(((MARKET_LOGISTICS_COST[plant.region]||{})[mkt.region])||{l:200,t:0}):{l:200,t:0};
           var landed=tpcNum+_srcAdj+mfr.buy_cost_adj+_manufVarDelta(mfr)+lo.l+nR*lo.t
-                     +_wty.qualityDelta+(fcfArr.length<_WARRANTY_E.LAUNCH_Q?_wty.launchCar:_wty.car);
-          revM+=uQ*nR/1e6; cogsM+=uQ*landed/1e6;
+                     +_wty.qualityDelta+(fcfArr.length<_WARRANTY_E.LAUNCH_Q?_wty.launchCar:_wty.car)
+                     +_cmd.eur;
+          revM+=uQ*nR/1e6; cogsM+=uQ*landed/1e6; unitsQ+=uQ;
           asTailM+=uQ*_AFTERSALES_E.carValue(mkt.msrp_eur_k||0,_asPwt,_wty.years,_propAftersalesPolicy(mkt.region),_asRate).npv_eur/1e6;
         });
         if(tpcNum===0)cogsM=revM*0.70;
@@ -25644,7 +25711,8 @@ function calcPropBizCase() {
         var uQ=Math.round(cr.volume/4), pE=cr.price*1000*(1-cr.discount/100);
         revM=uQ*pE/1e6; cogsM=finalTpcNum>0?uQ*finalTpcNum/1e6:revM*0.70;
         asTailM=uQ*_AFTERSALES_E.carValue(cr.price,_asPwt,_wty.years,_propAftersalesPolicy(),_asRate).npv_eur/1e6;
-        cogsM+=uQ*(_wty.qualityDelta+(fcfArr.length<_WARRANTY_E.LAUNCH_Q?_wty.launchCar:_wty.car))/1e6;
+        cogsM+=uQ*(_wty.qualityDelta+(fcfArr.length<_WARRANTY_E.LAUNCH_Q?_wty.launchCar:_wty.car)+_cmd.eur)/1e6;
+        unitsQ+=uQ;
       }
       // Head-office overhead this model adds (its own admin + the volume-linked share),
       // not a % of revenue: the team's base overhead is there with or without it.
@@ -25654,7 +25722,7 @@ function calcPropBizCase() {
       // + the lifetime parts contribution of the cars sold this quarter, valued at the sale
       // (_AFTERSALES_E.carValue at the hurdle), after tax. Not in EBIT: it arrives over 15 years.
       var ebitM=gpM-sgaM-rdMq-marketingM-launchM-_newMkt.runQ, fcfM=ebitM*0.75+asTailM*0.75;
-      fcfArr.push({rev:revM,cogs:cogsM,gp:gpM,ebit:ebitM,fcf:fcfM,mktg:marketingM+launchM,asTail:asTailM});
+      fcfArr.push({rev:revM,cogs:cogsM,gp:gpM,ebit:ebitM,fcf:fcfM,mktg:marketingM+launchM,asTail:asTailM,units:unitsQ});
     }
   })
 
@@ -25684,6 +25752,14 @@ function calcPropBizCase() {
   // IRR
   var irr = fcfOnly.some(function(f){return f>0;}) && totalInvM > 0
     ? calcIRR(fcfOnly, totalInvM) : null;
+
+  // Commodity sensitivity: every approval-quarter index 20% lower / higher for the whole life
+  var _cmdSens = [0.8, 1.2].map(function(f) {
+    var d = _propCommodityScaled(_cmd, f) - _cmd.eur;          // EUR/car vs the plan
+    var arr = fcfArr.map(function(x) { return x.fcf - 0.75 * (x.units || 0) * d / 1e6; });
+    return {f: f, npv: calcNPV(arr, totalInvM, rateP),
+            irr: arr.some(function(x){return x>0;}) && totalInvM > 0 ? calcIRR(arr, totalInvM) : null};
+  });
 
   // Payback
   var cum = -totalInvM, paybackQ = null;
@@ -25715,7 +25791,7 @@ function calcPropBizCase() {
     var plant=_bcPlants.find(function(p){return p.id===mkt.plant_id;})||_bcPlants[0]||null;
     var lo=plant?(((MARKET_LOGISTICS_COST[plant.region]||{})[mkt.region])||{l:200,t:0}):{l:200,t:0};
     var mfr=plant?plant._manuf:_m;
-    var baseC=tpcNum+_srcAdj+(mfr?mfr.buy_cost_adj:0)+_manufVarDelta(mfr);
+    var baseC=tpcNum+_srcAdj+(mfr?mfr.buy_cost_adj:0)+_manufVarDelta(mfr)+_cmd.eur;
     var avgDisc=(mkt.years||[]).reduce(function(s,y){return s+y.discount;},0)/Math.max(1,(mkt.years||[]).length);
     var nR=_oemUnitRev((mkt.msrp_eur_k||0), avgDisc);
     var tE=nR*lo.t, lnd=baseC+lo.l+tE, mg=nR-lnd;
@@ -25758,6 +25834,22 @@ function calcPropBizCase() {
         + Math.round(_wty.reliability) + ' · quality system ' + _wty.pq.quality_tier.replace('_', ' ').toLowerCase()
         + (_wty.qualityDelta ? ' (' + (_wty.qualityDelta > 0 ? '+' : '−') + '€' + Math.abs(_wty.qualityDelta) + '/car)' : '')
         + '. Warranty period and quality system: Commercial → 🛡 Warranty.</div>'
+      + (function() {
+          if (!_cmd.enabled || !_cmd.index) return '';
+          var CL = {steel:'steel',aluminium:'aluminium',copper:'copper',battery:'battery mat.',polymers:'polymers',glass:'glass',electronics:'chips',energy:'energy'};
+          var top = COMMODITIES.filter(function(c){ return Math.abs(_cmd.by[c] || 0) >= 1; })
+            .sort(function(a, b){ return Math.abs(_cmd.by[b]) - Math.abs(_cmd.by[a]); }).slice(0, 4)
+            .map(function(c){ return CL[c] + ' ' + (parseFloat(_cmd.index[c]) || 100).toFixed(0); }).join(' · ');
+          var f = function(v){ return (v >= 0 ? '€' : '−€') + Math.abs(Math.round(v)) + 'M'; };
+          var lo = _cmdSens[0], hi = _cmdSens[1];
+          return '<div style="font-family:DM Mono,monospace;font-size:10px;color:var(--muted2);margin-top:4px;">'
+            + 'Commodity markets (in COGS): ' + (_cmd.eur >= 0 ? '+' : '−') + '€' + Math.abs(Math.round(_cmd.eur)) + '/car at '
+            + _esc(_cmd.label || 'this quarter') + ' prices in ' + _cmd.region + (top ? ' (' + top + ')' : '')
+            + ', held for the model\'s life. Approving freezes these prices as the business case; in production the car is charged '
+            + 'the prices of each quarter it is built, and Engineering → 🔄 Lifecycle shows the variance. '
+            + 'Commodities 20% cheaper: NPV ' + f(lo.npv) + (lo.irr != null ? ', IRR ' + lo.irr.toFixed(1) + '%' : '')
+            + ' · 20% dearer: NPV ' + f(hi.npv) + (hi.irr != null ? ', IRR ' + hi.irr.toFixed(1) + '%' : '') + '.</div>';
+        })()
       + '<div style="font-family:DM Mono,monospace;font-size:10px;color:var(--muted2);margin-top:4px;">'
         + 'Launch campaign (planning assumption): standard budget €' + Math.round(_lcStd) + 'M = '
         + (_LAUNCH_E.STD_PCT * 100) + '% of first-year revenue, in the first two quarters. The actual budget is '
@@ -25781,7 +25873,12 @@ function calcPropBizCase() {
   // team's hurdle (max of this rate and its cost of capital at the time of the check).
   if (typeof _prop !== 'undefined' && _prop) {
     _prop._bizcase = {npv_m: npv, irr_pct: irr, rate_pct: rateP, payback_q: paybackQ || null,
-                      total_inv_m: totalInvM, computed_at: new Date().toISOString()};
+                      total_inv_m: totalInvM, computed_at: new Date().toISOString(),
+                      commodity_eur: _cmd.eur, commodity_qabs: _cmd.qabs,
+                      commodity_sens: _cmdSens.map(function(x){ return {f: x.f, npv_m: x.npv, irr_pct: x.irr}; })};
+    // The approved scenario's commodity prices (confirmProposal stores them with the vehicle)
+    _prop._cmdBasis = (_cmd.index && _cmd.qabs != null)
+      ? {qabs: _cmd.qabs, region: _cmd.region, index: _cmd.index} : null;
   }
   var irrEl = document.getElementById('prop-bc-irr');
   if (irrEl) {
@@ -25981,6 +26078,7 @@ async function confirmProposal(acceptedSop) {
       body_type: _bodyC, segment_code: _prop.study.segment_code,
       dmp_total_eur: Math.round(_bom.dmp), make_total_eur: Math.round(_bom.make),
       commodity_exposure: _computeCommodityExposure(),
+      commodity_basis: _prop._cmdBasis || null,
       brand_name:  (_prop.study.rolled_up_specs && _prop.study.rolled_up_specs.brand_name) || '',
       safety:      _vrC.safety      != null ? Math.round(_vrC.safety*100)      : parseFloat(_thS.safety||_plS.safety||50),
       comfort:     _vrC.comfort     != null ? Math.round(_vrC.comfort*100)     : parseFloat(_thS.comfort||_plS.comfort||50),
