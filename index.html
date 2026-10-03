@@ -7991,7 +7991,7 @@ function _renderLifecycleTab() {
   // ── Commodity markets + contracts ──
   if (d.enabled) {
     var regs = d.regions || [];
-    h += head('MATERIAL COST · ' + _esc(d.label), 'indices: 100 = approved cost · last 12 quarters · your sourcing region' + (regs.length > 1 ? 's' : '') + ': ' + regs.join(', '));
+    h += head('MATERIAL COST · ' + _esc(d.label), 'indices: 100 = reference prices · last 12 quarters · your sourcing region' + (regs.length > 1 ? 's' : '') + ': ' + regs.join(', '));
     h += '<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;">';
     h += '<tr style="border-bottom:1px solid var(--border);">' + th('Commodity', 'left') + th('Index (world)', 'left') + th('Now') + th('vs 4q ago') +
          regs.map(function(r) { return th(r); }).join('') + th('Your exposure / car') + th('Supply contract · this quarter\'s effect per car', 'left') + '</tr>';
@@ -8024,7 +8024,7 @@ function _renderLifecycleTab() {
         td(chips + fixedNote, 'left') + '</tr>';
     });
     h += '</table></div>';
-    h += '<div style="font-size:9px;color:var(--muted);margin-top:4px;">Effect per car = this quarter\'s drift vs the approved cost plus any contract premium, averaged over your models on sale. '
+    h += '<div style="font-size:9px;color:var(--muted);margin-top:4px;">Effect per car = this quarter\'s cost vs reference prices (index 100) plus any contract premium, averaged over your models on sale. '
        + 'Index-linked passes moves on a quarter late; partial passes half for a 0.5% premium; fixed price holds four quarters at a time for a 1.5% premium, then resets to the market.</div>';
   }
 
@@ -8042,7 +8042,8 @@ function _renderLifecycleTab() {
         .sort(function(a, b) { return Math.abs(b[1]) - Math.abs(a[1]); }).slice(0, 3)
         .map(function(x) {
           var bcI = m.by_commodity[x[0]].bc_index, nowI = m.by_commodity[x[0]].index;
-          return _esc(labels[x[0]] || x[0]) + ' <span style="color:var(--muted)">' + bcI.toFixed(0) + '→' + nowI.toFixed(0) + '</span> <span style="color:' + col(x[1]) + '">' + deur(x[1]) + '</span>';
+          return '<span style="white-space:nowrap;" title="index ' + bcI.toFixed(1) + ' in the business case → ' + nowI.toFixed(1) + ', the index your contract priced this quarter at">' +
+            _esc(labels[x[0]] || x[0]) + ' <span style="color:var(--muted)">' + bcI.toFixed(0) + '→' + nowI.toFixed(0) + '</span> <span style="color:' + col(x[1]) + '">' + deur(x[1]) + '</span></span>';
         }).join('<br>');
       h += '<tr style="border-bottom:1px solid var(--border);">' +
         td('<b>' + _esc(m.name || m.segment_code || 'model') + '</b><div style="font-size:9px;color:var(--muted);">approved at ' + _esc(m.bc_basis.label) +
