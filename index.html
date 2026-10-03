@@ -22220,6 +22220,40 @@ var _COMMODITY_E = {
   }
 };
 
+// Lifecycle cost-down pool: the cost the design stage did not optimise, EUR/car. Twin of
+// financial_engine.vehicle_vave_pool (parity-checked): per module POOL_MAX x unit cost x
+// (1 - cost_opt)^GAMMA x maturity; difficulty = 1 + DIFF_K x cost-weighted cost_opt.
+var _LIFECYCLE_E = {
+  POOL_MAX: 0.10, POOL_GAMMA: 1.5, MATURITY: {'new': 1.0, modify: 0.8, reuse: 0.5}, DIFF_K: 1.0,
+  co: function(v) { var x = parseFloat(v) || 0; return Math.max(0, Math.min(1, x > 1 ? x / 100 : x)); },
+  pool: function(parts) {
+    var tot = 0, pool = 0, cw = 0;
+    (parts || []).forEach(function(p) {
+      var tpc = parseFloat(p.tpc) || 0, co = _LIFECYCLE_E.co(p.co);
+      var mat = _LIFECYCLE_E.MATURITY[String(p.dev || 'new').toLowerCase()];
+      if (mat === undefined) mat = 1.0;
+      pool += Math.round(_LIFECYCLE_E.POOL_MAX * tpc * Math.pow(1 - co, _LIFECYCLE_E.POOL_GAMMA) * mat * 100) / 100;
+      tot += tpc; cw += tpc * co;
+    });
+    var cow = tot > 0 ? cw / tot : 0;
+    return {pool_eur: Math.round(pool * 100) / 100, difficulty: Math.round((1 + _LIFECYCLE_E.DIFF_K * cow) * 10000) / 10000,
+            co_weighted: Math.round(cow * 10000) / 10000};
+  }
+};
+// The proposal's modules as pool parts (battery is not a module slot, as in the backend).
+function _propPoolParts() {
+  var out = [];
+  ['platform', 'pwt', 'epwt', 'tophat', 'eands'].forEach(function(k) {
+    var p = (typeof _prop !== 'undefined' && _prop) ? _prop[k] : null;
+    if (!p || !p.module) return;
+    var m = p.module, isNew = p.mode === 'new';
+    var co = isNew ? ((p.specs || {}).cost_opt || 0) : ((m.specs || {}).cost_opt || 0);
+    var dev = isNew ? 'new' : (p.mode === 'modify' || m.development_type === 'modify' ? 'modify' : 'reuse');
+    out.push({type: k, tpc: parseFloat(m.per_unit_tpc_eur || 0), co: co, dev: dev});
+  });
+  return out;
+}
+
 function _commodityEur(matLines, procLines) {
   var out = {}; COMMODITIES.forEach(function(c){ out[c] = 0; });
   matLines.forEach(function(l) {
@@ -26032,6 +26066,15 @@ function calcPropBizCase() {
             + 'the prices of each quarter it is built, and Engineering → 🔄 Lifecycle shows the variance. '
             + 'Commodities 20% cheaper: NPV ' + f(lo.npv) + (lo.irr != null ? ', IRR ' + lo.irr.toFixed(1) + '%' : '')
             + ' · 20% dearer: NPV ' + f(hi.npv) + (hi.irr != null ? ', IRR ' + hi.irr.toFixed(1) + '%' : '') + '.</div>';
+        })()
+      + (function() {
+          var parts = _propPoolParts();
+          if (!parts.length) return '';
+          var pl = _LIFECYCLE_E.pool(parts), tot = parts.reduce(function(a, p) { return a + p.tpc; }, 0);
+          return '<div style="font-family:DM Mono,monospace;font-size:10px;color:var(--muted2);margin-top:4px;">'
+            + 'Lifecycle cost-down potential: ~€' + Math.round(pl.pool_eur) + '/car (' + (tot > 0 ? (pl.pool_eur / tot * 100).toFixed(1) : '0') + '% of module cost) left for cost-downs in production, '
+            + 'at design cost optimisation ' + Math.round(pl.co_weighted * 100) + '%. More Cost Optimization in §2–§5 lowers the cost from SOP '
+            + 'but leaves less to find later, and what is left costs more to get (×' + pl.difficulty.toFixed(2) + '). Engineering → 🔄 Lifecycle funds cost-downs from a yearly budget.</div>';
         })()
       + '<div style="font-family:DM Mono,monospace;font-size:10px;color:var(--muted2);margin-top:4px;">'
         + 'Launch campaign (planning assumption): standard budget €' + Math.round(_lcStd) + 'M = '
