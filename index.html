@@ -2617,7 +2617,7 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
     <label style="display:flex;gap:10px;align-items:flex-start;cursor:pointer;margin-bottom:12px;">
       <input id="cfg-cmd-enabled" type="checkbox" onchange="_cmdAdminCall('PATCH','/commodity-markets',{enabled:this.checked})" style="margin-top:3px;">
       <span style="font-size:12px;color:#cbd5e1;">Commodity prices move during the game
-        <span style="display:block;font-size:10px;color:var(--muted2);margin-top:4px;">Each model's parts cost follows steel, aluminium, copper, battery materials, polymers, glass, chips and energy where it buys them, as far as the team's supply contracts pass moves on (Engineering &gt; Lifecycle). Approved costs are at index 100. Add shocks below to create a crisis in a future quarter.</span>
+        <span style="display:block;font-size:10px;color:var(--muted2);margin-top:4px;">Each model's parts cost follows steel, aluminium, copper, battery materials, polymers, glass, chips and energy where it buys them, as far as the team's supply contracts pass moves on (Engineering &gt; Lifecycle). A business case is costed at the prices of its approval quarter and keeps them; production pays each quarter's prices. Add shocks below to create a crisis in a future quarter.</span>
       </span>
     </label>
     <div id="cfg-commodity-content"></div>
