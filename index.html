@@ -411,6 +411,38 @@ input[type=text]:focus,input[type=number]:focus{outline:none;border-color:var(--
 .study-readiness{display:flex;gap:3px;align-items:center;}
 .study-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;}
 
+/* ══════════ VISUAL LIBRARY (_VIS) ══════════ */
+.vis-icon{width:1em;height:1em;vertical-align:-.15em;flex-shrink:0;}
+.nav-icon .vis-icon{width:14px;height:14px;vertical-align:-3px;}
+.vis-tab-i{display:inline-block;margin-right:6px;}
+.vis-tab-i .vis-icon{width:13px;height:13px;vertical-align:-2px;}
+.vis-car,.vis-plant,.vis-modmap,.vis-brand{display:block;flex-shrink:0;}
+.vis-empty{display:flex;flex-direction:column;align-items:center;gap:6px;padding:22px 12px;color:var(--muted2);text-align:center;}
+.vis-empty .vis-icon{color:var(--border3);}
+.vis-empty-t{font-size:12px;color:var(--text);}
+.vis-empty-s{font-size:11px;color:var(--muted2);max-width:420px;}
+.vis-modleg{display:flex;flex-wrap:wrap;gap:4px 10px;font-family:'DM Mono',monospace;font-size:8px;color:var(--muted2);letter-spacing:.3px;}
+.vis-modleg i{display:inline-block;width:7px;height:7px;border-radius:2px;margin-right:4px;vertical-align:0;}
+.vis-modleg b{color:var(--text);font-weight:500;}
+.prop-step .vis-icon{display:block;margin:0 auto 3px;width:14px;height:14px;}
+
+/* Platform technical diagram (_VIS.platform) */
+.pd-wrap{margin-top:14px;background:var(--s2);border:1px solid var(--border2);border-radius:4px;padding:10px 12px;}
+.pd-head{font-family:'DM Mono',monospace;font-size:9px;letter-spacing:1px;color:var(--gold);text-transform:uppercase;display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:6px;}
+.pd-head span{color:var(--muted2);text-transform:none;letter-spacing:0;}
+.pd-body{display:flex;gap:14px;flex-wrap:wrap;align-items:flex-start;}
+.pd-fig{flex:1 1 480px;min-width:0;}
+.pd-fig svg{width:100%;height:auto;display:block;}
+.pd-leg{flex:1 1 300px;font-family:'DM Mono',monospace;font-size:9px;}
+.pd-row{display:grid;grid-template-columns:18px 1fr 52px 74px;gap:6px;align-items:center;padding:3px 4px;border-bottom:1px solid var(--border);color:var(--text);}
+.pd-row.pd-hdr{color:var(--muted2);font-size:8px;text-transform:uppercase;}
+.pd-row.pd-sub{color:var(--muted2);font-size:8px;padding:1px 4px 1px 10px;}
+.pd-row.pd-tot{color:var(--gold);border-bottom:none;font-weight:700;}
+.pd-row.pd-on{background:var(--s3);}
+.pd-n{width:15px;height:15px;border:1px solid var(--border3);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:8px;}
+.pd-v{text-align:right;color:var(--muted2);}
+.pd-svg [data-g]{transition:opacity .12s;}
+.pd-wrap[data-on] .pd-svg [data-g]{opacity:.1;}
 /* ══════════ VEHICLE PROPOSAL WIZARD ══════════ */
 .prop-step{flex:1;padding:8px 6px;text-align:center;font-family:'DM Mono',monospace;
   font-size:8px;letter-spacing:.5px;color:var(--muted2);background:var(--s2);
@@ -464,6 +496,10 @@ input[type=text]:focus,input[type=number]:focus{outline:none;border-color:var(--
   padding:10px 14px;margin-bottom:12px;display:flex;gap:16px;flex-wrap:wrap;}
 .prop-ctx-item{font-family:'DM Mono',monospace;font-size:9px;color:var(--muted2);}
 .prop-ctx-item span{color:var(--gold);display:block;font-size:10px;margin-top:2px;}
+.prop-context-banner{align-items:center;}
+.prop-ctx-vis{margin:-6px 0;}
+.prop-ctx-legend{flex-basis:100%;border-top:1px solid var(--border);padding-top:6px;}
+.prop-study-card .vis-car{margin:-4px 0;}
 
 /* Module selector within proposal */
 .prop-mod-select-wrap{margin-top:10px;}
@@ -806,6 +842,10 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
 .perf-refresh:hover { color: var(--text); border-color: var(--border3); }
 /* Vehicle performance card */
 .pvc { background:var(--s2);border:1px solid var(--border2);border-radius:6px;padding:12px;position:relative;overflow:hidden; }
+.vis-lineup{display:flex;gap:10px;overflow-x:auto;padding-bottom:4px;}
+.vis-lu{background:var(--s2);border:1px solid var(--border);border-radius:4px;padding:8px 10px;min-width:136px;display:flex;flex-direction:column;align-items:flex-start;gap:3px;}
+.vis-lu-n{font-size:11px;color:var(--white);font-weight:600;}
+.vis-lu-m{font-family:'DM Mono',monospace;font-size:8px;color:var(--muted2);margin-bottom:3px;}
 .pvc-name { font-size:12px;font-weight:700;color:var(--white);margin-bottom:2px; }
 .pvc-seg { font-family:'DM Mono',monospace;font-size:8px;color:var(--muted2);margin-bottom:8px; }
 .pvc-stat { display:flex;justify-content:space-between;padding:2px 0;border-bottom:1px solid rgba(255,255,255,.04);font-family:'DM Mono',monospace;font-size:8px; }
@@ -898,18 +938,18 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
   <div id="team-nav">
   <div class="sb-sec">
     <div class="sb-lbl">Navigation</div>
-    <div class="nav-item active" onclick="nav('dashboard',this)"><span class="nav-icon">◈</span> Dashboard</div>
-    <div class="nav-item" onclick="nav('operations',this);loadMfgFootprint(true)"><span class="nav-icon">⚙</span> Industrial Ops</div>
-    <div class="nav-item" onclick="nav('commercial',this)"><span class="nav-icon">◎</span> Commercial</div>
-    <div class="nav-item" onclick="nav('market-intel',this)"><span class="nav-icon">🔍</span> Market Intelligence</div>
-    <div class="nav-item" onclick="nav('financial',this)"><span class="nav-icon">$</span> Financial</div>
-    <div class="nav-item" onclick="nav('engineering',this)"><span class="nav-icon">⚗</span> Engineering Lab <span class="nav-badge">14 specs</span></div>
-    <div class="nav-item" onclick="nav('proposal',this)" id="nav-proposal"><span class="nav-icon">🚗</span> Vehicle Proposal</div>
-    <div class="nav-item" onclick="nav('plan',this)"><span class="nav-icon">📅</span> Product Plan <span class="nav-badge">5yr</span></div>
-    <div class="nav-item" onclick="nav('market',this)"><span class="nav-icon">≋</span> Market Intel</div>
-    <div class="nav-item" onclick="nav('leaderboard',this);buildLB()"><span class="nav-icon">▲</span> Leaderboard</div>
-    <div class="nav-item" onclick="nav('performance',this);loadPerformanceData()"><span class="nav-icon">📈</span> Performance</div>
-    <div class="nav-item" onclick="nav('checklist',this)" id="nav-checklist"><span class="nav-icon">✓</span> Round Checklist <span class="nav-badge" id="nav-checklist-badge" style="display:none"></span></div>
+    <div class="nav-item active" onclick="nav('dashboard',this)"><span class="nav-icon" data-vis-icon="dashboard">◈</span> Dashboard</div>
+    <div class="nav-item" onclick="nav('operations',this);loadMfgFootprint(true)"><span class="nav-icon" data-vis-icon="factory">⚙</span> Industrial Ops</div>
+    <div class="nav-item" onclick="nav('commercial',this)"><span class="nav-icon" data-vis-icon="market">◎</span> Commercial</div>
+    <div class="nav-item" onclick="nav('market-intel',this)"><span class="nav-icon" data-vis-icon="search">🔍</span> Market Intelligence</div>
+    <div class="nav-item" onclick="nav('financial',this)"><span class="nav-icon" data-vis-icon="finance">$</span> Financial</div>
+    <div class="nav-item" onclick="nav('engineering',this)"><span class="nav-icon" data-vis-icon="engineering">⚗</span> Engineering Lab <span class="nav-badge">14 specs</span></div>
+    <div class="nav-item" onclick="nav('proposal',this)" id="nav-proposal"><span class="nav-icon" data-vis-icon="car">🚗</span> Vehicle Proposal</div>
+    <div class="nav-item" onclick="nav('plan',this)"><span class="nav-icon" data-vis-icon="plan">📅</span> Product Plan <span class="nav-badge">5yr</span></div>
+    <div class="nav-item" onclick="nav('market',this)"><span class="nav-icon" data-vis-icon="globe">≋</span> Market Intel</div>
+    <div class="nav-item" onclick="nav('leaderboard',this);buildLB()"><span class="nav-icon" data-vis-icon="leaderboard">▲</span> Leaderboard</div>
+    <div class="nav-item" onclick="nav('performance',this);loadPerformanceData()"><span class="nav-icon" data-vis-icon="chart">📈</span> Performance</div>
+    <div class="nav-item" onclick="nav('checklist',this)" id="nav-checklist"><span class="nav-icon" data-vis-icon="check">✓</span> Round Checklist <span class="nav-badge" id="nav-checklist-badge" style="display:none"></span></div>
   </div>
 
   <div class="sb-sec">
@@ -937,14 +977,14 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
   <div id="instructor-nav" style="display:none;flex-direction:column;height:100%">
     <div class="sb-sec">
       <div class="sb-lbl" style="color:#a78bfa">🎓 Instructor Mode</div>
-      <div class="nav-item active" onclick="navInstr('instr-hub',this)"><span class="nav-icon">⚡</span> Session Hub</div>
-      <div class="nav-item" onclick="navInstr('instr-results',this)"><span class="nav-icon">📊</span> Results Analyst</div>
-      <div class="nav-item" onclick="navInstr('instr-footprint',this)"><span class="nav-icon">🏭</span> Footprint Manager</div>
-      <div class="nav-item" onclick="navInstr('instr-events',this)"><span class="nav-icon">⚠</span> Event Injector</div>
-      <div class="nav-item" onclick="navInstr('instr-demand',this)"><span class="nav-icon">📊</span> Demand Model</div>
-      <div class="nav-item" onclick="navInstr('instr-history',this)"><span class="nav-icon">📅</span> Historical Data</div>
-      <div class="nav-item" onclick="navInstr('instr-techcompare',this)"><span class="nav-icon">🔬</span> Tech Benchmarks</div>
-      <div class="nav-item" onclick="navInstr('instr-settings',this)"><span class="nav-icon">⚙</span> Settings</div>
+      <div class="nav-item active" onclick="navInstr('instr-hub',this)"><span class="nav-icon" data-vis-icon="bolt">⚡</span> Session Hub</div>
+      <div class="nav-item" onclick="navInstr('instr-results',this)"><span class="nav-icon" data-vis-icon="chart">📊</span> Results Analyst</div>
+      <div class="nav-item" onclick="navInstr('instr-footprint',this)"><span class="nav-icon" data-vis-icon="factory">🏭</span> Footprint Manager</div>
+      <div class="nav-item" onclick="navInstr('instr-events',this)"><span class="nav-icon" data-vis-icon="warning">⚠</span> Event Injector</div>
+      <div class="nav-item" onclick="navInstr('instr-demand',this)"><span class="nav-icon" data-vis-icon="sales">📊</span> Demand Model</div>
+      <div class="nav-item" onclick="navInstr('instr-history',this)"><span class="nav-icon" data-vis-icon="calendar">📅</span> Historical Data</div>
+      <div class="nav-item" onclick="navInstr('instr-techcompare',this)"><span class="nav-icon" data-vis-icon="flask">🔬</span> Tech Benchmarks</div>
+      <div class="nav-item" onclick="navInstr('instr-settings',this)"><span class="nav-icon" data-vis-icon="cog">⚙</span> Settings</div>
     </div>
     <div class="sb-sec" style="flex:1">
       <div class="sb-lbl" style="color:#a78bfa">Session</div>
@@ -967,11 +1007,15 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
   <div class="pg-title">COMMAND CENTER</div>
   <div class="pg-sub" id="dashboard-sub">Alpha Motors · Q2 2025 · All figures €M unless noted</div>
   <div class="kpi-grid g5">
-    <div class="kpi kk-c"><div class="kl">Revenue (Qtr)</div><div class="kv" id="kpi-revenue" style="color:var(--cyan)">€10,585</div><div class="kd up" id="kpi-revenue-delta">▲ +8.2%</div></div>
-    <div class="kpi kk-g"><div class="kl">EBIT Margin</div><div class="kv" id="kpi-ebit" style="color:var(--gold)">7.4%</div><div class="kd up" id="kpi-ebit-delta">▲ +0.8pp</div></div>
-    <div class="kpi kk-b"><div class="kl">Market Share</div><div class="kv" id="kpi-share">14.2%</div><div class="kd up" id="kpi-share-delta">▲ +0.4pp</div></div>
-    <div class="kpi kk-r"><div class="kl">Net Debt</div><div class="kv" id="kpi-debt" style="color:var(--red)">€6,240</div><div class="kd dn" id="kpi-debt-sub">1.5× EBITDA</div></div>
-    <div class="kpi kk-p"><div class="kl">Score Rank</div><div class="kv" id="kpi-rank" style="color:var(--blue)">#1</div><div class="kd neu" id="kpi-rank-sub">of 12 OEMs</div></div>
+    <div class="kpi kk-c"><div class="kl"><span data-vis-icon="cash"></span> Revenue (Qtr)</div><div class="kv" id="kpi-revenue" style="color:var(--cyan)">€10,585</div><div class="kd up" id="kpi-revenue-delta">▲ +8.2%</div></div>
+    <div class="kpi kk-g"><div class="kl"><span data-vis-icon="chart"></span> EBIT Margin</div><div class="kv" id="kpi-ebit" style="color:var(--gold)">7.4%</div><div class="kd up" id="kpi-ebit-delta">▲ +0.8pp</div></div>
+    <div class="kpi kk-b"><div class="kl"><span data-vis-icon="market"></span> Market Share</div><div class="kv" id="kpi-share">14.2%</div><div class="kd up" id="kpi-share-delta">▲ +0.4pp</div></div>
+    <div class="kpi kk-r"><div class="kl"><span data-vis-icon="finance"></span> Net Debt</div><div class="kv" id="kpi-debt" style="color:var(--red)">€6,240</div><div class="kd dn" id="kpi-debt-sub">1.5× EBITDA</div></div>
+    <div class="kpi kk-p"><div class="kl"><span data-vis-icon="leaderboard"></span> Score Rank</div><div class="kv" id="kpi-rank" style="color:var(--blue)">#1</div><div class="kd neu" id="kpi-rank-sub">of 12 OEMs</div></div>
+  </div>
+  <div class="card" style="margin-bottom:10px;">
+    <div class="card-title"><span class="tag tp">PORTFOLIO</span> Model Line-up</div>
+    <div id="dash-lineup" class="vis-lineup"></div>
   </div>
   <div class="kpi-grid g2" style="margin-bottom:10px;">
     <div class="card">
@@ -1028,11 +1072,11 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
 
   <!-- Sub-tabs -->
   <div class="ops-tabs">
-    <div class="ops-tab active" onclick="opsTab('footprint',this);loadMfgFootprint(true)">🗺 Footprint</div>
-    <div class="ops-tab" onclick="opsTab('decisions',this)">⚙ Decisions</div>
-    <div class="ops-tab" onclick="opsTab('pipeline',this)">📋 Pipeline</div>
-    <div class="ops-tab" onclick="opsTab('manufacturing',this)">🏭 Manufacturing</div>
-    <div class="ops-tab" onclick="opsTab('sc-round',this);loadScRoundTab()">♻ Supply Chain</div>
+    <div class="ops-tab active" onclick="opsTab('footprint',this);loadMfgFootprint(true)"><span class="vis-tab-i" data-vis-icon="globe"></span>Footprint</div>
+    <div class="ops-tab" onclick="opsTab('decisions',this)"><span class="vis-tab-i" data-vis-icon="target"></span>Decisions</div>
+    <div class="ops-tab" onclick="opsTab('pipeline',this)"><span class="vis-tab-i" data-vis-icon="pipeline"></span>Pipeline</div>
+    <div class="ops-tab" onclick="opsTab('manufacturing',this)"><span class="vis-tab-i" data-vis-icon="factory"></span>Manufacturing</div>
+    <div class="ops-tab" onclick="opsTab('sc-round',this);loadScRoundTab()"><span class="vis-tab-i" data-vis-icon="supplier"></span>Supply Chain</div>
   </div>
 
   <!-- MANUFACTURING TAB -->
@@ -1151,23 +1195,23 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
   <!-- Tab bar -->
   <div style="display:flex;gap:0;margin-bottom:18px;border-bottom:1px solid var(--border);">
     <button id="com-tab-btn-overview" onclick="switchComTab('overview')"
-      style="font-family:'DM Mono',monospace;font-size:10px;padding:8px 20px;border:none;border-bottom:2px solid var(--cyan);background:transparent;color:var(--cyan);cursor:pointer;letter-spacing:.5px;">OVERVIEW</button>
+      style="font-family:'DM Mono',monospace;font-size:10px;padding:8px 20px;border:none;border-bottom:2px solid var(--cyan);background:transparent;color:var(--cyan);cursor:pointer;letter-spacing:.5px;"><span class="vis-tab-i" data-vis-icon="overview"></span>OVERVIEW</button>
     <button id="com-tab-btn-pricing" onclick="switchComTab('pricing')"
-      style="font-family:'DM Mono',monospace;font-size:10px;padding:8px 20px;border:none;border-bottom:2px solid transparent;background:transparent;color:var(--muted);cursor:pointer;letter-spacing:.5px;">PRICING</button>
+      style="font-family:'DM Mono',monospace;font-size:10px;padding:8px 20px;border:none;border-bottom:2px solid transparent;background:transparent;color:var(--muted);cursor:pointer;letter-spacing:.5px;"><span class="vis-tab-i" data-vis-icon="tag"></span>PRICING</button>
     <button id="com-tab-btn-sales-planning" onclick="switchComTab('sales-planning')"
-      style="font-family:'DM Mono',monospace;font-size:10px;padding:8px 20px;border:none;border-bottom:2px solid transparent;background:transparent;color:var(--muted);cursor:pointer;letter-spacing:.5px;">📊 SALES PLAN</button>
+      style="font-family:'DM Mono',monospace;font-size:10px;padding:8px 20px;border:none;border-bottom:2px solid transparent;background:transparent;color:var(--muted);cursor:pointer;letter-spacing:.5px;"><span class="vis-tab-i" data-vis-icon="sales"></span>SALES PLAN</button>
     <button id="com-tab-btn-markets" onclick="switchComTab('markets')"
-      style="font-family:'DM Mono',monospace;font-size:10px;padding:8px 20px;border:none;border-bottom:2px solid transparent;background:transparent;color:var(--muted);cursor:pointer;letter-spacing:.5px;">🌍 MARKETS</button>
+      style="font-family:'DM Mono',monospace;font-size:10px;padding:8px 20px;border:none;border-bottom:2px solid transparent;background:transparent;color:var(--muted);cursor:pointer;letter-spacing:.5px;"><span class="vis-tab-i" data-vis-icon="globe"></span>MARKETS</button>
     <button id="com-tab-btn-warranty" onclick="switchComTab('warranty')"
-      style="font-family:'DM Mono',monospace;font-size:10px;padding:8px 20px;border:none;border-bottom:2px solid transparent;background:transparent;color:var(--muted);cursor:pointer;letter-spacing:.5px;">🛡 WARRANTY</button>
+      style="font-family:'DM Mono',monospace;font-size:10px;padding:8px 20px;border:none;border-bottom:2px solid transparent;background:transparent;color:var(--muted);cursor:pointer;letter-spacing:.5px;"><span class="vis-tab-i" data-vis-icon="shield"></span>WARRANTY</button>
     <button id="com-tab-btn-aftersales" onclick="switchComTab('aftersales')"
-      style="font-family:'DM Mono',monospace;font-size:10px;padding:8px 20px;border:none;border-bottom:2px solid transparent;background:transparent;color:var(--muted);cursor:pointer;letter-spacing:.5px;">🔧 AFTERSALES</button>
+      style="font-family:'DM Mono',monospace;font-size:10px;padding:8px 20px;border:none;border-bottom:2px solid transparent;background:transparent;color:var(--muted);cursor:pointer;letter-spacing:.5px;"><span class="vis-tab-i" data-vis-icon="wrench"></span>AFTERSALES</button>
     <button id="com-tab-btn-launches" onclick="switchComTab('launches')"
-      style="font-family:'DM Mono',monospace;font-size:10px;padding:8px 20px;border:none;border-bottom:2px solid transparent;background:transparent;color:var(--muted);cursor:pointer;letter-spacing:.5px;">🚀 LAUNCHES</button>
+      style="font-family:'DM Mono',monospace;font-size:10px;padding:8px 20px;border:none;border-bottom:2px solid transparent;background:transparent;color:var(--muted);cursor:pointer;letter-spacing:.5px;"><span class="vis-tab-i" data-vis-icon="rocket"></span>LAUNCHES</button>
     <button id="com-tab-btn-brand" onclick="switchComTab('brand')"
-      style="font-family:'DM Mono',monospace;font-size:10px;padding:8px 20px;border:none;border-bottom:2px solid transparent;background:transparent;color:var(--muted);cursor:pointer;letter-spacing:.5px;">◆ BRAND</button>
+      style="font-family:'DM Mono',monospace;font-size:10px;padding:8px 20px;border:none;border-bottom:2px solid transparent;background:transparent;color:var(--muted);cursor:pointer;letter-spacing:.5px;"><span class="vis-tab-i" data-vis-icon="brand"></span>BRAND</button>
     <button id="com-tab-btn-fleet" onclick="switchComTab('fleet')"
-      style="font-family:'DM Mono',monospace;font-size:10px;padding:8px 20px;border:none;border-bottom:2px solid transparent;background:transparent;color:var(--muted);cursor:pointer;letter-spacing:.5px;">🚚 FLEET</button>
+      style="font-family:'DM Mono',monospace;font-size:10px;padding:8px 20px;border:none;border-bottom:2px solid transparent;background:transparent;color:var(--muted);cursor:pointer;letter-spacing:.5px;"><span class="vis-tab-i" data-vis-icon="truck"></span>FLEET</button>
   </div>
 
   <!-- ── FLEET tab: fleet policy per model, order book, deliveries ── -->
@@ -1374,13 +1418,13 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
   <div style="display:flex;gap:0;margin-bottom:12px;border-bottom:1px solid var(--border);">
     <div class="fin-stmt-tab active" data-tab="pl" onclick="switchFinTab('pl')"
       style="font-family:DM Mono,monospace;font-size:9px;letter-spacing:1px;padding:7px 18px;cursor:pointer;
-      border-bottom:2px solid var(--gold);color:var(--gold);transition:all .15s;">P&amp;L</div>
+      border-bottom:2px solid var(--gold);color:var(--gold);transition:all .15s;"><span class="vis-tab-i" data-vis-icon="pnl"></span>P&amp;L</div>
     <div class="fin-stmt-tab" data-tab="bs" onclick="switchFinTab('bs')"
       style="font-family:DM Mono,monospace;font-size:9px;letter-spacing:1px;padding:7px 18px;cursor:pointer;
-      border-bottom:2px solid transparent;color:var(--muted2);transition:all .15s;">BALANCE SHEET</div>
+      border-bottom:2px solid transparent;color:var(--muted2);transition:all .15s;"><span class="vis-tab-i" data-vis-icon="balance"></span>BALANCE SHEET</div>
     <div class="fin-stmt-tab" data-tab="cf" onclick="switchFinTab('cf')"
       style="font-family:DM Mono,monospace;font-size:9px;letter-spacing:1px;padding:7px 18px;cursor:pointer;
-      border-bottom:2px solid transparent;color:var(--muted2);transition:all .15s;">CASH FLOW</div>
+      border-bottom:2px solid transparent;color:var(--muted2);transition:all .15s;"><span class="vis-tab-i" data-vis-icon="cash"></span>CASH FLOW</div>
   </div>
 
   <div class="card" style="margin-bottom:12px;">
@@ -1395,7 +1439,7 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
   <!-- Head-office overhead (SG&A) decisions -->
   <div class="card" id="fin-overhead-panel" style="margin-top:12px;">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
-      <div class="card-title" style="margin:0"><span class="tag tf">HEAD OFFICE</span> Overhead (SG&amp;A)</div>
+      <div class="card-title" style="margin:0"><span class="tag tf">HEAD OFFICE</span> <span data-vis-icon="office"></span> Overhead (SG&amp;A)</div>
       <button onclick="loadOverheadPanel()" style="background:none;border:1px solid var(--border);color:var(--muted2);font-family:DM Mono,monospace;font-size:9px;padding:3px 10px;border-radius:4px;cursor:pointer;">↻ Refresh</button>
     </div>
     <div id="fin-overhead-body" style="font-family:DM Mono,monospace;font-size:10px;color:var(--muted2);">Loading…</div>
@@ -1403,7 +1447,7 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
   <!-- Finance & Capital Management Panel -->
   <div class="card" id="fin-capital-panel" style="margin-top:12px;">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
-      <div class="card-title" style="margin:0"><span class="tag tf">STRUCTURE</span> Finance &amp; Capital Management</div>
+      <div class="card-title" style="margin:0"><span class="tag tf">STRUCTURE</span> <span data-vis-icon="balance"></span> Finance &amp; Capital Management</div>
       <button onclick="loadFinancePanel()" style="background:none;border:1px solid var(--border);color:var(--muted2);font-family:DM Mono,monospace;font-size:9px;padding:3px 10px;border-radius:4px;cursor:pointer;">↻ Refresh</button>
     </div>
 
@@ -1481,19 +1525,19 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
   <div style="display:flex;gap:0;margin-bottom:14px;border-bottom:1px solid var(--border);">
     <div class="eng-view-tab active" data-tab="dashboard" onclick="engView('dashboard')"
       style="font-family:DM Mono,monospace;font-size:9px;letter-spacing:1px;padding:7px 18px;cursor:pointer;
-      border-bottom:2px solid var(--gold);color:var(--gold);transition:all .15s;">⬛ DASHBOARD</div>
+      border-bottom:2px solid var(--gold);color:var(--gold);transition:all .15s;"><span class="vis-tab-i" data-vis-icon="dashboard"></span>DASHBOARD</div>
     <div class="eng-view-tab" data-tab="lab" onclick="engView('lab')"
       style="font-family:DM Mono,monospace;font-size:9px;letter-spacing:1px;padding:7px 18px;cursor:pointer;
-      border-bottom:2px solid transparent;color:var(--muted2);transition:all .15s;">🔬 MODULE LAB</div>
+      border-bottom:2px solid transparent;color:var(--muted2);transition:all .15s;"><span class="vis-tab-i" data-vis-icon="flask"></span>MODULE LAB</div>
     <div class="eng-view-tab" data-tab="capacity" onclick="engView('capacity')"
       style="font-family:DM Mono,monospace;font-size:9px;letter-spacing:1px;padding:7px 18px;cursor:pointer;
-      border-bottom:2px solid transparent;color:var(--muted2);transition:all .15s;">🏢 CAPACITY</div>
+      border-bottom:2px solid transparent;color:var(--muted2);transition:all .15s;"><span class="vis-tab-i" data-vis-icon="people"></span>CAPACITY</div>
     <div class="eng-view-tab" data-tab="validation" onclick="engView('validation')"
       style="font-family:DM Mono,monospace;font-size:9px;letter-spacing:1px;padding:7px 18px;cursor:pointer;
-      border-bottom:2px solid transparent;color:var(--muted2);transition:all .15s;">🧪 VALIDATION</div>
+      border-bottom:2px solid transparent;color:var(--muted2);transition:all .15s;"><span class="vis-tab-i" data-vis-icon="review"></span>VALIDATION</div>
     <div class="eng-view-tab" data-tab="lifecycle" onclick="engView('lifecycle')"
       style="font-family:DM Mono,monospace;font-size:9px;letter-spacing:1px;padding:7px 18px;cursor:pointer;
-      border-bottom:2px solid transparent;color:var(--muted2);transition:all .15s;">🔄 LIFECYCLE</div>
+      border-bottom:2px solid transparent;color:var(--muted2);transition:all .15s;"><span class="vis-tab-i" data-vis-icon="lifecycle"></span>LIFECYCLE</div>
   </div>
 
   <!-- ── DASHBOARD VIEW ── -->
@@ -1733,16 +1777,16 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
 
   <!-- Step progress bar -->
   <div style="display:flex;gap:0;margin-bottom:20px;border-radius:4px;overflow:hidden;border:1px solid var(--border);">
-    <div class="prop-step" id="pstep-1" style="background:var(--goldl);border-color:var(--gold);color:var(--gold);">1 · Study</div>
-    <div class="prop-step" id="pstep-2">2 · Platform</div>
-    <div class="prop-step" id="pstep-3">3 · PWT</div>
-    <div class="prop-step" id="pstep-4">4 · Top Hat</div>
-    <div class="prop-step" id="pstep-5">5 · E&amp;S</div>
-    <div class="prop-step" id="pstep-6">6 · Review</div>
-    <div class="prop-step" id="pstep-7">7 · Plants</div>
-    <div class="prop-step" id="pstep-8">8 · Sourcing</div>
-    <div class="prop-step" id="pstep-9">9 · Commercial</div>
-    <div class="prop-step" id="pstep-10">10 · Biz Case</div>
+    <div class="prop-step" id="pstep-1" style="background:var(--goldl);border-color:var(--gold);color:var(--gold);"><span data-vis-icon="search"></span>1 · Study</div>
+    <div class="prop-step" id="pstep-2"><span data-vis-icon="platform"></span>2 · Platform</div>
+    <div class="prop-step" id="pstep-3"><span data-vis-icon="engine"></span>3 · PWT</div>
+    <div class="prop-step" id="pstep-4"><span data-vis-icon="body"></span>4 · Top Hat</div>
+    <div class="prop-step" id="pstep-5"><span data-vis-icon="chip"></span>5 · E&amp;S</div>
+    <div class="prop-step" id="pstep-6"><span data-vis-icon="review"></span>6 · Review</div>
+    <div class="prop-step" id="pstep-7"><span data-vis-icon="factory"></span>7 · Plants</div>
+    <div class="prop-step" id="pstep-8"><span data-vis-icon="supplier"></span>8 · Sourcing</div>
+    <div class="prop-step" id="pstep-9"><span data-vis-icon="tag"></span>9 · Commercial</div>
+    <div class="prop-step" id="pstep-10"><span data-vis-icon="finance"></span>10 · Biz Case</div>
   </div>
 
   <!-- SECTION 1: Study Selection -->
@@ -3127,6 +3171,1539 @@ document.addEventListener('visibilitychange', function() {
   if (document.visibilityState === 'visible') _refreshEngLabIfVisible();
 });
 
+// ══════════════════════════════════════════
+// VISUAL LIBRARY _VIS — icons and illustrations (display only, no engine)
+// Every function returns an SVG/HTML string. Colours come from :root tokens
+// (style="fill:var(--…)") or currentColor — never hard-coded hex.
+// Artwork is generic and original (public repo): no real car or brand shapes.
+// ══════════════════════════════════════════
+var _VIS = (function() {
+  // ── Icons: 24×24 grid, stroke = currentColor ──
+  var I = {
+    dashboard:  '<rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/>',
+    factory:    '<path d="M2 21V10l6 4V10l6 4V6h3l1-3h2l1 3v15z"/><path d="M6 17h2M11 17h2M16 17h2"/>',
+    market:     '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.2"/>',
+    search:     '<circle cx="11" cy="11" r="6.5"/><path d="M16 16l5 5"/>',
+    finance:    '<path d="M3 21h18M5 21V11M9.5 21V11M14.5 21V11M19 21V11M2 9l10-6 10 6z"/>',
+    engineering:'<path d="M9 3h6M10 3v6l-5.5 9.5A2 2 0 0 0 6.2 21h11.6a2 2 0 0 0 1.7-2.5L14 9V3"/><path d="M7.5 15h9"/>',
+    car:        '<path d="M3 16v-3l2-5h11l4 5h1v3"/><path d="M5 13h16"/><circle cx="7.5" cy="16.5" r="2"/><circle cx="17" cy="16.5" r="2"/>',
+    calendar:   '<rect x="3" y="5" width="18" height="16" rx="1.5"/><path d="M3 10h18M8 3v4M16 3v4"/>',
+    leaderboard:'<path d="M3 21V14h5v7M9.5 21V9h5v12M16 21V5h5v16M2 21h20"/>',
+    chart:      '<path d="M3 3v18h18"/><path d="M7 15l4-5 3 3 5-7"/>',
+    check:      '<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M7.5 12.5l3 3 6-7"/>',
+    truck:      '<path d="M2 6h12v10H2zM14 10h4l3 3v3h-7z"/><circle cx="6" cy="18" r="2"/><circle cx="17" cy="18" r="2"/>',
+    brand:      '<path d="M12 2l3 6.5 7 .8-5.2 4.8 1.5 7L12 17.6 5.7 21.1l1.5-7L2 9.3l7-.8z"/>',
+    rocket:     '<path d="M12 2c3.5 2.5 5 6.5 4.5 11l-2 3h-5l-2-3C7 8.5 8.5 4.5 12 2z"/><circle cx="12" cy="9" r="1.8"/><path d="M7.5 13L4 16l3 1M16.5 13l3.5 3-3 1M10.5 19l1.5 3 1.5-3"/>',
+    shield:     '<path d="M12 2l8 3v6c0 5-3.5 9-8 11-4.5-2-8-6-8-11V5z"/><path d="M8.5 12l2.5 2.5 4.5-5"/>',
+    wrench:     '<path d="M14.5 6.5a4 4 0 0 1 5-5l-3 3 .5 2.5 2.5.5 3-3a4 4 0 0 1-5 5L8 20a2 2 0 0 1-3-3z"/>',
+    tag:        '<path d="M3 3h8l10 10-8 8L3 11z"/><circle cx="7.5" cy="7.5" r="1.5"/>',
+    globe:      '<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c3 3 3 15 0 18M12 3c-3 3-3 15 0 18"/>',
+    plan:       '<path d="M3 6h7M3 12h12M3 18h5"/><rect x="10" y="4" width="11" height="4" rx="1"/><rect x="15" y="10" width="6" height="4" rx="1"/><rect x="8" y="16" width="9" height="4" rx="1"/>',
+    platform:   '<rect x="2" y="10" width="20" height="4" rx="1"/><circle cx="6" cy="17" r="2.5"/><circle cx="18" cy="17" r="2.5"/><path d="M6 10V7M18 10V7"/>',
+    engine:     '<path d="M4 9h3l2-2h5l2 2h3v3h2v-2M4 9v8h3l2 2h6l2-2h2v-5"/><path d="M2 12h2M10 4h4M12 4v3"/>',
+    battery:    '<rect x="2" y="7" width="18" height="10" rx="1.5"/><path d="M20 10.5h2v3h-2M11.5 9l-2.5 3.5h3.5L10 16"/>',
+    body:       '<path d="M2 17v-4l3-1 3-5h8l4 5 2 1v4z"/><path d="M8 12h12M12 7v5"/>',
+    chip:       '<rect x="6" y="6" width="12" height="12" rx="1.5"/><rect x="9.5" y="9.5" width="5" height="5"/><path d="M9 2v4M15 2v4M9 18v4M15 18v4M2 9h4M2 15h4M18 9h4M18 15h4"/>',
+    supplier:   '<path d="M3 9l9-5 9 5v11H3z"/><path d="M8 20v-6h8v6M3 9h18"/>',
+    robot:      '<path d="M4 21h8M8 21v-4l-3-5 6-4 4 3"/><circle cx="5" cy="12" r="1.5"/><circle cx="11" cy="8" r="1.5"/><path d="M15 11l3-1 2 2-2 2"/>',
+    people:     '<circle cx="9" cy="8" r="3.5"/><path d="M2 21c0-4 3-6.5 7-6.5s7 2.5 7 6.5"/><circle cx="17.5" cy="9" r="2.5"/><path d="M17 14.5c3 .2 5 2.3 5 5.5"/>',
+    commodity:  '<path d="M4 20l3-7h10l3 7z"/><path d="M8 13l2-5h4l2 5M10.5 8l1.5-4 1.5 4"/>',
+    lifecycle:  '<path d="M20 12a8 8 0 0 1-14 5.3M4 12A8 8 0 0 1 18 6.7"/><path d="M18 2.5v4.5h-4.5M6 21.5V17h4.5"/>',
+    warning:    '<path d="M12 3l10 18H2z"/><path d="M12 10v5M12 18v.5"/>',
+    lock:       '<rect x="4" y="10" width="16" height="11" rx="1.5"/><path d="M8 10V7a4 4 0 0 1 8 0v3M12 14.5v3"/>',
+    info:       '<circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5v.5"/>',
+    pnl:        '<path d="M4 3h12l4 4v14H4z"/><path d="M8 9h8M8 13h8M8 17h5"/>',
+    balance:    '<path d="M12 3v18M6 21h12M3 7h18"/><path d="M6 7l-3 7h6zM18 7l-3 7h6z"/>',
+    cash:       '<rect x="2" y="6" width="20" height="12" rx="1.5"/><circle cx="12" cy="12" r="3"/><path d="M6 9v.5M18 14.5v.5"/>',
+    office:     '<path d="M4 21V4h11v17M15 9h5v12M2 21h20"/><path d="M8 8h3M8 12h3M8 16h3"/>',
+    capacity:   '<path d="M4 20a9 9 0 1 1 16 0"/><path d="M12 14l4-6"/><circle cx="12" cy="14" r="1.5"/>',
+    pipeline:   '<path d="M3 6h6v4H3zM10 14h6v4h-6zM15 6h6v4h-6zM9 8h6M13 10v4"/>',
+    flask:      '<path d="M9 3h6M10 3v6L5 19a1.5 1.5 0 0 0 1.3 2h11.4A1.5 1.5 0 0 0 19 19L14 9V3"/>',
+    gauge:      '<path d="M3 15a9 9 0 0 1 18 0"/><path d="M12 15l5-5"/><path d="M3 19h18"/>',
+    bolt:       '<path d="M13 2L4 14h7l-1 8 9-12h-7z"/>',
+    drop:       '<path d="M12 3c4 5 6 8 6 11a6 6 0 0 1-12 0c0-3 2-6 6-11z"/>',
+    sales:      '<path d="M3 3v18h18"/><rect x="6" y="12" width="3" height="6"/><rect x="11" y="8" width="3" height="10"/><rect x="16" y="5" width="3" height="13"/>',
+    overview:   '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/>',
+    clock:      '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
+    review:     '<path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>',
+    cog:        '<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1"/><circle cx="12" cy="12" r="6.5"/>',
+    target:     '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><path d="M12 12l7-7M16 5h3v3"/>'
+  };
+  function icon(name, size, extraStyle) {
+    var p = I[name] || I.info;
+    var s = size ? 'width:' + size + 'px;height:' + size + 'px;' : '';
+    return '<svg class="vis-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" ' +
+      'stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="' + s + (extraStyle || '') + '">' + p + '</svg>';
+  }
+
+  // ── Vehicle silhouettes (side view, front to the left) ──
+  // Profiles: [x fraction of length, y px] in a 48-px-high box; sill at y 34, ground at 42.
+  var BODY = {
+    HB:     {p:[[0,34],[0,27],[.04,24],[.28,21],[.42,12],[.72,11],[.92,14],[1,22],[1,34]],
+             w:[[.30,21],[.43,13.5],[.71,12.5],[.88,15],[.90,21]]},
+    SEDAN:  {p:[[0,34],[0,27],[.03,24],[.27,21],[.40,12],[.66,11],[.80,19],[.98,20],[1,24],[1,34]],
+             w:[[.29,20.5],[.41,13.5],[.65,12.5],[.77,19.5]]},
+    ESTATE: {p:[[0,34],[0,27],[.03,24],[.27,21],[.40,12],[.92,11],[.99,15],[1,22],[1,34]],
+             w:[[.29,20.5],[.41,13.5],[.90,12.5],[.94,16],[.94,20.5]]},
+    COUPE:  {p:[[0,34],[0,28],[.03,25],[.32,22],[.48,14],[.66,14],[.86,20],[.99,21],[1,25],[1,34]],
+             w:[[.34,21.5],[.48,15.5],[.65,15.5],[.82,20.5]]},
+    SUV:    {p:[[0,34],[0,24],[.04,20],[.26,18],[.36,9],[.86,8],[.97,10],[1,18],[1,34]],
+             w:[[.28,17.5],[.37,10.5],[.85,9.5],[.95,11],[.95,17.5]]},
+    MPV:    {p:[[0,34],[0,25],[.05,22],[.20,19],[.34,8],[.90,7],[.99,10],[1,20],[1,34]],
+             w:[[.22,18.5],[.35,9.5],[.89,8.5],[.97,11],[.97,18.5]]},
+    VAN:    {p:[[0,34],[0,22],[.04,18],[.14,15],[.24,5],[.97,5],[1,8],[1,34]],
+             w:[[.15,15],[.24,7],[.34,7],[.34,15]]},
+    PICKUP: {p:[[0,34],[0,22],[.04,18],[.26,16],[.34,8],[.56,8],[.58,17],[1,17],[1,34]],
+             w:[[.28,16],[.35,9.5],[.54,9.5],[.54,16]]}
+  };
+  var SEG_LEN = {a_segment:70, b_segment:76, c_segment:82, d_segment:88, e_segment:94, f_segment:100,
+                 sports:90, mpv:90, pickup:100, c_van:92, d_van:100, e_van:108};
+  var SEG_BODY = {mpv:'MPV', pickup:'PICKUP', sports:'COUPE', c_van:'VAN', d_van:'VAN', e_van:'VAN'};
+
+  function bodyOf(body, segment) {
+    var b = String(body || '').toUpperCase();
+    if (b === 'SALOON') b = 'SEDAN';
+    if (b === 'WAGON') b = 'ESTATE';
+    if (b === 'CROSSOVER') b = 'SUV';
+    if (BODY[b]) return b;
+    return SEG_BODY[segment] || 'HB';
+  }
+  function pwtKind(pwt) {
+    var p = String(pwt || '').toLowerCase();
+    if (!p) return '';
+    if (p.indexOf('phev') >= 0 || p.indexOf('reev') >= 0 || p.indexOf('multi') >= 0 ||
+        p.indexOf('hev') >= 0 || p.indexOf('hybrid') >= 0) return 'hyb';
+    if (p.indexOf('bev') >= 0 || p.indexOf('fcev') >= 0 || p.indexOf('ev') === 0) return 'ev';
+    return 'ice';
+  }
+  function segColor(segment) {
+    return (typeof SEG_COLORS !== 'undefined' && SEG_COLORS[segment]) || 'var(--gold)';
+  }
+  function pts(list, x0, L) {
+    return list.map(function(q) { return (x0 + q[0] * L).toFixed(1) + ',' + q[1]; }).join(' ');
+  }
+  // Geometry shared by car() and moduleMap()
+  function geom(o) {
+    var b = bodyOf(o.body, o.segment);
+    var L = SEG_LEN[o.segment] || 84;
+    if (b === 'VAN' && L < 92) L = 92;
+    var x0 = (120 - L) / 2;
+    var wf = b === 'VAN' ? [.15, .83] : (b === 'PICKUP' ? [.17, .80] : [.18, .80]);
+    var r = (b === 'SUV' || b === 'PICKUP' || b === 'VAN') ? 7 : 6.2;
+    return {b:b, L:L, x0:x0, wx:[x0 + wf[0] * L, x0 + wf[1] * L], r:r};
+  }
+  function wheel(cx, r) {
+    return '<circle cx="' + cx.toFixed(1) + '" cy="35.5" r="' + (r + 1.6) + '" style="fill:var(--bg)"/>' +
+      '<circle cx="' + cx.toFixed(1) + '" cy="35.5" r="' + r + '" style="fill:var(--s3);stroke:var(--muted2)" stroke-width="1.2"/>' +
+      '<circle cx="' + cx.toFixed(1) + '" cy="35.5" r="' + (r * 0.38).toFixed(1) + '" style="fill:var(--muted2)"/>';
+  }
+  function pwtBadge(kind) {
+    if (!kind) return '';
+    var col = kind === 'ev' ? 'var(--cyan)' : (kind === 'hyb' ? 'var(--green)' : 'var(--orange)');
+    var glyph = kind === 'ev'
+      ? '<path d="M113.6 2.6l-3.2 4.4h2.6l-.8 3.4 3.2-4.6h-2.6z" style="fill:var(--bg)"/>'
+      : (kind === 'hyb'
+        ? '<path d="M110 6.5a2.2 2.2 0 0 0 4.4 0c0-1.3-2.2-3.8-2.2-3.8s-2.2 2.5-2.2 3.8z" style="fill:var(--bg)"/><path d="M114.6 3.2l-1.4 2h1.2l-.4 1.6 1.5-2.1h-1.2z" style="fill:var(--bg)"/>'
+        : '<path d="M110 7a2.2 2.2 0 0 0 4.4 0c0-1.4-2.2-4.2-2.2-4.2S110 5.6 110 7z" style="fill:var(--bg)"/>');
+    return '<circle cx="112.5" cy="6.5" r="5" style="fill:' + col + '"/>' + glyph;
+  }
+
+  // car({body, segment, pwt, color, w, title})
+  function car(o) {
+    o = o || {};
+    var g = geom(o);
+    var col = o.color || segColor(o.segment);
+    var w = o.w || 96;
+    var shape = BODY[g.b];
+    return '<svg class="vis-car" viewBox="0 0 120 46" width="' + w + '" height="' + Math.round(w * 46 / 120) + '" aria-hidden="true">' +
+      (o.title ? '<title>' + o.title + '</title>' : '') +
+      '<ellipse cx="60" cy="42.5" rx="' + (g.L * 0.55).toFixed(1) + '" ry="2" style="fill:var(--border2)"/>' +
+      '<polygon points="' + pts(shape.p, g.x0, g.L) + '" style="fill:' + col + '" stroke-linejoin="round"/>' +
+      '<polygon points="' + pts(shape.p, g.x0, g.L) + '" style="fill:none;stroke:var(--white);stroke-opacity:.18" stroke-width=".8" stroke-linejoin="round"/>' +
+      '<polygon points="' + pts(shape.w, g.x0, g.L) + '" style="fill:var(--bg);fill-opacity:.55"/>' +
+      '<line x1="' + (g.x0 + 1).toFixed(1) + '" y1="27.5" x2="' + (g.x0 + g.L - 1).toFixed(1) + '" y2="27.5" style="stroke:var(--bg);stroke-opacity:.35" stroke-width=".8"/>' +
+      wheel(g.wx[0], g.r) + wheel(g.wx[1], g.r) +
+      (o.badge === false ? '' : pwtBadge(pwtKind(o.pwt))) +
+    '</svg>';
+  }
+
+  // ── Module map: the 5 module zones on a muted silhouette ──
+  // slots = {platform:'new'|'modify'|'reuse'|null, ice_pwt:…, epwt:…, tophat:…, eands:…}
+  // focus = slot to emphasise (e.g. the section being edited).
+  var MODE_COL = {new:'var(--cyan)', modify:'var(--gold)', reuse:'var(--muted2)',
+                  ready:'var(--green)', dev:'var(--gold)', late:'var(--red)'};
+  var MODE_LBL = {new:'New', modify:'Modify', reuse:'Reuse', ready:'Ready', dev:'In development', late:'Late for SOP'};
+  var SLOT_LBL = {platform:'Platform', ice_pwt:'ICE PWT', epwt:'e-PWT', tophat:'Top Hat', eands:'E&S'};
+  function moduleMap(o) {
+    o = o || {};
+    var slots = o.slots || {};
+    var g = geom(o);
+    var w = o.w || 200;
+    var shape = BODY[g.b];
+    function zcol(k) { var m = slots[k]; return m ? (MODE_COL[m] || 'var(--muted)') : null; }
+    function op(k) { return o.focus && o.focus !== k ? .45 : 1; }
+    function tip(k) { return '<title>' + SLOT_LBL[k] + ': ' + (MODE_LBL[slots[k]] || 'not set') + '</title>'; }
+    var X = function(f) { return (g.x0 + f * g.L).toFixed(1); };
+    var s = '<svg class="vis-modmap" viewBox="0 0 120 46" width="' + w + '" height="' + Math.round(w * 46 / 120) + '">' +
+      '<ellipse cx="60" cy="42.5" rx="' + (g.L * 0.55).toFixed(1) + '" ry="2" style="fill:var(--border2)"/>';
+    // Top hat = the body shell
+    var th = zcol('tophat');
+    s += '<g opacity="' + op('tophat') + '">' + tip('tophat') +
+      '<polygon points="' + pts(shape.p, g.x0, g.L) + '" style="fill:' + (th || 'var(--s3)') + ';fill-opacity:' + (th ? .28 : 1) +
+      ';stroke:' + (th || 'var(--border3)') + '" stroke-width="1" stroke-linejoin="round"/>' +
+      '<polygon points="' + pts(shape.w, g.x0, g.L) + '" style="fill:var(--bg);fill-opacity:.5"/></g>';
+    // Platform = floor / chassis rails + wheels
+    var pc = zcol('platform');
+    s += '<g opacity="' + op('platform') + '">' + tip('platform') +
+      '<rect x="' + X(.01) + '" y="29.5" width="' + (g.L * .98).toFixed(1) + '" height="4.5" rx="1" style="fill:' + (pc || 'var(--s4)') + ';fill-opacity:' + (pc ? .75 : 1) + '"/>' +
+      '</g>';
+    // ICE powertrain = front bay
+    var ic = zcol('ice_pwt');
+    if ('ice_pwt' in slots) s += '<g opacity="' + op('ice_pwt') + '">' + tip('ice_pwt') +
+      '<rect x="' + X(.03) + '" y="22" width="' + (g.L * .2).toFixed(1) + '" height="7" rx="1.2" style="fill:' + (ic || 'var(--s4)') + '"/>' +
+      '<path d="M' + X(.07) + ' 25.5h' + (g.L * .12).toFixed(1) + '" style="stroke:var(--bg)" stroke-width="1"/></g>';
+    // ePWT = battery pack between the axles (+ motor at the rear axle)
+    var ec = zcol('epwt');
+    if ('epwt' in slots) s += '<g opacity="' + op('epwt') + '">' + tip('epwt') +
+      '<rect x="' + X(.29) + '" y="30.5" width="' + (g.L * .42).toFixed(1) + '" height="3" rx=".8" style="fill:' + (ec || 'var(--border3)') + '"/>' +
+      '<rect x="' + (g.wx[1] - 4).toFixed(1) + '" y="27" width="8" height="3.5" rx="1" style="fill:' + (ec || 'var(--border3)') + '"/></g>';
+    // E&S = electronics chip behind the windscreen
+    var sc = zcol('eands');
+    var ex = g.b === 'VAN' ? .17 : (g.b === 'PICKUP' ? .30 : .36);
+    s += '<g opacity="' + op('eands') + '">' + tip('eands') +
+      '<rect x="' + X(ex) + '" y="21" width="7" height="5" rx="1" style="fill:' + (sc || 'var(--s4)') + ';stroke:var(--bg)" stroke-width=".6"/>' +
+      '<path d="M' + (g.x0 + ex * g.L + 1.5).toFixed(1) + ' 23.5h4" style="stroke:var(--bg)" stroke-width=".8"/></g>';
+    // Wheels (part of platform)
+    s += '<g opacity="' + op('platform') + '">' + wheel(g.wx[0], g.r) + wheel(g.wx[1], g.r) + '</g>';
+    return s + '</svg>';
+  }
+  function moduleLegend(slots) {
+    slots = slots || {};
+    return '<div class="vis-modleg">' + ['platform', 'ice_pwt', 'epwt', 'tophat', 'eands'].filter(function(k) {
+      return k in slots;
+    }).map(function(k) {
+      var m = slots[k];
+      return '<span><i style="background:' + (MODE_COL[m] || 'var(--s4)') + '"></i>' + SLOT_LBL[k] +
+        ' <b>' + (MODE_LBL[m] || '—') + '</b></span>';
+    }).join('') + '</div>';
+  }
+
+  // ── Plant: halls by capacity, robots by automation, shift bands ──
+  // plant({cap_k, automation (0..1 or 'LOW'|'MEDIUM'|'HIGH'|…), shifts, color, w, label})
+  var AUTO_LVL = {LOW:.2, BASIC:.2, MEDIUM:.5, STANDARD:.5, MID:.5, HIGH:.75, ADVANCED:.85, FULL:1, LIGHTS_OUT:1};
+  function plant(o) {
+    o = o || {};
+    var w = o.w || 120;
+    var cap = +o.cap_k || 200;
+    var halls = Math.max(2, Math.min(5, Math.round(cap / 120) + 1));
+    var a = o.automation;
+    if (typeof a === 'string') a = AUTO_LVL[a.toUpperCase()] != null ? AUTO_LVL[a.toUpperCase()] : .5;
+    if (a == null || isNaN(a)) a = .5;
+    if (a > 1) a = a / 100;
+    var robots = Math.max(0, Math.min(halls, Math.round(a * halls)));
+    var shifts = Math.max(1, Math.min(3, +o.shifts || 2));
+    var col = o.color || 'var(--cyan)';
+    var hw = 100 / halls, s = '';
+    s += '<svg class="vis-plant" viewBox="0 0 120 56" width="' + w + '" height="' + Math.round(w * 56 / 120) + '" aria-hidden="true">';
+    if (o.label) s += '<title>' + o.label + '</title>';
+    s += '<rect x="2" y="50" width="116" height="1.5" style="fill:var(--border3)"/>';
+    // chimney-free office block
+    s += '<rect x="104" y="30" width="13" height="20" style="fill:var(--s4);stroke:var(--border3)" stroke-width=".8"/>' +
+      '<path d="M107 35h7M107 40h7M107 45h7" style="stroke:' + col + ';stroke-opacity:.5" stroke-width="1.2"/>';
+    for (var i = 0; i < halls; i++) {
+      var x = 3 + i * hw;
+      s += '<polygon points="' + x.toFixed(1) + ',50 ' + x.toFixed(1) + ',24 ' + (x + hw * .72).toFixed(1) + ',16 ' +
+        (x + hw * .72).toFixed(1) + ',24 ' + (x + hw).toFixed(1) + ',24 ' + (x + hw).toFixed(1) + ',50" ' +
+        'style="fill:var(--s3);stroke:var(--border3)" stroke-width=".8" stroke-linejoin="round"/>';
+      s += '<rect x="' + (x + hw * .72).toFixed(1) + '" y="17" width="' + (hw * .28 - .6).toFixed(1) + '" height="6.5" style="fill:' + col + ';fill-opacity:.35"/>';
+      if (i < robots) {
+        var rx = x + hw * .5;
+        s += '<g style="stroke:' + col + '" stroke-width="1.4" stroke-linecap="round" fill="none">' +
+          '<path d="M' + (rx - 4).toFixed(1) + ' 48h8M' + rx.toFixed(1) + ' 48v-6l4-5 4 2"/>' +
+          '<circle cx="' + rx.toFixed(1) + '" cy="42" r="1.2" style="fill:' + col + '"/></g>';
+      } else {
+        s += '<g style="fill:var(--muted2)"><circle cx="' + (x + hw * .38).toFixed(1) + '" cy="40" r="1.6"/>' +
+          '<rect x="' + (x + hw * .38 - 1.4).toFixed(1) + '" y="42" width="2.8" height="6" rx="1"/>' +
+          '<circle cx="' + (x + hw * .65).toFixed(1) + '" cy="40" r="1.6"/>' +
+          '<rect x="' + (x + hw * .65 - 1.4).toFixed(1) + '" y="42" width="2.8" height="6" rx="1"/></g>';
+      }
+    }
+    for (var k = 0; k < 3; k++) {
+      s += '<rect x="' + (104 + k * 4.6) + '" y="25" width="3.6" height="3" rx=".8" style="fill:' + (k < shifts ? col : 'var(--s4)') + '"><title>' + shifts + ' shift(s)</title></rect>';
+    }
+    return s + '</svg>';
+  }
+
+  // ── Brand marks (original, abstract) ──
+  function brandMark(brand, size) {
+    var key = String(brand || '').toLowerCase();
+    var col = (typeof BRANDS_FULL !== 'undefined' && BRANDS_FULL[key] && BRANDS_FULL[key].colorVar) ||
+              (typeof BRAND_DATA !== 'undefined' && BRAND_DATA[key] && BRAND_DATA[key].color) || 'var(--gold)';
+    var sz = size || 32, inner;
+    if (key === 'alpha') inner = '<path d="M16 6L7 26h4l5-11.5L21 26h4z" style="fill:' + col + '"/><path d="M12.5 20h7" style="stroke:var(--bg)" stroke-width="2"/>';
+    else if (key === 'apex') inner = '<path d="M5 24L16 7l11 17-4 0-7-10.5L9 24z" style="fill:' + col + '"/><path d="M13 24l3-4.5 3 4.5z" style="fill:' + col + '"/>';
+    else if (key === 'arrow') inner = '<path d="M6 21l14-10-1 4.5 7-6.5-10 2 4 1L6 21z" style="fill:' + col + '"/><path d="M6 24h20" style="stroke:' + col + '" stroke-width="1.6"/>';
+    else inner = '<circle cx="16" cy="16" r="6" style="fill:' + col + '"/>';
+    return '<svg class="vis-brand" viewBox="0 0 32 32" width="' + sz + '" height="' + sz + '" aria-hidden="true">' +
+      '<circle cx="16" cy="16" r="15" style="fill:var(--s2);stroke:' + col + ';stroke-opacity:.6" stroke-width="1.2"/>' + inner + '</svg>';
+  }
+
+  // ── Empty state ──
+  function empty(iconName, text, sub) {
+    return '<div class="vis-empty">' + icon(iconName || 'info', 30) +
+      '<div class="vis-empty-t">' + (text || 'Nothing here yet') + '</div>' +
+      (sub ? '<div class="vis-empty-s">' + sub + '</div>' : '') + '</div>';
+  }
+
+  // vehicle(v): silhouette straight from a vehicle row (API shape)
+  function vehicle(v, w, color) {
+    v = v || {};
+    var rs = v.rolled_up_specs || {};
+    return car({body: rs.body_type || v.body_type, segment: v.segment_code, pwt: rs.pwt_type || v.pwt_type,
+                color: color, w: w, title: v.name});
+  }
+
+  return {icon:icon, car:car, vehicle:vehicle, moduleMap:moduleMap, moduleLegend:moduleLegend,
+          plant:plant, brandMark:brandMark, empty:empty, bodyOf:bodyOf, pwtKind:pwtKind,
+          ICONS:I, BODIES:Object.keys(BODY), PROFILES:BODY};
+})();
+
+// ── _V3: tiny face-based 3-D engine for the module technical diagrams ──
+// Parts are built from swept sections, surfaces of revolution, panels and helices, then lit,
+// back-face culled and depth-sorted face by face. render() adds numbered callouts and a legend
+// whose figures come from the module's BOM material lines. Original artwork — no external imagery.
+var _V3 = (function() {
+  function add(a, b) { return [a[0] + b[0], a[1] + b[1], a[2] + b[2]]; }
+  function sub(a, b) { return [a[0] - b[0], a[1] - b[1], a[2] - b[2]]; }
+  function mul(a, s) { return [a[0] * s, a[1] * s, a[2] * s]; }
+  function dot(a, b) { return a[0] * b[0] + a[1] * b[1] + a[2] * b[2]; }
+  function cross(a, b) { return [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]]; }
+  function nrm(a) { var l = Math.sqrt(dot(a, a)) || 1; return [a[0] / l, a[1] / l, a[2] / l]; }
+  function lerp(a, b, t) { return add(a, mul(sub(b, a), t)); }
+  var EX = [0.86, -0.34], EY = [0.50, 0.40];
+  var VIEW = nrm([-0.5, 0.86, 0.514]);          // towards the viewer (front, near side, above)
+  var LIGHT = nrm([-0.35, 0.45, 0.85]);
+  function f(n) { return n.toFixed(1); }
+  function circ(r, n, a0) { var o = []; for (var i = 0; i < n; i++) { var t = (a0 || 0) + i / n * Math.PI * 2; o.push([r * Math.cos(t), r * Math.sin(t)]); } return o; }
+  function rrect(w, h, r, n) {
+    var o = [], c = [[w / 2 - r, h / 2 - r, 0], [-w / 2 + r, h / 2 - r, 1], [-w / 2 + r, -h / 2 + r, 2], [w / 2 - r, -h / 2 + r, 3]];
+    c.forEach(function(q) { for (var i = 0; i <= (n || 3); i++) { var t = (q[2] + i / (n || 3)) * Math.PI / 2; o.push([q[0] + r * Math.cos(t), q[1] + r * Math.sin(t)]); } });
+    return o;
+  }
+  function rect(w, h, dx, dy) { dx = dx || 0; dy = dy || 0; return [[dx - w / 2, dy - h / 2], [dx + w / 2, dy - h / 2], [dx + w / 2, dy + h / 2], [dx - w / 2, dy + h / 2]]; }
+  // rotate a 2-D profile so that its +b axis points along (sin a, cos a)
+  function rot(prof, a) { var c = Math.cos(a), s = Math.sin(a); return prof.map(function(q) { return [q[0] * c + q[1] * s, -q[0] * s + q[1] * c]; }); }
+
+  function Scene(S) { this.S = S || 11; this.faces = []; this.anchors = {}; }
+  Scene.prototype.P = function(p) { var S = this.S; return [S * (p[0] * EX[0] + p[1] * EY[0]), S * (p[0] * EX[1] + p[1] * EY[1] - p[2])]; };
+  // one polygon; op.ref = a point inside the solid (enables back-face culling)
+  Scene.prototype.face = function(pts, g, op) {
+    op = op || {};
+    var n = [0, 0, 0];
+    for (var i = 0; i < pts.length; i++) { var a = pts[i], b = pts[(i + 1) % pts.length];
+      n[0] += (a[1] - b[1]) * (a[2] + b[2]); n[1] += (a[2] - b[2]) * (a[0] + b[0]); n[2] += (a[0] - b[0]) * (a[1] + b[1]); }
+    n = nrm(n);
+    var c = [0, 0, 0]; pts.forEach(function(p) { c = add(c, p); }); c = mul(c, 1 / pts.length);
+    if (op.ref) { if (dot(n, sub(c, op.ref)) < 0) n = mul(n, -1); if (dot(n, VIEW) < -0.02) return; }
+    else if (dot(n, VIEW) < 0) n = mul(n, -1);
+    var lam = Math.max(0, dot(n, LIGHT)), opa = op.op == null ? 1 : op.op;
+    if (op.fres) opa = Math.min(1, opa + op.fres * Math.pow(1 - Math.abs(dot(n, VIEW)), 2));
+    this.faces.push({pts:pts, g:g, d:dot(c, VIEW) + (op.bias || 0), k:Math.round((28 + 72 * lam) / 4) * 4,
+                     op:Math.round(opa * 100) / 100, dash:op.dash, ns:op.ns});
+  };
+  Scene.prototype.line = function(a, b, g, w, k) { this.faces.push({line:[a, b], g:g, w:w || 1, d:dot(lerp(a, b, .5), VIEW) + .05, k:k || 80}); };
+  // sweep a closed profile (a → side axis, b → "up" axis) along a path
+  Scene.prototype.sweep = function(path, prof, g, op) {
+    op = op || {};
+    var me = this, seg = op.seg || 2.2, pp = [], i;
+    for (i = 0; i < path.length - 1; i++) {
+      var n = Math.max(1, Math.ceil(Math.sqrt(dot(sub(path[i + 1], path[i]), sub(path[i + 1], path[i]))) / seg));
+      for (var j = 0; j < n; j++) pp.push(lerp(path[i], path[i + 1], j / n));
+    }
+    pp.push(path[path.length - 1]);
+    var rings = pp.map(function(p, i) {
+      var T = nrm(sub(pp[Math.min(i + 1, pp.length - 1)], pp[Math.max(i - 1, 0)]));
+      var U = op.up || [0, 0, 1];
+      if (Math.abs(dot(U, T)) > 0.97) U = [0, 1, 0];
+      var N = nrm(cross(U, T)), B = cross(T, N);
+      var s = op.scale ? (typeof op.scale === 'function' ? op.scale(i / (pp.length - 1)) : op.scale) : 1;
+      return prof.map(function(q) { return add(p, add(mul(N, q[0] * s), mul(B, q[1] * s))); });
+    });
+    var cen = op.center ? function(i) { return lerp(pp[i], pp[i + 1], .5); } : null;
+    for (i = 0; i < rings.length - 1; i++) {
+      var ref = lerp(pp[i], pp[i + 1], .5);
+      if (op.profRef) { var pr = op.profRef, Ti = nrm(sub(pp[i + 1], pp[i])), Ui = op.up || [0, 0, 1];
+        if (Math.abs(dot(Ui, Ti)) > 0.97) Ui = [0, 1, 0];
+        var Ni = nrm(cross(Ui, Ti)), Bi = cross(Ti, Ni); ref = add(ref, add(mul(Ni, pr[0]), mul(Bi, pr[1]))); }
+      for (var k = 0; k < prof.length; k++) {
+        var k2 = (k + 1) % prof.length;
+        me.face([rings[i][k], rings[i][k2], rings[i + 1][k2], rings[i + 1][k]], g, {ref:op.noCull ? null : ref, op:op.op, bias:op.bias, dash:op.dash});
+      }
+    }
+    if (op.caps !== false) {
+      me.face(rings[0], g, {ref:op.noCull ? null : pp[1], op:op.op, bias:op.bias, dash:op.dash});
+      me.face(rings[rings.length - 1], g, {ref:op.noCull ? null : pp[pp.length - 2], op:op.op, bias:op.bias, dash:op.dash});
+    }
+  };
+  Scene.prototype.cyl = function(a, b, r, g, op) { op = op || {}; this.sweep([a, b], circ(r, op.n || 14), g, op); };
+  Scene.prototype.tube = function(path, r, g, op) { op = op || {}; this.sweep(path, circ(r, op.n || 8), g, Object.assign({seg:1.2}, op)); };
+  Scene.prototype.box = function(x0, x1, y0, y1, z0, z1, g, op) {
+    this.sweep([[x0, (y0 + y1) / 2, (z0 + z1) / 2], [x1, (y0 + y1) / 2, (z0 + z1) / 2]], rect(y1 - y0, z1 - z0), g, Object.assign({seg:99}, op || {}));
+  };
+  // surface of revolution: prof = [[radius, axialOffset], …] about axis 'x' | 'y' | 'z' through c
+  Scene.prototype.lathe = function(c, prof, g, op) {
+    op = op || {};
+    var me = this, n = op.n || 26, ax = op.axis || 'y', my = 0, a0 = op.a0 || 0, a1 = op.a1 == null ? Math.PI * 2 : op.a1;
+    prof.forEach(function(q) { my += q[1] / prof.length; });
+    function pt(r, o, t) {
+      var u = r * Math.cos(t), v = r * Math.sin(t);
+      return ax === 'y' ? [c[0] + u, c[1] + o, c[2] + v] : ax === 'x' ? [c[0] + o, c[1] + u, c[2] + v] : [c[0] + u, c[1] + v, c[2] + o];
+    }
+    var lref = op.inner ? null : pt(0, my, 0);
+    for (var i = 0; i < n; i++) {
+      var t0 = a0 + (a1 - a0) * i / n, t1 = a0 + (a1 - a0) * (i + 1) / n;
+      for (var j = 0; j < prof.length - 1; j++) {
+        var A = prof[j], B = prof[j + 1];
+        me.face([pt(A[0], A[1], t0), pt(A[0], A[1], t1), pt(B[0], B[1], t1), pt(B[0], B[1], t0)], g, {ref:lref, op:op.op, bias:op.bias, dash:op.dash});
+      }
+    }
+  };
+  // flat panel: outline in two axes, extruded along the third
+  Scene.prototype.panel = function(outline, axis, c0, c1, g, op) {
+    op = op || {};
+    var me = this;
+    function pt(q, c) { return axis === 'z' ? [q[0], q[1], c] : axis === 'x' ? [c, q[0], q[1]] : [q[0], c, q[1]]; }
+    var top = outline.map(function(q) { return pt(q, c1); }), bot = outline.map(function(q) { return pt(q, c0); });
+    me.face(top, g, {op:op.op, bias:op.bias, dash:op.dash});
+    for (var i = 0; i < outline.length; i++) { var j = (i + 1) % outline.length;
+      me.face([bot[i], bot[j], top[j], top[i]], g, {op:op.op, bias:op.bias, dash:op.dash}); }
+  };
+  // horizontal slab tiled into small top faces so depth sorting stays correct under parts that sit on it
+  Scene.prototype.slab = function(x0, x1, y0, y1, z0, z1, g, op) {
+    op = op || {};
+    var t = op.tile || 2, nx = Math.max(1, Math.ceil((x1 - x0) / t)), ny = Math.max(1, Math.ceil((y1 - y0) / t)), i, j;
+    for (i = 0; i < nx; i++) for (j = 0; j < ny; j++) {
+      var a = x0 + (x1 - x0) * i / nx, b = x0 + (x1 - x0) * (i + 1) / nx, c = y0 + (y1 - y0) * j / ny, d = y0 + (y1 - y0) * (j + 1) / ny;
+      this.face([[a, c, z1], [b, c, z1], [b, d, z1], [a, d, z1]], g, {op:op.op, dash:op.dash, bias:-.02});
+    }
+    var me = this, ref = [(x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2];
+    [[[x0, y1], [x1, y1]], [[x0, y0], [x0, y1]], [[x1, y0], [x1, y1]], [[x0, y0], [x1, y0]]].forEach(function(e) {
+      var n = Math.max(1, Math.ceil(Math.hypot(e[1][0] - e[0][0], e[1][1] - e[0][1]) / t));
+      for (var k = 0; k < n; k++) {
+        var p = [e[0][0] + (e[1][0] - e[0][0]) * k / n, e[0][1] + (e[1][1] - e[0][1]) * k / n], q = [e[0][0] + (e[1][0] - e[0][0]) * (k + 1) / n, e[0][1] + (e[1][1] - e[0][1]) * (k + 1) / n];
+        me.face([[p[0], p[1], z0], [q[0], q[1], z0], [q[0], q[1], z1], [p[0], p[1], z1]], g, {ref:ref, op:op.op, dash:op.dash});
+      }
+    });
+  };
+  Scene.prototype.helix = function(a, b, r, turns, g, w) {
+    var ax = sub(b, a), T = nrm(ax), U = Math.abs(T[2]) > .9 ? [1, 0, 0] : [0, 0, 1];
+    var N = nrm(cross(U, T)), B = cross(T, N), n = Math.round(turns * 14), prev = null;
+    for (var i = 0; i <= n; i++) {
+      var t = i / n, th = t * turns * Math.PI * 2;
+      var p = add(add(a, mul(ax, t)), add(mul(N, r * Math.cos(th)), mul(B, r * Math.sin(th))));
+      if (prev) this.faces.push({line:[prev, p], g:g, w:w || 1.5, d:dot(lerp(prev, p, .5), VIEW), k:Math.sin(th) > 0 ? 92 : 56});
+      prev = p;
+    }
+  };
+
+  // ── render: callouts + legend ──
+  // cfg: {groups:[{k,n,codes,match,col,detail,ctx}], lines, head, total, w, grid:{x0,x1,y0,y1}, dims:[{a,b,label}]}
+  function render(sc, cfg) {
+    var groups = cfg.groups, gi = {}, lines = cfg.lines || [], P = sc.P.bind(sc);
+    groups.forEach(function(g) { gi[g.k] = g; g._kg = 0; g._eur = 0; g._has = false; g._lines = []; });
+    var other = [];
+    lines.forEach(function(l) {
+      var c = l.material_code || l.code, nm = l.material_name || l.name || c;
+      var g = groups.filter(function(g) { return g.match ? g.match(c, nm) : (g.codes || []).indexOf(c) >= 0; })[0];
+      var kg = +(l.net_weight_kg != null ? l.net_weight_kg : l.net) || 0, eur = +(l.material_cost_eur != null ? l.material_cost_eur : l.cost) || 0;
+      if (!g) { other.push({n:nm, kg:kg, eur:eur}); return; }
+      g._has = true; g._kg += kg; g._eur += eur; g._lines.push({n:nm, kg:kg, eur:eur});
+    });
+    var drawn = {}; sc.faces.forEach(function(fc) { drawn[fc.g] = 1; });
+    var shown = groups.filter(function(g) { return drawn[g.k] || g._has; });
+    var num = 0; shown.forEach(function(g) { g._n = drawn[g.k] && !g.ctx ? ++num : null; });
+
+    sc.faces.forEach(function(fc) { fc.sp = (fc.line || fc.pts).map(P); });
+    sc.faces.sort(function(a, b) { return a.d - b.d; });
+    var all = []; sc.faces.forEach(function(fc) { all.push.apply(all, fc.sp); });
+    var xs = all.map(function(p) { return p[0]; }), ys = all.map(function(p) { return p[1]; });
+    var gx0 = Math.min.apply(null, xs), gx1 = Math.max.apply(null, xs), gy0 = Math.min.apply(null, ys), gy1 = Math.max.apply(null, ys);
+    var calls = [];
+    shown.forEach(function(g) { if (g._n && sc.anchors[g.k]) calls.push({g:g, p:P(sc.anchors[g.k])}); });
+    var midY = (gy0 + gy1) / 2, GAP = 18;
+    function lay(row, y) {
+      row.sort(function(a, b) { return a.p[0] - b.p[0]; });
+      row.forEach(function(c, i) { c.x = Math.max(c.p[0], i ? row[i - 1].x + GAP : gx0); c.y = y; });
+      for (var i = row.length - 1; i >= 0; i--) { var lim = i === row.length - 1 ? gx1 : row[i + 1].x - GAP; if (row[i].x > lim) row[i].x = lim; }
+    }
+    // split callouts evenly: the upper half of the anchors go to the top row
+    var byY = calls.slice().sort(function(a, b) { return a.p[1] - b.p[1]; }), half = Math.ceil(byY.length / 2);
+    var topRow = byY.slice(0, half), botRow = byY.slice(half);
+    lay(topRow, gy0 - 14); lay(botRow, gy1 + 16);
+    var minX = gx0 - 14, maxX = gx1 + 14, minY = gy0 - (topRow.length ? 26 : 14), maxY = gy1 + (botRow.length ? 28 : 12);
+    var vw = maxX - minX, vh = maxY - minY, w = cfg.w || 560;
+    var svg = '<svg class="pd-svg" viewBox="' + f(minX) + ' ' + f(minY) + ' ' + f(vw) + ' ' + f(vh) + '" width="' + w + '" height="' + Math.round(w * vh / vw) + '"' +
+      ' onmouseover="_pdOver(event,this)" onmouseleave="_pdHi(this,null,0)">';
+    if (cfg.grid) {
+      var G = cfg.grid, st = G.step || 5;
+      for (var gx = G.x0; gx <= G.x1 + 1e-6; gx += st) { var a = P([gx, G.y0, G.z || 0]), b = P([gx, G.y1, G.z || 0]);
+        svg += '<line x1="' + f(a[0]) + '" y1="' + f(a[1]) + '" x2="' + f(b[0]) + '" y2="' + f(b[1]) + '" style="stroke:var(--border)" stroke-width=".6"/>'; }
+      [G.y0, G.y1].forEach(function(gy) { var a = P([G.x0, gy, G.z || 0]), b = P([G.x1, gy, G.z || 0]);
+        svg += '<line x1="' + f(a[0]) + '" y1="' + f(a[1]) + '" x2="' + f(b[0]) + '" y2="' + f(b[1]) + '" style="stroke:var(--border)" stroke-width=".6"/>'; });
+    }
+    svg += '<defs><marker id="pd-ar" viewBox="0 0 6 6" refX="3" refY="3" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M0 0L6 3L0 6z" style="fill:var(--muted2)"/></marker></defs>';
+    (cfg.dims || []).forEach(function(dm) {
+      var d0 = P(dm.a), d1 = P(dm.b);
+      svg += '<line x1="' + f(d0[0]) + '" y1="' + f(d0[1]) + '" x2="' + f(d1[0]) + '" y2="' + f(d1[1]) + '" style="stroke:var(--muted2)" stroke-width=".7" marker-start="url(#pd-ar)" marker-end="url(#pd-ar)"/>' +
+        '<text x="' + f((d0[0] + d1[0]) / 2 + 4) + '" y="' + f((d0[1] + d1[1]) / 2 + 11) + '" style="fill:var(--muted2);font:8px DM Mono,monospace">' + dm.label + '</text>';
+    });
+    sc.faces.forEach(function(fc) {
+      var col = gi[fc.g].col;
+      var fill = 'color-mix(in srgb,' + col + ' ' + fc.k + '%,var(--bg))';
+      if (fc.line) {
+        svg += '<line data-g="' + fc.g + '" x1="' + f(fc.sp[0][0]) + '" y1="' + f(fc.sp[0][1]) + '" x2="' + f(fc.sp[1][0]) + '" y2="' + f(fc.sp[1][1]) +
+          '" style="stroke:' + fill + '" stroke-width="' + fc.w + '" stroke-linecap="round"/>';
+        return;
+      }
+      var stl = fc.ns ? 'stroke:none' : fc.dash ? 'stroke:' + col + ';stroke-opacity:.55;stroke-dasharray:2 2;stroke-width:.6'
+              : 'stroke:' + fill + ';stroke-opacity:' + fc.op + ';stroke-width:.4';
+      svg += '<polygon data-g="' + fc.g + '" points="' + fc.sp.map(function(p) { return f(p[0]) + ',' + f(p[1]); }).join(' ') +
+        '" style="fill:' + fill + ';fill-opacity:' + fc.op + ';' + stl + '" stroke-linejoin="round"/>';
+    });
+    calls.forEach(function(c) {
+      var g = c.g, p = c.p;
+      svg += '<g data-g="' + g.k + '">' +
+        '<circle cx="' + f(p[0]) + '" cy="' + f(p[1]) + '" r="1.8" style="fill:var(--white)"/>' +
+        '<polyline points="' + f(p[0]) + ',' + f(p[1]) + ' ' + f(c.x) + ',' + f(c.y + (c.y < p[1] ? 7 : -7)) + '" style="fill:none;stroke:var(--white);stroke-opacity:.45" stroke-width=".7"/>' +
+        '<circle cx="' + f(c.x) + '" cy="' + f(c.y) + '" r="7" style="fill:var(--bg);stroke:' + g.col + '" stroke-width="1.3"/>' +
+        '<text x="' + f(c.x) + '" y="' + f(c.y + 2.8) + '" text-anchor="middle" style="fill:var(--white);font:700 8px DM Mono,monospace">' + g._n + '</text></g>';
+    });
+    svg += '</svg>';
+
+    function money(v) { return '€' + Math.round(v).toLocaleString(); }
+    var tot = 0, totKg = 0;
+    var leg = shown.map(function(g) {
+      if (!g.ctx) { tot += g._eur; totKg += g._kg; }
+      var r = '<div class="pd-row" data-g="' + g.k + '" data-n="' + g.n + '" onmouseenter="_pdHi(this,\'' + g.k + '\',1)" onmouseleave="_pdHi(this,null,0)">' +
+        '<span class="pd-n" style="border-color:' + g.col + (g.ctx ? ';border-style:dashed' : '') + '">' + (g._n || '·') + '</span>' +
+        '<span class="pd-l">' + g.n + '</span>' +
+        '<span class="pd-v">' + (g._has ? (Math.round(g._kg * 10) / 10) + ' kg' : '—') + '</span>' +
+        '<span class="pd-v">' + (g._has ? money(g._eur) : '—') + '</span></div>';
+      if (g.detail && g._lines.length > 1) r += g._lines.map(function(l) {
+        return '<div class="pd-row pd-sub" data-g="' + g.k + '"><span class="pd-n"></span><span class="pd-l">' + l.n + '</span><span class="pd-v">' + (Math.round(l.kg * 10) / 10) + ' kg</span><span class="pd-v">' + money(l.eur) + '</span></div>';
+      }).join('');
+      return r;
+    }).join('');
+    other.forEach(function(l) { tot += l.eur; totKg += l.kg;
+      leg += '<div class="pd-row"><span class="pd-n">·</span><span class="pd-l">' + l.n + '</span><span class="pd-v">' + Math.round(l.kg) + ' kg</span><span class="pd-v">' + money(l.eur) + '</span></div>'; });
+    if (lines.length) leg += '<div class="pd-row pd-tot"><span class="pd-n"></span><span class="pd-l">' + (cfg.total || 'Total material') + '</span><span class="pd-v">' + Math.round(totKg) + ' kg</span><span class="pd-v">' + money(tot) + '</span></div>';
+    var css = groups.map(function(g) { return '.pd-wrap[data-on="' + g.k + '"] .pd-svg [data-g="' + g.k + '"]{opacity:1}.pd-wrap[data-on="' + g.k + '"] .pd-row[data-g="' + g.k + '"]{background:var(--s3)}'; }).join('');
+    return '<div class="pd-wrap"><style>' + css + '</style><div class="pd-head">' + cfg.head +
+      '<span class="pd-hint">' + (cfg.hint || 'hover a part or a row') + '</span></div>' +
+      '<div class="pd-body"><div class="pd-fig">' + svg + '</div><div class="pd-leg">' +
+      '<div class="pd-row pd-hdr"><span class="pd-n">#</span><span class="pd-l">Part group</span><span class="pd-v">Net</span><span class="pd-v">Material/car</span></div>' +
+      leg + '</div></div></div>';
+  }
+  return {Scene:function(S) { return new Scene(S); }, render:render, circ:circ, rrect:rrect, rect:rect, rot:rot,
+          add:add, sub:sub, mul:mul, lerp:lerp, nrm:nrm};
+})();
+// Isolate one part group in a diagram (others fade) and name it in the header
+function _pdHi(el, k, on) {
+  var w = el.closest('.pd-wrap'); if (!w) return;
+  if (on && k) w.setAttribute('data-on', k); else w.removeAttribute('data-on');
+  var h = w.querySelector('.pd-hint'), row = k && w.querySelector('.pd-row[data-g="' + k + '"]');
+  if (h) { if (!h.getAttribute('data-def')) h.setAttribute('data-def', h.textContent);
+    h.textContent = on && row ? row.getAttribute('data-n') : h.getAttribute('data-def'); }
+}
+function _pdOver(e, svg) {
+  var t = e.target && e.target.closest ? e.target.closest('[data-g]') : null;
+  if (t) _pdHi(svg, t.getAttribute('data-g'), 1);
+}
+// ── Platform technical diagram (_VIS.platform) on the shared _V3 engine ──
+_VIS.platform = (function() {
+  var DIM = {
+    micro:       {L:36, WB:24,   W:16,   R:2.9, FO:6.5},
+    small:       {L:40, WB:25.5, W:17,   R:3.1, FO:7.5},
+    medium:      {L:45, WB:27.5, W:18,   R:3.3, FO:8.5},
+    large:       {L:49, WB:29.5, W:19,   R:3.5, FO:9.5},
+    performance: {L:45, WB:26.5, W:19.5, R:3.5, FO:8.5},
+    frame:       {L:53, WB:32,   W:19,   R:3.9, FO:9},
+    commercial:  {L:52, WB:33,   W:19.5, R:3.5, FO:8}
+  };
+  var GROUPS = [
+    {k:'hss',  n:'Underbody: floor, tunnel, rails, dash panel, wheelhouses', codes:['HSS_STAMPED','AHSS'], col:'var(--blue)'},
+    {k:'uhss', n:'Sills & crash-load paths (safety steel)',       codes:['UHSS'],              col:'var(--purple)'},
+    {k:'mild', n:'Crossmembers & brackets',                       codes:['MILD_STEEL'],        col:'var(--muted2)'},
+    {k:'frame',n:'Ladder frame (body-on-frame)',                  codes:['FRAME_STEEL'],       col:'var(--blue)'},
+    {k:'cast', n:'Cast shock towers & front subframe',            codes:['ALU_CAST','MAGNESIUM_CAST'], col:'var(--text)'},
+    {k:'extr', n:'Bumper beams & crash boxes',                    codes:['ALU_EXTRUSION','ALU_STAMP'], col:'var(--white)'},
+    {k:'batt', n:'Battery housing: tray & side frame',            codes:['BATTERY_HOUSING'],   col:'var(--green)'},
+    {k:'susp', n:'Suspension & steering',                         codes:['SUSPENSION_STEER'],  col:'var(--red)'},
+    {k:'brk',  n:'Brake system: discs & calipers',                codes:['BRAKE_SYSTEM'],      col:'var(--gold)'},
+    {k:'whl',  n:'Wheels & tyres',                                codes:['WHEELS_TYRES'],      col:'var(--muted2)'},
+    {k:'cool', n:'Cooling module: radiator & fan',                codes:['COOLING_MODULE'],    col:'var(--cyan)'},
+    {k:'fuel', n:'Fuel tank & exhaust line',                      codes:['FUEL_EXHAUST'],      col:'var(--orange)'},
+    {k:'evt',  n:'EV thermal: coolant loop & chiller',            codes:['EV_THERMAL'],        col:'var(--cyan)'},
+    {k:'rub',  n:'Mounts & bushings',                             codes:['RUBBER_EPDM'],       col:'var(--muted)'},
+    {k:'adh',  n:'Structural adhesive (bonded joints)',           codes:['STRUCT_ADHESIVE'],   col:'var(--muted)'},
+    {k:'ctx',  n:'Context — powertrain module (§3), not in the platform cost', codes:[],       col:'var(--muted2)', ctx:true}
+  ];
+  var add = _V3.add, mul = _V3.mul, nrm = _V3.nrm, lerp = _V3.lerp, circ = _V3.circ, rrect = _V3.rrect, rect = _V3.rect;
+  return function(o) {
+    o = o || {};
+    var size = DIM[o.size] ? o.size : 'medium', D = DIM[size];
+    var pwt = o.pwt || 'ice_only';
+    var ice = pwt !== 'bev_only', bev = pwt !== 'ice_only', isFrame = size === 'frame';
+    var L = D.L, W = D.W, R = D.R, FO = D.FO, WB = D.WB, RA = FO + WB;
+    var DASH = FO + 4.5, FLZ = 2.2, KICK = RA - 3.2, RFZ = R + 1.4, CY = W / 2;
+    var sc = _V3.Scene(11), anchors = sc.anchors;
+    var sweep = sc.sweep.bind(sc), panel = sc.panel.bind(sc), lathe = sc.lathe.bind(sc), helix = sc.helix.bind(sc);
+    function cyl(a, b, r, g, op) { sc.cyl(a, b, r, g, op); }
+    function tube(path, r, g, op) { sc.tube(path, r, g, op); }
+    // ── context: powertrain module (ghosted) ──
+    var GH = {op:.16, dash:true};
+    if (ice) {
+      sweep([[FO - 1.6, CY - 3.2, 4.6], [FO - 1.6, CY + 1.6, 4.6]], rrect(2.6, 2.6, .5), 'ctx', GH);     // transverse engine
+      cyl([FO - .9, CY + 1.6, 4.0], [FO - .9, CY + 3.4, 4.0], 1.1, 'ctx', GH);                          // gearbox
+    }
+    if (bev) {
+      cyl([FO + .4, CY - 1.4, R + .4], [FO + .4, CY + 1.4, R + .4], .95, 'ctx', GH);                    // e-motor
+      sweep([[FO - .4, CY - 1.2, R + 1.8], [FO + 1.3, CY - 1.2, R + 1.8]], rect(2.4, .7), 'ctx', GH);   // inverter
+    }
+
+    // ── under-floor: battery, fuel, exhaust, thermal ──
+    if (bev) {
+      var bx0 = DASH + .6, bx1 = RA - (ice ? 6.4 : 1.8), by0 = 1.5, by1 = W - 1.5;
+      panel([[bx0 + .5, by0], [bx1 - .5, by0], [bx1, by0 + .5], [bx1, by1 - .5], [bx1 - .5, by1], [bx0 + .5, by1], [bx0, by1 - .5], [bx0, by0 + .5]],
+            'z', .9, 1.05, 'batt', {op:.9});
+      sweep([[bx0, by0, 1.45], [bx1, by0, 1.45]], rect(.5, .9), 'batt');
+      sweep([[bx0, by1, 1.45], [bx1, by1, 1.45]], rect(.5, .9), 'batt');
+      sweep([[bx0, by0, 1.45], [bx0, by1, 1.45]], rect(.5, .9), 'batt', {up:[0, 0, 1]});
+      sweep([[bx1, by0, 1.45], [bx1, by1, 1.45]], rect(.5, .9), 'batt', {up:[0, 0, 1]});
+      for (var mx = bx0 + .5; mx < bx1 - 2.2; mx += 2.6) [by0 + .5, CY + .15].forEach(function(my) {   // cell modules (context)
+        sweep([[mx, my, 1.5], [mx + 2.2, my, 1.5]], rect(CY - by0 - .9, .8), 'ctx', {op:.22, dash:true, up:[0, 0, 1], seg:5}); });
+      anchors.batt = [bx1 - 1, by1, 1.9];
+      tube([[2.6, CY + 2.4, 4.2], [3.6, CY + 2.4, 3.2], [DASH - 1.2, CY + 2.4, 2.4], [DASH - .4, CY + 2.4, 1.6], [bx0 + .2, CY + 2.4, 1.6]], .16, 'evt');
+      tube([[2.6, CY - 2.4, 4.2], [3.6, CY - 2.4, 3.0], [DASH - 1.6, CY - 2.4, 2.2], [bx0 + .2, CY - 2.4, 1.6]], .16, 'evt');
+      sweep([[DASH - 2.4, CY - .6, 3.0], [DASH - .8, CY - .6, 3.0]], rrect(1.3, 1, .25), 'evt');         // chiller
+      cyl([DASH - 1.6, CY + 1.0, 2.6], [DASH - 1.6, CY + 1.8, 2.6], .35, 'evt');                       // pump
+      anchors.evt = [DASH - 1.6, CY - .6, 3.5];
+    }
+    if (ice) {
+      sweep([[RA - 4.2, 3.2, 1.65], [RA - 4.2, W - 3.2, 1.65]], rrect(3.6, 1.0, .35), 'fuel', {up:[0, 0, 1], scale:function(t) { return 1 - .12 * Math.abs(t - .5); }});
+      tube([[RA - 2.6, W - 3.4, 1.9], [RA - 1.2, W - 2.2, 2.8], [RA + .4, W - 1.2, RFZ + .9]], .2, 'fuel');   // filler neck
+      var ey = CY + .4;
+      tube([[FO - .4, CY - .8, 3.6], [FO + .8, ey, 2.4], [DASH, ey, 1.8], [RA - 6.2, ey, 1.7], [RA - 2, ey + 2.6, 1.7], [L - 5, ey + 2.6, 2.0]], .22, 'fuel');
+      cyl([DASH - .6, ey, 1.85], [DASH + 1.8, ey, 1.75], .5, 'fuel');                                   // catalyst
+      sweep([[L - 4.6, ey + 1.1, 2.2], [L - 4.6, ey + 4.6, 2.2]], rrect(2.0, 1.0, .45), 'fuel', {up:[0, 0, 1]});   // rear silencer
+      tube([[L - 4.2, ey + 4.2, 2.1], [L + .3, ey + 4.2, 2.0]], .18, 'fuel');
+      anchors.fuel = [L - 4.6, ey + 4.6, 2.7];
+    }
+
+    // ── structure ──
+    if (isFrame) {
+      [3.9, W - 3.9].forEach(function(y) {
+        sweep([[.8, y, 4.6], [FO + 3, y, 4.6], [DASH + 2, y, 5.4], [L - .4, y, 5.4]], [[-.25, -.9], [.25, -.9], [.25, .9], [-.25, .9], [-.25, .7], [-.05, .7], [-.05, -.7], [-.25, -.7]].map(function(q) { return [q[0] * 3, q[1]]; }), 'frame', {seg:3});
+      });
+      [3, FO + 3, DASH + 6, RA - 4, RA + 2, L - 2].forEach(function(x) { sweep([[x, 4.6, x < DASH ? 4.6 : 5.4], [x, W - 4.6, x < DASH ? 4.6 : 5.4]], circ(.4, 8), 'mild', {smooth:true}); });
+      anchors.frame = [L * .6, W - 3.9, 6.3];
+      anchors.mild = [DASH + 6, CY, 5.8];
+    } else {
+      var fl = [[DASH, 1.2], [KICK, 1.2], [KICK, W - 1.2], [DASH, W - 1.2]];
+      sc.slab(DASH, KICK, 1.2, W - 1.2, FLZ, FLZ + .12, 'hss', {op:.35, tile:3});
+      for (var rx = DASH + 2; rx < KICK - 1; rx += 3.2) [[1.6, CY - 1.8], [CY + 1.8, W - 1.6]].forEach(function(yy) {   // pressed stiffening beads
+        if (!ice) yy = [1.6, W - 1.6];
+        sweep([[rx, yy[0], FLZ + .12], [rx, yy[1], FLZ + .12]], [[-.3, 0], [.3, 0], [.15, .14], [-.15, .14]], 'hss', {up:[0, 0, 1], op:.6, seg:4});
+      });
+      if (ice) sweep([[DASH, CY, FLZ + .1], [KICK - .8, CY, FLZ + .1]], [[-1.4, 0], [1.4, 0], [.95, 1.3], [-.95, 1.3]], 'hss', {op:.55, seg:3});   // tunnel
+      panel([[1.2, FLZ], [W - 1.2, FLZ], [W - 1.2, RFZ + .2], [1.2, RFZ + .2]], 'x', KICK, KICK + .18, 'hss', {op:.5});       // heel kick
+      sc.slab(KICK, L - .8, 1.6, W - 1.6, RFZ, RFZ + .12, 'hss', {op:.35, tile:3});        // rear floor
+      panel([[1.2, FLZ], [W - 1.2, FLZ], [W - 1.2, 6.9], [W - 2.2, 7.8], [2.2, 7.8], [1.2, 6.9]], 'x', DASH - .2, DASH, 'hss', {op:.42});   // dash panel
+      // rails: front rails run level, kick down under the floor; rear rails rise over the axle
+      var hat = [[-.6, -.7], [.6, -.7], [.6, .7], [-.6, .7]];
+      [4.1, W - 4.1].forEach(function(y) {
+        sweep([[1.6, y, 4.0], [FO + 2.2, y, 4.0], [DASH + .4, y, FLZ + .55], [DASH + 7, y, FLZ - .25]], hat, 'hss', {seg:1.6});
+        sweep([[KICK - 3, y < CY ? 3.9 : W - 3.9, FLZ - .2], [KICK + .6, y < CY ? 3.9 : W - 3.9, RFZ - .3], [L - .7, y < CY ? 3.9 : W - 3.9, RFZ - .3]], [[-.55, -.6], [.55, -.6], [.55, .6], [-.55, .6]], 'hss', {seg:1.6});
+      });
+      // rear wheelhouses (half drums)
+      [[.6, 2.8], [W - 2.8, W - .6]].forEach(function(yy) {
+        var arch = []; for (var i = 0; i <= 10; i++) { var t = Math.PI * i / 10; arch.push([(R + .7) * Math.cos(t), (R + .7) * Math.sin(t)]); }
+        sweep([[RA, yy[0], R - .2], [RA, yy[1], R - .2]], arch, 'hss', {up:[0, 0, 1], op:.45});
+      });
+      anchors.hss = [DASH, W - 1.4, 6.8];
+      // sills: closed rocker section
+      var rock = [[-.65, -.9], [.6, -.9], [.75, .1], [.45, .95], [-.5, .95], [-.7, .1]];
+      sweep([[DASH - 1, .65, 3.0], [RA - 1.4, .65, 3.0]], rock, 'uhss', {seg:2.5});
+      sweep([[DASH - 1, W - .65, 3.0], [RA - 1.4, W - .65, 3.0]], rock, 'uhss', {seg:2.5});
+      anchors.uhss = [(DASH + RA) / 2, W - .2, 3.9];
+      // seat crossmembers (hat sections) + rear crossmember
+      var xm = [[-.5, 0], [.5, 0], [.35, .55], [-.35, .55]];
+      [DASH + 5.5, DASH + 10.5].forEach(function(x) {
+        if (x > KICK - 1) return;
+        if (ice) { sweep([[x, 1.3, FLZ + .12], [x, CY - 1.4, FLZ + .12]], xm, 'mild', {up:[0, 0, 1]}); sweep([[x, CY + 1.4, FLZ + .12], [x, W - 1.3, FLZ + .12]], xm, 'mild', {up:[0, 0, 1]}); }
+        else sweep([[x, 1.3, FLZ + .12], [x, W - 1.3, FLZ + .12]], xm, 'mild', {up:[0, 0, 1]});
+      });
+      sweep([[L - 2.2, 4.4, RFZ + .12], [L - 2.2, W - 4.4, RFZ + .12]], xm, 'mild', {up:[0, 0, 1]});
+      anchors.mild = [DASH + 10.5, W - 1.6, FLZ + .7];
+    }
+    // cast shock towers (tapered, with top mount) + front subframe cradle
+    [2.0, W - 2.0].forEach(function(y) {
+      sweep([[FO, y, 4.3], [FO, y, 7.3]], circ(1.35, 12), 'cast', {smooth:true, scale:function(t) { return 1 - .38 * t; }});
+      sweep([[FO, y, 4.0], [FO, y, 4.4]], rect(3.2, 2.6), 'cast', {up:[1, 0, 0]});
+    });
+    var sf = [[-.4, -.3], [.4, -.3], [.4, .3], [-.4, .3]];
+    [4.0, W - 4.0].forEach(function(y) { sweep([[FO - 2.8, y, R - .1], [FO + .2, y < CY ? y - .4 : y + .4, R - .3], [FO + 3.2, y, R - .1]], sf, 'cast', {seg:1.5}); });
+    sweep([[FO + 3.2, 4.0, R - .1], [FO + 3.2, W - 4.0, R - .1]], rrect(1.1, .7, .2), 'cast', {up:[0, 0, 1]});
+    sweep([[FO - 2.8, 4.0, R - .1], [FO - 2.8, W - 4.0, R - .1]], circ(.32, 8), 'cast', {up:[0, 0, 1], smooth:true});
+    anchors.cast = [FO, W - 2.0, 7.3];
+    // bumper beams (bowed) + octagonal crash boxes
+    var bb = []; for (var by = .6; by <= W - .6 + 1e-6; by += (W - 1.2) / 10) { var tt = (by - CY) / (CY - .6); bb.push([.65 - .65 * (1 - tt * tt), by, 4.0]); }
+    sweep(bb, rect(.55, 1.25), 'extr', {up:[0, 0, 1]});
+    [4.1, W - 4.1].forEach(function(y) { sweep([[.7, y, 4.0], [1.7, y, 4.0]], circ(.55, 8, Math.PI / 8), 'extr'); });
+    var rb = []; for (by = 1.4; by <= W - 1.4 + 1e-6; by += (W - 2.8) / 10) { tt = (by - CY) / (CY - 1.4); rb.push([L - .55 + .5 * (1 - tt * tt), by, RFZ + .8]); }
+    sweep(rb, rect(.5, 1.0), 'extr', {up:[0, 0, 1]});
+    anchors.extr = [.4, W - .7, 4.6];
+    // cooling module: radiator core with fins + fan shroud
+    panel([[3.3, 3.9], [W - 3.3, 3.9], [W - 3.3, 7.0], [3.3, 7.0]], 'x', 1.95, 2.3, 'cool', {op:.85});
+    for (var fz = 4.25; fz < 6.9; fz += .38) sc.line([1.94, 3.4, fz], [1.94, W - 3.4, fz], 'cool', .5, 44);
+    [CY - 1.6, CY + 1.6].forEach(function(y) { cyl([2.35, y, 5.45], [2.95, y, 5.45], 1.35, 'cool', {n:18}); });
+    anchors.cool = [1.95, W - 3.3, 7.0];
+    // mounts & bushings
+    [[FO - 2.8, 4.0], [FO + 3.2, 4.0], [FO - 2.8, W - 4.0], [FO + 3.2, W - 4.0]].forEach(function(m) {
+      cyl([m[0], m[1], R + .1], [m[0], m[1], R + .65], .42, 'rub', {n:10}); });
+    [2.0, W - 2.0].forEach(function(y) { cyl([FO, y, 7.3], [FO, y, 7.6], .75, 'rub', {n:12}); });
+    anchors.rub = [FO + 3.2, W - 4.0, R + .65];
+
+    // ── chassis ──
+    [[1.2, 1], [W - 1.2, -1]].forEach(function(sd) {
+      var yh = sd[0], dir = sd[1], ytw = yh < CY ? 2.0 : W - 2.0;
+      // MacPherson strut: damper body, rod, coil spring, knuckle, lower wishbone
+      var B0 = [FO, yh + dir * .55, R + 1.0], T0 = [FO, ytw, 7.3];
+      cyl(B0, lerp(B0, T0, .55), .33, 'susp');
+      cyl(lerp(B0, T0, .55), T0, .12, 'susp', {n:8});
+      helix(lerp(B0, T0, .42), lerp(B0, T0, .9), .72, 5, 'susp', 1.6);
+      sweep([[FO, yh + dir * .25, R - 1.0], [FO, yh + dir * .35, R + 1.3]], rect(.5, .45), 'susp', {up:[1, 0, 0]});
+      var lo = [FO, yh + dir * .4, R - .9], ys = yh < CY ? 4.0 : W - 4.0;
+      sweep([lo, [FO - 2.2, ys, R - .45]], rrect(.38, .26, .08), 'susp');
+      sweep([lo, [FO + 2.0, ys, R - .45]], rrect(.38, .26, .08), 'susp');
+      // tie rod
+      cyl([FO + 1.25, yh < CY ? 3.4 : W - 3.4, R + .45], [FO + .55, yh + dir * .4, R + .2], .1, 'susp', {n:6});
+    });
+    // steering rack with bellows boots, column, wheel
+    cyl([FO + 1.25, 4.4, R + .45], [FO + 1.25, W - 4.4, R + .45], .3, 'susp');
+    [[3.4, 4.4], [W - 3.4, W - 4.4]].forEach(function(b) {
+      sweep([[FO + 1.25, b[1], R + .45], [FO + 1.25, b[0], R + .45]], circ(.42, 10), 'susp', {smooth:true, up:[0, 0, 1], scale:function(t) { return 1 - .55 * t; }}); });
+    var colY = CY - 2.6, sw0 = [DASH + 2.3, colY, 6.9];
+    cyl([FO + 1.6, colY, R + .6], sw0, .16, 'susp', {n:8});
+    var swU = nrm([-0.45, 0, 1]), swP = []; for (var i = 0; i <= 20; i++) { var t = i / 20 * Math.PI * 2; swP.push(add(sw0, add(mul([0, 1, 0], 1.35 * Math.cos(t)), mul(swU, 1.35 * Math.sin(t))))); }
+    tube(swP, .14, 'susp', {seg:1, caps:false});
+    // rear axle: twist beam + trailing arms (monocoque) or leaf springs + live axle (frame)
+    if (isFrame) {
+      cyl([RA, 1.3, R], [RA, W - 1.3, R], .42, 'susp');
+      sweep([[RA - .7, CY, R], [RA + .7, CY, R]], circ(1.0, 14), 'susp', {smooth:true});
+      [3.9, W - 3.9].forEach(function(y) {
+        for (var lf = 0; lf < 4; lf++) { var pts = [], hl = 4.4 * (1 - lf * .2); for (var j = 0; j <= 8; j++) { var u = j / 8; pts.push([RA - hl + 2 * hl * u, y, R + .62 - lf * .15 + .32 * Math.pow(2 * u - 1, 2)]); }
+          sweep(pts, rect(.9, .14), 'susp', {up:[0, 0, 1], seg:1.4}); }
+      });
+    } else {
+      sweep([[RA - .9, 1.7, R + .15], [RA - .9, W - 1.7, R + .15]], [[-.55, .35], [.55, .35], [0, -.35]], 'susp', {up:[0, 0, 1]});
+      [[2.0, 1], [W - 2.0, -1]].forEach(function(sd) {
+        sweep([[RA - 4.2, sd[0], R + .7], [RA, sd[0] - sd[1] * .6, R]], rrect(.5, .7, .15), 'susp');
+        helix([RA - .5, sd[0] + sd[1] * .4, R + .1], [RA - .5, sd[0] + sd[1] * .4, RFZ - .05], .62, 5, 'susp', 1.6);
+        cyl([RA + .5, sd[0] + sd[1] * .2, R + .2], [RA + .3, sd[0] + sd[1] * .2, RFZ - .9], .22, 'susp', {n:8});
+      });
+    }
+    anchors.susp = [FO, W - 2.0, 6.3];
+    // wheels: tyre (revolved section) + rim, brake disc + curved caliper
+    var tw = 2.0, rr = R * .64;
+    [FO, RA].forEach(function(x) {
+      [[.3 - tw / 2, -1], [W - .3 + tw / 2, 1]].forEach(function(w) {
+        var c = [x, w[0], R], near = w[1] > 0;
+        var oc = near ? 1 : -1;     // outer side
+        lathe(c, [[rr, -tw / 2], [R * .9, -tw / 2], [R, -tw * .32], [R, tw * .32], [R * .9, tw / 2], [rr, tw / 2]], 'whl', {op:near ? .55 : 1, n:28});
+        lathe(c, [[0, oc * tw * .38], [rr, oc * tw * .45]], 'whl', {op:near ? .35 : .9, n:20, inner:true});
+        // brake disc and caliper, inboard
+        var dc = [x, w[0] - oc * (tw / 2 + .25), R];
+        lathe(dc, [[R * .2, -.12], [R * .56, -.12], [R * .56, .12], [R * .2, .12]], 'brk', {n:22});
+        var cal = []; for (var j = 0; j <= 4; j++) { var a = Math.PI * (.15 + .3 * j / 4); cal.push([x + R * .5 * Math.cos(a), dc[1], R + R * .5 * Math.sin(a)]); }
+        sweep(cal, rrect(.55, .42, .12), 'brk', {up:[0, 1, 0]});
+      });
+    });
+    anchors.whl = [RA + R * .55, W - .3 + tw, R + R * .75];
+    anchors.brk = [FO + R * .45, W - .3 - .25, R + R * .45];
+
+    var LBL = {ice_only:'ICE platform', bev_only:'BEV platform', ice_and_bev:'Multi-energy platform (ICE + BEV provisions)'};
+    return _V3.render(sc, {groups:GROUPS, lines:o.lines, w:o.w, total:'Total platform material',
+      hint:'hover a part or a row · see-through floor',
+      head:size.toUpperCase() + ' · ' + (LBL[pwt] || pwt) + (isFrame ? ' · body-on-frame' : ' · monocoque underbody') +
+           (pwt === 'ice_and_bev' ? ' · figures: ' + (o.variant === 'bev' ? 'BEV' : 'ICE') + '-ready variant' : ''),
+      grid:{x0:-2, x1:L + 2, y0:-2, y1:W + 3, step:5},
+      dims:[{a:[FO, W + 3.5, 0], b:[RA, W + 3.5, 0], label:'wheelbase ' + (WB / 10).toFixed(2) + ' m'}]});
+  };
+})();
+// ── ICE powertrain diagram (_VIS.iceEngine): see-through engine, transverse front-drive layout ──
+// Groups map to _ICE_PC.calc material lines (block, head, crank, pistons, valvetrain, seals,
+// aftertreatment, hybrid motor) and the bought-in systems (driveline, ancillaries).
+_VIS.iceEngine = (function() {
+  var GROUPS = [
+    {k:'block', n:'Engine block & oil sump (cast iron)',            codes:['CAST_IRON_BLOCK', 'ALU_BLOCK'], col:'var(--muted2)'},
+    {k:'head',  n:'Cylinder head & cam cover (aluminium)',          codes:['ALU_ALLOY_HEAD'], col:'var(--text)'},
+    {k:'crank', n:'Crankshaft, conrods & pulley (forged steel)',    codes:['FORGED_STEEL'],   col:'var(--gold)'},
+    {k:'pist',  n:'Pistons (aluminium)',                            codes:['ALU_PISTON'],     col:'var(--white)'},
+    {k:'valve', n:'Camshafts, sprockets & timing chain',            match:function(c, n) { return c === 'STEEL_ALLOY' && !/exhaust|aftertreat/i.test(n); }, col:'var(--blue)'},
+    {k:'seal',  n:'Head gasket & seals',                            codes:['RUBBER_SEAL'],    col:'var(--purple)'},
+    {k:'cat',   n:'Exhaust aftertreatment (catalyst)',              match:function(c, n) { return /exhaust|aftertreat/i.test(n); }, col:'var(--orange)'},
+    {k:'hyb',   n:'Hybrid e-motor between engine and gearbox',      codes:['MOTOR_STEEL', 'RARE_EARTH_MAG'], col:'var(--green)'},
+    {k:'anc',   n:'Turbo, intake, injection, ECU & ancillaries',    codes:['ENGINE_ANCILLARIES'], col:'var(--cyan)'},
+    {k:'drv',   n:'Transmission, differential & driveshafts',       codes:['DRIVELINE'],      col:'var(--red)'}
+  ];
+  var C = _V3;
+  function hull2(pts) {
+    pts = pts.slice().sort(function(a, b) { return a[0] - b[0] || a[1] - b[1]; });
+    function cr(o, a, b) { return (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]); }
+    var lo = [], up = [], i;
+    for (i = 0; i < pts.length; i++) { while (lo.length >= 2 && cr(lo[lo.length - 2], lo[lo.length - 1], pts[i]) <= 0) lo.pop(); lo.push(pts[i]); }
+    for (i = pts.length - 1; i >= 0; i--) { while (up.length >= 2 && cr(up[up.length - 2], up[up.length - 1], pts[i]) <= 0) up.pop(); up.push(pts[i]); }
+    return lo.slice(0, -1).concat(up.slice(0, -1));
+  }
+  // closed belt / chain path around pulleys [[y, z, r], …] in the plane x
+  function belt(x, pul) {
+    var pts = []; pul.forEach(function(p) { for (var i = 0; i < 24; i++) { var t = i / 24 * Math.PI * 2; pts.push([p[0] + p[2] * Math.cos(t), p[1] + p[2] * Math.sin(t)]); } });
+    var h = hull2(pts); h.push(h[0]);
+    return h.map(function(q) { return [x, q[0], q[1]]; });
+  }
+  return function(o) {
+    o = o || {};
+    var key = String(o.key || '4CYL_ICE'), cyl = parseInt(key) || 4, tech = key.split('_').slice(1).join('_') || 'ICE';
+    var isV = cyl >= 8, banks = isV ? [-Math.PI / 4, Math.PI / 4] : [0], per = cyl / banks.length;
+    var turbo = /TURBO/.test(tech), hybrid = /HEV|PHEV|REEV/.test(tech);
+    var p = .95, Lb = per * p + .5 + (isV ? .45 : 0), rc = .42, Lr = 1.25, DECK = 2.0;
+    var sc = C.Scene(36), A = sc.anchors;
+    function bankDir(a) { return [Math.sin(a), Math.cos(a)]; }
+    function at(x, yz) { return [x, yz[0], yz[1]]; }
+    function sh(prof, d) { return prof.map(function(q) { return [q[0] + d[0], q[1] + d[1]]; }); }
+
+    // block (see-through) + sump
+    var bp;
+    if (!isV) bp = [[-1.45, -.7], [1.45, -.7], [1.6, DECK], [-1.6, DECK]];
+    else { bp = [[-1.5, -.7], [1.5, -.7]];
+      var R0 = banks[1], dR = bankDir(R0), pR = [Math.cos(R0), -Math.sin(R0)], L0 = banks[0], dL = bankDir(L0), pL = [Math.cos(L0), -Math.sin(L0)];
+      bp.push([dR[0] * DECK + pR[0] * 1.15, dR[1] * DECK + pR[1] * 1.15], [dR[0] * DECK - pR[0] * 1.15, dR[1] * DECK - pR[1] * 1.15], [0, 1.1],
+              [dL[0] * DECK + pL[0] * 1.15, dL[1] * DECK + pL[1] * 1.15], [dL[0] * DECK - pL[0] * 1.15, dL[1] * DECK - pL[1] * 1.15]); }
+    sc.sweep([[-.1, 0, 0], [Lb, 0, 0]], bp, 'block', {op:.22, noCull:true, seg:99});
+    sc.sweep([[.15, 0, -1.25], [Lb - .25, 0, -1.25]], C.rrect(2.6, 1.0, .3), 'block', {op:.85, seg:99});
+    A.block = [Lb * .35, isV ? 1.5 : 1.45, -.4];
+
+    // heads, cam covers, gaskets, camshafts per bank
+    banks.forEach(function(a, bi) {
+      var d = bankDir(a), pp = [Math.cos(a), -Math.sin(a)], x0 = isV && bi ? .45 : 0, x1 = Lb - (isV && !bi ? .45 : 0);
+      sc.sweep([[x0, 0, 0], [x1, 0, 0]], sh(C.rot(C.rect(2.3, .9), a), [d[0] * (DECK + .5), d[1] * (DECK + .5)]), 'head', {op:.55, seg:99, profRef:[d[0] * (DECK + .5), d[1] * (DECK + .5)]});
+      sc.sweep([[x0 + .1, 0, 0], [x1 - .1, 0, 0]], sh(C.rot(C.rrect(2.0, .55, .22), a), [d[0] * (DECK + 1.2), d[1] * (DECK + 1.2)]), 'head', {op:.3, seg:99, profRef:[d[0] * (DECK + 1.2), d[1] * (DECK + 1.2)]});
+      sc.sweep([[x0, 0, 0], [x1, 0, 0]], sh(C.rot(C.rect(2.36, .07), a), [d[0] * (DECK + .03), d[1] * (DECK + .03)]), 'seal', {seg:99, profRef:[d[0] * (DECK + .03), d[1] * (DECK + .03)]});
+      [-.5, .5].forEach(function(s) {
+        var cpos = [d[0] * (DECK + 1.15) + pp[0] * s, d[1] * (DECK + 1.15) + pp[1] * s];
+        sc.cyl(at(-.35, cpos), at(x1 - .15, cpos), .1, 'valve', {n:8});
+        for (var j = 0; j < per; j++) sc.cyl(at(x0 + .3 + p / 2 + j * p - .12, cpos), at(x0 + .3 + p / 2 + j * p + .12, cpos), .17, 'valve', {n:8});
+        sc.lathe(at(-.35, cpos), [[0, -.04], [.42, -.04], [.42, .04], [0, .04]], 'valve', {axis:'x', n:18});
+      });
+      if (!bi || !isV) { A.head = [Lb * .62, d[0] * (DECK + .5) + 1.15, d[1] * (DECK + .5) + .45]; A.seal = [Lb * .3, d[0] * DECK + 1.18, DECK + .03]; }
+    });
+    // timing chain around crank + cam sprockets (front, x = −0.35)
+    var spro = [[0, 0, .3]];
+    banks.forEach(function(a) { var d = bankDir(a), pp = [Math.cos(a), -Math.sin(a)];
+      [-.5, .5].forEach(function(s) { spro.push([d[0] * (DECK + 1.15) + pp[0] * s, d[1] * (DECK + 1.15) + pp[1] * s, .46]); }); });
+    sc.tube(belt(-.35, spro), .04, 'valve', {caps:false, noCull:true, n:6, seg:.6});
+    sc.lathe([-.35, 0, 0], [[0, -.05], [.3, -.05], [.3, .05], [0, .05]], 'valve', {axis:'x', n:16});
+    A.valve = [-.35, 0, DECK + 1.6];
+
+    // crankshaft, conrods, pistons
+    sc.cyl([-.75, 0, 0], [Lb + .1, 0, 0], .24, 'crank', {n:12});
+    sc.lathe([-.75, 0, 0], [[.1, -.12], [.55, -.12], [.55, .12], [.1, .12]], 'crank', {axis:'x', n:22});
+    var PH = {3:[0, 2.094, 4.189], 4:[0, 3.1416, 3.1416, 0], 6:[0, 2.094, 4.189, 4.189, 2.094, 0]};
+    banks.forEach(function(a, bi) {
+      var d = bankDir(a);
+      for (var j = 0; j < per; j++) {
+        var x = .25 + p / 2 + j * p + (isV && bi ? .45 : 0);
+        var ph = (PH[per] || [])[j]; if (ph == null) ph = j * 2 * Math.PI / per;
+        var pin = [rc * Math.sin(ph), rc * Math.cos(ph)];
+        if (!bi || !isV) {
+          [-.22, .22].forEach(function(dx) {
+            sc.sweep([[x + dx - .05, 0, 0], [x + dx + .05, 0, 0]], C.rot(C.rect(.62, rc + .7, 0, (rc - .05) / 2), ph), 'crank', {seg:99, profRef:C.rot([[0, (rc - .05) / 2]], ph)[0]});
+          });
+          sc.cyl(at(x - .2, pin), at(x + .2, pin), .2, 'crank', {n:10});
+        }
+        var q = ph - a, s = rc * Math.cos(q) + Math.sqrt(Lr * Lr - Math.pow(rc * Math.sin(q), 2));
+        var pp2 = [d[0] * s, d[1] * s];
+        sc.tube([at(x, pin), at(x, pp2)], .09, 'crank', {n:6});
+        sc.cyl(at(x, [d[0] * (s - .15), d[1] * (s - .15)]), at(x, [d[0] * (s + .35), d[1] * (s + .35)]), .4, 'pist', {n:16});
+        if (j === 0 && (!bi || !isV)) A.pist = at(x, [d[0] * (s + .35) + .3, d[1] * (s + .35)]);
+      }
+    });
+    A.crank = [-.75, .3, .5];
+
+    // ancillaries: intake, fuel rail, alternator + belt, ECU, oil filter; exhaust manifold, turbo
+    if (!isV) {
+      sc.cyl([.1, -2.6, 2.4], [Lb - .2, -2.6, 2.4], .42, 'anc', {n:14});
+      for (var j = 0; j < per; j++) { var xi = .25 + p / 2 + j * p; sc.tube([[xi, -2.45, 2.75], [xi, -2.0, 3.1], [xi, -1.3, 2.7]], .15, 'anc'); }
+      sc.tube([[.1, -1.45, 3.0], [Lb - .1, -1.45, 3.0]], .06, 'anc', {n:6});
+      sc.cyl([-.4, -2.6, 2.4], [.1, -2.6, 2.4], .3, 'anc', {n:12});
+    } else {
+      sc.cyl([.1, 0, 3.1], [Lb - .2, 0, 3.1], .5, 'anc', {n:14});
+      sc.cyl([-.4, 0, 3.1], [.1, 0, 3.1], .32, 'anc', {n:12});
+    }
+    sc.cyl([.15, 1.95, .55], [1.0, 1.95, .55], .45, 'anc', {n:14});                                   // alternator
+    sc.lathe([-.75, 1.95, .55], [[.05, -.08], [.25, -.08], [.25, .08], [.05, .08]], 'anc', {axis:'x', n:14});
+    sc.tube(belt(-.75, [[0, 0, .57], [1.95, .55, .27]]), .035, 'anc', {caps:false, noCull:true, n:5, seg:.5});
+    sc.box(.5, 1.7, -3.4, -2.8, -.2, .7, 'anc');                                                       // ECU
+    sc.cyl([Lb * .3, 1.45, .2], [Lb * .3, 1.95, .2], .28, 'anc', {n:12});                              // oil filter
+    // exhaust manifold(s) to collector, turbo, catalyst
+    var Tx = Lb * .55, col = [Tx, 2.55, 1.55];
+    banks.forEach(function(a, bi) {
+      var d = bankDir(a), pp = [Math.cos(a), -Math.sin(a)], side = isV ? (a > 0 ? 1 : -1) : 1;
+      for (var j = 0; j < per; j++) {
+        var x = .25 + p / 2 + j * p + (isV && bi ? .45 : 0);
+        var port = [d[0] * (DECK + .5) + pp[0] * 1.15 * side, d[1] * (DECK + .5) + pp[1] * 1.15 * side];
+        var tgt = side > 0 ? col : [Tx, -2.6, 1.0];
+        sc.tube([at(x, port), [x, port[0] + .45 * side, port[1] - .35], [x + (tgt[0] - x) * .5, tgt[1] + .1 * side, (port[1] + tgt[2]) / 2 - .2], tgt], .13, 'anc', {n:7});
+      }
+      if (side < 0) sc.tube([[Tx, -2.6, 1.0], [Tx + .4, -1.9, -.5], [Tx + .4, 1.9, -.5], [Tx, 2.55, .9]], .15, 'anc', {n:7});
+    });
+    if (turbo) {
+      sc.lathe([Tx, 2.75, 1.55], [[0, -.28], [.55, -.28], [.64, 0], [.55, .28], [0, .28]], 'anc', {n:22});
+      sc.cyl([Tx, 3.0, 1.55], [Tx, 3.25, 1.55], .25, 'anc', {n:10, up:[1, 0, 0]});
+      sc.lathe([Tx, 3.5, 1.55], [[0, -.25], [.6, -.25], [.68, 0], [.6, .25], [0, .25]], 'anc', {n:22});
+      sc.tube([[Tx, 3.5, 2.15], [Tx - .5, 3.45, 2.9], [-.95, 2.7, 2.9], [-.95, isV ? .6 : -1.7, isV ? 3.4 : 2.7], [-.4, isV ? 0 : -2.6, isV ? 3.1 : 2.4]], .13, 'anc', {n:8});
+      A.anc = [Tx, 3.5, 2.25];
+    } else A.anc = [.6, 1.95, 1.0];
+    var Cx = Tx + .6;
+    sc.tube([[Tx, 2.75, .95], [Cx, 2.9, .5]], .2, 'cat', {n:8});
+    sc.sweep([[Cx, 2.9, .5], [Cx + .3, 2.9, -.8]], C.circ(.45, 14), 'cat', {});
+    sc.tube([[Cx + .3, 2.9, -.8], [Cx + 1.2, 2.6, -1.5], [Cx + 2.6, 2.4, -1.7]], .2, 'cat', {n:8});
+    A.cat = [Cx + .15, 3.35, -.1];
+
+    // hybrid motor (P2) + driveline
+    var gx = Lb + .05;
+    if (hybrid) {
+      sc.lathe([gx, 0, 0], [[.3, 0], [1.3, 0], [1.38, .25], [1.3, .5], [.3, .5]], 'hyb', {axis:'x', n:26});
+      sc.tube([[gx + .25, 0, 1.35], [gx + .3, -.6, 2.4], [gx + .4, -2.2, 2.8]], .13, 'hyb', {n:6});
+      A.hyb = [gx + .25, .4, 1.4]; gx += .55;
+    }
+    sc.sweep([[gx, 0, 0], [gx + .8, 0, 0]], C.circ(1.55, 22), 'drv', {scale:function(t) { return 1 - .25 * t; }, seg:99});
+    sc.sweep([[gx + .8, .25, -.3], [gx + 2.4, .25, -.3]], C.rrect(2.1, 2.3, .45), 'drv', {seg:99});
+    var dif = [gx + 1.5, 1.35, -.95];
+    sc.lathe(dif, [[.2, -.45], [.75, -.3], [.75, .3], [.2, .45]], 'drv', {axis:'x', n:18});
+    [[dif[0] + .5, gx + 4.4], [dif[0] - .6, -2.6]].forEach(function(s) {
+      sc.tube([[s[0], 1.35, -.95], [s[1], 1.65, -1.25]], .13, 'drv', {n:8});
+      var dir = s[1] > s[0] ? 1 : -1;
+      sc.sweep([[s[0] + dir * .05, 1.37, -.97], [s[0] + dir * .7, 1.42, -1.03]], C.circ(.3, 12), 'drv', {scale:function(t) { return 1 - .5 * t; }, seg:99});
+      sc.lathe([s[1], 1.65, -1.25], [[0, -.3], [.38, -.15], [.38, .15], [0, .3]], 'drv', {axis:'x', n:14});
+    });
+    A.drv = [gx + 1.6, 1.35, .8];
+
+    var hp = o.hp ? ' · ' + Math.round(o.hp) + ' hp' : '';
+    var lay = (isV ? 'V' : 'inline-') + cyl + (turbo ? ' turbo' : '') + (hybrid ? ' ' + tech.toLowerCase() + ' hybrid' : '');
+    return C.render(sc, {groups:GROUPS, lines:o.lines, w:o.w, total:'Total ICE powertrain material',
+      hint:'hover a part or a row · see-through block',
+      head:key.replace('_', ' ') + hp + ' · ' + lay + ' · transverse front-drive layout',
+      dims:[{a:[-.1, isV ? 2.6 : 2.0, -1.9], b:[Lb, isV ? 2.6 : 2.0, -1.9], label:'block ' + (Lb / 10).toFixed(2) + ' m'}]});
+  };
+})();
+
+// ── Electric drive unit diagram (_VIS.eDrive): motor cut-away + inverter + reduction gearbox ──
+_VIS.eDrive = (function() {
+  var GROUPS = [
+    {k:'hous',  n:'Motor housing with cooling fins (cast aluminium)', codes:['ALU_HOUSING'],      col:'var(--text)'},
+    {k:'lami',  n:'Stator & rotor laminations (electrical steel)',    codes:['ELEC_STEEL_LAMI'],  col:'var(--blue)'},
+    {k:'cu',    n:'Copper windings (end turns)',                      codes:['COPPER_WINDING'],   col:'var(--orange)'},
+    {k:'mag',   n:'Rotor magnets (NdFeB)',                            codes:['RARE_EARTH_MAG'],   col:'var(--purple)'},
+    {k:'shaft', n:'Rotor shaft & bearings',                           codes:['STEEL_SHAFT'],      col:'var(--gold)'},
+    {k:'ins',   n:'Slot insulation & potting',                        codes:['INSULATION_POLY'],  col:'var(--muted2)'},
+    {k:'pe',    n:'Inverter, reduction gearbox, OBC & DC-DC',         codes:['EDRIVE_POWER_ELEC'], col:'var(--cyan)'}
+  ];
+  var C = _V3;
+  return function(o) {
+    o = o || {};
+    var lamKg = 0; (o.lines || []).forEach(function(l) { if ((l.material_code || l.code) === 'ELEC_STEEL_LAMI') lamKg += +(l.net_weight_kg || l.net) || 0; });
+    var k = Math.max(.75, Math.min(1.6, Math.pow((lamKg || 40) / 40, 1 / 3)));
+    var Lm = 1.6 * k, Ro = 1.1 * k, Ri = .72 * k, Rr = .68 * k, Rs = .16 * k;
+    var sc = C.Scene(46), A = sc.anchors;
+    // cut-away sector facing the viewer
+    var a0 = 1.45, a1 = 1.45 + Math.PI * 2 - 1.9, CUT = {axis:'x', a0:a0, a1:a1, n:22};
+    function cutFaces(c, prof, g) {
+      [a0, a1].forEach(function(t) { sc.face(prof.map(function(q) { return [c[0] + q[1], c[1] + q[0] * Math.cos(t), c[2] + q[0] * Math.sin(t)]; }), g, {}); });
+    }
+    // housing with fins
+    var hp = [[Ro + .03, -.2]];
+    for (var x = -.2; x < Lm + .2; x += .2) hp.push([Ro + .14, x + .03], [Ro + .24, x + .06], [Ro + .24, x + .13], [Ro + .14, x + .16]);
+    hp.push([Ro + .14, Lm + .2], [Ro + .03, Lm + .2]);
+    sc.lathe([0, 0, 0], hp, 'hous', CUT);
+    cutFaces([0, 0, 0], [[Ro + .03, -.2], [Ro + .2, -.2], [Ro + .2, Lm + .2], [Ro + .03, Lm + .2]], 'hous');
+    sc.lathe([0, 0, 0], [[Rs + .2, -.32], [Ro + .2, -.32], [Ro + .2, -.2], [Rs + .2, -.2]], 'hous', CUT);
+    A.hous = [Lm * .45, Ro + .24, .3];
+    // stator stack (cut), slot liners, end windings
+    var st = [[Ri, 0], [Ro, 0], [Ro, Lm], [Ri, Lm]];
+    sc.lathe([0, 0, 0], st, 'lami', CUT); cutFaces([0, 0, 0], st, 'lami');
+    for (var i = 0; i < 36; i++) { var t = a0 + (a1 - a0) * i / 35;
+      sc.line([0, Ri * Math.cos(t), Ri * Math.sin(t)], [0, (Ri + .2 * k) * Math.cos(t), (Ri + .2 * k) * Math.sin(t)], 'ins', .7, 70); }
+    sc.lathe([0, 0, 0], [[Ri - .02, 0], [Ri, 0], [Ri, Lm], [Ri - .02, Lm]], 'ins', CUT);
+    [[0, -1], [Lm, 1]].forEach(function(e) {
+      var w = [[Ri + .04, 0], [Ri + .06, e[1] * .25], [(Ri + Ro) / 2, e[1] * .36], [Ro - .08, e[1] * .25], [Ro - .06, 0]];
+      sc.lathe([e[0], 0, 0], w, 'cu', CUT); cutFaces([e[0], 0, 0], w, 'cu');
+    });
+    // rotor (cut) with embedded magnets, shaft, bearings
+    var ro = [[Rs, .05], [Rr, .05], [Rr, Lm - .05], [Rs, Lm - .05]];
+    sc.lathe([0, 0, 0], ro, 'lami', CUT); cutFaces([0, 0, 0], ro, 'lami');
+    for (var m = 0; m < 8; m++) { var th = m * Math.PI / 4 + Math.PI / 8;
+      sc.sweep([[.1, .54 * k * Math.cos(th), .54 * k * Math.sin(th)], [Lm - .1, .54 * k * Math.cos(th), .54 * k * Math.sin(th)]],
+               C.rot(C.rect(.3 * k, .09 * k), Math.PI / 2 - th), 'mag', {seg:99}); }
+    sc.cyl([-.9, 0, 0], [Lm + 1.05, 0, 0], Rs, 'shaft', {n:12});
+    [-.26, Lm + .26].forEach(function(bx) { sc.lathe([bx, 0, 0], [[Rs, -.09], [Rs + .17, -.09], [Rs + .17, .09], [Rs, .09]], 'shaft', {axis:'x', n:16}); });
+    A.lami = [Lm * .3, Ro * Math.cos(a0 + .2), Ro * Math.sin(a0 + .2)];
+    A.cu = [-.3, (Ri + Ro) / 2 * Math.cos(a1 - .3), (Ri + Ro) / 2 * Math.sin(a1 - .3)];
+    A.mag = [Lm * .6, .54 * k * Math.cos(.4), .54 * k * Math.sin(.4)];
+    A.shaft = [-.85, 0, Rs];
+    A.ins = [0, Ri * Math.cos(a0 + .8), Ri * Math.sin(a0 + .8)];
+    // power electronics: inverter on top with HV connectors and phase busbars
+    var iz = Ro + .3;
+    sc.box(.05, Lm, -.95 * k, .95 * k, iz, iz + .7 * k, 'pe');
+    [-.35, .35].forEach(function(y) { sc.cyl([.35, y * k, iz + .7 * k], [.35, y * k, iz + .7 * k + .25], .13, 'pe', {n:10}); });
+    [-.3, 0, .3].forEach(function(y) { sc.box(Lm - .35, Lm - .2, y * k - .06, y * k + .06, Ro + .2, iz, 'pe'); });
+    sc.box(Lm * .15, Lm * .85, -Ro - .95, -Ro - .3, -.4, .35, 'pe');                     // OBC & DC-DC
+    // reduction gearbox (see-through) with gears, differential, half shafts
+    var gx0 = Lm + .3, gx1 = Lm + 1.25;
+    sc.sweep([[gx0, 0, -.65 * k], [gx1, 0, -.65 * k]], C.rrect(2.4 * k, 3.3 * k, .45), 'pe', {op:.28, noCull:true, seg:99});
+    function gear(c, r) { sc.lathe(c, [[0, -.14], [r, -.14], [r, .14], [0, .14]], 'pe', {axis:'x', n:Math.max(16, Math.round(r * 30))}); }
+    gear([gx0 + .3, 0, 0], .32 * k);
+    gear([gx0 + .3, 0, -.95 * k], .62 * k);
+    gear([gx0 + .62, 0, -.95 * k], .26 * k);
+    gear([gx0 + .62, 0, -1.75 * k], .62 * k);
+    var dz = -1.75 * k;
+    [[gx1, gx1 + 2.2], [gx0 - .1, -2.4]].forEach(function(s) {
+      sc.tube([[s[0], 0, dz], [s[1], .25, dz - .25]], .12, 'pe', {n:8});
+      sc.lathe([s[1], .25, dz - .25], [[0, -.28], [.34, -.14], [.34, .14], [0, .28]], 'pe', {axis:'x', n:14});
+    });
+    A.pe = [Lm * .5, .95 * k, iz + .7 * k];
+    var kw = o.kw ? ' · ' + Math.round(o.kw) + ' kW' : '';
+    return C.render(sc, {groups:GROUPS, lines:o.lines, w:o.w, total:'Total e-drive material',
+      hint:'hover a part or a row · motor cut away',
+      head:String(o.cls || 'e-drive').replace(/_/g, ' ') + kw + ' · permanent-magnet motor · single-speed reduction',
+      dims:[{a:[0, Ro + 1.1, -Ro - .5], b:[Lm, Ro + 1.1, -Ro - .5], label:'stack ' + Math.round(Lm * 100) + ' mm'}]});
+  };
+})();
+
+// ── Battery pack diagram (_VIS.batteryPack): tray, cooling, modules (one opened), HV, BMS, lid lifted ──
+_VIS.batteryPack = (function() {
+  var GROUPS = [
+    {k:'struct', n:'Pack frame, tray & lid (Al / steel)',        codes:['PACK_STRUCT'],     col:'var(--blue)'},
+    {k:'mod',    n:'Module housings (aluminium)',                codes:['MODULE_ALU'],      col:'var(--text)'},
+    {k:'cool',   n:'Cooling plate & coolant ports',              codes:['COOLING_PLATE'],   col:'var(--cyan)'},
+    {k:'tim',    n:'Thermal interface material',                 codes:['THERMAL_FILM'],    col:'var(--purple)'},
+    {k:'hv',     n:'HV busbars, cables & connector',             codes:['HV_WIRING'],       col:'var(--orange)'},
+    {k:'bms',    n:'Battery management system (BMS)',            codes:['BMS_ELECTRONICS'], col:'var(--green)'},
+    {k:'cells',  n:'Cells — cathode, anode, electrolyte, separator, foils, can', match:function() { return true; }, col:'var(--gold)', detail:true}
+  ];
+  var C = _V3;
+  return function(o) {
+    o = o || {};
+    var kwh = +o.kwh || 60, vol = +o.vol || kwh * 6.5;
+    var area = vol / 1.3, Lp = Math.max(10, Math.min(30, Math.sqrt(area * 1.55))), Wp = Math.max(8, Math.min(17, area / Lp));
+    var cols = Math.max(2, Math.min(8, Math.round(kwh / 12))), gap = .3;
+    var mL = (Lp - 1.2 - (cols - 1) * gap) / cols, mW = (Wp - 1.2 - .5) / 2;
+    var sc = C.Scene(14), A = sc.anchors;
+    // tray, frame, crossmembers, lid (lifted)
+    sc.slab(0, Lp, 0, Wp, 0, .1, 'struct', {op:.9});
+    [[[0, .27, .7], [Lp, .27, .7]], [[0, Wp - .27, .7], [Lp, Wp - .27, .7]]].forEach(function(pth) { sc.sweep(pth, C.rect(.55, 1.4), 'struct', {seg:3}); });
+    [[[.27, .55, .7], [.27, Wp - .55, .7]], [[Lp - .27, .55, .7], [Lp - .27, Wp - .55, .7]]].forEach(function(pth) { sc.sweep(pth, C.rect(.55, 1.4), 'struct', {seg:3, up:[0, 0, 1]}); });
+    sc.sweep([[.55, Wp / 2, .55], [Lp - .55, Wp / 2, .55]], C.rect(.4, 1.0), 'struct', {seg:3});
+    var lid = [[.4, 0], [Lp - .4, 0], [Lp, .4], [Lp, Wp - .4], [Lp - .4, Wp], [.4, Wp], [0, Wp - .4], [0, .4]];
+    sc.panel(lid, 'z', 3.4, 3.5, 'struct', {op:.1, dash:true});
+    A.struct = [Lp * .45, Wp, .9];
+    // cooling plate, TIM
+    sc.slab(.6, Lp - .6, .6, Wp - .6, .1, .24, 'cool', {op:.95});
+    [Wp / 2 - 1.4, Wp / 2 + 1.4].forEach(function(y) { sc.tube([[.6, y, .2], [-1.2, y, .2]], .17, 'cool', {n:8}); });
+    A.cool = [-1.1, Wp / 2 + 1.4, .4];
+    sc.slab(.7, Lp - .7, .7, Wp - .7, .24, .29, 'tim', {op:.9});
+    A.tim = [Lp - .7, Wp - .7, .29];
+    // modules: the front-near one opened to show its cells
+    var ys = [.6, Wp / 2 + .25], z0 = .3, z1 = 1.3;
+    for (var c = 0; c < cols; c++) for (var r = 0; r < 2; r++) {
+      var x0 = .6 + c * (mL + gap), y0 = ys[r], open = c === 0 && r === 1;
+      if (open) {
+        sc.panel([[x0, y0], [x0 + mL, y0], [x0 + mL, y0 + mW], [x0, y0 + mW]], 'z', z0, z0 + .06, 'mod');
+        sc.box(x0 + mL - .08, x0 + mL, y0, y0 + mW, z0, z1, 'mod');
+        sc.box(x0, x0 + mL, y0, y0 + .08, z0, z1, 'mod', {op:.5});
+        var n = Math.max(4, Math.floor((mL - .2) / .3));
+        for (var i = 0; i < n; i++) { var cx = x0 + .12 + i * (mL - .24) / n;
+          sc.box(cx, cx + (mL - .24) / n - .05, y0 + .15, y0 + mW - .15, z0 + .06, z1 - .08, 'cells');
+          sc.cyl([cx + .1, y0 + .5, z1 - .08], [cx + .1, y0 + .5, z1 + .02], .07, 'hv', {n:6});
+          sc.cyl([cx + .1, y0 + mW - .5, z1 - .08], [cx + .1, y0 + mW - .5, z1 + .02], .07, 'hv', {n:6}); }
+        A.cells = [x0 + mL * .4, y0 + mW - .15, z1 - .2];
+      } else {
+        sc.box(x0, x0 + mL, y0, y0 + mW, z0, z1, 'mod');
+        sc.box(x0, x0 + .12, y0 + .1, y0 + mW - .1, z1, z1 + .06, 'mod');
+        if (c === 1 && r === 1) A.mod = [x0 + mL * .5, y0 + mW, z1];
+      }
+      if (c < cols - 1) sc.box(x0 + mL - .3, x0 + mL + gap + .3, y0 + mW / 2 - .25, y0 + mW / 2 + .25, z1 + .02, z1 + .1, 'hv');
+    }
+    // HV connector + main cables, BMS + sense wires
+    sc.box(-.9, 0, Wp / 2 - .9, Wp / 2 + .9, .4, 1.3, 'hv');
+    sc.cyl([-.9, Wp / 2 - .4, .85], [-1.5, Wp / 2 - .4, .85], .18, 'hv', {n:10});
+    sc.cyl([-.9, Wp / 2 + .4, .85], [-1.5, Wp / 2 + .4, .85], .18, 'hv', {n:10});
+    [ys[0] + mW / 2, ys[1] + mW / 2].forEach(function(y) { sc.tube([[.6 + mL * .3, y, z1 + .15], [.3, y, z1 + .2], [0, Wp / 2 + (y < Wp / 2 ? -.5 : .5), 1.0]], .1, 'hv', {n:6}); });
+    A.hv = [-1.5, Wp / 2 + .4, 1.05];
+    var bx = .6 + mL + gap * .5;
+    sc.box(bx - .9, bx + .9, Wp / 2 - .55, Wp / 2 + .55, z1 + .05, z1 + .3, 'bms');
+    for (c = 0; c < cols; c++) [ys[0] + .3, ys[1] + mW - .3].forEach(function(y) {
+      var x = .6 + c * (mL + gap) + mL * .5;
+      sc.line([bx, Wp / 2, z1 + .3], [x, y, z1 + .02], 'bms', .4, 60); });
+    A.bms = [bx, Wp / 2 + .55, z1 + .3];
+    return C.render(sc, {groups:GROUPS, lines:o.lines, w:o.w, total:'Total battery pack material',
+      hint:'hover a part or a row · lid lifted, one module opened',
+      head:(o.name || o.chem || 'Battery') + ' · ' + Math.round(kwh) + ' kWh · ' + Math.round(vol) + ' L pack · ' + (cols * 2) + ' modules',
+      dims:[{a:[0, Wp + 1.2, 0], b:[Lp, Wp + 1.2, 0], label:'pack ' + (Lp / 10).toFixed(2) + ' m'}]});
+  };
+})();
+// ── Body geometry shared by the Top Hat and E&S diagrams ──
+// Built from the same side profiles as the _VIS.car silhouettes, so a module's 3-D body matches its
+// car icon. Units: decimetres; x front→rear, y far→near side, z up.
+var _VISBODY = (function() {
+  var SEG_L = {A:36, B:40, C:43.5, D:47, E:49.5, F:52}, SEG_W = {A:16.5, B:17, C:17.8, D:18.5, E:19, F:19.5};
+  var HZ = .47;                                          // 2-D profile px → dm (ground at y = 42)
+  return function(seg, body) {
+    seg = String(seg || 'C').charAt(0).toUpperCase();
+    if (!SEG_L[seg]) seg = 'C';
+    var b = _VIS.bodyOf(body, null), pr = _VIS.PROFILES[b];
+    var L = SEG_L[seg] + (b === 'SUV' || b === 'MPV' ? 2 : 0) + (b === 'VAN' ? 8 : 0) + (b === 'PICKUP' ? 7 : 0);
+    var W = SEG_W[seg] + (b === 'VAN' || b === 'SUV' ? .8 : 0);
+    var wf = b === 'VAN' ? [.15, .83] : (b === 'PICKUP' ? [.17, .80] : [.18, .80]);
+    var R = (b === 'SUV' || b === 'VAN' || b === 'PICKUP') ? 3.5 : 3.2;
+    function X(f) { return f * L; } function Z(px) { return (42 - px) * HZ; }
+    var top = pr.p.slice(1, -1).map(function(q) { return [X(q[0]), Z(q[1])]; });
+    var gh = pr.w.map(function(q) { return [X(q[0]), Z(q[1])]; });
+    function interp(list, x) {
+      if (x <= list[0][0]) return list[0][1];
+      for (var i = 0; i < list.length - 1; i++) if (x <= list[i + 1][0]) { var t = (x - list[i][0]) / ((list[i + 1][0] - list[i][0]) || 1); return list[i][1] + (list[i + 1][1] - list[i][1]) * t; }
+      return list[list.length - 1][1];
+    }
+    var n = gh.length, roof = gh.slice(1, n - 1);
+    var twoBox = b === 'VAN' || b === 'PICKUP', coupe = b === 'COUPE';
+    var xB = twoBox ? gh[n - 1][0] : gh[0][0] + (gh[n - 1][0] - gh[0][0]) * (coupe ? .62 : .45);
+    return {b:b, seg:seg, L:L, W:W, R:R, FO:X(wf[0]), RA:X(wf[1]), zs:Z(34), top:top, gh:gh, roof:roof, xB:xB,
+            doors:twoBox || coupe ? 1 : 2, rear:!(twoBox || coupe),
+            zt:function(x) { return interp(top, x); }, zr:function(x) { return interp(roof, x); }};
+  };
+})();
+
+// ── Top Hat diagram (_VIS.topHat): phantom-view body (lofted, curved shell) with the interior,
+// closures and bought-in systems visible through it ──
+// The shell is lofted through cross-sections along the car: rounded plan-view corners, side bulge,
+// tumblehome above the beltline, roof crown and wheel-arch cut-outs. Glass, bumper fascias and
+// panels are regions of that one surface, each in its own part group.
+_VIS.topHat = (function() {
+  var GROUPS = [
+    {k:'skin',   n:'Outer panels: roof, bonnet, boot, sides, doors (steel)', codes:['BODY_STEEL'],   col:'var(--blue)'},
+    {k:'pil',    n:'Pillars, roof rails & side sills (UHSS)',     codes:['UHSS_PILLAR'],             col:'var(--purple)'},
+    {k:'glass',  n:'Glazing: windscreen, side glass, backlight',  codes:['GLASS_UNIT'],              col:'var(--cyan)'},
+    {k:'clos',   n:'Door hinges, latches & closure mechatronics', codes:['CLOSURE_MECH'],            col:'var(--gold)'},
+    {k:'winreg', n:'Window regulators',                           codes:['WINDOW_REG'],              col:'var(--orange)'},
+    {k:'mirror', n:'Exterior mirrors',                            codes:['EXT_MIRROR'],              col:'var(--text)'},
+    {k:'seal',   n:'Weatherstrips & aperture seals',              codes:['WEATHERSTRIP'],            col:'var(--muted2)'},
+    {k:'seat',   n:'Seats: frames, foam & adjusters',             codes:['SEAT_FRAME', 'SEAT_FOAM', 'SEAT_MECH'], col:'var(--gold)', detail:true},
+    {k:'trim',   n:'Upholstery & carpet',                         codes:['TRIM_TEXTILE'],            col:'var(--muted)'},
+    {k:'dash',   n:'Instrument panel, console & door trims',      codes:['DASH_STRUCT', 'INT_PLASTIC'], col:'var(--text)', detail:true},
+    {k:'intmod', n:'Headliner, parcel shelf & interior modules',  codes:['INTERIOR_MODULES'],        col:'var(--muted2)'},
+    {k:'safe',   n:'Airbags & seatbelts',                         codes:['AIRBAG_MODULE', 'SEATBELT_ASY'], col:'var(--red)', detail:true},
+    {k:'nvh',    n:'Sound deadening',                             codes:['NVH_RUBBER'],              col:'var(--purple)'},
+    {k:'hvac',   n:'HVAC module & ducts',                         codes:['HVAC_MODULE'],             col:'var(--green)'},
+    {k:'light',  n:'Headlamps & tail lamps',                      codes:['LIGHTING'],                col:'var(--gold)'},
+    {k:'fascia', n:'Bumpers & fascias',                           codes:['BUMPER_FASCIA'],           col:'var(--muted2)'},
+    {k:'harn',   n:'Wiring harness',                              codes:['WIRING_HARNESS'],          col:'var(--orange)'},
+    {k:'elec',   n:'12 V battery, fuse box & electrical ancillaries', codes:['ELEC_ANCILLARY'],     col:'var(--green)'},
+    {k:'fin',    n:'Paint, sealant & fasteners (on the panels)',  codes:['PAINT_MATERIAL', 'SEALANT', 'FASTENERS'], col:'var(--muted)', detail:true},
+    {k:'ctx',    n:'Context — platform (§2): floor, wheels; not in the top-hat cost', codes:[], col:'var(--muted2)', ctx:true}
+  ];
+  var C = _V3;
+  function clamp(v, a, b) { return Math.max(a, Math.min(b, v)); }
+  function smooth(t) { t = clamp(t, 0, 1); return t * t * (3 - 2 * t); }
+  return function(o) {
+    o = o || {};
+    var key = String(o.key || 'C_HB'), seg = key.split('_')[0], body = key.split('_').slice(1).join('_');
+    var G = _VISBODY(seg, body), L = G.L, W = G.W, R = G.R, gh = G.gh, n = gh.length, zs = G.zs;
+    var CY = W / 2, sc = C.Scene(11), A = sc.anchors;
+    var a0 = gh[0], a1 = gh[1], r1 = gh[n - 2], rb = gh[n - 1], xB = G.xB, zb = a0[1];
+    var tall = G.b === 'SUV' || G.b === 'VAN' || G.b === 'MPV' || G.b === 'PICKUP';
+    var TUMBLE = tall ? 1.1 : 1.6, ZBOT = tall ? 3.0 : 2.6;
+
+    // ── cross-section at x: near-side points [halfWidth, z], bottom → roof centre ──
+    function hwAt(x) {
+      var f = 1 - .16 * Math.pow(clamp((2.8 - x) / 2.8, 0, 1), 2) - .13 * Math.pow(clamp((x - (L - 2.4)) / 2.4, 0, 1), 2);
+      return W / 2 * f;
+    }
+    function botAt(x) {
+      var z = ZBOT + .5 * Math.pow(clamp((1.2 - x) / 1.2, 0, 1), 2) + .6 * Math.pow(clamp((x - (L - 1.2)) / 1.2, 0, 1), 2);
+      [G.FO, G.RA].forEach(function(X) { var ra = R + .45, d = Math.abs(x - X); if (d < ra) z = Math.max(z, R + Math.sqrt(ra * ra - d * d)); });
+      return z;
+    }
+    function ghFac(x) { return smooth((x - (a0[0] - .3)) / 1.6) * smooth(((rb[0] + .2) - x) / 1.2); }
+    function beltAt(x) { var t = clamp((x - a0[0]) / ((rb[0] - a0[0]) || 1), 0, 1); return a0[1] + (rb[1] - a0[1]) * t; }
+    function section(x) {
+      var hw = hwAt(x), zu = G.zt(x), zbot = botAt(x), g = ghFac(x);
+      var zsh = Math.min(g > .01 ? beltAt(x) : zu, zu - .25);
+      zsh = Math.max(zsh, zbot + .4);
+      var crown = .1 + .14 * g;
+      var p3a = [hw * .95, zsh + (zu - zsh) * .6], p3b = [hw - TUMBLE * .55, zsh + (zu - zsh) * .55];
+      var p4a = [hw * .78, zu - .02], p4b = [hw - TUMBLE - .6, zu - .05];
+      function mix(a, b) { return [a[0] + (b[0] - a[0]) * g, a[1] + (b[1] - a[1]) * g]; }
+      var p3 = mix(p3a, p3b), p4 = mix(p4a, p4b);
+      var p34 = [(p3[0] + p4[0]) / 2 + .12 * g, (p3[1] + p4[1]) / 2];
+      return [[hw * .93, zbot], [hw, zbot + .42 * (zsh - zbot)], [hw * .985, zsh], p3, p34, p4, [p4[0] * .5, zu + crown * .82], [0, zu + crown]];
+    }
+    function loop(x) {      // full loop: near side bottom → roof centre → far side bottom
+      var s = section(x), near = s.map(function(q) { return [x, CY + q[0], q[1]]; });
+      var far = s.slice(0, 7).reverse().map(function(q) { return [x, CY - q[0], q[1]]; });
+      return near.concat(far);
+    }
+    function halfAt(x, z) {  // half-width of the shell at height z
+      var s = section(x);
+      for (var i = 0; i < s.length - 1; i++) if (z <= s[i + 1][1]) { var t = (z - s[i][1]) / ((s[i + 1][1] - s[i][1]) || 1); return s[i][0] + (s[i + 1][0] - s[i][0]) * clamp(t, 0, 1); }
+      return 0;
+    }
+
+    // ── platform context: floor + solid wheels ──
+    sc.slab(G.FO - R, G.RA + R, 1.2, W - 1.2, 2.1, 2.3, 'ctx', {op:.18, tile:5});
+    [G.FO, G.RA].forEach(function(x) { [[.55, -1], [W - .55, 1]].forEach(function(w) {
+      var c = [x, w[0] - w[1] * .95, R];
+      sc.lathe(c, [[R * .62, -.95], [R * .9, -.95], [R, -.55], [R, .55], [R * .9, .95], [R * .62, .95]], 'ctx', {n:26});
+      sc.lathe(c, [[0, w[1] * .6], [R * .62, w[1] * .75]], 'ctx', {n:18, inner:true, op:.9});
+    }); });
+    A.ctx = [G.RA, W + .4, R * 1.8];
+
+    // ── the lofted shell ──
+    var NX = Math.max(34, Math.round(L / 1.1)), xs = [];
+    for (var i = 0; i <= NX; i++) xs.push(L * i / NX);
+    [a0[0], a1[0], r1[0], rb[0], xB].forEach(function(v) { xs.push(v); });
+    xs.sort(function(p, q) { return p - q; });
+    xs = xs.filter(function(v, i) { return !i || v - xs[i - 1] > .15; });
+    var loops = xs.map(loop), K = loops[0].length;
+    var SK = {op:.13, fres:.75, ns:true}, GL = {op:.2, fres:.5, ns:true}, FA = {op:.3, fres:.6, ns:true};
+    for (i = 0; i < loops.length - 1; i++) {
+      var xm = (xs[i] + xs[i + 1]) / 2, g = ghFac(xm);
+      var wind = xm > a0[0] && xm < a1[0], back = xm > r1[0] && xm < rb[0] + .1;
+      var pillar = Math.abs(xm - xB) < .45 || Math.abs(xm - a0[0]) < .25;
+      for (var k = 0; k < K - 1; k++) {
+        var band = k < 7 ? k : 13 - k;         // 0 lower side, 1 shoulder, 2–4 greenhouse, 5–6 roof
+        var grp = 'skin', op = SK;
+        if (g > .5 && band >= 2 && band <= 4 && !pillar) { grp = 'glass'; op = GL; }
+        if ((wind || back) && band >= 4) { grp = 'glass'; op = GL; }
+        if ((xm < 1.4 || xm > L - 1.4) && band <= 1) { grp = 'fascia'; op = FA; }
+        sc.face([loops[i][k], loops[i][k + 1], loops[i + 1][k + 1], loops[i + 1][k]], grp, op);
+      }
+    }
+    // front and rear ends (fascias)
+    sc.face(loops[0], 'fascia', FA); sc.face(loops[loops.length - 1], 'fascia', FA);
+    A.skin = [(G.FO + a0[0]) / 2, CY + hwAt((G.FO + a0[0]) / 2) * .7, G.zt((G.FO + a0[0]) / 2) + .1];
+    A.glass = [(a0[0] + a1[0]) / 2, CY + 2, (a0[1] + a1[1]) / 2 + .2];
+    A.fascia = [.1, CY + hwAt(.1) * .8, botAt(.1) + .4];
+    // panel gaps on the near side: door cut lines, bonnet and tailgate shut lines
+    var doorEnds = G.doors === 2 ? [a0[0] - .15, xB, Math.min(rb[0], G.RA - R - .5)] : [a0[0] - .15, G.doors === 1 && (G.b === 'VAN' || G.b === 'PICKUP') ? rb[0] - .1 : xB + 1.2];
+    doorEnds.forEach(function(x) {
+      var zt = G.zr(x) - .1, zbt = botAt(x) + .1, prev = null;
+      for (var z = zbt; z <= zt + 1e-6; z += (zt - zbt) / 8) { var p = [x, CY + halfAt(x, z) + .03, z]; if (prev) sc.line(prev, p, 'skin', .9, 30); prev = p; }
+    });
+    [[a0[0] - .3, 'bonnet'], [rb[0] + .25, 'boot']].forEach(function(e) {
+      var x = e[0], s = section(x), prev = null;
+      [[s[3][0], s[3][1]], [s[4][0], s[4][1]], [0, s[5][1]], [-s[4][0], s[4][1]], [-s[3][0], s[3][1]]].forEach(function(q) {
+        var p = [x, CY + q[0], q[1] + .03]; if (prev) sc.line(prev, p, 'skin', .9, 30); prev = p; });
+    });
+
+    // ── structure inside the shell: A / B / rear pillars, roof rails, sills ──
+    function inY(x, z, s) { return CY + s * (halfAt(x, z) - .3); }
+    [1, -1].forEach(function(s) {
+      var ap = [], rr = [], rp = [];
+      for (i = 0; i <= 6; i++) { var t = i / 6, x = a0[0] + (a1[0] - a0[0]) * t, z = a0[1] + (a1[1] - a0[1]) * t; ap.push([x, inY(x, z - .1, s), z - .1]); }
+      [[a1[0], a1[1]]].concat(G.roof).concat([[r1[0], r1[1]]]).forEach(function(q) { rr.push([q[0], inY(q[0], q[1] - .25, s), q[1] - .25]); });
+      for (i = 0; i <= 6; i++) { t = i / 6; x = r1[0] + (rb[0] - r1[0]) * t; z = r1[1] + (rb[1] - r1[1]) * t; rp.push([x, inY(x, z - .1, s), z - .1]); }
+      sc.tube(ap, .22, 'pil', {n:6}); sc.tube(rr, .22, 'pil', {n:6, seg:2}); sc.tube(rp, .26, 'pil', {n:6});
+      if (!(G.b === 'VAN' || G.b === 'PICKUP')) { var bz0 = botAt(xB) + .2, bz1 = G.zr(xB) - .3; sc.tube([[xB, inY(xB, bz0, s), bz0], [xB, inY(xB, zb, s), zb], [xB + .25, inY(xB, bz1, s), bz1]], .25, 'pil', {n:6}); }
+      sc.sweep([[G.FO + R + .6, CY + s * (W / 2 - .55), ZBOT + .25], [G.RA - R - .6, CY + s * (W / 2 - .55), ZBOT + .25]], C.rrect(.6, .8, .15), 'pil', {seg:3});
+    });
+    A.pil = [xB, inY(xB, (zb + G.zr(xB)) / 2, 1), (zb + G.zr(xB)) / 2];
+
+    // ── doors: hinges, latches, window regulators, inner trims (inside the near / far doors) ──
+    var dPairs = []; for (i = 0; i < doorEnds.length - 1; i++) dPairs.push([doorEnds[i] + .15, doorEnds[i + 1] - .15]);
+    [1, -1].forEach(function(s) {
+      dPairs.forEach(function(d, j) {
+        var x0 = d[0], x1 = d[1], yi = CY + s * (W / 2 - .45), zlo = botAt((x0 + x1) / 2) + .3;
+        [.32, .68].forEach(function(t) { var x = x0 + (x1 - x0) * t; sc.box(x - .07, x + .07, yi - .08, yi + .08, zlo + .2, zb - .2, 'winreg'); });
+        sc.cyl([(x0 + x1) / 2, yi - s * .15, zlo + .6], [(x0 + x1) / 2, yi + s * .15, zlo + .6], .32, 'winreg', {n:10});
+        [zlo + .5, zb - .5].forEach(function(z) { sc.box(x0 - .25, x0 + .1, yi - .15, yi + .15, z - .22, z + .22, 'clos'); });
+        sc.box(x1 - .15, x1 + .05, yi - .2, yi + .2, (zlo + zb) / 2 - .3, (zlo + zb) / 2 + .3, 'clos');
+        sc.panel([[x0 + .2, zlo + .2], [x1 - .2, zlo + .2], [x1 - .2, zb - .15], [x0 + .2, zb - .15]], 'y', CY + s * (W / 2 - .95) - .05, CY + s * (W / 2 - .95) + .05, 'dash', {op:.5});
+        if (s > 0 && j === 0) { A.winreg = [x0 + (x1 - x0) * .68, yi, zb - .3]; A.clos = [x1, yi + .2, (zlo + zb) / 2 + .3]; }
+      });
+      // weatherstrip around the door apertures
+      var xr = doorEnds[doorEnds.length - 1], ys = CY + s * (W / 2 - .15), zl = botAt((a0[0] + xr) / 2) + .15;
+      sc.tube([[a0[0], ys, zl], [xr, ys, zl], [xr, CY + s * (halfAt(xr, G.zr(xr) - .3) - .1), G.zr(xr) - .3], [a1[0] + .2, CY + s * (halfAt(a1[0] + .2, a1[1] - .3) - .1), a1[1] - .3], [a0[0], CY + s * (halfAt(a0[0], zb) - .05), zb], [a0[0], ys, zl]], .07, 'seal', {caps:false, n:5});
+      // mirror on the door at the A-pillar base
+      var mx = a0[0] + .4, my = CY + s * (halfAt(mx, zb + .3) + .2);
+      sc.sweep([[mx, my - s * .3, zb + .35], [mx + .3, my + s * .5, zb + .55]], C.rect(.25, .2), 'mirror', {seg:99});
+      sc.sweep([[mx - .1, my + s * .75, zb + .7], [mx + 1.2, my + s * .75, zb + .7]], C.rrect(.9, .75, .3), 'mirror', {seg:99});
+      if (s > 0) { A.mirror = [mx + .6, my + .75, zb + 1.05]; A.seal = [xr, ys, (zl + zb) / 2]; }
+    });
+
+    // ── body details: ground shadow, shoulder & door creases, arch lips, door handles, grille ──
+    var sh = []; for (i = 0; i < 28; i++) { var tt = i / 28 * Math.PI * 2; sh.push([L / 2 + (L / 2 + .6) * Math.cos(tt), CY + (W / 2 + .7) * Math.sin(tt), .02]); }
+    sc.face(sh, 'ctx', {op:.45, bias:-40});
+    [[2, .9, 92], [1, .7, 62]].forEach(function(cr) {
+      for (var j = 0; j < loops.length - 1; j++) {
+        var xm2 = (xs[j] + xs[j + 1]) / 2;
+        if (xm2 < .8 || xm2 > L - .8 || Math.abs(xm2 - G.FO) < R + .5 || Math.abs(xm2 - G.RA) < R + .5) { if (cr[0] === 1) continue; }
+        sc.line(loops[j][cr[0]], loops[j + 1][cr[0]], 'skin', cr[1], cr[2]);
+        var m = loops[j].length - 1 - cr[0];
+        sc.line(loops[j][m], loops[j + 1][m], 'skin', cr[1] * .8, cr[2] - 25);
+      }
+    });
+    [G.FO, G.RA].forEach(function(X) {
+      var ra = R + .45, prev = null;
+      for (var j = 0; j <= 14; j++) { var t = Math.PI * j / 14, x = X + ra * Math.cos(t), z = R + ra * Math.sin(t);
+        if (z < ZBOT) { prev = null; continue; }
+        var p = [x, CY + hwAt(x) * .97 + .04, z]; if (prev) sc.line(prev, p, 'skin', 1.3, 85); prev = p; }
+    });
+    dPairs.forEach(function(d) {
+      var hx = d[1] - .9, hz = zb - .55;
+      [1, -1].forEach(function(s) { var hy = CY + s * (halfAt(hx, hz) + .05); sc.box(hx - .4, hx + .2, hy - .06, hy + .06, hz - .08, hz + .08, 'clos'); });
+    });
+    var gz0 = botAt(0) + .7, gz1 = Math.min(Math.min(G.zt(1.2) - .7, zb - .6, zs + 3.6) + .15, section(.02)[2][1] - .2), gw = hwAt(0) * .5;
+    if (gz1 > gz0 + .3) {
+      sc.face([[-.02, CY - gw, gz0], [-.02, CY + gw, gz0], [-.02, CY + gw * .92, gz1], [-.02, CY - gw * .92, gz1]], 'fascia', {op:.85, bias:.2});
+      for (var gzz = gz0 + .25; gzz < gz1 - .1; gzz += .28) sc.line([-.04, CY - gw * .9, gzz], [-.04, CY + gw * .9, gzz], 'fascia', .6, 95);
+    }
+
+    // ── interior ──
+    var fx0 = a0[0] - 1.2, fx1 = G.rear ? Math.min(G.RA - R, rb[0]) : xB + 1.5, FZ = 2.5;
+    sc.slab(fx0, fx1, .8, W - .8, FZ - .1, FZ, 'trim', {op:.95, tile:4});
+    A.trim = [fx1 - 1.2, W - .8, FZ];
+    function seat(xc, yc, wdt, bench) {
+      var cl = bench ? 4.6 : 5;
+      sc.sweep([[xc - cl / 2, yc - wdt / 2, FZ + 1.15], [xc - cl / 2, yc + wdt / 2, FZ + 1.15]], C.rrect(cl, 1.1, .4), 'seat', {seg:99, up:[0, 0, 1]});
+      if (!bench) [-1, 1].forEach(function(s) { sc.sweep([[xc - cl + .3, yc + s * (wdt / 2 - .35), FZ + 1.75], [xc - .2, yc + s * (wdt / 2 - .35), FZ + 1.75]], C.circ(.35, 10), 'seat', {seg:99}); });
+      if (bench) {
+        // 60/40 split folding backrest with three headrests
+        [[-wdt / 2, -wdt / 2 + wdt * .6 - .08], [-wdt / 2 + wdt * .6 + .08, wdt / 2]].forEach(function(p) {
+          var w2 = p[1] - p[0], c2 = yc + (p[0] + p[1]) / 2;
+          sc.sweep([[xc - .1, c2, FZ + 1.5], [xc + .9, c2, FZ + 5.3]], C.rrect(.95, w2, .4), 'seat', {seg:99, up:[0, 1, 0]});
+        });
+        [-.33, 0, .33].forEach(function(f) { var hy = yc + f * wdt;
+          sc.sweep([[xc + 1.1, hy - .75, FZ + 5.9], [xc + 1.1, hy + .75, FZ + 5.9]], C.rrect(.75, 1.0, .3), 'seat', {seg:99, up:[0, 0, 1]});
+          sc.cyl([xc + .95, hy, FZ + 5.2], [xc + 1.05, hy, FZ + 5.45], .06, 'seat', {n:6}); });
+      } else sc.sweep([[xc - .1, yc, FZ + 1.5], [xc + 1.2, yc, FZ + 6.9]], C.rrect(1.1, wdt, .45), 'seat', {seg:99, up:[0, 1, 0]});
+      if (!bench) {
+        [-1, 1].forEach(function(s) { sc.sweep([[xc - .35, yc + s * (wdt / 2 - .25), FZ + 1.9], [xc + .65, yc + s * (wdt / 2 - .25), FZ + 5.6]], C.circ(.38, 10), 'seat', {seg:99, up:[0, 1, 0]}); });
+        sc.sweep([[xc + 1.5, yc - 1.2, FZ + 7.75], [xc + 1.5, yc + 1.2, FZ + 7.75]], C.rrect(.9, 1.3, .35), 'seat', {seg:99, up:[0, 0, 1]});
+        [-.6, .6].forEach(function(dy) { sc.cyl([xc + 1.25, yc + dy, FZ + 6.85], [xc + 1.4, yc + dy, FZ + 7.15], .06, 'seat', {n:6}); });
+        [-1.4, 1.4].forEach(function(dy) { sc.box(xc - cl - .3, xc + .3, yc + dy - .18, yc + dy + .18, FZ, FZ + .45, 'seat'); });
+      }
+    }
+    var sx = xB - .5;
+    seat(sx, W * .29, 4.8, false); seat(sx, W * .71, 4.8, false);
+    A.seat = [sx - 2.5, W * .71 + 2.4, FZ + 1.7];
+    if (G.rear) seat(Math.min(sx + 8, fx1 - .5), CY, W - 3.4, true);
+    // instrument panel: curved upper, binnacle; centre console
+    var g0x = a0[0], g0z = zb;
+    sc.sweep([[0, 1.1, 0], [0, W - 1.1, 0]], [[-(g0x - .7), g0z - .05], [-(g0x + 1.0), g0z - .2], [-(g0x + 2.0), g0z - .6], [-(g0x + 2.4), g0z - 1.5], [-(g0x + 2.0), g0z - 2.6], [-(g0x - .7), g0z - 2.4]], 'dash', {noCull:true, seg:2});
+    sc.sweep([[g0x + 1.3, W * .29, g0z - .1], [g0x + 1.9, W * .29, g0z + .25]], C.rrect(2.8, .6, .25), 'dash', {seg:99});
+    sc.sweep([[g0x + 1.8, CY, FZ + 1.2], [sx - 4.0, CY, FZ + 1.2]], C.rrect(2.0, 2.4, .4), 'dash', {seg:2, op:.9});
+    A.dash = [g0x + 2.0, W * .82, g0z - .6];
+    // headliner + parcel shelf
+    var hl = [[a1[0] + .4, a1[1] - .35]].concat(G.roof.map(function(q) { return [q[0], q[1] - .35]; })).concat([[r1[0] - .3, r1[1] - .35]]);
+    sc.sweep([[0, 1.4, 0], [0, W - 1.4, 0]], hl.map(function(q) { return [-q[0], q[1]]; }).concat(hl.slice().reverse().map(function(q) { return [-q[0], q[1] - .08]; })), 'intmod', {noCull:true, seg:2, op:.35});
+    if (G.b === 'HB' || G.b === 'SEDAN') sc.slab(rb[0] - 4, rb[0] - .3, 1.3, W - 1.3, zb - .2, zb - .1, 'intmod', {op:.7});
+    A.intmod = [(a1[0] + r1[0]) / 2, W - 1.4, G.zr((a1[0] + r1[0]) / 2) - .4];
+    sc.panel([[1.3, FZ], [W - 1.3, FZ], [W - 1.3, g0z - 1.0], [1.3, g0z - 1.0]], 'x', g0x - 1.9, g0x - 1.75, 'nvh', {op:.75});
+    A.nvh = [g0x - 1.8, W - 1.3, g0z - 1.3];
+    // airbags & seatbelts
+    sc.cyl([g0x + 2.2, W * .29, g0z - 1.1], [g0x + 2.5, W * .29, g0z - .9], .75, 'safe', {n:16});
+    sc.box(g0x + .3, g0x + 1.2, W * .62, W * .84, g0z - .3, g0z - .1, 'safe');
+    [1, -1].forEach(function(s) {
+      var cur = []; [[a1[0] + .5, a1[1]]].concat(G.roof).concat([[r1[0] - .3, r1[1]]]).forEach(function(q) { cur.push([q[0], inY(q[0], q[1] - .55, s) - s * .1, q[1] - .55]); });
+      sc.tube(cur, .14, 'safe', {n:6, seg:2});
+      var yb = CY + s * (W / 2 - .9);
+      sc.box(xB - .3, xB + .3, yb - .25, yb + .25, FZ + .2, FZ + 1.1, 'safe');
+      var yseat = s > 0 ? W * .71 : W * .29;
+      sc.line([xB + .15, yb, zb + 2.5], [sx - 2.4, (yb + CY) / 2, FZ + 2.0], 'safe', 1.6, 70);
+      sc.line([sx - 2.4, (yb + CY) / 2, FZ + 2.0], [xB - .2, CY + s * .9, FZ + 1.4], 'safe', 1.6, 60);
+    });
+    A.safe = [g0x + 2.5, W * .29 + .75, g0z - .5];
+    // HVAC + ducts
+    sc.sweep([[g0x - 1.2, CY, g0z - 1.9], [g0x + .6, CY, g0z - 1.9]], C.rrect(5.0, 1.6, .4), 'hvac', {seg:99});
+    sc.tube([[g0x, CY, g0z - 1.1], [g0x + .9, CY, g0z - .25]], .35, 'hvac', {n:10});
+    [W * .29, W * .71].forEach(function(y) { sc.tube([[g0x + .4, CY + (y < CY ? -2 : 2), g0z - 2.5], [g0x + 1.6, y, FZ + .5]], .25, 'hvac', {n:8}); });
+    A.hvac = [g0x - .3, CY + 2.5, g0z - 1.1];
+    // lamps: on the body corners, following the surface
+    function lamp(x0, x1, zc, s) {
+      var pts = [];
+      zc = Math.min(zc, Math.min(section(x0)[2][1], section(x1)[2][1]) - .4);
+      zc = Math.max(zc, Math.max(botAt(x0), botAt(x1)) + .5);
+      [[x0, zc - .3], [x1, zc - .35], [x1, zc + .25], [x0, zc + .3]].forEach(function(q) { pts.push([q[0], CY + s * (halfAt(q[0], q[1]) + .03), q[1]]); });
+      sc.face(pts, 'light', {op:.95, bias:.3});
+    }
+    var zfh = Math.min(G.zt(1.2) - .7, zb - .6, zs + 3.6), zrl = Math.min(G.zt(L - 1.2) - .7, zb + .2, zs + 4.2);
+    [1, -1].forEach(function(s) { lamp(.6, 1.9, zfh, s); lamp(L - 1.6, L - .45, zrl, s); });
+    A.light = [.6, CY + hwAt(.6) * .9, zfh + .4];
+    // harness, 12 V battery, fuse box
+    sc.tube([[2.2, 2.4, zfh - .6], [g0x - 2.2, 2.0, zfh - .8], [g0x - .2, 1.3, g0z - 1.8], [g0x + .4, W - 1.3, g0z - 1.8]], .12, 'harn', {n:6});
+    sc.tube([[g0x - .2, 1.3, g0z - 1.8], [g0x, 1.1, FZ + .2], [L - 2.5, 1.1, FZ + .2], [L - 1.4, 2.0, zrl - .4]], .12, 'harn', {n:6});
+    sc.tube([[g0x - 2.2, 2.0, zfh - .8], [g0x - 2.2, W - 2.4, zfh - .8], [2.2, W - 2.4, zfh - .6]], .1, 'harn', {n:6});
+    A.harn = [L * .55, 1.1, FZ + .3];
+    sc.box(g0x - 4.4, g0x - 2.8, 1.6, 3.8, zs + .4, zs + 2.0, 'elec');
+    sc.box(g0x + .2, g0x + .9, 1.2, 2.0, g0z - 2.4, g0z - 1.6, 'elec');
+    A.elec = [g0x - 3.6, 3.8, zs + 2.0];
+
+    var BL = {HB:'hatchback', SEDAN:'sedan', ESTATE:'estate', COUPE:'coupé', SUV:'SUV', MPV:'MPV', VAN:'van', PICKUP:'pickup'};
+    return C.render(sc, {groups:GROUPS, lines:o.lines, w:o.w, total:'Total top-hat material',
+      hint:'hover a part or a row · phantom view of the body',
+      head:key.replace('_', ' ') + ' · ' + G.seg + '-segment ' + (BL[G.b] || G.b) + ' · body, closures & interior',
+      grid:{x0:-2, x1:L + 2, y0:-2, y1:W + 2, step:5},
+      dims:[{a:[0, W + 2.5, 0], b:[L, W + 2.5, 0], label:'length ' + (L / 10).toFixed(2) + ' m'}]});
+  };
+})();
+
+// ── E&S diagram (_VIS.eands): electronics placed in a ghosted car, by E/E architecture ──
+_VIS.eands = (function() {
+  var GROUPS = [
+    {k:'ecu',   n:'Domain ECUs (one per function)',              codes:['DOMAIN_ECU'],        col:'var(--blue)'},
+    {k:'zone',  n:'Zone controllers',                            codes:['ZONE_CTRL'],         col:'var(--blue)'},
+    {k:'hpc',   n:'Central high-performance computer',           codes:['HPC_UNIT'],          col:'var(--blue)'},
+    {k:'wire',  n:'Wiring harness & connectors',                 codes:['WIRING'],            col:'var(--orange)'},
+    {k:'cam',   n:'Cameras',                                     codes:['CAMERA_HW'],         col:'var(--cyan)', detail:true},
+    {k:'radar', n:'Radar sensors',                               codes:['RADAR_HW'],          col:'var(--purple)'},
+    {k:'lidar', n:'Lidar',                                       codes:['LIDAR_HW'],          col:'var(--green)'},
+    {k:'disp',  n:'Displays & HMI',                              codes:['DISPLAY_HW'],        col:'var(--gold)', detail:true},
+    {k:'audio', n:'Audio hardware',                              codes:['AUDIO_HW'],          col:'var(--text)'},
+    {k:'comms', n:'5G / V2X module & roof antenna',              codes:['COMMS_HW'],          col:'var(--green)', detail:true},
+    {k:'sec',   n:'Security chip (HSM)',                         codes:['SECURE_HW'],         col:'var(--red)', detail:true},
+    {k:'adas',  n:'ADAS sensor suite: corner radars & ultrasonics (bought-in)', codes:['ADAS_SENSOR_SUITE'], col:'var(--purple)'},
+    {k:'info',  n:'Infotainment head unit, amplifier & speakers (bought-in)',   codes:['INFOTAINMENT_AUDIO'], col:'var(--text)'},
+    {k:'ctx',   n:'Context — body (§4) and wheels, not in the E&S cost', codes:[], col:'var(--muted2)', ctx:true}
+  ];
+  var C = _V3;
+  return function(o) {
+    o = o || {};
+    var arch = String(o.arch || 'ZONAL').toUpperCase();
+    var G = _VISBODY(o.seg, o.body), L = G.L, W = G.W, R = G.R, gh = G.gh, n = gh.length, zs = G.zs;
+    var a0 = gh[0], a1 = gh[1], r1 = gh[n - 2], rb = gh[n - 1], zb = a0[1], FZ = 2.5, CY = W / 2;
+    var has = {}; (o.lines || []).forEach(function(l) { var c = l.material_code || l.code; has[c] = (has[c] || 0) + (+(l.net_weight_kg != null ? l.net_weight_kg : l.net) || 0); });
+    var sc = C.Scene(11), A = sc.anchors;
+    // ghost body: outline lines on both sides + cross lines, ghost wheels
+    var side = [[0, zs]].concat(G.top).concat([[L, zs]]);
+    [.2, W - .2].forEach(function(y) {
+      for (var i = 0; i < side.length - 1; i++) sc.line([side[i][0], y, side[i][1]], [side[i + 1][0], y, side[i + 1][1]], 'ctx', 1.0, 70);
+      for (i = 0; i < n - 1; i++) sc.line([gh[i][0], y, gh[i][1]], [gh[i + 1][0], y, gh[i + 1][1]], 'ctx', .8, 60);
+    });
+    G.top.forEach(function(q, i) { if (i % 2 === 0) sc.line([q[0], .2, q[1]], [q[0], W - .2, q[1]], 'ctx', .6, 50); });
+    sc.line([0, .2, zs], [0, W - .2, zs], 'ctx', .5, 34); sc.line([L, .2, zs], [L, W - .2, zs], 'ctx', .5, 34);
+    [G.FO, G.RA].forEach(function(x) { [1.15, W - 1.15].forEach(function(y) {
+      sc.lathe([x, y, R], [[R * .6, -.95], [R, -.6], [R, .6], [R * .6, .95]], 'ctx', {op:.08, dash:true, n:18}); }); });
+    sc.slab(G.FO - R, G.RA + R, 1.2, W - 1.2, 2.1, 2.3, 'ctx', {op:.05, dash:true, tile:8});
+    A.ctx = [L * .62, W - .2, G.zt(L * .62)];
+
+    var hub, nodes = [];
+    var front = [2.2, CY, zs + 1.2], dashC = [a0[0] + .8, CY, zb - 1.4], rearN = [L - 3, CY, zs + 1.4];
+    if (arch === 'DECENTRALIZED') {
+      [[2.6, 2.6, zs + 1.6], [2.6, W - 2.6, zs + 1.6], [a0[0] - 1.6, CY - 3, zb - 1.6], [a0[0] + .9, CY + 3.2, zb - 1.8],
+       [a0[0] + .9, CY - 3.2, zb - 2.2], [G.xB - 2, CY, FZ + .4], [G.xB, 1.2, FZ + .9], [G.xB, W - 1.2, FZ + .9], [L - 3.5, 2.4, zs + 1.4], [L - 3.5, W - 2.4, zs + 1.4]]
+        .forEach(function(p) { sc.box(p[0] - .45, p[0] + .45, p[1] - .35, p[1] + .35, p[2] - .25, p[2] + .25, 'ecu'); nodes.push(p); });
+      hub = [a0[0] + .9, CY, zb - 2.0];
+      nodes.forEach(function(p) { sc.tube([hub, [p[0], hub[1] + (p[1] - hub[1]) * .5, FZ + .3], p], .09, 'wire', {n:5, caps:false}); });
+      nodes.forEach(function(p, i) { if (i) sc.tube([nodes[i - 1], [nodes[i - 1][0], nodes[i - 1][1], FZ + .3], [p[0], p[1], FZ + .3], p], .06, 'wire', {n:5, caps:false}); });
+      A.ecu = [a0[0] + .9, CY + 3.6, zb - 1.55];
+    } else if (arch === 'ZONAL') {
+      var zones = [[3.2, 2.8, zs + 1.4], [3.2, W - 2.8, zs + 1.4], [L - 4, 2.8, zs + 1.4], [L - 4, W - 2.8, zs + 1.4]];
+      zones.forEach(function(p) { sc.box(p[0] - .7, p[0] + .7, p[1] - .55, p[1] + .55, p[2] - .35, p[2] + .35, 'zone'); });
+      hub = [a0[0] + 1.2, CY, FZ + 1.2];
+      sc.box(hub[0] - .7, hub[0] + .7, hub[1] - .6, hub[1] + .6, hub[2] - .35, hub[2] + .35, 'zone');
+      var ring = [zones[0], [zones[0][0], zones[0][1], FZ + .3], [zones[2][0], zones[2][1], FZ + .3], zones[2], zones[3], [zones[3][0], zones[3][1], FZ + .3], [zones[1][0], zones[1][1], FZ + .3], zones[1], zones[0]];
+      sc.tube(ring, .1, 'wire', {n:5, caps:false});
+      zones.forEach(function(p) { sc.tube([hub, [hub[0], p[1], FZ + .3], [p[0], p[1], FZ + .3]], .07, 'wire', {n:5, caps:false}); });
+      nodes = zones;
+      A.zone = [L - 4, W - 2.25, zs + 1.75];
+    } else {
+      hub = [a0[0] + 2.4, CY, FZ + 1.0];
+      sc.box(hub[0] - 1.0, hub[0] + 1.0, hub[1] - .9, hub[1] + .9, hub[2] - .4, hub[2] + .4, 'hpc');
+      sc.tube([[2.2, CY, zs + 1.2], [hub[0], CY, FZ + .3], [L - 2.5, CY, FZ + .3], [L - 1.5, CY, zs + 1.4]], .1, 'wire', {n:5, caps:false});
+      nodes = [front, rearN];
+      A.hpc = [hub[0], hub[1] + .9, hub[2] + .4];
+    }
+    // security chip sits on the main controller
+    if (has.SECURE_HW != null) { sc.box(hub[0] - .2, hub[0] + .2, hub[1] - .2, hub[1] + .2, hub[2] + .3, hub[2] + .45, 'sec'); A.sec = [hub[0], hub[1], hub[2] + .45]; }
+    A.wire = [L * .55, (arch === 'CENTRALIZED' ? CY : 2.8), FZ + .3];
+    function wire(p) { sc.tube([p, [p[0], p[1], Math.max(FZ + .3, Math.min(p[2], FZ + .3))], [hub[0], hub[1], FZ + .3], hub], .045, 'wire', {n:4, caps:false}); }
+
+    // cameras (windscreen, mirrors, rear) + FOV
+    if (has.CAMERA_HW != null) {
+      var fc = [a1[0] - .3, CY, a1[1] - .4];
+      sc.box(fc[0] - .25, fc[0] + .25, fc[1] - .5, fc[1] + .5, fc[2] - .25, fc[2] + .15, 'cam');
+      sc.face([fc, [fc[0] - 9, CY - 4.5, zs], [fc[0] - 9, CY + 4.5, zs]], 'cam', {op:.07});
+      [[a0[0] + .8, -.4], [a0[0] + .8, W + .4]].forEach(function(p) { sc.box(p[0] - .3, p[0] + .3, p[1] - .25, p[1] + .25, zb + .25, zb + .65, 'cam'); });
+      sc.box(L - .4, L, CY - .3, CY + .3, G.zt(L - .4) - 1.4, G.zt(L - .4) - .9, 'cam');
+      wire(fc);
+      A.cam = [fc[0], fc[1] + .5, fc[2] + .15];
+    }
+    if (has.RADAR_HW != null) {
+      var rp = [-.1, CY, zs + .3];
+      sc.box(-.3, .1, CY - .6, CY + .6, zs - .1, zs + .7, 'radar');
+      sc.face([rp, [-9, CY - 2.5, zs + .3], [-9, CY + 2.5, zs + .3]], 'radar', {op:.07});
+      wire(rp); A.radar = [-.3, CY + .6, zs + .7];
+    }
+    if (has.LIDAR_HW) { var lp = [a1[0] + 1.2, CY, a1[1] + .2];
+      sc.cyl(lp, [lp[0], lp[1], lp[2] + .6], .55, 'lidar', {n:16}); wire(lp); A.lidar = [lp[0], lp[1] + .55, lp[2] + .6]; }
+    if (has.ADAS_SENSOR_SUITE) {
+      [[.3, 1.2], [.3, W - 1.2], [L - .3, 1.2], [L - .3, W - 1.2]].forEach(function(p) {
+        sc.box(p[0] - .2, p[0] + .2, p[1] - .4, p[1] + .4, zs, zs + .6, 'adas');
+        sc.face([[p[0], p[1], zs + .3], [p[0] + (p[0] < 1 ? -4.5 : 4.5), p[1] + (p[1] < CY ? -4.5 : 4.5), zs + .3], [p[0] + (p[0] < 1 ? -1.5 : 1.5), p[1] + (p[1] < CY ? -6 : 6), zs + .3]], 'adas', {op:.06});
+      });
+      [-.15, L + .15].forEach(function(x) { for (var i = 0; i < 4; i++) { var y = 3 + i * (W - 6) / 3;
+        sc.cyl([x, y, zs + .9], [x + (x < 1 ? .15 : -.15), y, zs + .9], .14, 'adas', {n:8}); } });
+      A.adas = [.3, W - 1.2, zs + .6];
+    }
+    // displays: cluster + centre screen; audio / infotainment: head unit, amplifier, door speakers
+    if (has.DISPLAY_HW != null) {
+      sc.sweep([[a0[0] + 2.0, W * .28 - 1.3, zb - .4], [a0[0] + 2.0, W * .28 + 1.3, zb - .4]], C.rect(.2, .9), 'disp', {seg:99, up:[0, 0, 1]});
+      sc.sweep([[a0[0] + 1.8, CY - 1.5, zb - .1], [a0[0] + 1.8, CY + 1.5, zb - .1]], C.rect(.18, 1.4), 'disp', {seg:99, up:[0, 0, 1]});
+      A.disp = [a0[0] + 1.8, CY + 1.5, zb + .6];
+    }
+    if (has.INFOTAINMENT_AUDIO || has.AUDIO_HW != null) {
+      var g = has.INFOTAINMENT_AUDIO ? 'info' : 'audio';
+      sc.box(a0[0] + .6, a0[0] + 1.6, CY - .8, CY + .8, zb - 2.2, zb - 1.6, g);
+      sc.box(L - 5, L - 3.6, W - 2.4, W - 1.2, FZ + .8, FZ + 1.4, g);
+      [a0[0] + 1.5, G.xB + 1.5].forEach(function(x) { [.35, W - .35].forEach(function(y) {
+        sc.lathe([x, y, zs + .7], [[0, -.1], [.5, -.1], [.5, .1], [0, .1]], g, {n:14}); }); });
+      A[g] = [G.xB + 1.5, W - .25, zs + 1.2];
+      if (has.AUDIO_HW != null && g === 'info') { sc.box(a0[0] + .6, a0[0] + 1.6, CY - .8, CY + .8, zb - 1.55, zb - 1.35, 'audio'); A.audio = [a0[0] + 1.1, CY + .8, zb - 1.35]; }
+    }
+    if (has.COMMS_HW != null) {
+      var ap = [r1[0] - 1.2, CY, G.zr(r1[0] - 1.2) + .05];
+      sc.sweep([[ap[0] - .7, CY, ap[2]], [ap[0] + .5, CY, ap[2]]], [[-.25, 0], [.25, 0], [0, .55]], 'comms', {seg:99, scale:function(t) { return 1 - .6 * t; }});
+      sc.box(G.xB - .3, G.xB + .6, CY - .5, CY + .5, G.zr(G.xB) - .6, G.zr(G.xB) - .35, 'comms');
+      wire([G.xB, CY, G.zr(G.xB) - .5]);
+      A.comms = [ap[0], CY, ap[2] + .4];
+    }
+    var AL = {DECENTRALIZED:'decentralized: one ECU per function', ZONAL:'zonal: 4 zone controllers on a backbone', CENTRALIZED:'centralized: one central computer'};
+    return C.render(sc, {groups:GROUPS, lines:o.lines, w:o.w, total:'Total E&S material',
+      hint:'hover a part or a row · body shown as outline',
+      head:'E/E architecture · ' + (AL[arch] || arch) + (o.adas != null ? ' · ADAS level ' + o.adas : ''),
+      grid:{x0:-2, x1:L + 2, y0:-2, y1:W + 2, step:5}});
+  };
+})();
+// Swap the sidebar / tab glyphs for _VIS icons: any element with data-vis-icon="name".
+function _visApplyIcons(root) {
+  (root || document).querySelectorAll('[data-vis-icon]').forEach(function(el) {
+    if (el.getAttribute('data-vis-done')) return;
+    el.innerHTML = _VIS.icon(el.getAttribute('data-vis-icon'));
+    el.setAttribute('data-vis-done', '1');
+  });
+}
+document.addEventListener('DOMContentLoaded', function() { _visApplyIcons(); });
 // ══════════════════════════════════════════
 // FORM HELPERS
 // ══════════════════════════════════════════
@@ -8236,8 +9813,8 @@ function _renderLifecycleTab() {
             _esc(labels[x[0]] || x[0]) + ' <span style="color:var(--muted)">' + bcI.toFixed(0) + '→' + nowI.toFixed(0) + '</span> <span style="color:' + col(x[1]) + '">' + deur(x[1]) + '</span></span>';
         }).join('<br>');
       h += '<tr style="border-bottom:1px solid var(--border);">' +
-        td('<b>' + _esc(m.name || m.segment_code || 'model') + '</b><div style="font-size:9px;color:var(--muted);">approved at ' + _esc(m.bc_basis.label) +
-           ' prices · parts bought in ' + _esc(m.region) + (m.exposure_source === 'profile' ? ' · exposure estimated from its powertrain' : '') + '</div>', 'left') +
+        td('<div style="display:flex;align-items:center;gap:8px;">' + _visModelCar(m, 48) + '<div><b>' + _esc(m.name || m.segment_code || 'model') + '</b><div style="font-size:9px;color:var(--muted);">approved at ' + _esc(m.bc_basis.label) +
+           ' prices · parts bought in ' + _esc(m.region) + (m.exposure_source === 'profile' ? ' · exposure estimated from its powertrain' : '') + '</div></div></div>', 'left') +
         td(eur(m.bc_eur) + '<div style="font-size:9px;color:var(--muted);">commodities ' + deur(m.bc_commodity_eur) + '</div>') +
         td(deur(m.commodity_variance_eur), 'right', col(m.commodity_variance_eur)) +
         td('<b>' + eur(m.live_eur) + '</b>') +
@@ -9589,7 +11166,16 @@ function _buildVehicleModuleMatrix(mods, vehicles) {
     var sopQ=v.start_year?(v.start_year-2025)*4+(v.start_quarter-1):null;
     var statusColor={study:'var(--orange)',draft:'var(--muted2)',plan:'var(--gold)',approved:'var(--green)',on_sale:'var(--cyan)',cancelled:'var(--red)'}[v.status]||'var(--muted2)';
     h+='<tr style="border-top:1px solid rgba(255,255,255,.04);'+(i%2===0?'':'background:rgba(255,255,255,.015);')+'">';
-    h+='<td style="padding:5px 8px;color:var(--text);">'+(v.name||'—')+'</td>';
+    var _vs={};
+    slots.forEach(function(s){
+      var m=modMap[v[s.key]]; if(!m) return;
+      var k={platform_module_id:'platform',tophat_module_id:'tophat',eands_module_id:'eands'}[s.key]||(m.module_type==='epwt'?'epwt':'ice_pwt');
+      var rQ=m.ready_year?(m.ready_year-2025)*4+(m.ready_quarter-1):null;
+      _vs[k]=m.development_status==='completed'?'ready':(sopQ!==null&&rQ!==null&&rQ>sopQ?'late':'dev');
+    });
+    var _vrs=v.rolled_up_specs||{};
+    h+='<td style="padding:5px 8px;color:var(--text);"><div style="display:flex;align-items:center;gap:8px;">'+
+       _VIS.moduleMap({body:_vrs.body_type,segment:v.segment_code,slots:_vs,w:64})+(v.name||'—')+'</div></td>';
     h+='<td style="padding:5px 8px;text-align:center;color:var(--muted2);">'+sop+'</td>';
     h+='<td style="padding:5px 8px;text-align:center;color:'+statusColor+';text-transform:uppercase;">'+v.status+'</td>';
     slots.forEach(function(s){
@@ -11001,7 +12587,7 @@ function buildVehicleTable() {
       : '<td class="plan-td mono center" style="color:var(--muted2);">'+discVal+'%</td>';
 
     return '<tr class="plan-tr">'
-      + '<td class="plan-td plan-name-cell">'+v.name+'</td>'
+      + '<td class="plan-td plan-name-cell"><div style="display:flex;align-items:center;gap:8px;">'+_VIS.vehicle(v, 54)+'<span>'+v.name+'</span></div></td>'
       + '<td class="plan-td"><span style="color:'+sc+';font-size:10px;">'+sn+'</span></td>'
       + '<td class="plan-td mono">'+brand+'</td>'
       + '<td class="plan-td mono">'+body+'</td>'
@@ -11208,8 +12794,9 @@ function _renderFleetTab() {
     var p = md.policy || {}, dis = d.locked ? ' disabled' : '';
     h += '<div style="border:1px solid var(--border);border-radius:6px;padding:10px 12px;margin-bottom:10px;background:var(--s2);">';
     h += '<div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:6px;align-items:baseline;">'
+       + '<div style="display:flex;align-items:center;gap:10px;">' + _visModelCar(md, 64)
        + '<div style="font-size:12px;font-weight:700;color:var(--text);">' + _esc(md.name || '') + ' <span style="font-size:9px;color:var(--muted2);font-weight:400;">'
-       + _esc(md.segment_code || '') + ' · fleet is ' + Math.round((md.fleet_share_of_segment || 0) * 100) + '% of this segment</span></div>'
+       + _esc(md.segment_code || '') + ' · fleet is ' + Math.round((md.fleet_share_of_segment || 0) * 100) + '% of this segment</span></div></div>'
        + (md.is_default ? '<div style="font-size:9px;color:var(--gold);">default policy — not yet reviewed</div>' : '<div style="font-size:9px;color:var(--green);">your policy</div>') + '</div>';
     h += '<div style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;margin:8px 0;">'
        + '<label style="font-size:10px;color:var(--text);display:flex;align-items:center;gap:5px;"><input type="checkbox" id="fl-on-' + md.vehicle_id + '"' + (p.active ? ' checked' : '') + dis + '> Offer to fleets</label>'
@@ -11308,7 +12895,8 @@ function _renderLaunchesTab() {
     };
     h += '<div style="border:1px solid ' + (v.in_window ? 'var(--gold)' : 'var(--border)') + ';border-radius:6px;padding:10px 12px;margin-bottom:10px;background:var(--s2);">';
     h += '<div style="display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:6px;">'
-       + '<div style="font-size:12px;font-weight:700;color:var(--text);">' + _esc(v.name || '') + ' <span style="font-size:9px;color:var(--muted2);font-weight:400;">launch ' + _esc(v.sop_label) + '</span></div>'
+       + '<div style="display:flex;align-items:center;gap:10px;">' + _visModelCar(v, 64)
+       + '<div style="font-size:12px;font-weight:700;color:var(--text);">' + _esc(v.name || '') + ' <span style="font-size:9px;color:var(--muted2);font-weight:400;">launch ' + _esc(v.sop_label) + '</span></div></div>'
        + '<div style="font-size:9px;color:' + (v.in_window ? 'var(--gold)' : 'var(--muted2)') + ';">' + status + '</div></div>';
     h += '<div style="font-size:10px;color:var(--muted2);margin:6px 0;">Standard budget ' + m(v.std_budget_m) + ' (2.5% of planned first-year revenue) · spent so far '
        + m(v.spent_to_date_m) + ' · this quarter <b style="color:var(--gold)">' + m(v.this_quarter_m) + '</b></div>';
@@ -11595,7 +13183,7 @@ function _renderWarrantyTab() {
     var inp = r.inputs || {}, pq = r.quality || {};
     var relCol = inp.reliability >= 75 ? 'var(--green)' : inp.reliability < 55 ? 'var(--red)' : 'var(--text)';
     h += '<tr style="border-bottom:1px solid var(--border);">' +
-      td(_esc(r.name || ''), 'left') + td((r.units || 0).toLocaleString()) +
+      td('<div style="display:flex;align-items:center;gap:6px;">' + _visModelCar(r, 44) + _esc(r.name || '') + '</div>', 'left') + td((r.units || 0).toLocaleString()) +
       td(Math.round(inp.reliability) + ' <span style="color:var(--muted)">×' + r.design_f.toFixed(2) + '</span>', 'right', relCol) +
       td(inp.launch ? '<span style="color:var(--orange)">×' + r.launch_f.toFixed(2) + '</span>' : '—') +
       td(sel(r.vehicle_id, 'quality_tier', tierOpts, pq.quality_tier), 'left') +
@@ -12710,7 +14298,7 @@ function renderBrand(key) {
 
   // Header
   html += '<div class="brand-header">';
-  html += '<div class="brand-logo-box" style="background:'+b.color+'22;color:'+b.color+'">'+b.name[0]+'</div>';
+  html += '<div class="brand-logo-box" style="background:transparent;">'+_VIS.brandMark(key, 44)+'</div>';
   html += '<div><div class="brand-hname" style="color:'+b.color+'">'+b.name+'</div>';
   html += '<div class="brand-hmeta">'+b.tier+' · '+b.tagline+'</div></div>';
   // A / S / DP compound KPI bar
@@ -13753,7 +15341,7 @@ function _clRenderPage(d) {
   document.getElementById('cl-kpis').innerHTML =
     [['red','kk-r','Must review','var(--red)'],['amber','kk-g','Warnings','var(--gold)'],['green','kk-b','All clear','var(--green)']]
     .map(function(k){
-      return '<div class="kpi '+k[1]+'"><div class="kl">'+k[2]+'</div>'+
+      return '<div class="kpi '+k[1]+'"><div class="kl">'+_VIS.icon(k[0]==='green'?'check':'warning')+' '+k[2]+'</div>'+
              '<div class="kv" style="color:'+k[3]+'">'+(s[k[0]]||0)+'</div></div>';
     }).join('');
   var groups = {};
@@ -13761,9 +15349,21 @@ function _clRenderPage(d) {
   var worst = function(list){ return Math.min.apply(null, list.map(function(c){ return _CL_ORDER[c.status]; })); };
   var cats = Object.keys(groups).sort(function(a,b){ return worst(groups[a]) - worst(groups[b]); });
   document.getElementById('cl-body').innerHTML = cats.map(function(cat){
-    return '<div class="card" style="margin-bottom:12px;"><div class="card-title">'+_clEsc(cat)+'</div>'+
+    return '<div class="card" style="margin-bottom:12px;"><div class="card-title">'+_VIS.icon(_clCatIcon(cat))+' '+_clEsc(cat)+'</div>'+
       _clSorted(groups[cat]).map(function(c){ return _clRow(c, !submitted); }).join('')+'</div>';
-  }).join('') || '<div class="cl-empty">No checks apply this round.</div>';
+  }).join('') || _VIS.empty('check', 'No checks apply this round.');
+}
+
+// Icon for a checklist category (display only; unknown categories get a plain tick)
+function _clCatIcon(cat) {
+  var c = String(cat || '').toLowerCase();
+  var M = [['engineer','engineering'],['module','engineering'],['product','car'],['vehicle','car'],['launch','rocket'],
+           ['commercial','market'],['pric','tag'],['market','globe'],['fleet','truck'],['brand','brand'],['warrant','shield'],
+           ['aftersales','wrench'],['financ','finance'],['cash','cash'],['overhead','office'],['industrial','factory'],
+           ['plant','factory'],['manufact','factory'],['operation','factory'],['supply','supplier'],['sourcing','supplier'],
+           ['commodit','commodity'],['lifecycle','lifecycle']];
+  for (var i = 0; i < M.length; i++) if (c.indexOf(M[i][0]) >= 0) return M[i][1];
+  return 'check';
 }
 
 function _clGoTo(page, tab) {
@@ -17820,6 +19420,8 @@ function _fpRenderPlantBlock(pd) {
 
   var hdr = '<div class="fp-plant-hdr" onclick="_fpTogglePlant(\''+plantKey+'\')">'
           + '<span style="color:var(--muted2);font-size:9px;width:10px;">'+arrow+'</span>'
+          + _VIS.plant({cap_k:p.capacity_k, automation:p.automation_level, shifts:p.shifts || 2, w:46,
+                        color:p.type === 'vehicle' ? 'var(--cyan)' : 'var(--orange)', label:plantName + ' — ' + p.capacity_k + 'k/yr'})
           + '<span class="plant-type-badge '+typeClass+'" style="font-size:8px;padding:1px 5px;">'+typeLabel+'</span>'
           + '<span style="font-family:\'DM Mono\',monospace;font-size:10px;flex:1;">'+plantName+'</span>'
           + vegBadge
@@ -18627,11 +20229,47 @@ async function _loadLegacyCharts(rounds, teams, teamMap) {
   }
 }
 
+// Dashboard model line-up: one silhouette card per live model (display only)
+async function _dashRenderLineup() {
+  var el = document.getElementById('dash-lineup');
+  if (!el || !teamId) return;
+  try {
+    var res = await fetch(API_URL + '/teams/' + teamId + '/vehicles');
+    var vs = ((await res.json()).vehicles || []).filter(function(v) { return v.status !== 'ended'; });
+    if (!vs.length) {
+      el.innerHTML = _VIS.empty('car', 'No models yet', 'Create a Product Study in Product Plan, then turn it into a Vehicle Proposal.');
+      return;
+    }
+    var ORD = {on_sale:0, approved:1, plan:2, planned:2, study:3, draft:3};
+    function o(s) { return s in ORD ? ORD[s] : 9; }
+    vs.sort(function(a, b) { return o(a.status) - o(b.status) || (a.start_year || 9999) - (b.start_year || 9999); });
+    el.innerHTML = vs.map(function(v) {
+      var sop = v.start_year ? 'SOP Q' + v.start_quarter + ' ' + v.start_year : 'SOP —';
+      return '<div class="vis-lu">' + _VIS.vehicle(v, 112) +
+        '<div class="vis-lu-n">' + v.name + '</div>' +
+        '<div class="vis-lu-m">' + (SEG_NAMES[v.segment_code] || v.segment_code || '—') + ' · ' + sop + '</div>' +
+        statusBadge(v.status) + '</div>';
+    }).join('');
+  } catch (e) { console.warn('dash line-up', e); }
+}
+
+// Silhouette for any per-model row (performance, fleet, launches, warranty, lifecycle…):
+// body / powertrain from the team's vehicle list when the row's id is known, else from the segment.
+function _visModelCar(row, w) {
+  row = row || {};
+  var id = row.vehicle_id || row.id;
+  var v = (activeVehicles || []).find(function(x) { return x.id === id; }) || {};
+  var rs = v.rolled_up_specs || {};
+  return _VIS.car({body:rs.body_type || row.body_type, segment:row.segment_code || v.segment_code,
+                   pwt:rs.pwt_type || row.pwt_type, w:w || 120, title:row.name || row.vehicle_name || v.name});
+}
+function _visPerfCar(vo, w) { return _visModelCar(vo, w); }
+
 function renderVehicleCards(vos) {
   var el = document.getElementById('perf-vehicle-cards');
   if (!el) return;
   if (!vos || !vos.length) {
-    el.innerHTML = '<div style="color:var(--muted2);font-size:11px;padding:12px 0;grid-column:1/-1;">No vehicles on-sale this round — submit a vehicle proposal to see performance data.</div>';
+    el.innerHTML = '<div style="grid-column:1/-1;">' + _VIS.empty('car', 'No vehicles on sale this round', 'Submit a vehicle proposal to see performance data.') + '</div>';
     return;
   }
   var SEG_NL = typeof SEG_NAMES !== 'undefined' ? SEG_NAMES : {};
@@ -18646,6 +20284,7 @@ function renderVehicleCards(vos) {
     var ebit     = vo.ebit_m != null ? '€'+parseFloat(vo.ebit_m).toFixed(2)+'M' : '—';
     var segN     = SEG_NL[vo.segment_code] || vo.segment_code || '—';
     return '<div class="pvc">'
+      + '<div style="margin:-2px 0 6px;">'+_visPerfCar(vo, 120)+'</div>'
       + '<div class="pvc-name">'+(vo.vehicle_name||'Vehicle')+'</div>'
       + '<div class="pvc-seg">'+segN+'</div>'
       + '<div class="pvc-stat"><span>Market Share</span><span style="color:'+shareCol+';font-size:11px;font-weight:800;">'+share+'</span></div>'
@@ -19027,6 +20666,7 @@ function togglePropSection(n) {
 
 function setPropStep(n) {
   _prop.currentSec = n;
+  _propVisRefresh();
   // Update progress bar
   for (var i = 1; i <= 10; i++) {
     var el = document.getElementById('pstep-' + i);
@@ -19064,7 +20704,7 @@ function renderStudyList(studies) {
   var el = document.getElementById('prop-studies-list');
   if (!el) return;
   if (studies.length === 0) {
-    el.innerHTML = '<div style="padding:16px;color:var(--muted2);font-size:12px;text-align:center;">No open studies found. Go to <strong style="color:var(--gold);">Vehicle Plan</strong> and create a Product Study first.</div>';
+    el.innerHTML = _VIS.empty('car', 'No open studies found', 'Go to <strong style="color:var(--gold);">Vehicle Plan</strong> and create a Product Study first.');
     return;
   }
   el.innerHTML = studies.map(function(v) {
@@ -19077,7 +20717,7 @@ function renderStudyList(studies) {
     var eop  = v.end_year   ? 'Q'+v.end_quarter  +' '+v.end_year   : '—';
     var sel  = _prop.study && _prop.study.id === v.id ? ' selected' : '';
     return '<div class="prop-study-card' + sel + '" data-vid="' + v.id + '" data-action="prop-select-study">' +
-      '<div class="gantt-seg-dot" style="background:' + sc + ';width:10px;height:10px;border-radius:2px;flex-shrink:0;"></div>' +
+      _VIS.car({body:rs.body_type, segment:v.segment_code, pwt:rs.pwt_type, color:sc, w:72}) +
       '<div style="flex:1;">' +
         '<div class="prop-study-card-name">' + v.name + '</div>' +
         '<div class="prop-study-card-meta">' + sn + ' &nbsp;&#183;&nbsp; ' + body + ' &nbsp;&#183;&nbsp; ' + pwt + ' &nbsp;&#183;&nbsp; ' + sop + ' &#8594; ' + eop + '</div>' +
@@ -19133,6 +20773,41 @@ function getCompatiblePlatformSizes(segmentCode) {
   return SEGMENT_PLATFORM_COMPAT[segmentCode] || ['micro','small','medium','large','frame','performance','commercial'];
 }
 
+// ── Proposal visuals (_VIS): module map + silhouette for the study being proposed ──
+function _propVisSlots() {
+  function md(p) { return p && p.mode ? p.mode : null; }
+  var s = {platform: md(_prop.platform)};
+  var t = '';
+  try { t = _prop.study ? _getEffectivePwtType() : ''; } catch (e) {}
+  if (_prop.pwt || (t && t !== 'BEV')) s.ice_pwt = md(_prop.pwt);
+  if (_prop.epwt || (t && t !== 'ICE')) s.epwt = md(_prop.epwt);
+  s.tophat = md(_prop.tophat);
+  s.eands = md(_prop.eands);
+  return s;
+}
+function _propVisBody() {
+  var rs = (_prop.study && _prop.study.rolled_up_specs) || {};
+  var b = rs.body_type;
+  var ck = _prop.tophat && _prop.tophat.specs && _prop.tophat.specs.config_key;
+  if (!b && ck) b = String(ck).split('_').slice(1).join('_');
+  return b || '';
+}
+function _propVisColor() {
+  var br = _prop.study && String(_prop.study.brand_code || '').toLowerCase();
+  if (br && BRANDS_FULL[br]) return BRANDS_FULL[br].colorVar;
+  return (_prop.study && SEG_COLORS[_prop.study.segment_code]) || 'var(--gold)';
+}
+var _PROP_VIS_FOCUS = {2:'platform', 4:'tophat', 5:'eands'};
+function _propVisMap(w) {
+  return _VIS.moduleMap({body:_propVisBody(), segment:_prop.study && _prop.study.segment_code,
+    slots:_propVisSlots(), focus:_PROP_VIS_FOCUS[_prop.currentSec], w:w || 130});
+}
+// Re-draw every module map on the page after a module decision changes
+function _propVisRefresh() {
+  document.querySelectorAll('.prop-ctx-vis').forEach(function(el) { el.innerHTML = _propVisMap(); });
+  document.querySelectorAll('.prop-ctx-legend').forEach(function(el) { el.innerHTML = _VIS.moduleLegend(_propVisSlots()); });
+}
+
 function buildContextBanner() {
   if (!_prop.study) return '';
   var v   = _prop.study;
@@ -19141,12 +20816,14 @@ function buildContextBanner() {
   var sop = v.start_year ? 'Q'+v.start_quarter+' '+v.start_year : '—';
   var eop = v.end_year   ? 'Q'+v.end_quarter  +' '+v.end_year   : '—';
   return '<div class="prop-context-banner">' +
+    '<div class="prop-ctx-vis" title="Module decisions: cyan = new, gold = modify, grey = reuse">' + _propVisMap() + '</div>' +
     '<div class="prop-ctx-item">STUDY<span>' + v.name + '</span></div>' +
     '<div class="prop-ctx-item">SEGMENT<span>' + sn + '</span></div>' +
     '<div class="prop-ctx-item">BODY TYPE<span>' + (rs.body_type||'—') + '</span></div>' +
     '<div class="prop-ctx-item">PWT INTENT<span>' + (rs.pwt_type||'—') + '</span></div>' +
     '<div class="prop-ctx-item">SOP<span>' + sop + '</span></div>' +
     '<div class="prop-ctx-item">EOP<span>' + eop + '</span></div>' +
+    '<div class="prop-ctx-legend">' + _VIS.moduleLegend(_propVisSlots()) + '</div>' +
   '</div>';
 }
 
@@ -19531,6 +21208,7 @@ function buildModuleOptions(modType, propKey, nextFn) {
       '</div>';
 
       html += '</div>'; // end grid
+      html += '<div id="prop-plat-diagram"></div>';
 
       html += '<div style="margin-top:14px;display:flex;align-items:center;gap:12px;">' +
         '<button data-action="prop-continue" data-nextfn="' + nextFn + '" ' +
@@ -19941,6 +21619,7 @@ function onPropPlatformChange() {
   var msgEl = document.getElementById('prop-plat-continue-msg');
   if (!bomEl) return;
 
+  _propPlatDiagram(size, pwt, null);
   if (!size || !pwt) {
     bomEl.innerHTML = '<div style="color:var(--muted2);font-size:10px;">Select platform size and PWT compatibility to see cost breakdown</div>';
     if (msgEl) msgEl.textContent = 'Select size and PWT to continue';
@@ -19955,6 +21634,7 @@ function onPropPlatformChange() {
 
   // Store calc result
   window._lastPropPlatformCalc = r;
+  _propPlatDiagram(size, pwt, r);
 
   // Render using same functions as Engineering Lab
   var h = '';
@@ -19975,6 +21655,15 @@ function onPropPlatformChange() {
   }
   bomEl.innerHTML = h;
   if (msgEl) msgEl.textContent = '✓ Platform configured — ready to continue';
+}
+
+// §2 technical diagram: what this platform contains, priced from the same _PC.calc lines as the BOM
+function _propPlatDiagram(size, pwt, r) {
+  var el = document.getElementById('prop-plat-diagram');
+  if (!el) return;
+  if (!size || !pwt || !r) { el.innerHTML = ''; return; }
+  var src = r.is_multi_energy ? (window._mePropSelected === 'bev' ? r.bev_ready : r.ice_ready) : r;
+  el.innerHTML = _VIS.platform({size:size, pwt:pwt, lines:(src && src.material_lines) || [], variant:window._mePropSelected});
 }
 
 function _renderPropMultiSummary(r) {
@@ -20227,6 +21916,7 @@ function onPropTopHatChange() {
     bomDiv.innerHTML = _summaryCard(r.std_platform_tpc_eur, r.total_net_weight_kg,
       r.total_material_cost_eur, r.total_process_cost_eur, 0, 'var(--purple)', 'Top Hat', null)
       + _rdCard(r) + _moduleInvestCard('tophat') + _bomDetail(r.material_lines, r.process_lines, r, 'th');   // §4: capex + collapsible cost cards
+    _propPtDiagram('th', bomDiv, _VIS.topHat({key:ck, lines:r.material_lines}));
     // Update section status
     var s4 = document.getElementById('prop-sec-4-status');
     if (s4) s4.textContent = '✎ ' + ck + ' configured';
@@ -20253,6 +21943,12 @@ function onPropICECylChange() {
   if (bomDiv) bomDiv.innerHTML = '<span style="color:var(--muted2);">Select engine type to see BOM</span>';
 }
 
+// §3 technical diagrams: placed right after the module's cost breakdown
+function _propPtDiagram(kind, bomDiv, html) {
+  var id = 'prop-' + kind + '-diagram', el = document.getElementById(id);
+  if (!el) { el = document.createElement('div'); el.id = id; bomDiv.parentNode.insertBefore(el, bomDiv.nextSibling); }
+  el.innerHTML = html;
+}
 function onPropICEPWTChange() {
   var ck  = document.getElementById('prop-ice-config')?.value; if (!ck) return;
   // Constrain the power slider to this engine's realistic band, then read the (clamped) value.
@@ -20278,6 +21974,7 @@ function onPropICEPWTChange() {
     bomDiv.innerHTML = _summaryCard(r.std_platform_tpc_eur, r.total_net_weight_kg,
       r.total_material_cost_eur, r.total_process_cost_eur, 0, 'var(--orange)', 'ICE Powertrain', null)
       + _rdCard(r) + _moduleInvestCard('pwt') + _bomDetail(r.material_lines, r.process_lines, r, 'ice');   // §3: capex + collapsible cost cards
+    _propPtDiagram('ice', bomDiv, _VIS.iceEngine({key:ck, hp:pw, lines:r.material_lines}));
     var s3 = document.getElementById('prop-sec-3-status');
     if (s3) s3.textContent = '✎ ICE ' + ck;
   } catch(e) { console.warn('ICE PWT proposal BOM error:', e); }
@@ -20311,6 +22008,7 @@ function onPropEPWTChange() {
     bomDiv.innerHTML = _summaryCard(r.std_platform_tpc_eur, r.total_net_weight_kg,
       r.total_material_cost_eur, r.total_process_cost_eur, 0, color, label, null)
       + _rdCard(r) + _moduleInvestCard('epwt') + _bomDetail(r.material_lines, r.process_lines, r, 'epwt');   // §3: capex + collapsible cost cards
+    _propPtDiagram('epwt', bomDiv, _VIS.eDrive({cls:cls, kw:pw, lines:r.material_lines}));
     var s3 = document.getElementById('prop-sec-3-status');
     if (s3) s3.textContent = '✎ ' + label + ' ' + cls;
   } catch(e) { console.warn('ePWT proposal BOM error:', e); }
@@ -20344,6 +22042,9 @@ function onPropEandsChange() {
     bomDiv.innerHTML = _summaryCard(r.std_platform_tpc_eur, r.total_net_weight_kg,
       r.total_material_cost_eur, r.total_process_cost_eur, 0, color, label, null)
       + _rdCard(r) + _moduleInvestCard('eands') + _bomDetail(r.material_lines, r.process_lines, r, 'eands');   // §5: capex + collapsible cost cards
+    var _thCk = _prop.tophat && _prop.tophat.specs && _prop.tophat.specs.config_key;
+    _propPtDiagram('eands', bomDiv, _VIS.eands({arch:arch, adas:adas, lines:r.material_lines,
+      seg:_thCk ? _thCk.split('_')[0] : (_prop.study ? String(_prop.study.segment_code || '').charAt(0) : ''), body:_propVisBody()}));
     var s5 = document.getElementById('prop-sec-5-status');
     if (s5) s5.textContent = '✎ ' + label;
   } catch(e) { console.warn('E&S proposal BOM error:', e); }
@@ -20402,6 +22103,7 @@ function onPropBatteryChange() {
       + '€' + Math.round(r.std_platform_tpc_eur / r.target_kwh) + '/kWh'
       + '</div>'
       + _rdCard(r) + _moduleInvestCard('battery') + _bomDetail(r.material_lines, r.process_lines, r, 'bat');   // §3: capex + collapsible cost cards
+    _propPtDiagram('bat', bomDiv, _VIS.batteryPack({chem:chem, name:r.chemistry_name, kwh:r.target_kwh, vol:r.pack_volume_l, lines:r.material_lines}));
     var s3 = document.getElementById('prop-sec-3-status');
     if (s3) s3.textContent = '✎ Battery ' + r.target_kwh + 'kWh · ' + r.chemistry_name;
   } catch(e) { console.warn('Battery proposal BOM error:', e); }
@@ -20928,11 +22630,14 @@ function buildReviewSection() {
   // Header banner
   if (readinessBanner) h += readinessBanner;
   h += '<div style="background:linear-gradient(135deg,rgba(200,164,60,.10) 0%,rgba(0,0,0,0) 55%);border:1px solid rgba(200,164,60,.22);border-radius:6px;padding:14px 20px;margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;">';
-  h += '<div>';
+  h += '<div style="display:flex;align-items:center;gap:18px;">' +
+    _VIS.car({body:_propVisBody(), segment:_prop.study && _prop.study.segment_code,
+              pwt:_prop.study && (_prop.study.rolled_up_specs || {}).pwt_type, color:_propVisColor(), w:150}) + '<div>';
   h += '<div style="font-family:DM Mono,monospace;font-size:7px;letter-spacing:3px;color:var(--gold);text-transform:uppercase;margin-bottom:4px;">▌ Vehicle Program · Technical Definition</div>';
   h += '<div style="font-family:Orbitron,sans-serif;font-size:20px;font-weight:800;color:var(--white);letter-spacing:1px;">'+(studyBrand?studyBrand.toUpperCase()+' ':'')+studySeg.toUpperCase()+'</div>';
   h += '<div style="font-family:DM Mono,monospace;font-size:9px;color:var(--muted2);margin-top:4px;">'+progBadge+' · '+(plS.size?sizeL[plS.size]||plS.size:'TBD').toUpperCase()+' Platform'+(plS.pwt?' · '+(pwtL[plS.pwt]||plS.pwt):'')+'</div>';
-  h += '</div>';
+  h += '<div style="margin-top:7px;">' + _VIS.moduleLegend(_propVisSlots()) + '</div>';
+  h += '</div></div>';
   // Two headline program tiles: Total Investment (R&D + plant + supplier greenfield capex)
   // and Total TPC/vehicle (DMP material purchase + Make transformation). Both reuse the same
   // aggregates the standard-cost table below shows, so they reconcile by construction.
@@ -23523,7 +25228,11 @@ function _renderPlantAllocationPanel(lk){
   var MN='font-family:DM Mono,monospace;';
   var h='<div style="margin-bottom:18px;">';
   // ── Header ──
-  h+='<div style="'+MN+'font-size:9px;font-weight:700;color:var(--gold);margin-bottom:12px;padding-bottom:6px;border-bottom:1px solid var(--border2);">🏭 ALLOCATION — '+reg+(ccName?' · '+ccName:'')+'</div>';
+  var _visCapK=ops.vehicle_capacity_yr||ops.capacity_target_k||_suggestedVolK()||50;
+  var _visAuto=(((ops.platform_auto_level||2)+(ops.tophat_auto_level||2))/2-1)/3;
+  h+='<div style="display:flex;align-items:flex-end;gap:12px;margin-bottom:12px;padding-bottom:6px;border-bottom:1px solid var(--border2);">'+
+     _VIS.plant({cap_k:_visCapK,automation:_visAuto,shifts:3,w:96,label:reg+(ccName?' · '+ccName:'')+' — '+_visCapK+'k/yr'})+
+     '<div style="'+MN+'font-size:9px;font-weight:700;color:var(--gold);">ALLOCATION — '+reg+(ccName?' · '+ccName:'')+'</div></div>';
 
   // ── Section A: Vehicles at this plant ──
   var _vehMap={};
@@ -28344,6 +30053,7 @@ function _resetCommandCenterKPIs() {
 async function loadCommandCenterKPIs() {
   _resetCommandCenterKPIs();              // never leave prototype values on screen
   if (!sessionId || !teamId) return;
+  _dashRenderLineup();
   try {
     var res  = await fetch(API_URL + '/sessions/' + sessionId + '/performance-dashboard?team_id=' + teamId);
     var dash = await res.json();
