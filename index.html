@@ -15149,6 +15149,36 @@ function mcRenderTimeline() {
   el.innerHTML = h;
 }
 
+// Market clearing runs as a background job on the server (2026-10-05): POST …/market-clear
+// returns at once and GET …/clear-status reports running / done / failed. A synchronous clear
+// (~2-5 min) outlived Railway's proxy, so the button showed an error on clears that succeeded.
+// onTick(elapsed_s) is called on every poll. Resolves with the status (summary inside).
+async function _clearRoundAndWait(rid, onTick) {
+  var base = API_URL + '/sessions/' + sessionId + '/rounds/' + rid;
+  var res  = await fetch(base + '/market-clear', { method: 'POST' });
+  if (res.status !== 202 && res.status !== 409) {
+    var err = {}; try { err = await res.json(); } catch(e) {}
+    throw new Error(err.detail || ('Clearing could not start (HTTP ' + res.status + ')'));
+  }
+  // 409 = this round is already clearing: wait for that clear instead of starting another
+  var t0 = Date.now();
+  while (true) {
+    await new Promise(function(r){ setTimeout(r, 5000); });
+    var st;
+    try {
+      var sr = await fetch(base + '/clear-status');
+      if (!sr.ok) continue;
+      st = await sr.json();
+    } catch(e) { continue; }   // a dropped poll is not a failed clear
+    if (onTick) onTick(st.elapsed_s != null ? st.elapsed_s : Math.round((Date.now() - t0) / 1000));
+    if (st.status === 'done') return st;
+    if (st.status === 'failed')  throw new Error('Clearing failed: ' + (st.error || 'unknown error'));
+    if (st.status === 'stalled') throw new Error('Clearing stopped (server restarted?) — run it again');
+    if (st.status === 'idle' && Date.now() - t0 > 60000) throw new Error('Clearing did not start — run it again');
+    if (Date.now() - t0 > 20 * 60000) throw new Error('Clearing still running after 20 min — check the results later');
+  }
+}
+
 async function mcRunClearing() {
   var hubBtn = document.getElementById('hub-btn-clear');
   if (hubBtn) { hubBtn.disabled=true; hubBtn.textContent='⏳ Running...'; }
@@ -15158,9 +15188,11 @@ async function mcRunClearing() {
     return;
   }
   try {
-    var res  = await fetch(API_URL + '/sessions/' + sessionId + '/rounds/' + _mcData.latestRnd.id + '/market-clear', { method: 'POST' });
-    var data = await res.json();
-    if (!data.success) throw new Error(data.detail || 'Clearing failed');
+    var st   = await _clearRoundAndWait(_mcData.latestRnd.id, function(sec) {
+      var b = document.getElementById('hub-btn-clear');
+      if (b) b.textContent = '⏳ Clearing… ' + Math.floor(sec / 60) + ':' + ('0' + (sec % 60)).slice(-2);
+    });
+    var data = st.summary || {};
     toast('✓ Market cleared · ' + (data.vehicles_processed||0) + ' vehicles · ' + (data.segments_cleared||[]).length + ' segments');
     await refreshInstructorHub();
     mcTab('results', document.querySelectorAll('.mc-tab')[1]);
@@ -26523,11 +26555,12 @@ async function runMarketClearing() {
     var badge = document.getElementById('mkt-results-round-badge');
     if (badge) badge.textContent = 'Y' + (latestRound.year - 2024) + 'Q' + latestRound.quarter;
 
-    var res  = await fetch(API_URL + '/sessions/' + sessionId + '/rounds/' + latestRound.id + '/market-clear', { method:'POST' });
-    var data = await res.json();
-    if (!data.success) throw new Error(data.detail || 'Clearing failed');
-    renderMarketResults(data);
-    toast('✓ Market cleared — ' + data.vehicles_processed + ' vehicles, ' + (data.segments_cleared||[]).length + ' segments');
+    var st   = await _clearRoundAndWait(latestRound.id, function(sec) {
+      if (btn) btn.textContent = '⏳ Clearing… ' + Math.floor(sec / 60) + ':' + ('0' + (sec % 60)).slice(-2);
+    });
+    var data = st.summary || {};
+    await loadMarketResults();
+    toast('✓ Market cleared — ' + (data.vehicles_processed||0) + ' vehicles, ' + (data.segments_cleared||[]).length + ' segments');
   } catch(e) {
     toast('⚠ ' + e.message);
   } finally {
