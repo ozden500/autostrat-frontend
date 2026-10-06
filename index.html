@@ -27731,7 +27731,14 @@ function calcPropBizCase() {
   // column implied otherwise. Supplier capex reaches the business case exactly once, below, via
   // _sourcingCapexM — the brownfield figure §8 charges (see confirmSourcingPlan). Re-adding
   // supplier_parks here would double-count it.
-  ['vehicle_plants','powertrain_plants'].forEach(function(t){(_ops[t]||[]).forEach(function(f){toolingM+=f._computed?f._computed.total_inv_m||0:0;});});
+  // Confirmed plants only, as the books count them (financial_engine._confirmed_plants): a §7
+  // placeholder ('vp1' / 'pwt1') left on the plan was summed here, so the business case showed
+  // capex the books never charge (tools/capex_reconciliation.py, 2026-10-06). A list where no
+  // entry carries the confirmation marker predates the allocation UI and counts whole.
+  ['vehicle_plants','powertrain_plants'].forEach(function(t){
+    var _all=_ops[t]||[], _conf=_all.filter(function(f){return f.vehicle_capacity_yr>0;});
+    (_conf.length?_conf:_all).forEach(function(f){toolingM+=f._computed?f._computed.total_inv_m||0:0;});
+  });
   if(toolingM===0&&_m)toolingM=(_m.grand_total_inv_m||_m.total_investment_m||0);
   if(_ops._sourcingCapexM)toolingM+=_ops._sourcingCapexM;
   var totalInvM=rdM+toolingM+_newMkt.entryM;
