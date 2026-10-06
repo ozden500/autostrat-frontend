@@ -7634,7 +7634,10 @@ function fetchEandsStdCost() {
 var _BATTERY_PC = {
   VERSION: "1.0.0",
   US_LABOR: 58.0, US_ELEC: 0.08,
-  US_FTE_RATE_MONTH: 13333, RD_FTE_SHARE: 0.50, RD_MAT_SHARE: 0.50, RD_MAT_INDEX: 1.00,
+  // R&D is 60% labour / 40% material, the game's one FTE-month definition (main._fte_months_from_spend,
+  // the Capacity tab, payroll absorption). Was 50/50 here only: the battery card showed fewer
+  // engineer-months than the throttle demands for the same R&D (2026-10-06).
+  US_FTE_RATE_MONTH: 13333, RD_FTE_SHARE: 0.60, RD_MAT_SHARE: 0.40, RD_MAT_INDEX: 1.00,
 
   // Chemistry properties: cell price €/kWh (BUY market), gravimetric Wh/kg, volumetric Wh/L (pack-level), R&D multiplier
   CHEM: {
