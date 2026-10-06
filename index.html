@@ -12359,11 +12359,15 @@ async function promoteVehicle(vehicleId, newStatus) {
 }
 
 async function deleteVehicle(vehicleId) {
-  if (!confirm('Delete this vehicle? This cannot be undone.')) return;
+  if (!confirm('Delete this vehicle? This cannot be undone.\n\nSupplier tooling bought for it in §8 that no other model uses is written off (an R&D expense this quarter).')) return;
   try {
     const res = await fetch(`${API_URL}/vehicles/${vehicleId}`, {method:'DELETE'});
     const data = await res.json();
-    if (data.success) { toast('✓ Vehicle deleted'); await loadVehiclePlan(); }
+    if (data.success) {
+      var wo = Number(data.supplier_writeoff_m || 0);
+      toast('✓ Vehicle deleted' + (wo > 0 ? ' · €' + wo.toFixed(1) + 'M supplier tooling written off' : ''));
+      await loadVehiclePlan();
+    }
     else toast('⚠ '+(data.detail||'Error'));
   } catch(e){ toast('⚠ '+e.message); }
 }
@@ -17180,6 +17184,7 @@ var _FIN_LINES = {
     {l:'R&D Expense',            k:'rd_expense_m', neg:true},
     {l:'  ↳ incl. idle engineering', k:'eng_idle_m', neg:true, optional:true},
     {l:'  ↳ incl. sustaining engineering', k:'rd_sustaining_m', neg:true, optional:true},
+    {l:'  ↳ incl. tooling written off (deleted proposals)', k:'rd_writeoff_m', neg:true, optional:true},
     {l:'SG&A (head-office overhead)', k:'sga_m', neg:true},
     {l:'  ↳ running the company',        k:'ga_base_m', neg:true, optional:true},
     {l:'  ↳ countries, models, plants',  k:'ga_complexity_m', neg:true, optional:true},
