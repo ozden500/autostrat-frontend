@@ -11178,8 +11178,12 @@ function _buildVehicleModuleMatrix(mods, vehicles) {
       _vs[k]=m.development_status==='completed'?'ready':(sopQ!==null&&rQ!==null&&rQ>sopQ?'late':'dev');
     });
     var _vrs=v.rolled_up_specs||{};
+    // 🤖 an AI-built model: the AI fallback vehicle, or one the team inherited from the AI fleet
+    // (arch_key / name_tmpl are written only by simulation_engine._create_ai_fleet)
+    var _aiTag=v.is_ai_fallback?'<span class="ai-tag" title="AI fallback vehicle: the AI built it because the team had no vehicle">🤖 AI fallback</span>'
+             :(_vrs.arch_key||_vrs.name_tmpl)?'<span class="ai-tag" title="Built by the AI before your team took over">🤖 AI-built</span>':'';
     h+='<td style="padding:5px 8px;color:var(--text);"><div style="display:flex;align-items:center;gap:8px;">'+
-       _VIS.moduleMap({body:_vrs.body_type,segment:v.segment_code,slots:_vs,w:64})+(v.name||'—')+'</div></td>';
+       _VIS.moduleMap({body:_vrs.body_type,segment:v.segment_code,slots:_vs,w:64})+(v.name||'—')+_aiTag+'</div></td>';
     h+='<td style="padding:5px 8px;text-align:center;color:var(--muted2);">'+sop+'</td>';
     h+='<td style="padding:5px 8px;text-align:center;color:'+statusColor+';text-transform:uppercase;">'+v.status+'</td>';
     slots.forEach(function(s){
@@ -30029,7 +30033,6 @@ async function loadTeamHistoricalSummary() {
     const data = await res.json();
     if (!data.rounds || data.rounds.length === 0) return;
     _histData = data;
-    renderTeamHistoricalKPIs(data);
   } catch(e) { console.warn('loadTeamHistoricalSummary:', e); }
 }
 
@@ -30100,52 +30103,9 @@ async function loadCommandCenterKPIs() {
   } catch(e) { console.warn('loadCommandCenterKPIs:', e); /* baseline already shown */ }
 }
 
-function renderTeamHistoricalKPIs(data) {
-  // Find this team's historical outcomes
-  var myOutcomes = (data.outcomes || []).filter(function(o){ return o.team_id === teamId; })
-    .sort(function(a,b){
-      var ra = data.rounds.find(function(r){return r.id===a.round_id;})||{};
-      var rb = data.rounds.find(function(r){return r.id===b.round_id;})||{};
-      return ra.round_number - rb.round_number;
-    });
-  if (myOutcomes.length === 0) return;
-
-  // Last quarter actuals
-  var last = myOutcomes[myOutcomes.length-1];
-  var prev = myOutcomes.length > 1 ? myOutcomes[myOutcomes.length-2] : null;
-  var lastRound = data.rounds.find(function(r){return r.id===last.round_id;});
-
-  // Update dashboard KPI tiles if they exist
-  var histEl = document.getElementById('hist-kpi-strip');
-  if (!histEl) return;
-
-  function delta(cur, prv, field) {
-    if (!prv) return '';
-    var d = cur[field] - prv[field];
-    var pct = prv[field] > 0 ? (d/prv[field]*100).toFixed(1) : 0;
-    var col = d >= 0 ? 'var(--green)' : 'var(--red)';
-    var arrow = d >= 0 ? '\u25b2' : '\u25bc';
-    return '<span style="font-size:9px;color:' + col + ';">' + arrow + ' ' + Math.abs(pct) + '%</span>';
-  }
-
-  histEl.innerHTML = '<div style="font-family:DM Mono,monospace;font-size:7px;text-transform:uppercase;letter-spacing:2px;color:var(--muted2);margin-bottom:8px;padding:0 2px;">' +
-    'LAST ACTUAL — ' + (lastRound ? lastRound.label : 'Q4 2024') + '</div>' +
-    '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;">' +
-    histKpiCard('Revenue', '\u20ac' + Math.round(last.revenue_m) + 'M', 'var(--cyan)', delta(last,prev,'revenue_m')) +
-    histKpiCard('EBIT', '\u20ac' + Math.round(last.ebit_m) + 'M', last.ebit_m>=0?'var(--green)':'var(--red)', delta(last,prev,'ebit_m')) +
-    histKpiCard('Units Sold', Math.round(last.total_units_sold/1000) + 'k', 'var(--gold)', delta(last,prev,'total_units_sold')) +
-    histKpiCard('EBIT Margin', (last.revenue_m>0?Math.round(last.ebit_m/last.revenue_m*100):0) + '%', 'var(--purple)', '') +
-    '</div>';
-}
-
-function histKpiCard(label, val, col, deltaHtml) {
-  return '<div style="background:var(--s2);border:1px solid var(--border);border-radius:3px;padding:8px 10px;">' +
-    '<div style="font-family:DM Mono,monospace;font-size:7px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:4px;">' + label + '</div>' +
-    '<div style="font-family:Orbitron,sans-serif;font-size:14px;font-weight:700;color:' + col + ';">' + val + '</div>' +
-    (deltaHtml ? '<div style="margin-top:2px;">' + deltaHtml + ' vs prev qtr</div>' : '') +
-  '</div>';
-}
-
+// renderTeamHistoricalKPIs / histKpiCard removed 2026-10-06: they wrote a 'last actual' strip to
+// #hist-kpi-strip, which the dashboard never had, and read EBIT from round_outcomes (clearing's
+// own figure, ~2x the statement's). The Command Center KPI tiles show the real figures.
 
 // ══════════════════════════════════════════
 // DEMAND MODEL — Purchase Reasons
