@@ -1203,6 +1203,8 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
       style="font-family:'DM Mono',monospace;font-size:10px;padding:8px 20px;border:none;border-bottom:2px solid transparent;background:transparent;color:var(--muted);cursor:pointer;letter-spacing:.5px;"><span class="vis-tab-i" data-vis-icon="globe"></span>MARKETS</button>
     <button id="com-tab-btn-warranty" onclick="switchComTab('warranty')"
       style="font-family:'DM Mono',monospace;font-size:10px;padding:8px 20px;border:none;border-bottom:2px solid transparent;background:transparent;color:var(--muted);cursor:pointer;letter-spacing:.5px;"><span class="vis-tab-i" data-vis-icon="shield"></span>WARRANTY</button>
+    <button id="com-tab-btn-emissions" onclick="switchComTab('emissions')"
+      style="font-family:'DM Mono',monospace;font-size:10px;padding:8px 20px;border:none;border-bottom:2px solid transparent;background:transparent;color:var(--muted);cursor:pointer;letter-spacing:.5px;"><span class="vis-tab-i" data-vis-icon="leaf"></span>EMISSIONS</button>
     <button id="com-tab-btn-aftersales" onclick="switchComTab('aftersales')"
       style="font-family:'DM Mono',monospace;font-size:10px;padding:8px 20px;border:none;border-bottom:2px solid transparent;background:transparent;color:var(--muted);cursor:pointer;letter-spacing:.5px;"><span class="vis-tab-i" data-vis-icon="wrench"></span>AFTERSALES</button>
     <button id="com-tab-btn-launches" onclick="switchComTab('launches')"
@@ -1244,6 +1246,13 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
   </div>
 
   <!-- ── WARRANTY tab: warranty period (company-wide) and each vehicle's warranty drivers ── -->
+  <!-- ── EMISSIONS tab: fleet CO2 / ZEV / NEV compliance per regime, credit market ── -->
+  <div id="com-tab-emissions" style="display:none;">
+    <div id="emissions-content">
+      <div style="color:var(--muted2);font-family:'DM Mono',monospace;font-size:11px;padding:16px 0;">Loading emissions…</div>
+    </div>
+  </div>
+
   <div id="com-tab-warranty" style="display:none;">
     <div id="warranty-content">
       <div style="color:var(--muted2);font-family:'DM Mono',monospace;font-size:11px;padding:16px 0;">Loading warranty…</div>
@@ -2629,6 +2638,22 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
     <span id="cfg-ranking-status" style="font-size:12px;color:#22c55e;display:none;">Saved ✓</span>
   </div>
 
+  <!-- Emissions rules: fleet CO2 / ZEV / NEV regimes and buyer CO2 taxes (sessions.emissions_regime) -->
+  <div style="background:var(--s1);border:1px solid var(--border);border-radius:10px;padding:20px;margin-bottom:16px;max-width:640px;">
+    <div style="font-family:'DM Mono',monospace;font-size:9px;text-transform:uppercase;letter-spacing:1.5px;color:#a78bfa;margin-bottom:12px;">Emissions Rules</div>
+    <label style="font-size:12px;color:#94a3b8;display:block;margin-bottom:6px;">Regulation in force</label>
+    <select id="cfg-emissions-preset" onchange="settingsSaveEmissions(this.value)"
+      style="width:100%;background:var(--s2);border:1px solid var(--border);border-radius:6px;color:#f1f5f9;padding:9px 12px;font-size:13px;font-family:'DM Mono',monospace">
+      <option value="real">Real (Oct 2026): EU 93.6 g/km averaged 2025–27, UK ZEV 28→80%, China NEV 48/58%, US no penalty</option>
+      <option value="strict">Strict: the rules before the 2025–26 relaxations (EU annual, 2035 = 0; US EPA path)</option>
+      <option value="relaxed">Relaxed: EU averaged 2025–29 and 60 g/km in 2030, UK quotas −20%, China NEV held at 38%</option>
+      <option value="off">Off: no fleet targets, credits or buyer CO2 taxes</option>
+    </select>
+    <div style="font-size:10px;color:var(--muted2);margin-top:6px;line-height:1.5;">Each team's cars sold in a regulated market form its fleet there; shortfalls are provided for every quarter and settled in the period's last Q4, after a credit market between teams. Buyers' CO2 taxes and EV incentives move demand country by country. Applies from the next clearing; switching a regime off releases its provision.</div>
+    <span id="cfg-emissions-status" style="font-size:12px;color:#22c55e;display:none;">Saved ✓</span>
+    <div id="cfg-emissions-market" style="margin-top:12px;"></div>
+  </div>
+
   <!-- Commodity markets: live cost (sessions.commodity_markets, docs/LIFECYCLE_SPEC.md) -->
   <div style="background:var(--s1);border:1px solid var(--border);border-radius:10px;padding:20px;margin-bottom:16px;max-width:640px;">
     <div style="font-family:'DM Mono',monospace;font-size:9px;text-transform:uppercase;letter-spacing:1.5px;color:#a78bfa;margin-bottom:12px;">Commodity Markets</div>
@@ -3183,6 +3208,7 @@ var _VIS = (function() {
     commodity:  '<path d="M4 20l3-7h10l3 7z"/><path d="M8 13l2-5h4l2 5M10.5 8l1.5-4 1.5 4"/>',
     lifecycle:  '<path d="M20 12a8 8 0 0 1-14 5.3M4 12A8 8 0 0 1 18 6.7"/><path d="M18 2.5v4.5h-4.5M6 21.5V17h4.5"/>',
     warning:    '<path d="M12 3l10 18H2z"/><path d="M12 10v5M12 18v.5"/>',
+    leaf:       '<path d="M5 20c0-9 6-15 15-15 0 9-5.5 15-14 15z"/><path d="M5 20c3-5 6.5-8 10.5-10"/>',
     lock:       '<rect x="4" y="10" width="16" height="11" rx="1.5"/><path d="M8 10V7a4 4 0 0 1 8 0v3M12 14.5v3"/>',
     info:       '<circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5v.5"/>',
     pnl:        '<path d="M4 3h12l4 4v14H4z"/><path d="M8 9h8M8 13h8M8 17h5"/>',
@@ -8031,6 +8057,22 @@ var _CONS_E = {
   GASOLINE_CO2_G_L: 2310,   // g CO₂ per litre petrol (combustion only)
   FUEL_EUR_L: 1.65,          // reference pump price
   ELEC_EUR_KWH: 0.28,        // reference electricity price
+  PHEV_UF_CO2: 0.35,         // PHEV weighted CO2 / charge-sustaining CO2 (cost_engines.ConsumptionEngine.PHEV_UF_CO2)
+
+  // WLTP calibration 2 (2026-10-06, = ConsumptionEngine.SEG_CAL2 / BODY_ICE2 / MASS_K2 / MASS_CAP2):
+  // ICE fuel = segment base at the segment's typical mass and body + config / power / optimisation
+  // deltas + mass and body as deviations from that norm. Cal 1 (BASE_ICE + mass vs a medium
+  // platform) read 10-25% above WLTP for mid/large cars and 2x for vans on heavy platforms.
+  // Outputs carry cal: 2 (rolled_up_specs.cons_cal).
+  CAL: 2,
+  SEG_CAL2: {
+    a_segment:[5.0,900,'HB'], b_segment:[5.5,1150,'HB'], c_segment:[6.0,1300,'HB'],
+    d_segment:[6.6,1450,'SEDAN'], e_segment:[7.6,1770,'SEDAN'], f_segment:[9.0,1770,'SEDAN'],
+    sports:[8.0,1570,'COUPE'], mpv:[6.8,1770,'VAN'], pickup:[9.0,2600,'HB'],
+    c_van:[7.0,1770,'VAN'], d_van:[8.5,2180,'VAN'], e_van:[10.0,4860,'VAN']
+  },
+  BODY_ICE2: { HB:0.0, SUV:0.7, SEDAN:-0.1, COUPE:-0.3, VAN:1.0 },
+  MASS_K2: 0.35, MASS_CAP2: 1.5,
 
   calc: function(o) {
     o = o || {};
@@ -8099,8 +8141,11 @@ var _CONS_E = {
       var pwrDelt  = Math.max(0, (hpPerCyl - 25) / 25 * 0.15); // +0.15 L per doubling of spec power/cyl
 
       // Mass effect vs medium platform reference (~1380 kg)
-      var massRef  = this.PLAT_MASS['medium'];
-      var massDelt = (kerbMass - battMassKg - massRef) / 100 * 0.5; // +0.5 L per 100 kg over ref
+      // WLTP cal 2: segment base at the segment's typical mass and body; deviations from it
+      var sc2 = this.SEG_CAL2[o.segment_code] || this.SEG_CAL2.c_segment;
+      base  = sc2[0];
+      bdelt = (this.BODY_ICE2[body] || 0) - (this.BODY_ICE2[sc2[2]] || 0);
+      var massDelt = Math.min(this.MASS_CAP2, Math.max(-this.MASS_CAP2, (kerbMass - battMassKg - sc2[1]) / 100 * this.MASS_K2));
 
       // Weight + aero optimisation saving
       var optDelt = -(wo * 0.20 + wo * 0.05 * (CdA / 0.70));
@@ -8124,7 +8169,7 @@ var _CONS_E = {
         var bevConsPhev = (this.BASE_BEV[seg] || 17.5) + (this.BODY_BEV[body] || 0);
         var phevKwh     = Math.max(7, parseFloat(o.battery_kwh));
         ice.phev_elec_range_km = Math.round(phevKwh * 0.85 / (bevConsPhev / 100));
-        ice.phev_blended_co2   = Math.round(co2Gkm * 0.35); // EU weighted-average estimate
+        ice.phev_blended_co2   = Math.round(co2Gkm * this.PHEV_UF_CO2); // EU weighted (utility factor)
       }
     }
 
@@ -8177,6 +8222,7 @@ var _CONS_E = {
 
     return {
       pwt_type:        pwt,
+      cal:             this.CAL,
       kerb_mass_kg:    kerbMass,
       drag_coeff:      Cd,
       frontal_area_m2: Af,
@@ -8185,6 +8231,106 @@ var _CONS_E = {
       ice:             ice,
       bev:             bev
     };
+  }
+};
+
+// ════════════════════════════════════════════════════════════════════
+// EMISSIONS COMPLIANCE _CO2_E — what one car counts as under the regimes
+// Mirrors financial_engine.vehicle_reg_co2 / reg_car_contrib / reg_unit_value_eur
+// (tools/engine_parity_check.py). The regimes' paths, penalties and countries are not copied
+// here: they come from GET …/emissions (financial_engine.REG_PRESETS), one source.
+// ════════════════════════════════════════════════════════════════════
+var _CO2_E = {
+  CO2_G_PER_L: 23.1, ICE_DEFAULT_G_KM: 150, PHEV_UF_CO2: 0.35, DUAL_BEV_MIX: 0.30,
+  EU_TM0: 1600, TEST_MASS_ADD: 100,
+  CN_BEV_CREDIT_CAP: 2.3, CN_PHEV_CREDIT: 1.0, CN_DEFAULT_RANGE_KM: 400,
+  // financial_engine.REG_CAL1_RATIO: figures stored before the WLTP recalibration (no cons_cal)
+  CAL1_RATIO: {a_segment:1.740, b_segment:1.069, c_segment:0.900, d_segment:0.766, e_segment:0.675, f_segment:0.692,
+               sports:1.094, mpv:0.571, pickup:0.584, c_van:0.581, d_van:0.541, e_van:0.326},
+  // §10 planning assumption: a car that earns credits is valued at this share of the penalty
+  // (what selling the surplus might fetch); a car that adds to a shortfall costs the full penalty.
+  CREDIT_VALUE_SHARE: 0.5,
+
+  // vehicle_reg_co2: specs = rolled_up_specs
+  regCo2: function(specs, bevMix) {
+    specs = specs || {};
+    var pwt = String(specs.pwt_type || 'ice_only');
+    var hybrid = String(specs.hybrid_type || 'ICE').toUpperCase();
+    var seg = specs.segment_code || '';
+    var ovc = hybrid === 'PHEV' || hybrid === 'REEV';
+    var bev;
+    if (pwt === 'bev_only') bev = 1.0;
+    else if (pwt === 'ice_and_bev' && ovc && bevMix == null && specs.bev_mix_pct == null) bev = 0.0;  // PHEV's own battery
+    else if (pwt === 'ice_and_bev') {
+      if (bevMix == null) bevMix = specs.bev_mix_pct != null ? parseFloat(specs.bev_mix_pct) / 100 : this.DUAL_BEV_MIX;
+      bev = Math.min(1, Math.max(0, parseFloat(bevMix)));
+    } else bev = 0.0;
+    var tail = specs.ice_co2_g_km;
+    if (tail == null && specs.ice_fuel_L100km != null) tail = parseFloat(specs.ice_fuel_L100km) * this.CO2_G_PER_L;
+    tail = tail != null ? parseFloat(tail) : (bev >= 1 ? 0 : this.ICE_DEFAULT_G_KM);
+    var cal1 = (parseInt(specs.cons_cal) || 1) < 2 && tail > 0;
+    var r1 = this.CAL1_RATIO[seg] || 1.0;
+    if (cal1) tail = tail * r1;
+    var iceG = tail;
+    if (ovc) iceG = specs.phev_blended_co2 != null ? parseFloat(specs.phev_blended_co2) * (cal1 ? r1 : 1.0)
+                                                   : Math.floor(tail * this.PHEV_UF_CO2 + 0.5);
+    return {
+      pwt_type: pwt, hybrid_type: bev < 1 ? hybrid : 'BEV',
+      tailpipe_g_km: bev < 1 ? tail : 0, ice_g_km: bev < 1 ? iceG : 0,
+      g_km: (1 - bev) * iceG, zev_share: bev, phev_share: ovc ? (1 - bev) : 0,
+      mass_kg: parseFloat(specs.kerb_mass_kg || 0) || null,
+      bev_range_km: specs.bev_range_km != null ? specs.bev_range_km : null,
+      phev_range_km: specs.phev_elec_range_km != null ? specs.phev_elec_range_km : null
+    };
+  },
+
+  // reg_car_contrib
+  contrib: function(reg, units) {
+    var z = reg.zev_share, g = reg.ice_g_km;
+    var zl = z + (1 - z) * (g < 50 ? Math.max(0, 1 - 0.7 * g / 50) : 0);
+    var nev = 0;
+    if (z > 0) {
+      var rng = parseFloat(reg.bev_range_km || this.CN_DEFAULT_RANGE_KM);
+      nev += z * Math.min(this.CN_BEV_CREDIT_CAP, 0.0034 * rng + 0.2);
+    }
+    nev += reg.phev_share * this.CN_PHEV_CREDIT;
+    var mass = parseFloat(reg.mass_kg || (this.EU_TM0 - this.TEST_MASS_ADD));
+    return {u: units, g: units * reg.g_km, z: units * z, zl: units * zl, m: units * (mass + this.TEST_MASS_ADD),
+            ice: units * (1 - z - reg.phev_share), nev: units * nev};
+  },
+
+  // reg_unit_value_eur: EUR per car at the penalty (+ = adds to a shortfall, − = earns credit)
+  unitEur: function(metric, penaltyPerUnit, target, reg) {
+    var c = this.contrib(reg, 1.0), d;
+    if (metric === 'gkm') d = c.g - target;
+    else if (metric === 'zev') d = target - c.z;
+    else d = target * c.ice - c.nev;
+    return d * penaltyPerUnit;
+  },
+
+  // §10: expected compliance EUR per car sold in a sales region in a year, over the region's
+  // countries by market share (regimes from GET …/emissions; countries outside any regime: 0).
+  regionCarEur: function(rules, regionCountries, year, reg, segment) {
+    var self = this, tot = 0, w = 0;
+    if (!rules || !rules.regimes) return 0;
+    var byCc = {}, seg = segment || 'c_segment';
+    Object.keys(rules.regimes).forEach(function(r) {
+      var R = rules.regimes[r];
+      // financial_engine.reg_applies: cars vs vans
+      var applies = R.only_segments ? R.only_segments.indexOf(seg) >= 0 : (R.exclude_segments || []).indexOf(seg) < 0;
+      if (R.in_force && applies) (R.countries || []).forEach(function(cc) { if (!byCc[cc]) byCc[cc] = r; });
+    });
+    (regionCountries || []).forEach(function(c) {
+      w += c.share;
+      var r = byCc[c.code];
+      if (!r) return;
+      var R = rules.regimes[r], y = Math.min(2035, Math.max(2025, year));
+      var tgt = parseFloat((R.path || {})[String(y)]);
+      if (isNaN(tgt)) return;
+      var v = self.unitEur(R.metric, R.penalty_per_unit, tgt, reg);
+      tot += c.share * (v < 0 ? v * self.CREDIT_VALUE_SHARE : v);
+    });
+    return w > 0 ? tot / w : 0;
   }
 };
 
@@ -8957,18 +9103,18 @@ var _MARKET_E = {
 
   // Segment benchmarks for technical scoring
   SEG_BENCH: {
-    a_segment: {fuel:5.0,  bev:14.0, t100:12.0, safety:50, comfort:40, adas:1, reliability:55},
-    b_segment: {fuel:6.0,  bev:15.5, t100:10.5, safety:55, comfort:50, adas:1, reliability:60},
-    c_segment: {fuel:6.8,  bev:17.5, t100:9.5,  safety:60, comfort:55, adas:2, reliability:60},
-    d_segment: {fuel:8.0,  bev:20.5, t100:8.5,  safety:65, comfort:65, adas:2, reliability:65},
-    e_segment: {fuel:9.5,  bev:24.0, t100:7.0,  safety:70, comfort:75, adas:3, reliability:65},
-    f_segment: {fuel:11.0, bev:28.0, t100:5.5,  safety:72, comfort:85, adas:3, reliability:70},
-    sports:    {fuel:9.5,  bev:22.0, t100:5.5,  safety:65, comfort:60, adas:2, reliability:60},
-    mpv:       {fuel:8.0,  bev:21.0, t100:10.0, safety:68, comfort:72, adas:2, reliability:65},
-    pickup:    {fuel:10.0, bev:25.0, t100:9.0,  safety:65, comfort:60, adas:2, reliability:65},
-    c_van:     {fuel:8.5,  bev:22.0, t100:12.5, safety:60, comfort:50, adas:1, reliability:70},
-    d_van:     {fuel:9.5,  bev:24.0, t100:13.0, safety:62, comfort:55, adas:1, reliability:70},
-    e_van:     {fuel:11.0, bev:28.0, t100:14.0, safety:65, comfort:58, adas:2, reliability:72}
+    a_segment: {fuel:5.0, fuel2:8.7,  bev:14.0, t100:12.0, safety:50, comfort:40, adas:1, reliability:55},
+    b_segment: {fuel:6.0, fuel2:6.4,  bev:15.5, t100:10.5, safety:55, comfort:50, adas:1, reliability:60},
+    c_segment: {fuel:6.8, fuel2:6.1,  bev:17.5, t100:9.5,  safety:60, comfort:55, adas:2, reliability:60},
+    d_segment: {fuel:8.0, fuel2:6.1,  bev:20.5, t100:8.5,  safety:65, comfort:65, adas:2, reliability:65},
+    e_segment: {fuel:9.5, fuel2:6.4,  bev:24.0, t100:7.0,  safety:70, comfort:75, adas:3, reliability:65},
+    f_segment: {fuel:11.0, fuel2:7.6, bev:28.0, t100:5.5,  safety:72, comfort:85, adas:3, reliability:70},
+    sports:    {fuel:9.5, fuel2:10.4,  bev:22.0, t100:5.5,  safety:65, comfort:60, adas:2, reliability:60},
+    mpv:       {fuel:8.0, fuel2:4.6,  bev:21.0, t100:10.0, safety:68, comfort:72, adas:2, reliability:65},
+    pickup:    {fuel:10.0, fuel2:5.8, bev:25.0, t100:9.0,  safety:65, comfort:60, adas:2, reliability:65},
+    c_van:     {fuel:8.5, fuel2:4.9,  bev:22.0, t100:12.5, safety:60, comfort:50, adas:1, reliability:70},
+    d_van:     {fuel:9.5, fuel2:5.1,  bev:24.0, t100:13.0, safety:62, comfort:55, adas:1, reliability:70},
+    e_van:     {fuel:11.0, fuel2:3.6, bev:28.0, t100:14.0, safety:65, comfort:58, adas:2, reliability:72}
   },
 
   // Attribute purchase weights per segment (must sum to 1.00)
@@ -9055,7 +9201,8 @@ var _MARKET_E = {
     if (hasBev && o.bev_kwh_100km) {
       sc.efficiency = this._score(parseFloat(o.bev_kwh_100km), bench.bev, 'lo', 3);
     } else if (hasIce && o.ice_fuel_L100km) {
-      sc.efficiency = this._score(parseFloat(o.ice_fuel_L100km), bench.fuel, 'lo', 3);
+      // WLTP-calibrated figures (cons_cal 2) against their own benchmark (main._mce_utility)
+      sc.efficiency = this._score(parseFloat(o.ice_fuel_L100km), (parseInt(o.cons_cal) || 1) >= 2 ? bench.fuel2 : bench.fuel, 'lo', 3);
     } else {
       sc.efficiency = 50;
     }
@@ -12704,7 +12851,7 @@ var _REGION_FLAGS = {EU:'🌍', NA:'🌎', APAC:'🌏', SA:'🌎', MEA:'🌍'};
 
 function switchComTab(tab) {
   _comActiveTab = tab;
-  ['overview','pricing','sales-planning','markets','warranty','aftersales','launches','brand','fleet'].forEach(function(t) {
+  ['overview','pricing','sales-planning','markets','warranty','emissions','aftersales','launches','brand','fleet'].forEach(function(t) {
     var btn = document.getElementById('com-tab-btn-'+t);
     var pane = document.getElementById('com-tab-'+t);
     var active = t === tab;
@@ -12718,6 +12865,7 @@ function switchComTab(tab) {
   if (tab === 'sales-planning') loadSalesPlanTab();
   if (tab === 'markets') loadMarketsTab();
   if (tab === 'warranty') loadWarrantyTab();
+  if (tab === 'emissions') loadEmissionsTab();
   if (tab === 'aftersales') loadAftersalesTab();
   if (tab === 'launches') loadLaunchesTab();
   if (tab === 'brand') loadBrandsPage();
@@ -13076,6 +13224,176 @@ function _renderAftersalesTab() {
 // GET/PUT /sessions/{sid}/teams/{tid}/warranty (period) and PUT /vehicles/{vid}/quality (quality
 // system, inspection). The server derives every number (financial_engine.team_warranty); this
 // tab renders them and sends decisions. _wtyTab.data is also read by §10 (_propWarranty).
+// ── Commercial → 🍃 EMISSIONS ────────────────────────────────────
+// GET/PUT /sessions/{sid}/teams/{tid}/emissions. Per regime (EU fleet CO2, UK ZEV mandate, China
+// NEV credits, India / Korea / Japan fleet targets, US under the strict rules) the team's position
+// in its compliance period, what each model costs or earns per car, and the team's stance in the
+// settlement-quarter credit market. Server-derived (financial_engine); this renders.
+var _emTab = {data: null, busy: false};
+
+async function loadEmissionsTab() {
+  if (!sessionId || !teamId) return;
+  var el = document.getElementById('emissions-content');
+  try {
+    var res = await fetch(API_URL + '/sessions/' + sessionId + '/teams/' + teamId + '/emissions');
+    var d = await res.json();
+    if (!res.ok) throw new Error(d.detail || ('HTTP ' + res.status));
+    _emTab.data = d;
+    _propCo2Data = d;
+    _renderEmissionsTab();
+  } catch (e) {
+    if (el) el.innerHTML = '<div style="color:var(--red);font-family:DM Mono,monospace;font-size:11px;padding:16px 0;">Emissions unavailable: ' + _esc(e.message) + '</div>';
+  }
+}
+
+async function _emSetStance(regime, key, val) {
+  if (_emTab.busy) return;
+  _emTab.busy = true;
+  var body = {regime: regime}; body[key] = parseFloat(val);
+  try {
+    var res = await fetch(API_URL + '/sessions/' + sessionId + '/teams/' + teamId + '/emissions', {
+      method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)
+    });
+    var d = await res.json();
+    if (!res.ok) throw new Error(d.detail || ('HTTP ' + res.status));
+    _emTab.data = d;
+  } catch (e) {
+    toast('Credit market decision failed: ' + e.message);
+  } finally {
+    _emTab.busy = false;
+    _renderEmissionsTab();
+  }
+}
+
+function _renderEmissionsTab() {
+  var el = document.getElementById('emissions-content');
+  var d = _emTab.data;
+  if (!el || !d) return;
+  var yr = d.round ? d.round.year : 2025;
+  var m = function(v) { var x = parseFloat(v) || 0; return (x < 0 ? '−€' : '€') + Math.abs(x).toLocaleString(undefined, {maximumFractionDigits: 1}) + 'M'; };
+  var eur = function(v) { var x = parseFloat(v) || 0; return (x < 0 ? '−€' : '€') + Math.abs(Math.round(x)).toLocaleString(); };
+  var head = function(t, sub) {
+    return '<div style="font-family:DM Mono,monospace;font-size:8px;text-transform:uppercase;letter-spacing:1.5px;color:#34d399;margin:14px 0 8px;">' + t +
+      (sub ? ' <span style="color:var(--muted);letter-spacing:0;text-transform:none;">· ' + sub + '</span>' : '') + '</div>';
+  };
+  var th = function(t, al) { return '<th style="text-align:' + (al || 'right') + ';padding:4px 6px;font-size:8px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;font-weight:400;">' + t + '</th>'; };
+  var td = function(t, al, col) { return '<td style="text-align:' + (al || 'right') + ';padding:5px 6px;font-size:10px;color:' + (col || 'var(--text)') + ';">' + t + '</td>'; };
+  var fmtTarget = function(R, v) {
+    if (v == null) return '—';
+    if (R.metric === 'gkm') return (+v).toFixed(1) + ' g/km';
+    if (R.metric === 'zev') return Math.round(v * 100) + '% ZEV';
+    return Math.round(v * 100) + '% NEV credits';
+  };
+  var fmtActual = function(R, v) {
+    if (v == null) return '—';
+    if (R.metric === 'gkm') return (+v).toFixed(1) + ' g/km';
+    if (R.metric === 'zev') return Math.round(v * 100) + '% ZEV';
+    return (+v).toFixed(2) + ' credits/car';
+  };
+  var h = '<div style="font-family:DM Mono,monospace;">';
+  h += '<div style="font-size:11px;color:var(--text);margin-bottom:10px;line-height:1.6;">Regulators measure your <b>whole fleet</b> in each market, not one model: '
+     + 'the average CO\u2082 of the cars you sell there (EU, India, Korea, Japan), the share that is zero-emission (UK), or the NEV credits you earn (China). '
+     + 'Each compliance period\'s shortfall is <b>provided for every quarter</b> and <b>settled in its last Q4</b>: buy credits from teams that over-comply, or pay the penalty.</div>';
+  if (!d.preset || d.preset === 'off') {
+    h += '<div style="color:var(--muted2);font-size:11px;padding:10px 0;">Emissions rules are <b>off</b> in this session: no regime measures your fleet. The instructor can switch them on.</div></div>';
+    el.innerHTML = h; return;
+  }
+  var pos = d.position || {}, pr = pos.regimes || {};
+  h += '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:6px;">'
+     + '<div style="background:var(--s2);border:1px solid var(--border);border-radius:6px;padding:8px 12px;"><div style="font-size:8px;color:var(--muted);text-transform:uppercase;">Rules</div><div style="font-size:13px;color:#34d399;font-weight:700;">' + _esc(d.preset) + '</div></div>'
+     + '<div style="background:var(--s2);border:1px solid var(--border);border-radius:6px;padding:8px 12px;"><div style="font-size:8px;color:var(--muted);text-transform:uppercase;">Provision held' + (pos.as_of ? ' · ' + _esc(pos.as_of) : '') + '</div><div style="font-size:13px;color:' + (pos.provision_m > 0 ? 'var(--red)' : 'var(--text)') + ';font-weight:700;">' + m(pos.provision_m) + '</div></div>'
+     + '<div style="background:var(--s2);border:1px solid var(--border);border-radius:6px;padding:8px 12px;"><div style="font-size:8px;color:var(--muted);text-transform:uppercase;">Last quarter in EBIT</div><div style="font-size:13px;font-weight:700;">' + m((pos.income_m || 0) - (pos.expense_m || 0)) + '</div></div>'
+     + '</div>';
+
+  // Regimes
+  h += head('REGIMES', 'your position in each compliance period so far (last cleared quarter)');
+  h += '<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;">';
+  h += '<tr style="border-bottom:1px solid var(--border);">' + th('Regime', 'left') + th('Markets', 'left') + th('Period', 'left') + th('Target ' + yr) + th('Your fleet') + th('Cars') + th('Position') + th('Liability') + th('Penalty') + '</tr>';
+  Object.keys(d.regimes || {}).forEach(function(r) {
+    var R = d.regimes[r], P = pr[r] || {};
+    var yd = ((P.years || {})[String(yr)]) || null;
+    var lastY = P.years ? Object.keys(P.years).sort().slice(-1)[0] : null;
+    var cur = yd || (lastY ? P.years[lastY] : null);
+    var tgt = cur ? cur.target : (R.path ? R.path[String(yr)] : null);
+    var posTxt = '—', posCol = 'var(--muted2)';
+    if (P.excess != null && R.in_force) {
+      posTxt = (P.excess > 0 ? 'short ' : 'surplus ') + Math.abs(Math.round(P.excess)).toLocaleString() + ' ' + _esc(R.unit);
+      posCol = P.excess > 0 ? 'var(--red)' : 'var(--green)';
+    }
+    var pen = !R.in_force ? 'not in force' : R.steps ? '₹ bands per car' : (R.penalty_per_unit ? eur(R.penalty_per_unit) + '/' + _esc(R.unit) : 'none (name & shame)');
+    h += '<tr style="border-bottom:1px solid var(--border);opacity:' + (R.in_force ? 1 : 0.5) + ';">'
+      + td('<b>' + _esc(r) + '</b> <span style="color:var(--muted)">' + _esc(R.name) + '</span>', 'left')
+      + td(_esc((R.countries || []).join(' ')), 'left', 'var(--muted2)')
+      + td(P.window ? (P.window[0] === P.window[1] ? P.window[0] : P.window[0] + '–' + P.window[1] + ' avg') : '—', 'left')
+      + td(R.in_force ? fmtTarget(R, tgt) : '—')
+      + td(cur ? fmtActual(R, cur.actual) : '—')
+      + td(P.units ? P.units.toLocaleString() : '—')
+      + td(posTxt, 'right', posCol)
+      + td(P.liability_m ? m(P.liability_m) : '—', 'right', P.liability_m ? 'var(--red)' : 'var(--muted2)')
+      + td(pen, 'right', 'var(--muted2)') + '</tr>';
+  });
+  h += '</table></div>';
+  h += '<div style="font-size:9px;color:var(--muted);margin-top:6px;line-height:1.5;">EU target adjusts for your fleet\'s average mass and, to 2029, for a zero/low-emission share above 25% (up to +5%). '
+     + 'Real rules: EU averages 2025–27 and 2030–32; the US currently has no penalty (CAFE fines set to $0, EPA GHG standards rescinded). '
+     + 'Plug-in hybrids count at their weighted (utility-factor) CO\u2082; dual-energy models at ' + Math.round(_CO2_E.DUAL_BEV_MIX * 100) + '% BEV.</div>';
+
+  // Models
+  var inForce = Object.keys(d.regimes || {}).filter(function(r) { return d.regimes[r].in_force; });
+  h += head('BY MODEL', 'what one more car sold costs (+) or earns (−) against ' + yr + '\'s target, at the penalty');
+  h += '<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;">';
+  var buyerCc = ['FR', 'NL', 'DE', 'GB', 'CN', 'US'];
+  h += '<tr style="border-bottom:1px solid var(--border);">' + th('Model', 'left') + th('Powertrain', 'left') + th('CO\u2082 g/km') + inForce.map(function(r) { return th(r + ' €/car'); }).join('')
+     + buyerCc.map(function(cc) { return th('Buyer ' + cc); }).join('') + '</tr>';
+  (d.models || []).forEach(function(v) {
+    var pw = v.zev_share >= 1 ? 'BEV' : (v.hybrid_type + (v.zev_share > 0 ? ' + ' + Math.round(v.zev_share * 100) + '% BEV' : ''));
+    h += '<tr style="border-bottom:1px solid var(--border);">' + td(_esc(v.name || ''), 'left') + td(_esc(pw), 'left')
+      + td(v.g_km.toFixed(0) + (v.phev_share ? ' <span style="color:var(--muted)">(' + v.tailpipe_g_km.toFixed(0) + ' tailpipe)</span>' : ''))
+      + inForce.map(function(r) { var x = (v.eur_per_car || {})[r]; return td(x == null ? '—' : eur(x), 'right', x > 0 ? 'var(--red)' : x < 0 ? 'var(--green)' : 'var(--muted2)'); }).join('')
+      + buyerCc.map(function(cc) { var x = (v.buyer_charge_eur || {})[cc]; return td(x == null ? '—' : x === 0 ? '0' : eur(x), 'right', x > 0 ? 'var(--orange)' : x < 0 ? 'var(--green)' : 'var(--muted2)'); }).join('') + '</tr>';
+  });
+  h += '</table></div>';
+  h += '<div style="font-size:9px;color:var(--muted);margin-top:6px;line-height:1.5;">€/car: one more car sold against this year\'s target at the full penalty (− = earns credit; vans count in the van regimes). '
+     + 'Buyer: CO\u2082 tax a buyer pays (+) or EV incentive received (−) at your list price: France malus / EV bonus, Dutch BPM, German CO\u2082 tax, UK first-year VED, '
+     + 'China NEV purchase-tax exemption, US federal EV credit (ended Sep 2025). Buyers respond to it like a price change.</div>';
+
+  // Credit market
+  var tradable = Object.keys(d.stance || {}).filter(function(r) { return (d.regimes[r] || {}).trade; });
+  if (tradable.length) {
+    h += head('CREDIT MARKET', 'settlement quarters only · one price per regime for every trade · carries forward');
+    h += '<div style="font-size:10px;color:var(--text);margin-bottom:8px;line-height:1.5;">In a period\'s last Q4 every team\'s surplus is offered and every shortfall bid for, '
+       + 'at prices set as a share of the penalty; the cheapest offers meet the highest bids and all trade at one clearing price. A shortfall nobody sells you pays the full penalty.'
+       + (d.claimed ? '' : ' <span style="color:var(--muted)">(AI team: sells at 70%, bids 95%.)</span>') + '</div>';
+    var sel = function(r, key, cur) {
+      return '<select ' + (d.locked || !d.claimed ? 'disabled ' : '') + 'onchange="_emSetStance(\'' + r + '\',\'' + key + '\',this.value)" style="background:var(--s2);color:var(--text);border:1px solid var(--border);font-family:DM Mono,monospace;font-size:10px;padding:2px;">'
+        + (d.pct_choices || []).map(function(c) { return '<option value="' + c + '"' + (Math.abs(c - cur) < 1e-9 ? ' selected' : '') + '>' + Math.round(c * 100) + '% of penalty</option>'; }).join('') + '</select>';
+    };
+    h += '<table style="border-collapse:collapse;"><tr style="border-bottom:1px solid var(--border);">' + th('Regime', 'left') + th('Sell surplus at no less than', 'left') + th('Buy shortfall at no more than', 'left') + '</tr>';
+    tradable.forEach(function(r) {
+      var st = d.stance[r];
+      h += '<tr style="border-bottom:1px solid var(--border);">' + td('<b>' + r + '</b>', 'left') + td(sel(r, 'ask_pct', st.ask_pct), 'left') + td(sel(r, 'bid_pct', st.bid_pct), 'left') + '</tr>';
+    });
+    h += '</table>';
+  }
+  if ((d.market || []).length) {
+    h += head('CLEARING PRICES');
+    h += '<table style="border-collapse:collapse;"><tr style="border-bottom:1px solid var(--border);">' + th('Quarter', 'left') + th('Regime', 'left') + th('Price') + th('Volume') + '</tr>';
+    d.market.forEach(function(x) { h += '<tr>' + td(_esc(x.label), 'left') + td(_esc(x.regime), 'left') + td(eur(x.price_eur)) + td(Math.round(x.volume).toLocaleString()) + '</tr>'; });
+    h += '</table>';
+  }
+  if ((d.trades || []).length) {
+    h += head('YOUR TRADES');
+    h += '<table style="border-collapse:collapse;"><tr style="border-bottom:1px solid var(--border);">' + th('Quarter', 'left') + th('Regime', 'left') + th('Side', 'left') + th('Counterparty', 'left') + th('Units') + th('Price') + th('Value') + '</tr>';
+    d.trades.forEach(function(t) {
+      h += '<tr>' + td(_esc(t.label), 'left') + td(_esc(t.regime), 'left') + td(t.side, 'left', t.side === 'sold' ? 'var(--green)' : 'var(--red)')
+        + td(_esc(t.counterparty || '—'), 'left') + td(Math.round(t.units).toLocaleString()) + td(eur(t.price_eur)) + td(m(t.value_m)) + '</tr>';
+    });
+    h += '</table>';
+  }
+  h += '</div>';
+  el.innerHTML = h;
+  if (typeof _visApplyIcons === 'function') try { _visApplyIcons(el); } catch (e) {}
+}
+
 var _wtyTab = {data: null, busy: false};
 
 async function loadWarrantyTab() {
@@ -16016,8 +16334,11 @@ async function loadSettingsPage() {
       if (cb) cb.checked = (sd.session || {}).show_rival_coverage !== false;
       const rb = document.getElementById('cfg-ranking-basis');
       if (rb) rb.value = (sd.session || {}).ranking_basis || 'scorecard';
+      const ep = document.getElementById('cfg-emissions-preset');
+      if (ep) ep.value = (sd.session || {}).emissions_regime || 'off';
     }
     loadCommodityMarketAdmin();
+    loadEmissionsMarketAdmin();
   } catch(e) { console.warn('loadSettingsPage:', e); }
 }
 
@@ -16148,6 +16469,59 @@ async function settingsSaveRivalCoverage(on) {
     if (st) { st.style.display = 'inline'; setTimeout(() => st.style.display = 'none', 3000); }
     toast(on ? '✓ Rival coverage visible to teams' : '✓ Rival coverage hidden from teams');
   } catch(e) { toast('❌ Save failed: ' + e.message); }
+}
+
+async function settingsSaveEmissions(preset) {
+  if (!sessionId) return;
+  try {
+    const res = await fetch(`${API_URL}/sessions/${sessionId}/emissions-regime`, {
+      method: 'PATCH', headers: _cmdAdminHeaders(true), body: JSON.stringify({preset: preset})
+    });
+    if (!res.ok) throw new Error(await res.text());
+    const st = document.getElementById('cfg-emissions-status');
+    if (st) { st.style.display = 'inline'; setTimeout(() => st.style.display = 'none', 3000); }
+    toast('✓ Emissions rules: ' + preset);
+    _propCo2Data = null;
+    loadEmissionsMarketAdmin();
+  } catch(e) { toast('❌ Save failed: ' + e.message); }
+}
+
+// Every team's position per regime (latest statement) and the credit trades so far
+async function loadEmissionsMarketAdmin() {
+  var el = document.getElementById('cfg-emissions-market');
+  if (!el || !sessionId) return;
+  try {
+    var res = await fetch(API_URL + '/sessions/' + sessionId + '/co2-market');
+    var d = await res.json();
+    if (!res.ok) throw new Error(d.detail || ('HTTP ' + res.status));
+    if (!d.preset || d.preset === 'off') { el.innerHTML = ''; return; }
+    var regs = Object.keys(d.regimes || {}).filter(function(r) { return d.regimes[r].in_force; });
+    var m = function(v) { var x = parseFloat(v) || 0; return (x < 0 ? '−€' : '€') + Math.abs(Math.round(x)).toLocaleString() + 'M'; };
+    var h = '<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-family:DM Mono,monospace;font-size:10px;">'
+      + '<tr style="border-bottom:1px solid var(--border);color:var(--muted);"><td style="padding:3px 5px;">Team</td><td style="padding:3px 5px;text-align:right;">Provision</td>'
+      + regs.map(function(r) { return '<td style="padding:3px 5px;text-align:right;">' + _esc(r) + '</td>'; }).join('') + '</tr>';
+    Object.keys(d.teams || {}).sort(function(a, b) { return (d.teams[b].provision_m || 0) - (d.teams[a].provision_m || 0); }).forEach(function(tid) {
+      var t = d.teams[tid];
+      h += '<tr style="border-bottom:1px solid var(--border);color:#cbd5e1;"><td style="padding:3px 5px;">' + _esc(t.name || tid.slice(0, 6)) + '</td>'
+        + '<td style="padding:3px 5px;text-align:right;color:' + (t.provision_m > 0 ? 'var(--red)' : 'inherit') + ';">' + m(t.provision_m) + '</td>'
+        + regs.map(function(r) {
+            var x = (t.regimes || {})[r];
+            if (!x || !x.units) return '<td style="padding:3px 5px;text-align:right;color:var(--muted2);">—</td>';
+            return '<td style="padding:3px 5px;text-align:right;color:' + (x.excess > 0 ? 'var(--red)' : 'var(--green)') + ';">' + (x.excess > 0 ? 'short' : 'surplus') + '</td>';
+          }).join('') + '</tr>';
+    });
+    h += '</table></div>';
+    var tr = d.trades || [];
+    if (tr.length) {
+      var vol = {};
+      tr.forEach(function(t) { var k = t.label + ' ' + t.regime; vol[k] = vol[k] || {n: 0, p: t.price_eur}; vol[k].n += parseFloat(t.units) || 0; });
+      h += '<div style="font-size:10px;color:var(--muted2);margin-top:8px;">Credit market: ' + Object.keys(vol).map(function(k) {
+        return _esc(k) + ' €' + Math.round(vol[k].p).toLocaleString() + ' × ' + Math.round(vol[k].n).toLocaleString(); }).join(' · ') + '</div>';
+    }
+    el.innerHTML = h;
+  } catch (e) {
+    el.innerHTML = '<div style="color:var(--red);font-size:11px;">Emissions market unavailable: ' + _esc(e.message) + '</div>';
+  }
 }
 
 async function settingsSaveRankingBasis(basis) {
@@ -16353,7 +16727,7 @@ async function refreshInstructorHub() {
                 age_quarters: Math.max(0, curQabs - _sopQ),
                 segment_code:v.segment_code, price_eur_k:sp.price_eur_k,
                 pwt_type:sp.pwt_type||'ice_only',
-                ice_fuel_L100km:sp.ice_fuel_L100km, bev_kwh_100km:sp.bev_kwh_100km,
+                ice_fuel_L100km:sp.ice_fuel_L100km, bev_kwh_100km:sp.bev_kwh_100km, cons_cal:sp.cons_cal,
                 co2_g_km:sp.ice_co2_g_km||0, t_0_100_s:sp.t_0_100_s,
                 safety:sp.safety, comfort:sp.comfort, premiumness:sp.premiumness,
                 reliability:sp.reliability, adas_level:sp.adas_level, connectivity:sp.connectivity,
@@ -16939,6 +17313,7 @@ async function renderBalanceSheet(data) {
       {t:'line',label:'  ST Revolver',                  key:'short_term_debt_m'},
       {t:'line',label:'  Accrued Expenses',             key:'accrued_expenses_m'},
       {t:'line',label:'  Warranty Provision (cumul.)',  key:'warranty_provision_m'},
+      {t:'line',label:'  CO\u2082 Compliance Provision',     key:'co2_provision_m'},
       {t:'tot', label:'Total Current Liabilities',      key:'total_current_liab_m', col:'var(--red)'},
       {t:'sep'},
       {t:'sub', label:'Non-Current Liabilities'},
@@ -17205,6 +17580,8 @@ var _FIN_LINES = {
     {l:'Sales network',          k:'sales_network_m', neg:true, optional:true},
     {l:'Market entry / exit',    k:'market_entry_m', neg:true, optional:true},
     {l:'Aftersales programmes & parts logistics', k:'aftersales_opex_m', neg:true, optional:true},
+    {l:'CO\u2082 compliance (provision, penalties, credits bought)', k:'co2_compliance_m', neg:true, optional:true},
+    {l:'CO\u2082 credits sold to other OEMs', k:'co2_credit_income_m', optional:true},
     {l:'Depreciation',           k:'depreciation_total_m', neg:true},
     {l:'Factoring & reverse-factoring fees', k:'_wc_fin', neg:true, optional:true},
     {l:'Lease rent (sale-and-leaseback)', k:'lease_rent_m', neg:true, optional:true},
@@ -17235,6 +17612,7 @@ var _FIN_LINES = {
     {l:'Accrued Expenses',           k:'accrued_expenses_m'},
     {l:'Short-Term Debt / Revolver', k:'short_term_debt_m'},
     {l:'Warranty Provision',         k:'warranty_provision_m', optional:true},
+    {l:'CO\u2082 Compliance Provision', k:'co2_provision_m', optional:true},
     {l:'Total Current Liabilities',  k:'total_current_liab_m', kind:'sub'},
     {l:'Long-Term Debt',             k:'long_term_debt_m'},
     {l:'Deferred Tax Liability',     k:'deferred_tax_liab_m', optional:true},
@@ -17293,6 +17671,7 @@ function _finPlOther(s) {
   var n = function(k){ return parseFloat(s[k]) || 0; };
   return n('gross_profit_m') - n('rd_expense_m') - n('sga_m') - n('marketing_m') - n('launch_marketing_m') - n('lifecycle_mkt_m')
        - n('sales_network_m') - n('market_entry_m') - n('aftersales_opex_m')
+       - n('co2_compliance_m') + n('co2_credit_income_m')
        - n('depreciation_total_m') - n('factoring_fee_m') - n('rf_fee_m') - n('lease_rent_m')
        + n('fs_ebit_m') - n('ebit_m');
 }
@@ -22632,6 +23011,7 @@ function buildReviewSection() {
         price_eur_k:    _comPrice,
         pwt_type:       plS.pwt || (hasIce ? 'ice_only' : hasBev ? 'bev_only' : 'ice_only'),
         ice_fuel_L100km:(_propCons && _propCons.ice) ? _propCons.ice.fuel_L100km : null,
+        cons_cal:       _propCons ? _propCons.cal : null,
         bev_kwh_100km:  (_propCons && _propCons.bev) ? _propCons.bev.kwh_100km  : null,
         co2_g_km:       (_propCons && _propCons.ice) ? _propCons.ice.co2_g_km   : 0,
         t_0_100_s:      _propPerf ? _propPerf.t_0_100_s : null,
@@ -27625,6 +28005,75 @@ function _propCommodityScaled(cmd, f) {
   return _COMMODITY_E.cost(cmd.exposure, ix, cmd.contracts).eur;
 }
 
+// The proposal's WLTP consumption exactly as confirmProposal saves it in rolled_up_specs (one
+// definition: the saved specs and §10's emissions line read the same figures).
+function _propConsSaved() {
+  if (typeof _CONS_E === 'undefined' || !_prop || !_prop.study) return null;
+  function _getS(propKey) {
+    var p = _prop[propKey] || {};
+    return (p.mode === 'new' ? p.specs : (p.module ? p.module.specs : null)) || {};
+  }
+  var _plS = _getS('platform'), _pwtS = _getS('pwt'), _thS = _getS('tophat');
+  var _edmS = _getS('epwt'), _batS = _getS('battery'), _esS = _getS('eands');
+  var _pwtType = _plS.pwt || 'ice_only';
+  var _bodyC = _thS.config_key ? _thS.config_key.split('_').slice(1).join('_') : 'HB';
+  var _mMode = function(k){ return (_prop[k]||{}).mode; };
+  var _vrC = _blendVehicleRatings(
+    {platform:_plS, pwt:_pwtS, epwt:_edmS, battery:_batS, tophat:_thS},
+    {platform:_mMode('platform'), pwt:_mMode('pwt'), epwt:_mMode('epwt'), battery:_mMode('battery'), tophat:_mMode('tophat')},
+    _pwtType === 'ice_only' || _pwtType === 'ice_and_bev', _pwtType === 'bev_only' || _pwtType === 'ice_and_bev');
+  var _safB = _vrC.safety != null ? _vrC.safety : 0.5;
+  try {
+    return _CONS_E.calc({
+      platform_size: _plS.size||'medium', segment_code: _prop.study.segment_code,
+      body_type: _bodyC, pwt_type: _pwtType,
+      ice_config_key: _pwtS.config_key||null, power_hp: _pwtS.power||null,
+      emission_tech: _pwtS.emission_tech||null,
+      epwt_class: _edmS.epwt_class||null, power_kw: _edmS.power_kw||null,
+      motor_efficiency: _edmS.efficiency!=null?parseFloat(_edmS.efficiency):null,
+      battery_kwh: _batS.target_kwh||null, battery_chemistry: _batS.chemistry||null,
+      weight_opt: _plS.weight_opt||0, safety: _safB, adas_level: _esS.adas_level||0
+    });
+  } catch (e) { return null; }
+}
+
+// §10 emissions compliance: the session's regimes (GET …/emissions, fetched once) and what one
+// car of this proposal counts as (_CO2_E.regCo2 on the specs confirmProposal will save).
+var _propCo2Data = null, _propCo2Loading = false;
+async function _ensurePropCo2() {
+  if (_propCo2Data || _propCo2Loading || !sessionId || !teamId) return _propCo2Data;
+  _propCo2Loading = true;
+  try {
+    var res = await fetch(API_URL + '/sessions/' + sessionId + '/teams/' + teamId + '/emissions');
+    if (res.ok) _propCo2Data = await res.json();
+  } catch (e) { /* no regime data: the business case carries no compliance line */ }
+  _propCo2Loading = false;
+  return _propCo2Data;
+}
+function _propCo2() {
+  var cons = _propConsSaved();
+  var specs = {pwt_type: (_prop.platform && ((_prop.platform.mode === 'new' ? _prop.platform.specs : (_prop.platform.module || {}).specs) || {}).pwt) || 'ice_only'};
+  if (cons && cons.ice) {
+    specs.ice_co2_g_km = cons.ice.co2_g_km; specs.hybrid_type = cons.ice.hybrid_type;
+    if (cons.ice.phev_blended_co2 != null) specs.phev_blended_co2 = cons.ice.phev_blended_co2;
+  }
+  if (cons && cons.bev) specs.bev_range_km = cons.bev.range_km;
+  if (cons) { specs.kerb_mass_kg = cons.kerb_mass_kg; specs.cons_cal = cons.cal; }
+  specs.segment_code = _prop.study && _prop.study.segment_code;
+  var reg = _CO2_E.regCo2(specs);
+  if (!_propCo2Data) {
+    _ensurePropCo2().then(function(x) { if (x) { try { calcPropBizCase(); } catch (e) {} } });
+    return {reg: reg, preset: null, car: function() { return 0; }};
+  }
+  var d = _propCo2Data;
+  return {reg: reg, preset: d.preset, rules: d,
+          car: function(year, region) {
+            if (!d.preset || d.preset === 'off') return 0;
+            return _CO2_E.regionCarEur(d, _REGION_COUNTRIES[region] || _REGION_COUNTRIES.EU, year, reg,
+                                       _prop.study && _prop.study.segment_code);
+          }};
+}
+
 function calcPropBizCase() {
   var comYears = (_prop.commercial && _prop.commercial.years) || [];
   var marketingM = 0; // Marketing is now brand-level (set in Brand Management page)
@@ -27676,6 +28125,8 @@ function calcPropBizCase() {
   // them (_WARRANTY_E mirrors financial_engine.warranty_unit / vehicle_plant_quality).
   var _wty = _propWarranty(finalTpcNum, _fcfPl);
   var _cmd = _propCommodity(_fcfPl);   // commodity prices of this (approval) quarter, held flat
+  var _co2 = _propCo2();               // emissions compliance per car, by sales region and year
+  var _co2Sum = {eur: 0, units: 0};
   var _lcStd = _LAUNCH_E.stdBudgetM(_prop.commercial, _prop.study && _prop.study.start_year,
                                     _prop.study && _prop.study.rolled_up_specs && _prop.study.rolled_up_specs.price_eur_k);
 
@@ -27704,9 +28155,11 @@ function calcPropBizCase() {
           var uQ=Math.round(yd.volume/4);
           var nR=_oemUnitRev((mkt.msrp_eur_k||0), yd.discount);
           var lo=plant?(((MARKET_LOGISTICS_COST[plant.region]||{})[mkt.region])||{l:200,t:0}):{l:200,t:0};
+          var co2Car=_co2.car(yr, mkt.region);
+          _co2Sum.eur+=uQ*co2Car; _co2Sum.units+=uQ;
           var landed=tpcNum+_srcAdj+mfr.buy_cost_adj+_manufVarDelta(mfr)+lo.l+nR*lo.t
                      +_wty.qualityDelta+(fcfArr.length<_WARRANTY_E.LAUNCH_Q?_wty.launchCar:_wty.car)
-                     +_cmd.eur;
+                     +_cmd.eur+co2Car;
           revM+=uQ*nR/1e6; cogsM+=uQ*landed/1e6; unitsQ+=uQ;
           asTailM+=uQ*_AFTERSALES_E.carValue(mkt.msrp_eur_k||0,_asPwt,_wty.years,_propAftersalesPolicy(mkt.region),_asRate).npv_eur/1e6;
         });
@@ -27716,7 +28169,9 @@ function calcPropBizCase() {
         var uQ=Math.round(cr.volume/4), pE=cr.price*1000*(1-cr.discount/100);
         revM=uQ*pE/1e6; cogsM=finalTpcNum>0?uQ*finalTpcNum/1e6:revM*0.70;
         asTailM=uQ*_AFTERSALES_E.carValue(cr.price,_asPwt,_wty.years,_propAftersalesPolicy(),_asRate).npv_eur/1e6;
-        cogsM+=uQ*(_wty.qualityDelta+(fcfArr.length<_WARRANTY_E.LAUNCH_Q?_wty.launchCar:_wty.car)+_cmd.eur)/1e6;
+        var co2CarF=_co2.car(yr, 'EU');
+        _co2Sum.eur+=uQ*co2CarF; _co2Sum.units+=uQ;
+        cogsM+=uQ*(_wty.qualityDelta+(fcfArr.length<_WARRANTY_E.LAUNCH_Q?_wty.launchCar:_wty.car)+_cmd.eur+co2CarF)/1e6;
         unitsQ+=uQ;
       }
       // Head-office overhead this model adds (its own admin + the volume-linked share),
@@ -27847,6 +28302,18 @@ function calcPropBizCase() {
         + (_wty.qualityDelta ? ' (' + (_wty.qualityDelta > 0 ? '+' : '−') + '€' + Math.abs(_wty.qualityDelta) + '/car)' : '')
         + '. Warranty period and quality system: Commercial → 🛡 Warranty.</div>'
       + (function() {
+          if (!_co2.preset || _co2.preset === 'off') return '';
+          var avg = _co2Sum.units > 0 ? _co2Sum.eur / _co2Sum.units : 0, r = _co2.reg;
+          var what = r.zev_share >= 1 ? 'zero-emission'
+                   : (Math.round(r.g_km) + ' g CO\u2082/km' + (r.phev_share ? ' (plug-in hybrid, weighted)' : '')
+                      + (r.zev_share > 0 ? ', ' + Math.round(r.zev_share * 100) + '% sold as BEV' : ''));
+          return '<div style="font-family:DM Mono,monospace;font-size:10px;color:var(--muted2);margin-top:4px;">'
+            + 'Emissions compliance (' + _esc(_co2.preset) + ' rules): ' + what + '. Against each market\'s fleet target this car '
+            + (avg >= 0 ? 'costs ' : 'earns ') + '€' + Math.abs(Math.round(avg)) + '/car on average over the plan '
+            + '(shortfall at the full penalty, credits at ' + Math.round(_CO2_E.CREDIT_VALUE_SHARE * 100) + '% of it), in the unit cost. '
+            + 'Your whole fleet is what is measured: Commercial → 🍃 Emissions.</div>';
+        })()
+      + (function() {
           if (!_cmd.enabled || !_cmd.index) return '';
           var CL = {steel:'steel',aluminium:'aluminium',copper:'copper',battery:'battery mat.',polymers:'polymers',glass:'glass',electronics:'chips',energy:'energy'};
           var top = COMMODITIES.filter(function(c){ return Math.abs(_cmd.by[c] || 0) >= 1; })
@@ -27896,6 +28363,7 @@ function calcPropBizCase() {
     _prop._bizcase = {npv_m: npv, irr_pct: irr, rate_pct: rateP, payback_q: paybackQ || null,
                       total_inv_m: totalInvM, computed_at: new Date().toISOString(),
                       commodity_eur: _cmd.eur, commodity_qabs: _cmd.qabs,
+                      co2_eur_per_car: _co2Sum.units > 0 ? _co2Sum.eur / _co2Sum.units : 0, co2_preset: _co2.preset,
                       commodity_sens: _cmdSens.map(function(x){ return {f: x.f, npv_m: x.npv, irr_pct: x.irr}; })};
     // The approved scenario's commodity prices (confirmProposal stores them with the vehicle)
     _prop._cmdBasis = (_cmd.index && _cmd.qabs != null)
@@ -28072,17 +28540,7 @@ async function confirmProposal(acceptedSop) {
       _hasIce, _hasBev);
     var _safB = _vrC.safety != null ? _vrC.safety : 0.5;   // 0-1 blended safety for cons/perf engines
 
-    var _cons = null, _perf = null;
-    try { if (typeof _CONS_E !== 'undefined') _cons = _CONS_E.calc({
-      platform_size: _plS.size||'medium', segment_code: _prop.study.segment_code,
-      body_type: _bodyC, pwt_type: _pwtType,
-      ice_config_key: _pwtS.config_key||null, power_hp: _pwtS.power||null,
-      emission_tech: _pwtS.emission_tech||null,
-      epwt_class: _edmS.epwt_class||null, power_kw: _edmS.power_kw||null,
-      motor_efficiency: _edmS.efficiency!=null?parseFloat(_edmS.efficiency):null,
-      battery_kwh: _batS.target_kwh||null, battery_chemistry: _batS.chemistry||null,
-      weight_opt: _plS.weight_opt||0, safety: _safB, adas_level: _esS.adas_level||0
-    }); } catch(e) {}
+    var _cons = _propConsSaved(), _perf = null;
     try { if (typeof _PERF_E !== 'undefined') _perf = _PERF_E.calc({
       pwt_type: _pwtType, platform_size: _plS.size||'medium', body_type: _bodyC,
       ice_config_key: _pwtS.config_key||null, power_hp: _pwtS.power||null,
@@ -28108,9 +28566,12 @@ async function confirmProposal(acceptedSop) {
       adas_level:  parseFloat(_esS.adas_level||1),
       connectivity:parseFloat(_esS.connectivity||30),
     };
-    if (_cons && _cons.ice) { _rolledSpecs.ice_fuel_L100km=_cons.ice.fuel_L100km; _rolledSpecs.ice_co2_g_km=_cons.ice.co2_g_km; }
+    if (_cons && _cons.ice) { _rolledSpecs.ice_fuel_L100km=_cons.ice.fuel_L100km; _rolledSpecs.ice_co2_g_km=_cons.ice.co2_g_km;
+      // Emissions regimes read these (financial_engine.vehicle_reg_co2): hybrid type and the PHEV weighted CO2
+      _rolledSpecs.hybrid_type=_cons.ice.hybrid_type;
+      if (_cons.ice.phev_blended_co2 != null) { _rolledSpecs.phev_blended_co2=_cons.ice.phev_blended_co2; _rolledSpecs.phev_elec_range_km=_cons.ice.phev_elec_range_km; } }
     if (_cons && _cons.bev) { _rolledSpecs.bev_kwh_100km=_cons.bev.kwh_100km; _rolledSpecs.bev_range_km=_cons.bev.range_km; }
-    if (_cons) _rolledSpecs.kerb_mass_kg=_cons.kerb_mass_kg;
+    if (_cons) { _rolledSpecs.kerb_mass_kg=_cons.kerb_mass_kg; _rolledSpecs.cons_cal=_cons.cal; }
     if (_perf) { _rolledSpecs.t_0_100_s=_perf.t_0_100_s; _rolledSpecs.top_speed_kmh=_perf.top_speed_kmh; _rolledSpecs.perf_class=_perf.perf_class; }
     var _spPlan=_prop.operations&&_prop.operations.supply_plan;
     if(_spPlan){_calcSupplyPlanTotals();_rolledSpecs.supply_risk_score=_spPlan._risk_score||0.25;}
