@@ -9633,13 +9633,14 @@ function _plmPortfolioHtml(head, th, td, eur, deur, col) {
   if ((L.committed || []).length) {
     h += head('PROJECTS UNDERWAY', 'engineering → tooling & supplier approval (PPAP) → change-over (50%) → live');
     h += '<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;">';
-    h += '<tr style="border-bottom:1px solid var(--border);">' + th('Model', 'left') + th('Project', 'left') + th('Decided') + th('Phase', 'left') + th('Change-over') + th('Cost') + th('Est. B/C') + '</tr>';
+    h += '<tr style="border-bottom:1px solid var(--border);">' + th('Model', 'left') + th('Project', 'left') + th('Decided') + th('Phase', 'left') + th('Change-over') + th('Cost') + th('Est. B/C') + th('Est. to date') + th('Realised') + '</tr>';
     L.committed.forEach(function(p) {
       var phCol = p.phase === 'live' ? 'var(--green)' : p.phase === 'ramping' ? 'var(--gold)' : 'var(--text)';
       h += '<tr style="border-bottom:1px solid var(--border);">' + td(_esc(p.vehicle_name || ''), 'left') +
         td(_esc(p.label) + (p.commodity ? ' (' + _esc(p.commodity) + ')' : '') + ' <b>' + p.level + '</b>', 'left') +
         td(_esc(p.decided)) + td('<span style="color:' + phCol + ';">' + _esc(_PLM_PHASE[p.phase] || p.phase) + '</span>', 'left') +
-        td(_esc(p.changeover)) + td(m(p.capex_m + p.eng_m + (p.mkt_m || 0))) + td((p.est_bc || 0).toFixed(2)) + '</tr>';
+        td(_esc(p.changeover)) + td(m(p.capex_m + p.eng_m + (p.mkt_m || 0))) + td((p.est_bc || 0).toFixed(2)) +
+        _plmRealisedCells(p.realised) + '</tr>';
     });
     h += '</table></div>';
   }
@@ -9662,6 +9663,22 @@ function _plmPortfolioHtml(head, th, td, eur, deur, col) {
     h += '</table></div>';
   }
   return h;
+}
+
+// Estimate vs realised to date for a funded project (backend fe.lifecycle_realised): the
+// estimate's value for the quarters valued so far, and the same scaled by the units the model
+// actually sold. "—" until the project is past change-over + ramp (+ field lag for quality).
+function _plmRealisedCells(r) {
+  var cell = function(v, col, tip) {
+    return '<td style="padding:5px 8px;text-align:right;font-family:DM Mono,monospace;font-size:11px;' +
+      (col ? 'color:' + col + ';' : '') + '"' + (tip ? ' title="' + _esc(tip) + '"' : '') + '>' + v + '</td>';
+  };
+  if (!r) return cell('—', 'var(--muted2)', 'Shown once the project is past change-over and ramp') + cell('—', 'var(--muted2)');
+  var col = r.volume_ratio >= 1.0 ? 'var(--green)' : r.volume_ratio >= 0.8 ? 'var(--gold)' : 'var(--red)';
+  var tip = r.quarters + ' of ' + r.of_quarters + ' valued quarters · actual / estimated volume ' +
+    (r.volume_ratio * 100).toFixed(0) + '% · basis: ' + r.basis;
+  return cell('€' + r.est_to_date_m.toFixed(1) + 'M', null, tip) +
+    cell('€' + r.realised_m.toFixed(1) + 'M <span style="font-size:9px;">(' + (r.volume_ratio * 100).toFixed(0) + '%)</span>', col, tip);
 }
 
 async function loadLifecycleTab() {
