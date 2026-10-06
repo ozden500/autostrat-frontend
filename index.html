@@ -7723,14 +7723,21 @@ var _BATTERY_PC = {
               ['THERMAL_FILM',0.15],['HV_WIRING',0.10],['BMS_ELECTRONICS',0.02]],
 
   // Derive kWh slider range from platform volume × chemistry density (+ mass ceiling)
-  kwhRange: function(platform_size, chemistry) {
+  // pwt (the platform's powertrain): a multi-energy platform (PHEV / REEV) may carry a small pack,
+  // floor PHEV_MIN_KWH; it was held to the BEV floor (a 90 kWh minimum on a large NMC-811
+  // platform). Engine Parity pair with cost_engines.BatteryCostEngine.kwh_range (2026-10-06).
+  PHEV_MIN_KWH: 10,
+  kwhRange: function(platform_size, chemistry, pwt) {
     var vol  = this.PLAT_VOL[platform_size]  || {min:90, max:160};
     var mmax = this.PLAT_MASS[platform_size] || 320;
     var chem = this.CHEM[chemistry]          || this.CHEM['NMC_532'];
     var kwh_vol_min  = Math.round(vol.min  * chem.wh_per_l / 1000 / 5) * 5;
     var kwh_vol_max  = Math.round(vol.max  * chem.wh_per_l / 1000 / 5) * 5;
     var kwh_mass_max = Math.round(mmax     * chem.wh_per_kg/ 1000 / 5) * 5;
-    return {min: Math.max(10, kwh_vol_min), max: Math.min(kwh_vol_max, kwh_mass_max)};
+    var hi = Math.min(kwh_vol_max, kwh_mass_max);
+    var lo = Math.max(10, kwh_vol_min);
+    if (pwt && _pwtToManufKey(pwt) === 'ice_and_bev') lo = this.PHEV_MIN_KWH;
+    return {min: Math.min(lo, hi), max: hi};
   },
 
   scrap: function(code) {
@@ -21407,7 +21414,7 @@ function buildModuleOptions(modType, propKey, nextFn) {
 
       // Derive kWh range from platform + chemistry
       var platSize  = (_prop.platform && _prop.platform.specs && _prop.platform.specs.size) || '';
-      var kwhr = (selChem && platSize) ? _BATTERY_PC.kwhRange(platSize, selChem) : {min:15, max:250};
+      var kwhr = (selChem && platSize) ? _BATTERY_PC.kwhRange(platSize, selChem, _prop.platform.specs.pwt) : {min:15, max:250};
       selKwh = Math.min(Math.max(selKwh, kwhr.min), kwhr.max);
 
       // Pack dimension outputs
@@ -22049,7 +22056,7 @@ function onPropBatteryChange() {
   // Update slider range when chemistry changes
   var platSize = (_prop.platform && _prop.platform.specs && _prop.platform.specs.size) || '';
   if (platSize) {
-    var kwhr = _BATTERY_PC.kwhRange(platSize, chem);
+    var kwhr = _BATTERY_PC.kwhRange(platSize, chem, _prop.platform.specs.pwt);
     var slider = document.getElementById('prop-bat-kwh');
     if (slider) {
       slider.min = kwhr.min; slider.max = kwhr.max;
@@ -22067,7 +22074,7 @@ function onPropBatteryChange() {
     var packMass = Math.round(kwh * 1000 / chemPropsBat.wh_per_kg * 10) / 10;
     var dimsEl   = document.getElementById('prop-bat-dims');
     if (dimsEl) {
-      var kwhr2 = platSize ? _BATTERY_PC.kwhRange(platSize, chem) : {min:15, max:250};
+      var kwhr2 = platSize ? _BATTERY_PC.kwhRange(platSize, chem, _prop.platform.specs.pwt) : {min:15, max:250};
       dimsEl.innerHTML = '<span>Vol: <b style="color:var(--green)">' + packVol + ' L</b></span>' +
         '<span>Mass: <b style="color:var(--green)">' + packMass + ' kg</b></span>' +
         (platSize ? '<span style="color:var(--muted)">Platform envelope: '+kwhr2.min+'–'+kwhr2.max+' kWh</span>'
@@ -27327,8 +27334,10 @@ function _getBodyType() {
 function _pwtToManufKey(s) {
   if (!s) return 'ice_only';
   s = s.toLowerCase();
-  if (s.indexOf('bev')>=0||s==='fcev') return 'bev_only';
+  // Multi-energy first: 'ice_and_bev' contains 'bev', and the BEV test ran first, so every
+  // multi-energy (PHEV / REEV) platform was costed as a BEV line in §2 / §7 (found 2026-10-06).
   if (s==='phev'||s==='reev'||s.indexOf('multi')>=0||s==='ice_and_bev') return 'ice_and_bev';
+  if (s.indexOf('bev')>=0||s==='fcev') return 'bev_only';
   return 'ice_only';
 }
 
