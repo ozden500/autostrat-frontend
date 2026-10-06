@@ -9104,6 +9104,10 @@ var _MARKET_E = {
     var utility = 0;
     var attrs   = ['price','efficiency','performance','safety','comfort','technology','reliability'];
     attrs.forEach(function(a) { utility += (sc[a]||50) * (weights[a]||0); });
+    // Model ageing, as clearing applies it (main._mce_utility): -0.5 pts a quarter since SOP (net of
+    // a facelift's age credit), at most -15. o.age_quarters, 0 for a proposal at launch (2026-10-06).
+    var _ageQ = parseFloat(o.age_quarters) || 0;
+    if (_ageQ > 0) utility = Math.max(0, utility - Math.min(15, _ageQ * 0.5));
     utility = Math.round(utility);
 
     // ── 4. Market share (logit vs segment-specific external competitors) ─
@@ -16328,7 +16332,10 @@ async function refreshInstructorHub() {
             if (typeof _MARKET_E !== 'undefined') {
               const sp = Object.assign({}, v.rolled_up_specs||{});
               if (v.price_eur_k) sp.price_eur_k = v.price_eur_k;
+              // age since SOP, as clearing scores it (a facelift's age credit is not known here)
+              const _sopQ = ((v.start_year || 2025) - 2025) * 4 + ((v.start_quarter || 1) - 1);
               const mr = _MARKET_E.calc({
+                age_quarters: Math.max(0, curQabs - _sopQ),
                 segment_code:v.segment_code, price_eur_k:sp.price_eur_k,
                 pwt_type:sp.pwt_type||'ice_only',
                 ice_fuel_L100km:sp.ice_fuel_L100km, bev_kwh_100km:sp.bev_kwh_100km,
