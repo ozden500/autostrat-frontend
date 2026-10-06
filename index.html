@@ -16270,10 +16270,11 @@ async function refreshInstructorHub() {
 
     // Load submissions + vehicles + history in parallel
     if (latest && latest.id) {
-      const [sRes, vRes, histRes] = await Promise.all([
+      const [sRes, vRes, histRes, finRes] = await Promise.all([
         fetch(`${API_URL}/sessions/${sessionId}/rounds/${latest.id}/submissions`),
         fetch(`${API_URL}/sessions/${sessionId}/vehicles`),
         fetch(`${API_URL}/sessions/${sessionId}/market-history`).then(r=>r.json()).catch(()=>({history:[]})),
+        fetch(`${API_URL}/sessions/${sessionId}/financial-history`).then(r=>r.json()).catch(()=>({history:[]})),
       ]);
       const sData = await sRes.json();
       const vData = await vRes.json();
@@ -16412,6 +16413,7 @@ async function refreshInstructorHub() {
           rounds: gameRounds, allRounds: allRounds, allTeams: teams, teamMap: teamMap,
           vehicles: veh, activeVeh: activeVeh, latestRnd: latest,
           clearing: clearing, history: history,
+          finHistory: (finRes && finRes.history) || [],
         };
         mcRenderCurrentTab();
       } catch(e) { console.warn('Hub vehicle/tab data error:', e); }
@@ -16488,6 +16490,7 @@ async function refreshSupplyPlanStatus(roundId) {
 // ════════════════════════════════════════════════════════════════════
 
 var _mcData = null;        // populated by refreshInstructorHub()
+var _mcTlRoundId = null;   // Round Timeline: the round shown in its table (null = latest with results)
 var _mcActiveTab = 'vehicles';
 
 function mcTab(tab, btn) {
@@ -16684,6 +16687,17 @@ function mcRenderTimeline() {
 
   if (!allRounds.length) { el.innerHTML='<div style="color:var(--muted2);font-size:12px;padding:24px;">No rounds yet.</div>'; return; }
 
+  // Round shown in the table: the one clicked, else the latest round with results (2026-10-06:
+  // the table listed every team for every round, 500+ rows, and its EBIT was clearing's own figure)
+  var _tlHas = {};
+  (_mcData.history || []).forEach(function(r) { _tlHas[r.round_id] = true; });
+  var _tlSel = (_mcTlRoundId && _tlHas[_mcTlRoundId]) ? _mcTlRoundId : null;
+  if (!_tlSel) {
+    var _withData = allRounds.filter(function(r) { return _tlHas[r.id]; });
+    _tlSel = _withData.length ? _withData.reduce(function(a, r) {
+      return (r.year * 4 + r.quarter) > (a.year * 4 + a.quarter) ? r : a; }).id : null;
+  }
+
   // ── Timeline cards ───────────────────────────────────────────
   var h = '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:8px;margin-bottom:16px;">';
   allRounds.forEach(function(rnd) {
@@ -16695,7 +16709,12 @@ function mcRenderTimeline() {
     var label     = isHist ? ('Q'+rnd.quarter+' '+rnd.year) : ('Y'+(rnd.year-2024)+'Q'+rnd.quarter);
     var topLabel  = isHist ? 'HIST' : ('ROUND '+rnd.round_number);
     var topC      = isHist ? '#a78bfa' : 'var(--muted)';
-    h += '<div style="background:var(--s2);border:1px solid '+bdrCol+';border-radius:6px;padding:10px 12px;'+(isCurrent?'box-shadow:0 0 10px rgba(45,212,191,.15);':'')+'">';
+    var isSel     = rnd.id === _tlSel;
+    var hasData   = !!_tlHas[rnd.id];
+    h += '<div' + (hasData ? ' onclick="_mcTlRoundId=\'' + rnd.id + '\';mcRenderTimeline()"' : '') +
+         ' title="' + (hasData ? 'Show this round' : 'Not cleared yet') + '" style="background:' + (isSel ? 'var(--s3)' : 'var(--s2)') +
+         ';border:1px solid '+(isSel ? 'var(--gold)' : bdrCol)+';border-radius:6px;padding:10px 12px;' + (hasData ? 'cursor:pointer;' : 'opacity:.75;') +
+         (isCurrent?'box-shadow:0 0 10px rgba(45,212,191,.15);':'')+'">';
     h += '<div style="font-family:DM Mono,monospace;font-size:7px;color:'+topC+';margin-bottom:3px;">'+topLabel+'</div>';
     h += '<div style="font-family:Orbitron,sans-serif;font-size:'+(isHist?'11px':'14px')+';font-weight:700;color:'+(isCurrent?'#2dd4bf':(isHist?'#c4b5fd':'var(--white)'))+';white-space:nowrap;">'+label+'</div>';
     h += '<div style="font-family:DM Mono,monospace;font-size:8px;color:'+phC+';margin-top:4px;">'+phT+'</div>';
@@ -16704,8 +16723,8 @@ function mcRenderTimeline() {
   });
   h += '</div>';
 
-  // ── Revenue by round table (from market-history) ─────────────
-  h += '<div style="font-family:DM Mono,monospace;font-size:7px;letter-spacing:2px;color:#2dd4bf;text-transform:uppercase;margin-bottom:8px;border-bottom:1px solid rgba(45,212,191,.2);padding-bottom:5px;">Revenue by Round — All Teams</div>';
+  // ── One round's results (click a round above): market-history + the teams' statements ──
+  h += '<div style="font-family:DM Mono,monospace;font-size:7px;letter-spacing:2px;color:#2dd4bf;text-transform:uppercase;margin-bottom:8px;border-bottom:1px solid rgba(45,212,191,.2);padding-bottom:5px;">Results · ' + (function() { var r = allRounds.find(function(x) { return x.id === _tlSel; }); return r ? (r.is_historical ? ('Q' + r.quarter + ' ' + r.year + ' (history)') : ('Round ' + r.round_number + ' · Y' + (r.year - 2024) + 'Q' + r.quarter)) : '—'; })() + ' · click a round above</div>';
   h += '<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-family:DM Mono,monospace;font-size:9px;">';
   h += '<thead><tr style="border-bottom:1px solid var(--border2);">';
   ['Period','Team','Revenue €M','Units','GM%','EBIT €M','Rank'].forEach(function(c) {
@@ -16713,35 +16732,44 @@ function mcRenderTimeline() {
   });
   h += '</tr></thead><tbody>';
 
-  var hist = (_mcData.history || []).slice().sort(function(a,b){
-    var qa = (a.year*4+(a.quarter||1)), qb = (b.year*4+(b.quarter||1));
-    return qa !== qb ? qa - qb : parseFloat(b.revenue_m||0) - parseFloat(a.revenue_m||0);
-  });
+  var _selRnd = allRounds.find(function(r) { return r.id === _tlSel; }) || {};
+  var _fin = {};
+  (_mcData.finHistory || []).forEach(function(f) { if (f.round_id === _tlSel) _fin[f.team_id] = f; });
+  var hist = (_mcData.history || []).filter(function(r) { return r.round_id === _tlSel; })
+    .sort(function(a, b) { return (a.revenue_rank || 99) - (b.revenue_rank || 99); });
 
   if (!hist.length) {
     h += '<tr><td colspan="7" style="padding:16px;color:var(--muted2);text-align:center;">No round data yet.</td></tr>';
   } else {
     hist.forEach(function(ro) {
-      var isH  = ro.is_historical;
-      var rev  = parseFloat(ro.revenue_m||0).toFixed(1);
+      var f    = _fin[ro.team_id];
+      var revN = f ? parseFloat(f.net_revenue_m || 0) : parseFloat(ro.revenue_m || 0);
       var cogs = parseFloat(ro.cogs_m||0);
       var gp   = parseFloat(ro.gross_profit_m||(parseFloat(ro.revenue_m||0)-cogs));
-      var gm   = parseFloat(ro.revenue_m||0)>0 ? (gp/parseFloat(ro.revenue_m||0)*100).toFixed(1) : '0.0';
+      var gm   = f && f.gross_margin_pct != null ? parseFloat(f.gross_margin_pct).toFixed(1)
+               : (parseFloat(ro.revenue_m||0)>0 ? (gp/parseFloat(ro.revenue_m||0)*100).toFixed(1) : '0.0');
       var gmC  = parseFloat(gm)>20?'#4ade80':parseFloat(gm)>10?'#fbbf24':'#f87171';
-      var ebit = parseFloat(ro.ebit_m||(gp*0.7)).toFixed(1);
+      // EBIT from the team's statement (round_outcomes.ebit_m is clearing's own, much higher figure)
+      var ebit = f ? parseFloat(f.ebit_m || 0) : null;
+      var ebitTxt = ebit == null ? '—' : '€' + ebit.toFixed(1) + 'M <span style="color:var(--muted2);">(' +
+                    (revN > 0 ? (ebit / revN * 100).toFixed(1) : '0.0') + '%)</span>';
       var rank = ro.revenue_rank || ro.rank || '—';
       var rC   = rank===1?'#fbbf24':rank===2?'#b0c0d0':rank===3?'#c8a060':'var(--muted2)';
+      var isH  = ro.is_historical;
       var perLabel = ro.round_label || (isH ? ('Q'+ro.quarter+' '+ro.year) : ('Y'+(ro.year-2024)+'Q'+ro.quarter));
       h += '<tr style="border-bottom:1px solid rgba(255,255,255,.04);">';
       h += '<td style="padding:4px 10px;color:'+(isH?'#a78bfa':'#2dd4bf')+';font-weight:600;white-space:nowrap;">'+perLabel+'</td>';
-      h += '<td style="padding:4px 10px;color:var(--text);font-weight:600;">'+(ro.team_name||'?')+'</td>';
-      h += '<td style="padding:4px 10px;color:#2dd4bf;">€'+rev+'M</td>';
+      h += '<td style="padding:4px 10px;color:var(--text);font-weight:600;">'+_esc(ro.team_name||'?')+'</td>';
+      h += '<td style="padding:4px 10px;color:#2dd4bf;">€'+revN.toFixed(1)+'M</td>';
       h += '<td style="padding:4px 10px;">'+parseInt(ro.total_units_sold||0).toLocaleString()+'</td>';
       h += '<td style="padding:4px 10px;color:'+gmC+';">'+gm+'%</td>';
-      h += '<td style="padding:4px 10px;color:#f97316;">€'+ebit+'M</td>';
+      h += '<td style="padding:4px 10px;color:#f97316;">'+ebitTxt+'</td>';
       h += '<td style="padding:4px 10px;font-weight:700;color:'+rC+';">'+(rank!=='—'?'#'+rank:rank)+'</td>';
       h += '</tr>';
     });
+    if (!Object.keys(_fin).length) {
+      h += '<tr><td colspan="7" style="padding:8px 10px;color:var(--muted2);font-size:8px;">EBIT: statements are shown for live rounds; history rounds list clearing results only.</td></tr>';
+    }
   }
   h += '</tbody></table></div>';
 
