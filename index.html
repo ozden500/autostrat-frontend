@@ -8260,7 +8260,7 @@ var _CO2_E = {
     var ovc = hybrid === 'PHEV' || hybrid === 'REEV';
     var bev;
     if (pwt === 'bev_only') bev = 1.0;
-    else if (pwt === 'ice_and_bev' && ovc && bevMix == null && specs.bev_mix_pct == null) bev = 0.0;  // PHEV's own battery
+    else if (pwt === 'ice_and_bev' && bevMix == null && specs.bev_mix_pct == null && (ovc || !this.hasBevVariant(specs))) bev = 0.0;  // PHEV / hybrid only
     else if (pwt === 'ice_and_bev') {
       if (bevMix == null) bevMix = specs.bev_mix_pct != null ? parseFloat(specs.bev_mix_pct) / 100 : this.DUAL_BEV_MIX;
       bev = Math.min(1, Math.max(0, parseFloat(bevMix)));
@@ -8282,6 +8282,21 @@ var _CO2_E = {
       bev_range_km: specs.bev_range_km != null ? specs.bev_range_km : null,
       phev_range_km: specs.phev_elec_range_km != null ? specs.phev_elec_range_km : null
     };
+  },
+
+  // vehicle_has_bev_variant: an e-motor + battery next to the engine (rolled_up_specs.pt_tpc)
+  hasBevVariant: function(specs) {
+    var pt = (specs || {}).pt_tpc || {};
+    return parseFloat(pt.ice || 0) > 0 && parseFloat(pt.bev || 0) > 0;
+  },
+
+  // variant_cost_delta_eur: a dual-energy car vs its both-powertrains basis at a BEV share
+  variantCostDelta: function(ptTpc, bevShare) {
+    if (!ptTpc || bevShare == null) return 0;
+    var ice = parseFloat(ptTpc.ice || 0), bev = parseFloat(ptTpc.bev || 0);
+    if (!(ice > 0) || !(bev > 0)) return 0;
+    var s = Math.min(1, Math.max(0, parseFloat(bevShare)));
+    return Math.round(-((1 - s) * bev + s * ice) * 100) / 100;
   },
 
   // reg_car_contrib
@@ -13246,6 +13261,25 @@ async function loadEmissionsTab() {
   }
 }
 
+async function _emSetGap(vid, region, val) {
+  if (_emTab.busy) return;
+  _emTab.busy = true;
+  try {
+    var res = await fetch(API_URL + '/sessions/' + sessionId + '/teams/' + teamId + '/emissions', {
+      method: 'PUT', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({vehicle_id: vid, region: region, bev_gap_pct: parseFloat(val)})
+    });
+    var d = await res.json();
+    if (!res.ok) throw new Error(d.detail || ('HTTP ' + res.status));
+    _emTab.data = d;
+  } catch (e) {
+    toast('BEV price gap failed: ' + e.message);
+  } finally {
+    _emTab.busy = false;
+    _renderEmissionsTab();
+  }
+}
+
 async function _emSetStance(regime, key, val) {
   if (_emTab.busy) return;
   _emTab.busy = true;
@@ -13356,6 +13390,29 @@ function _renderEmissionsTab() {
   h += '<div style="font-size:9px;color:var(--muted);margin-top:6px;line-height:1.5;">€/car: one more car sold against this year\'s target at the full penalty (− = earns credit; vans count in the van regimes). '
      + 'Buyer: CO\u2082 tax a buyer pays (+) or EV incentive received (−) at your list price: France malus / EV bonus, Dutch BPM, German CO\u2082 tax, UK first-year VED, '
      + 'China NEV purchase-tax exemption, US federal EV credit (ended Sep 2025). Buyers respond to it like a price change.</div>';
+
+  // Dual-energy models: the BEV variant's price gap per region (buyers choose the variant)
+  var duals = (d.models || []).filter(function(v) { return v.dual && v.variants; });
+  if (duals.length) {
+    h += head('DUAL-ENERGY MODELS', 'buyers choose the ICE or BEV variant · your lever is the BEV price vs the ICE one, per region · carries forward');
+    h += '<div style="font-size:10px;color:var(--text);margin-bottom:8px;line-height:1.5;">Each country\'s buyers compare the two variants (fuel or energy use, the price, CO\u2082 taxes and EV incentives). '
+       + 'A cheaper BEV variant sells more BEVs: lower fleet CO\u2082, less revenue per BEV. Each car costs its own variant (an ICE car has no battery, a BEV no engine).'
+       + (d.claimed ? '' : ' <span style="color:var(--muted)">(AI team: discounts its BEVs 5–10% where it is short of a target.)</span>') + '</div>';
+    var regs = ['EU', 'NA', 'APAC', 'SA', 'MEA'];
+    var gsel = function(vid, rg, cur) {
+      return '<select ' + (d.locked || !d.claimed ? 'disabled ' : '') + 'onchange="_emSetGap(\'' + vid + '\',' + '\'' + rg + '\',this.value)" style="background:var(--s2);color:var(--text);border:1px solid var(--border);font-family:DM Mono,monospace;font-size:10px;padding:2px;">'
+        + (d.gap_choices || []).map(function(c) { return '<option value="' + c + '"' + (Math.abs(c - cur) < 1e-9 ? ' selected' : '') + '>' + (c > 0 ? '+' : c < 0 ? '−' : '±') + Math.abs(Math.round(c * 100)) + '%</option>'; }).join('') + '</select>';
+    };
+    h += '<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;"><tr style="border-bottom:1px solid var(--border);">' + th('Model', 'left') + th('ICE g/km') + th('BEV share last qtr')
+       + regs.map(function(rg) { return th('BEV price ' + rg, 'left'); }).join('') + '</tr>';
+    duals.forEach(function(v) {
+      var vv = v.variants, sh = vv.last_bev_share;
+      h += '<tr style="border-bottom:1px solid var(--border);">' + td(_esc(v.name || ''), 'left') + td(Math.round(vv.ice_g_km))
+        + td(sh == null ? '—' : Math.round(sh * 100) + '%')
+        + regs.map(function(rg) { return td(gsel(v.vehicle_id, rg, (vv.gaps || {})[rg] || 0), 'left'); }).join('') + '</tr>';
+    });
+    h += '</table></div>';
+  }
 
   // Credit market
   var tradable = Object.keys(d.stance || {}).filter(function(r) { return (d.regimes[r] || {}).trade; });
@@ -23653,6 +23710,14 @@ function _findClosestPlant(marketRegion) {
   return plants[0];
 }
 
+// One proposal slot's per-car module cost (the read _computeBaseTpc sums).
+function _propSlotTpc(k) {
+  var p = _prop[k]; if (!p || !p.module) return 0;
+  var m = p.module, u = parseFloat(m.per_unit_tpc_eur || 0);
+  if (!(u > 0) && m.dmp && m.make) u = parseFloat(m.dmp.total_eur || 0) + parseFloat(m.make.total_eur || 0);
+  return u > 0 ? u : 0;
+}
+
 function _computeBaseTpc() {
   // per_unit_tpc_eur is set on modules loaded from the DB, but a module just
   // designed in this session carries its cost as the dmp/make BOM split instead
@@ -28062,6 +28127,11 @@ function _propCo2() {
   }
   if (cons && cons.bev) specs.bev_range_km = cons.bev.range_km;
   if (cons) { specs.kerb_mass_kg = cons.kerb_mass_kg; specs.cons_cal = cons.cal; }
+  if (specs.pwt_type === 'ice_and_bev') {      // the split confirmProposal stores (pt_tpc)
+    var _pI = _propSlotTpc('pwt'), _pB = _propSlotTpc('epwt') + _propSlotTpc('battery');
+    if (_pI > 0 && _pB > 0 && !(cons && cons.ice && ['PHEV', 'REEV'].indexOf(cons.ice.hybrid_type) >= 0))
+      specs.pt_tpc = {ice: _pI, bev: _pB};
+  }
   specs.segment_code = _prop.study && _prop.study.segment_code;
   var reg = _CO2_E.regCo2(specs);
   if (!_propCo2Data) {
@@ -28129,6 +28199,13 @@ function calcPropBizCase() {
   var _wty = _propWarranty(finalTpcNum, _fcfPl);
   var _cmd = _propCommodity(_fcfPl);   // commodity prices of this (approval) quarter, held flat
   var _co2 = _propCo2();               // emissions compliance per car, by sales region and year
+  // a dual-energy proposal costs its variants at the planning BEV share (_CO2_E.DUAL_BEV_MIX);
+  // in production the realised share sets it (financial_engine.variant_cost_delta_eur)
+  var _varDelta = 0;
+  if (_co2.reg && _co2.reg.pwt_type === 'ice_and_bev' && _co2.reg.zev_share > 0) {
+    _varDelta = _CO2_E.variantCostDelta({ice: _propSlotTpc('pwt'), bev: _propSlotTpc('epwt') + _propSlotTpc('battery')},
+                                        _co2.reg.zev_share);
+  }
   var _co2Sum = {eur: 0, units: 0};
   var _lcStd = _LAUNCH_E.stdBudgetM(_prop.commercial, _prop.study && _prop.study.start_year,
                                     _prop.study && _prop.study.rolled_up_specs && _prop.study.rolled_up_specs.price_eur_k);
@@ -28162,7 +28239,7 @@ function calcPropBizCase() {
           _co2Sum.eur+=uQ*co2Car; _co2Sum.units+=uQ;
           var landed=tpcNum+_srcAdj+mfr.buy_cost_adj+_manufVarDelta(mfr)+lo.l+nR*lo.t
                      +_wty.qualityDelta+(fcfArr.length<_WARRANTY_E.LAUNCH_Q?_wty.launchCar:_wty.car)
-                     +_cmd.eur+co2Car;
+                     +_cmd.eur+co2Car+_varDelta;
           revM+=uQ*nR/1e6; cogsM+=uQ*landed/1e6; unitsQ+=uQ;
           asTailM+=uQ*_AFTERSALES_E.carValue(mkt.msrp_eur_k||0,_asPwt,_wty.years,_propAftersalesPolicy(mkt.region),_asRate).npv_eur/1e6;
         });
@@ -28174,7 +28251,7 @@ function calcPropBizCase() {
         asTailM=uQ*_AFTERSALES_E.carValue(cr.price,_asPwt,_wty.years,_propAftersalesPolicy(),_asRate).npv_eur/1e6;
         var co2CarF=_co2.car(yr, 'EU');
         _co2Sum.eur+=uQ*co2CarF; _co2Sum.units+=uQ;
-        cogsM+=uQ*(_wty.qualityDelta+(fcfArr.length<_WARRANTY_E.LAUNCH_Q?_wty.launchCar:_wty.car)+_cmd.eur+co2CarF)/1e6;
+        cogsM+=uQ*(_wty.qualityDelta+(fcfArr.length<_WARRANTY_E.LAUNCH_Q?_wty.launchCar:_wty.car)+_cmd.eur+co2CarF+_varDelta)/1e6;
         unitsQ+=uQ;
       }
       // Head-office overhead this model adds (its own admin + the volume-linked share),
@@ -28314,7 +28391,11 @@ function calcPropBizCase() {
             + 'Emissions compliance (' + _esc(_co2.preset) + ' rules): ' + what + '. Against each market\'s fleet target this car '
             + (avg >= 0 ? 'costs ' : 'earns ') + '€' + Math.abs(Math.round(avg)) + '/car on average over the plan '
             + '(shortfall at the full penalty, credits at ' + Math.round(_CO2_E.CREDIT_VALUE_SHARE * 100) + '% of it), in the unit cost. '
-            + 'Your whole fleet is what is measured: Commercial → 🍃 Emissions.</div>';
+            + 'Your whole fleet is what is measured: Commercial → 🍃 Emissions.'
+            + (_varDelta ? ' Dual-energy: an ICE car does without the e-motor and battery, a BEV without the engine; at '
+               + Math.round(r.zev_share * 100) + '% BEV the unit cost is €' + Math.abs(Math.round(_varDelta)).toLocaleString()
+               + ' below both powertrains. In production buyers choose the variant; set the BEV price gap per region on Commercial → 🍃 Emissions.' : '')
+            + '</div>';
         })()
       + (function() {
           if (!_cmd.enabled || !_cmd.index) return '';
@@ -28575,6 +28656,12 @@ async function confirmProposal(acceptedSop) {
       if (_cons.ice.phev_blended_co2 != null) { _rolledSpecs.phev_blended_co2=_cons.ice.phev_blended_co2; _rolledSpecs.phev_elec_range_km=_cons.ice.phev_elec_range_km; } }
     if (_cons && _cons.bev) { _rolledSpecs.bev_kwh_100km=_cons.bev.kwh_100km; _rolledSpecs.bev_range_km=_cons.bev.range_km; }
     if (_cons) { _rolledSpecs.kerb_mass_kg=_cons.kerb_mass_kg; _rolledSpecs.cons_cal=_cons.cal; }
+    // A dual-energy model's two powertrains (financial_engine.variant_cost_delta_eur): an ICE car
+    // does without the e-motor + battery, a BEV without the engine. Plug-in hybrids are one variant.
+    if (_pwtType === 'ice_and_bev' && _cons && _cons.ice && ['PHEV','REEV'].indexOf(_cons.ice.hybrid_type) < 0) {
+      var _ptI = _propSlotTpc('pwt'), _ptB = _propSlotTpc('epwt') + _propSlotTpc('battery');
+      if (_ptI > 0 && _ptB > 0) _rolledSpecs.pt_tpc = {ice: Math.round(_ptI * 100) / 100, bev: Math.round(_ptB * 100) / 100};
+    }
     if (_perf) { _rolledSpecs.t_0_100_s=_perf.t_0_100_s; _rolledSpecs.top_speed_kmh=_perf.top_speed_kmh; _rolledSpecs.perf_class=_perf.perf_class; }
     var _spPlan=_prop.operations&&_prop.operations.supply_plan;
     if(_spPlan){_calcSupplyPlanTotals();_rolledSpecs.supply_risk_score=_spPlan._risk_score||0.25;}
