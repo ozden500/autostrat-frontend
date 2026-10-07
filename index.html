@@ -8244,6 +8244,16 @@ var _CO2_E = {
   CO2_G_PER_L: 23.1, ICE_DEFAULT_G_KM: 150, PHEV_UF_CO2: 0.35, DUAL_BEV_MIX: 0.30,
   EU_TM0: 1600, TEST_MASS_ADD: 100,
   CN_BEV_CREDIT_CAP: 2.3, CN_PHEV_CREDIT: 1.0, CN_DEFAULT_RANGE_KM: 400,
+  // financial_engine.REG_PHEV_UF_D / REG_OVC_DEFAULT_RANGE_KM: Euro 6e-bis utility factor by year
+  PHEV_UF_D: {2024: 67.0, 2025: 167.0, 2028: 320.0},
+  OVC_DEFAULT_RANGE_KM: {PHEV: 50.0, REEV: 120.0},
+  phevWeight: function(rangeKm, year, hybrid) {
+    var r = rangeKm ? parseFloat(rangeKm) : (this.OVC_DEFAULT_RANGE_KM[hybrid] || 50.0);
+    var ys = Object.keys(this.PHEV_UF_D).map(Number).sort(function(a, b) { return a - b; });
+    var d = this.PHEV_UF_D[ys[0]];
+    ys.forEach(function(y) { if (y <= year) d = this.PHEV_UF_D[y]; }, this);
+    return Math.exp(-r / d);
+  },
   // financial_engine.REG_CAL1_RATIO: figures stored before the WLTP recalibration (no cons_cal)
   CAL1_RATIO: {a_segment:1.740, b_segment:1.069, c_segment:0.900, d_segment:0.766, e_segment:0.675, f_segment:0.692,
                sports:1.094, mpv:0.571, pickup:0.584, c_van:0.581, d_van:0.541, e_van:0.326},
@@ -8252,7 +8262,7 @@ var _CO2_E = {
   CREDIT_VALUE_SHARE: 0.5,
 
   // vehicle_reg_co2: specs = rolled_up_specs
-  regCo2: function(specs, bevMix) {
+  regCo2: function(specs, bevMix, year) {
     specs = specs || {};
     var pwt = String(specs.pwt_type || 'ice_only');
     var hybrid = String(specs.hybrid_type || 'ICE').toUpperCase();
@@ -8272,8 +8282,9 @@ var _CO2_E = {
     var r1 = this.CAL1_RATIO[seg] || 1.0;
     if (cal1) tail = tail * r1;
     var iceG = tail;
-    if (ovc) iceG = specs.phev_blended_co2 != null ? parseFloat(specs.phev_blended_co2) * (cal1 ? r1 : 1.0)
-                                                   : Math.floor(tail * this.PHEV_UF_CO2 + 0.5);
+    if (ovc && year != null) iceG = tail * this.phevWeight(specs.phev_elec_range_km, year, hybrid);
+    else if (ovc) iceG = specs.phev_blended_co2 != null ? parseFloat(specs.phev_blended_co2) * (cal1 ? r1 : 1.0)
+                                                        : Math.floor(tail * this.PHEV_UF_CO2 + 0.5);
     return {
       pwt_type: pwt, hybrid_type: bev < 1 ? hybrid : 'BEV',
       tailpipe_g_km: bev < 1 ? tail : 0, ice_g_km: bev < 1 ? iceG : 0,
@@ -13368,9 +13379,23 @@ function _renderEmissionsTab() {
       + td(pen, 'right', 'var(--muted2)') + '</tr>';
   });
   h += '</table></div>';
+  // UK flexibilities (CO2-to-ZEV conversion, banking, borrowing): how the position above was reached
+  ['UK', 'UK_LCV'].forEach(function(r) {
+    var f = (pr[r] || {}).flex;
+    if (!f || !(d.regimes[r] || {}).in_force) return;
+    var n0 = function(x) { return Math.round(parseFloat(x) || 0).toLocaleString(); };
+    h += '<div style="font-size:9px;color:var(--muted2);margin-top:6px;line-height:1.5;"><b>' + r + ' flexibilities</b>: short '
+       + n0(f.raw_excess) + ' ZEV before them · your non-ZEVs average ' + (parseFloat(f.non_zev_g_km) || 0).toFixed(0)
+       + ' g/km: ' + n0(f.allowances) + ' CO\u2082 allowances → <b>' + n0(f.converted) + ' ZEV credits converted</b>'
+       + (f.debt_due > 0 ? ' · ' + n0(f.debt_due) + ' borrowed last year to repay' : '')
+       + (f.bank_used > 0 ? ' · ' + n0(f.bank_used) + ' banked credits used' : '')
+       + (f.borrowed > 0 ? ' · <b>' + n0(f.borrowed) + ' borrowed</b> against next year (+3.5%)' : '')
+       + ' · bank ' + n0(f.bank_left) + (f.debt_next > 0 ? ' · owed next year ' + n0(f.debt_next) : '') + '.</div>';
+  });
   h += '<div style="font-size:9px;color:var(--muted);margin-top:6px;line-height:1.5;">EU target adjusts for your fleet\'s average mass and, to 2029, for a zero/low-emission share above 25% (up to +5%). '
      + 'Real rules: EU averages 2025–27 and 2030–32; the US currently has no penalty (CAFE fines set to $0, EPA GHG standards rescinded). '
-     + 'Plug-in hybrids count at their weighted (utility-factor) CO\u2082; dual-energy models at ' + Math.round(_CO2_E.DUAL_BEV_MIX * 100) + '% BEV.</div>';
+     + 'Plug-in hybrids count at their weighted CO\u2082 under that year' + "'" + 's utility factor (Euro 6e-bis: about twice the old figure from 2025, more again from 2028). '
+     + 'UK: CO\u2082 savings on non-ZEVs convert into ZEV credits (capped), surplus credits bank for 3 years, shortfalls can be borrowed against next year.</div>';
 
   // Models
   var inForce = Object.keys(d.regimes || {}).filter(function(r) { return d.regimes[r].in_force; });
@@ -28126,6 +28151,7 @@ function _propCo2() {
     if (cons.ice.phev_blended_co2 != null) specs.phev_blended_co2 = cons.ice.phev_blended_co2;
   }
   if (cons && cons.bev) specs.bev_range_km = cons.bev.range_km;
+  if (cons && cons.ice && cons.ice.phev_elec_range_km != null) specs.phev_elec_range_km = cons.ice.phev_elec_range_km;
   if (cons) { specs.kerb_mass_kg = cons.kerb_mass_kg; specs.cons_cal = cons.cal; }
   if (specs.pwt_type === 'ice_and_bev') {      // the split confirmProposal stores (pt_tpc)
     var _pI = _propSlotTpc('pwt'), _pB = _propSlotTpc('epwt') + _propSlotTpc('battery');
@@ -28142,8 +28168,8 @@ function _propCo2() {
   return {reg: reg, preset: d.preset, rules: d,
           car: function(year, region) {
             if (!d.preset || d.preset === 'off') return 0;
-            return _CO2_E.regionCarEur(d, _REGION_COUNTRIES[region] || _REGION_COUNTRIES.EU, year, reg,
-                                       _prop.study && _prop.study.segment_code);
+            return _CO2_E.regionCarEur(d, _REGION_COUNTRIES[region] || _REGION_COUNTRIES.EU, year,
+                                       _CO2_E.regCo2(specs, null, year), _prop.study && _prop.study.segment_code);
           }};
 }
 
