@@ -13264,7 +13264,7 @@ async function _rpRefresh() {
     var pl = document.getElementById('rp-pos-lbl'); if (pl) pl.textContent = 'Your Position' + (p.as_of ? ' · ' + p.as_of : '');
     set('rp-asp', p.asp_vs_market_pct == null ? '—' : (p.asp_vs_market_pct >= 0 ? '+' : '') + p.asp_vs_market_pct.toFixed(1) + '%', p.asp_vs_market_pct > 0 ? 'up' : p.asp_vs_market_pct < 0 ? 'dn' : '');
     set('rp-rd', p.rd_intensity_pct == null ? '—' : p.rd_intensity_pct.toFixed(1) + '%');
-    set('rp-nd', p.nd_ebitda == null ? '—' : (+p.nd_ebitda).toFixed(1) + '×' + (p.credit_rating ? ' · ' + p.credit_rating : ''), p.nd_ebitda > 3 ? 'dn' : '');
+    set('rp-nd', p.nd_ebitda == null ? '—' : (p.nd_ebitda < 0 ? 'n/m (EBITDA < 0)' : (+p.nd_ebitda).toFixed(1) + '×') + (p.credit_rating ? ' · ' + p.credit_rating : ''), (p.nd_ebitda > 3 || p.nd_ebitda < 0) ? 'dn' : '');
     set('rp-brand', p.brand_index == null ? '—' : p.brand_index + '/100');
     var fm = p.fleet_mix || {};
     set('rp-evmix', fm.bev_share != null ? Math.round(fm.bev_share * 100) + '% BEV' + (fm.phev_share ? ' · ' + Math.round(fm.phev_share * 100) + '% PHEV' : '') : '—', '', fm.label ? 'Share of the cars you sold in ' + fm.label : '');
