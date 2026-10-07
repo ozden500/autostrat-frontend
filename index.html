@@ -13302,6 +13302,7 @@ function _renderEmissionsTab() {
   h += '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:6px;">'
      + '<div style="background:var(--s2);border:1px solid var(--border);border-radius:6px;padding:8px 12px;"><div style="font-size:8px;color:var(--muted);text-transform:uppercase;">Rules</div><div style="font-size:13px;color:#34d399;font-weight:700;">' + _esc(d.preset) + '</div></div>'
      + '<div style="background:var(--s2);border:1px solid var(--border);border-radius:6px;padding:8px 12px;"><div style="font-size:8px;color:var(--muted);text-transform:uppercase;">Provision held' + (pos.as_of ? ' · ' + _esc(pos.as_of) : '') + '</div><div style="font-size:13px;color:' + (pos.provision_m > 0 ? 'var(--red)' : 'var(--text)') + ';font-weight:700;">' + m(pos.provision_m) + '</div></div>'
+     + (pos.receivable_m > 0 ? '<div style="background:var(--s2);border:1px solid var(--border);border-radius:6px;padding:8px 12px;"><div style="font-size:8px;color:var(--muted);text-transform:uppercase;">Credits to sell (expected)</div><div style="font-size:13px;color:var(--green);font-weight:700;">' + m(pos.receivable_m) + '</div></div>' : '')
      + '<div style="background:var(--s2);border:1px solid var(--border);border-radius:6px;padding:8px 12px;"><div style="font-size:8px;color:var(--muted);text-transform:uppercase;">Last quarter in EBIT</div><div style="font-size:13px;font-weight:700;">' + m((pos.income_m || 0) - (pos.expense_m || 0)) + '</div></div>'
      + '</div>';
 
@@ -17297,6 +17298,7 @@ async function renderBalanceSheet(data) {
       {t:'line',label:'  Accounts Receivable',          key:'accounts_receivable_m'},
       {t:'line',label:'  Inventory',                    key:'inventory_m'},
       {t:'line',label:'  Prepaid & Other',              key:'prepaid_m'},
+      {t:'line',label:'  CO\u2082 Credits Receivable',       key:'co2_receivable_m'},
       {t:'tot', label:'Total Current Assets',           key:'total_current_assets_m', col:'var(--cyan)'},
       {t:'sep'},
       {t:'sub', label:'Non-Current Assets'},
@@ -17581,7 +17583,7 @@ var _FIN_LINES = {
     {l:'Market entry / exit',    k:'market_entry_m', neg:true, optional:true},
     {l:'Aftersales programmes & parts logistics', k:'aftersales_opex_m', neg:true, optional:true},
     {l:'CO\u2082 compliance (provision, penalties, credits bought)', k:'co2_compliance_m', neg:true, optional:true},
-    {l:'CO\u2082 credits sold to other OEMs', k:'co2_credit_income_m', optional:true},
+    {l:'CO\u2082 credits sold to other OEMs (expected, settled in the period\'s last Q4)', k:'co2_credit_income_m', optional:true},
     {l:'Depreciation',           k:'depreciation_total_m', neg:true},
     {l:'Factoring & reverse-factoring fees', k:'_wc_fin', neg:true, optional:true},
     {l:'Lease rent (sale-and-leaseback)', k:'lease_rent_m', neg:true, optional:true},
@@ -17602,6 +17604,7 @@ var _FIN_LINES = {
     {l:'  ↳ incl. aftersales parts stock', k:'parts_inventory_m', optional:true},
     {l:'Finance receivables (captive loans)', k:'finance_receivables_m', optional:true},
     {l:'Prepaid Expenses',           k:'prepaid_m', optional:true},
+    {l:'CO\u2082 Credits Receivable', k:'co2_receivable_m', optional:true},
     {l:'Total Current Assets',       k:'total_current_assets_m', kind:'sub'},
     {l:'PP&E (gross)',               k:'ppe_gross_m'},
     {l:'Accumulated Depreciation',   k:'accumulated_depreciation_m', neg:true},
