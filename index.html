@@ -12759,7 +12759,7 @@ function buildVehicleTable() {
     var discVal = parseFloat(v.discount_pct||0).toFixed(1);
     var discCell = (v._normStatus === 'approved')
       ? '<td class="plan-td" style="text-align:center;">'
-          + '<input type="number" min="0" max="40" step="0.5" value="'+discVal+'"'
+          + '<input type="number" min="-30" max="40" step="0.5" value="'+discVal+'"'
           + ' onchange="updateVehicleDiscount(\''+vid+'\',this.value)"'
           + ' style="width:56px;background:var(--s2);border:1px solid var(--border2);border-radius:2px;'
           + 'color:var(--gold);font-family:DM Mono,monospace;font-size:10px;text-align:center;padding:3px 4px;">'
@@ -12789,7 +12789,7 @@ function buildVehicleTable() {
 
 
 async function updateVehicleDiscount(vid, val) {
-  var pct = Math.min(40, Math.max(0, parseFloat(val) || 0));
+  var pct = Math.min(40, Math.max(-30, parseFloat(val) || 0));
   try {
     var r = await fetch(API_URL + '/vehicles/' + vid, {
       method: 'PATCH',
@@ -13330,6 +13330,7 @@ async function loadEmissionsTab() {
 
 async function _emSetGap(vid, region, val) {
   if (_emTab.busy) return;
+  val = Math.round(parseFloat(val) * 100) / 100;
   _emTab.busy = true;
   try {
     var res = await fetch(API_URL + '/sessions/' + sessionId + '/teams/' + teamId + '/emissions', {
@@ -13478,11 +13479,14 @@ function _renderEmissionsTab() {
     h += head('DUAL-ENERGY MODELS', 'buyers choose the ICE or BEV variant · your lever is the BEV price vs the ICE one, per region · carries forward');
     h += '<div style="font-size:10px;color:var(--text);margin-bottom:8px;line-height:1.5;">Each country\'s buyers compare the two variants (fuel or energy use, the price, CO\u2082 taxes and EV incentives). '
        + 'A cheaper BEV variant sells more BEVs: lower fleet CO\u2082, less revenue per BEV. Each car costs its own variant (an ICE car has no battery, a BEV no engine).'
-       + (d.claimed ? '' : ' <span style="color:var(--muted)">(AI team: discounts its BEVs 5–10% where it is short of a target.)</span>') + '</div>';
+       + ' Any gap from ' + Math.round((d.gap_range || [-0.3])[0] * 100) + '% to +' + Math.round((d.gap_range || [0, 0.4])[1] * 100) + '%.'
+       + (d.claimed ? '' : ' <span style="color:var(--muted)">(AI team: prices each model per region from its compliance cost, passing 75% of it, and of a BEV variant\u2019s extra build cost, into the price, within −20% … +30% of list, at most 5 points a quarter.)</span>') + '</div>';
     var regs = ['EU', 'NA', 'APAC', 'SA', 'MEA'];
+    var gr = d.gap_range || [-0.30, 0.40];
     var gsel = function(vid, rg, cur) {
-      return '<select ' + (d.locked || !d.claimed ? 'disabled ' : '') + 'onchange="_emSetGap(\'' + vid + '\',' + '\'' + rg + '\',this.value)" style="background:var(--s2);color:var(--text);border:1px solid var(--border);font-family:DM Mono,monospace;font-size:10px;padding:2px;">'
-        + (d.gap_choices || []).map(function(c) { return '<option value="' + c + '"' + (Math.abs(c - cur) < 1e-9 ? ' selected' : '') + '>' + (c > 0 ? '+' : c < 0 ? '−' : '±') + Math.abs(Math.round(c * 100)) + '%</option>'; }).join('') + '</select>';
+      return '<input type="number" step="1" min="' + Math.round(gr[0] * 100) + '" max="' + Math.round(gr[1] * 100) + '" value="' + Math.round(cur * 100) + '" '
+        + (d.locked || !d.claimed ? 'disabled ' : '') + 'onchange="_emSetGap(\'' + vid + '\',' + '\'' + rg + '\',this.value / 100)" '
+        + 'style="width:52px;background:var(--s2);color:var(--text);border:1px solid var(--border);font-family:DM Mono,monospace;font-size:10px;padding:2px;text-align:right;">%';
     };
     h += '<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;"><tr style="border-bottom:1px solid var(--border);">' + th('Model', 'left') + th('ICE g/km') + th('BEV share last qtr')
        + regs.map(function(rg) { return th('BEV price ' + rg, 'left'); }).join('') + '</tr>';
@@ -13740,7 +13744,8 @@ async function renderCommercialPricing() {
      + 'The discount in your business case was only the starting point. Buyers compare transaction prices: a discount '
      + 'deeper than the market norm (~4%) wins buyers, a shallower one loses them. Price-sensitive segments (A/B/C, MPV) '
      + 'respond strongly, premium and luxury much less, so a deep premium discount mostly gives margin away. '
-     + 'Revenue is booked country by country at the discount you set there.</div>';
+     + 'Revenue is booked country by country at the discount you set there. '
+     + 'Below zero the slider prices above list (a surcharge, down to −30% = +30%): e.g. to pass a CO\u2082 compliance cost into your ICE price where a regime bites.</div>';
 
   vehicles.forEach(function(v) {
     var vid  = v.id;
@@ -13795,11 +13800,11 @@ async function renderCommercialPricing() {
       h += '<div style="display:grid;grid-template-columns:26px 160px 1fr 52px 130px'+(hasCtry?' 120px':'')+';align-items:center;gap:10px;padding:8px 12px;background:var(--s3);">';
       h += '<div style="'+MONO+'font-size:13px;">'+flag+'</div>';
       h += '<div style="'+MONO+'font-size:9px;font-weight:600;color:var(--text);letter-spacing:.3px;">'+sm.label+'</div>';
-      h += '<input type="range" min="0" max="40" step="0.5" value="'+defDisc.toFixed(1)+'"'
+      h += '<input type="range" min="-30" max="40" step="0.5" value="'+defDisc.toFixed(1)+'"'
          + ' id="com-reg-range-'+vid+'-'+region+'"'
          + ' oninput="onComRegionDefaultSlide(\''+vid+'\',\''+region+'\',this.value,'+msrp+')"'
          + ' style="width:100%;accent-color:var(--gold);cursor:pointer;">';
-      h += '<div id="com-reg-val-'+vid+'-'+region+'" style="'+MONO+'font-size:12px;font-weight:700;color:var(--gold);text-align:right;">'+defDisc.toFixed(1)+'%</div>';
+      h += '<div id="com-reg-val-'+vid+'-'+region+'" style="'+MONO+'font-size:12px;font-weight:700;color:var(--gold);text-align:right;">'+_discLbl(defDisc)+'</div>';
       h += '<div id="com-reg-net-'+vid+'-'+region+'" data-msrp="'+msrp+'" style="'+MONO+'font-size:10px;color:var(--cyan);text-align:right;">'
          + (msrp > 0 ? '€'+Math.round(msrp*1000*(1-defDisc/100)).toLocaleString()+'/unit' : '—')+'</div>';
       if (hasCtry) {
@@ -13821,11 +13826,11 @@ async function renderCommercialPricing() {
           h += '<div style="display:grid;grid-template-columns:26px 160px 1fr 52px 130px 60px;align-items:center;gap:10px;padding:6px 12px;border-bottom:1px solid rgba(255,255,255,0.04);">';
           h += '<div style="'+MONO+'font-size:8px;color:var(--muted2);">'+Math.round(c.share*100)+'%</div>';
           h += '<div style="'+MONO+'font-size:9px;color:var(--muted2);padding-left:8px;">'+c.label+'</div>';
-          h += '<input type="range" min="0" max="40" step="0.5" value="'+cDisc.toFixed(1)+'"'
+          h += '<input type="range" min="-30" max="40" step="0.5" value="'+cDisc.toFixed(1)+'"'
              + ' id="com-ctr-range-'+vid+'-'+region+'-'+c.code+'"'
              + ' oninput="onComCountrySlide(\''+vid+'\',\''+region+'\',\''+c.code+'\',this.value,'+msrp+')"'
              + ' style="width:100%;accent-color:#a78bfa;cursor:pointer;">';
-          h += '<div id="com-ctr-val-'+vid+'-'+region+'-'+c.code+'" style="'+MONO+'font-size:11px;font-weight:600;color:#a78bfa;text-align:right;">'+cDisc.toFixed(1)+'%</div>';
+          h += '<div id="com-ctr-val-'+vid+'-'+region+'-'+c.code+'" style="'+MONO+'font-size:11px;font-weight:600;color:#a78bfa;text-align:right;">'+_discLbl(cDisc)+'</div>';
           h += '<div id="com-ctr-net-'+vid+'-'+region+'-'+c.code+'" data-msrp="'+msrp+'" style="'+MONO+'font-size:9px;color:var(--muted2);text-align:right;">'
              + (msrp > 0 ? '€'+cNet.toLocaleString() : '—') + '</div>';
           h += '<div id="com-ctr-tag-'+vid+'-'+region+'-'+c.code+'" style="'+MONO+'font-size:7px;color:var(--purple);text-align:center;">'+(isCustom?'✎ custom':'')+'</div>';
@@ -13931,8 +13936,11 @@ function _patchVehicleDiscounts(vid) {
   }, 600);
 }
 
+// A retail discount label: below zero it is a surcharge over list
+function _discLbl(pct) { return pct < 0 ? '+' + (-pct).toFixed(1) + '% over' : pct.toFixed(1) + '%'; }
+
 function onComRegionDefaultSlide(vid, region, val, msrp) {
-  var pct = Math.min(40, Math.max(0, parseFloat(val) || 0));
+  var pct = Math.min(40, Math.max(-30, parseFloat(val) || 0));
   var rd  = _comVehicleDiscounts[vid];
   if (!rd) return;
   if (!rd[region]) rd[region] = {default:0, countries:{}};
@@ -13941,7 +13949,7 @@ function onComRegionDefaultSlide(vid, region, val, msrp) {
   // Update region label and net price
   var valEl = document.getElementById('com-reg-val-'+vid+'-'+region);
   var netEl = document.getElementById('com-reg-net-'+vid+'-'+region);
-  if (valEl) valEl.textContent = pct.toFixed(1)+'%';
+  if (valEl) valEl.textContent = _discLbl(pct);
   if (netEl && msrp > 0) netEl.textContent = '€'+Math.round(msrp*1000*(1-pct/100)).toLocaleString()+'/unit';
 
   // Propagate to non-customized countries
@@ -13951,7 +13959,7 @@ function onComRegionDefaultSlide(vid, region, val, msrp) {
       var cValEl = document.getElementById('com-ctr-val-'+vid+'-'+region+'-'+c.code);
       var cNetEl = document.getElementById('com-ctr-net-'+vid+'-'+region+'-'+c.code);
       var cRng   = document.getElementById('com-ctr-range-'+vid+'-'+region+'-'+c.code);
-      if (cValEl) cValEl.textContent = pct.toFixed(1)+'%';
+      if (cValEl) cValEl.textContent = _discLbl(pct);
       if (cRng)   cRng.value = pct.toFixed(1);
       if (cNetEl && msrp > 0) cNetEl.textContent = '€'+Math.round(msrp*1000*(1-pct/100)).toLocaleString();
     }
@@ -13967,7 +13975,7 @@ function onComRegionDefaultSlide(vid, region, val, msrp) {
 }
 
 function onComCountrySlide(vid, region, code, val, msrp) {
-  var pct = Math.min(40, Math.max(0, parseFloat(val) || 0));
+  var pct = Math.min(40, Math.max(-30, parseFloat(val) || 0));
   var rd  = _comVehicleDiscounts[vid];
   if (!rd) return;
   if (!rd[region]) rd[region] = {default:0, countries:{}};
@@ -13977,7 +13985,7 @@ function onComCountrySlide(vid, region, code, val, msrp) {
   var cValEl = document.getElementById('com-ctr-val-'+vid+'-'+region+'-'+code);
   var cNetEl = document.getElementById('com-ctr-net-'+vid+'-'+region+'-'+code);
   var cTagEl = document.getElementById('com-ctr-tag-'+vid+'-'+region+'-'+code);
-  if (cValEl) cValEl.textContent = pct.toFixed(1)+'%';
+  if (cValEl) cValEl.textContent = _discLbl(pct);
   if (cNetEl && msrp > 0) cNetEl.textContent = '€'+Math.round(msrp*1000*(1-pct/100)).toLocaleString();
   if (cTagEl) cTagEl.textContent = (pct !== (rd[region].default||0)) ? '✎ custom' : '';
 
