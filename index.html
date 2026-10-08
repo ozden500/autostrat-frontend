@@ -13503,16 +13503,22 @@ function _renderEmissionsTab() {
     var evRows = (ev.countries || []).filter(function(c) { return c.units_last_q > 0 || ['DE','FR','GB','IT','ES','NL','US','CN','JP','IN'].indexOf(c.country_code) >= 0; })
       .sort(function(a, b) { return (b.units_last_q || 0) - (a.units_last_q || 0); }).slice(0, 18);
     h += '<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;"><tr style="border-bottom:1px solid var(--border);">'
-       + th('Country', 'left') + th('Chargers / 1,000 people') + th('In 4 years') + th('BEV appeal ×') + th('Real BEV share 2025') + th('BEV share last qtr') + '</tr>';
+       + th('Country', 'left') + th('Chargers / 1,000 people') + th('In 4 years') + th('BEV appeal ×') + th('Petrol €/L') + th('Power €/kWh') + th('BEV running saving') + th('Real BEV share 2025') + th('BEV share last qtr') + '</tr>';
     evRows.forEach(function(c) {
       var m = c.bev_multiplier, col = m >= 1 ? 'var(--green)' : m < 0.3 ? 'var(--red)' : 'var(--text)';
       h += '<tr style="border-bottom:1px solid var(--border);">' + td(_esc(c.country_code) + ' <span style="color:var(--muted)">' + _esc(c.region || '') + '</span>', 'left')
         + td(c.chargers_per_1000.toFixed(2)) + td(c.chargers_per_1000_in_4y.toFixed(2)) + td(m.toFixed(2), 'right', col)
+        + td(c.petrol_eur_l == null ? '—' : c.petrol_eur_l.toFixed(2)) + td(c.electricity_eur_kwh == null ? '—' : c.electricity_eur_kwh.toFixed(2))
+        + td(c.bev_running_saving_eur == null ? '—' : '€' + Math.round(c.bev_running_saving_eur).toLocaleString(), 'right', c.bev_running_saving_eur > 1500 ? 'var(--green)' : 'var(--text)')
         + td(Math.round(c.real_bev_share_2025 * 100) + '%') + td(c.bev_share_last_q == null ? '—' : Math.round(c.bev_share_last_q * 100) + '%') + '</tr>';
     });
     h += '</table></div><div style="font-size:9px;color:var(--muted);margin-top:6px;line-height:1.5;">BEV appeal × multiplies the attraction of a BEV (of a plug-in hybrid by its square root) in that country. '
        + 'It is anchored so the 2025 offers give the real 2025 share, then grows with the charging network (Netherlands and Korea near saturation, Italy, Poland, Turkey, India catching up). '
-       + 'The prices of your BEVs and how many good BEVs are on offer move the rest.</div>';
+       + 'The prices of your BEVs and how many good BEVs are on offer move the rest. '
+       + 'Buyers also weigh what a car costs to run against a typical petrol car of its segment: energy per km x '
+       + (ev.km_per_year || 14000).toLocaleString() + ' km a year x ' + (ev.running_years || 3) + ' years (fleet buyers ' + (ev.running_years_fleet || 5) + '), '
+       + 'counted like a price difference. BEV running saving is that figure for a typical C-segment BEV; efficient hybrids gain too, thirsty engines lose. '
+       + 'Power is the home / public charging mix; EU road fuel carries the ETS2 carbon price from 2028.</div>';
   }
 
   // Credit market
