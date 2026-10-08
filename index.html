@@ -13442,7 +13442,7 @@ function _renderEmissionsTab() {
     var n0 = function(x) { return Math.round(parseFloat(x) || 0).toLocaleString(); };
     h += '<div style="font-size:9px;color:var(--muted2);margin-top:6px;line-height:1.5;"><b>' + r + ' flexibilities</b>: short '
        + n0(f.raw_excess) + ' ZEV before them · your non-ZEVs average ' + (parseFloat(f.non_zev_g_km) || 0).toFixed(0)
-       + ' g/km: ' + n0(f.allowances) + ' CO\u2082 allowances → <b>' + n0(f.converted) + ' ZEV credits converted</b>'
+       + ' g/km vs your baseline ' + (parseFloat(f.baseline_g_km) || 0).toFixed(0) + ': ' + n0(f.allowances) + ' CO\u2082 allowances → <b>' + n0(f.converted) + ' ZEV credits converted</b>'
        + (f.debt_due > 0 ? ' · ' + n0(f.debt_due) + ' borrowed last year to repay' : '')
        + (f.bank_used > 0 ? ' · ' + n0(f.bank_used) + ' banked credits used' : '')
        + (f.borrowed > 0 ? ' · <b>' + n0(f.borrowed) + ' borrowed</b> against next year (+3.5%)' : '')
@@ -13520,8 +13520,8 @@ function _renderEmissionsTab() {
   if (tradable.length) {
     h += head('CREDIT MARKET', 'settlement quarters only · one price per regime for every trade · carries forward');
     h += '<div style="font-size:10px;color:var(--text);margin-bottom:8px;line-height:1.5;">In a period\'s last Q4 every team\'s surplus is offered and every shortfall bid for, '
-       + 'at prices set as a share of the penalty; the cheapest offers meet the highest bids and all trade at one clearing price. A shortfall nobody sells you pays the full penalty.'
-       + (d.claimed ? '' : ' <span style="color:var(--muted)">(AI team: sells at 70%, bids 95%.)</span>') + '</div>';
+       + 'at prices set as a share of the penalty; the cheapest offers meet the highest bids and all trade at one clearing price. Scarce credits clear near the bids, plentiful ones near the asks. A shortfall nobody sells you pays the full penalty.'
+       + (d.claimed ? '' : ' <span style="color:var(--muted)">(AI team: sells at 30% of the penalty where unsold credits are lost (EU), 60% where they bank (UK, China, Korea); bids 95%.)</span>') + '</div>';
     var sel = function(r, key, cur) {
       return '<select ' + (d.locked || !d.claimed ? 'disabled ' : '') + 'onchange="_emSetStance(\'' + r + '\',\'' + key + '\',this.value)" style="background:var(--s2);color:var(--text);border:1px solid var(--border);font-family:DM Mono,monospace;font-size:10px;padding:2px;">'
         + (d.pct_choices || []).map(function(c) { return '<option value="' + c + '"' + (Math.abs(c - cur) < 1e-9 ? ' selected' : '') + '>' + Math.round(c * 100) + '% of penalty</option>'; }).join('') + '</select>';
