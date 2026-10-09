@@ -2660,6 +2660,12 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
     <div id="cfg-emissions-market" style="margin-top:12px;"></div>
   </div>
 
+  <!-- Database storage (GET /admin/storage, DELETE /sessions/{id}): the 2 GB disk filled on 2026-10-08 -->
+  <div style="background:var(--s1);border:1px solid var(--border);border-radius:10px;padding:20px;margin-bottom:16px;max-width:640px;">
+    <div style="font-family:'DM Mono',monospace;font-size:9px;text-transform:uppercase;letter-spacing:1.5px;color:#a78bfa;margin-bottom:12px;">Database Storage</div>
+    <div id="cfg-storage" style="font-size:12px;color:var(--muted2);">Loading…</div>
+  </div>
+
   <!-- Commodity markets: live cost (sessions.commodity_markets, docs/LIFECYCLE_SPEC.md) -->
   <div style="background:var(--s1);border:1px solid var(--border);border-radius:10px;padding:20px;margin-bottom:16px;max-width:640px;">
     <div style="font-family:'DM Mono',monospace;font-size:9px;text-transform:uppercase;letter-spacing:1.5px;color:#a78bfa;margin-bottom:12px;">Commodity Markets</div>
@@ -16523,7 +16529,54 @@ async function loadSettingsPage() {
     }
     loadCommodityMarketAdmin();
     loadEmissionsMarketAdmin();
+    loadStorageAdmin();
   } catch(e) { console.warn('loadSettingsPage:', e); }
+}
+
+// ── Database storage (instructor): size vs the warning level, sessions by size, delete ──
+async function loadStorageAdmin() {
+  var el = document.getElementById('cfg-storage');
+  if (!el) return;
+  try {
+    var res = await fetch(API_URL + '/admin/storage', {headers: _cmdAdminHeaders()});
+    var d = await res.json();
+    if (!res.ok) throw new Error(d.detail || ('HTTP ' + res.status));
+    var pct = Math.min(100, d.db_mb / d.warn_mb * 100);
+    var col = d.warn ? 'var(--red)' : pct > 75 ? 'var(--gold)' : 'var(--green)';
+    var h = '<div style="display:flex;justify-content:space-between;font-family:DM Mono,monospace;font-size:11px;color:var(--text);margin-bottom:4px;">'
+      + '<span>Database ' + Math.round(d.db_mb).toLocaleString() + ' MB</span><span style="color:var(--muted2);">warning at ' + d.warn_mb.toLocaleString() + ' MB</span></div>'
+      + '<div style="height:6px;background:var(--s3);border-radius:3px;overflow:hidden;margin-bottom:8px;"><div style="height:100%;width:' + pct.toFixed(1) + '%;background:' + col + ';"></div></div>'
+      + '<div style="font-size:10px;color:var(--muted2);line-height:1.5;margin-bottom:10px;">The disk is 2 GB; when it fills, Supabase turns the project read-only and no round can clear. '
+      + 'A 20-round session takes roughly 50–80 MB. Delete sessions you no longer need (permanent: rounds, teams, vehicles, statements and plans go with them).</div>';
+    var rows = (d.sessions || []).slice().sort(function(a, b) { return (b.est_mb || 0) - (a.est_mb || 0); });
+    h += '<div style="max-height:260px;overflow-y:auto;"><table style="width:100%;border-collapse:collapse;font-family:DM Mono,monospace;font-size:10px;">';
+    rows.forEach(function(r) {
+      var cur = r.id === sessionId;
+      h += '<tr style="border-bottom:1px solid var(--border);"><td style="padding:4px 6px;color:var(--text);">' + _esc(r.name || r.id) + (cur ? ' <span style="color:var(--gold);">(this session)</span>' : '') + '</td>'
+        + '<td style="padding:4px 6px;color:var(--muted2);">' + _esc((r.created_at || '').slice(0, 10)) + '</td>'
+        + '<td style="padding:4px 6px;text-align:right;color:var(--text);">~' + (r.est_mb || 0).toFixed(1) + ' MB</td>'
+        + '<td style="padding:4px 6px;text-align:right;">' + (cur ? '' : '<button onclick="deleteSessionAdmin(\'' + r.id + '\',this)" data-name="' + _esc(r.name || '') + '" style="font-family:DM Mono,monospace;font-size:9px;background:transparent;border:1px solid var(--red);color:var(--red);border-radius:3px;padding:2px 8px;cursor:pointer;">Delete</button>') + '</td></tr>';
+    });
+    h += '</table></div>';
+    el.innerHTML = h;
+  } catch (e) {
+    el.innerHTML = '<span style="color:var(--muted2);">Storage unavailable: ' + _esc(e.message) + '</span>';
+  }
+}
+
+async function deleteSessionAdmin(sid, btn) {
+  var name = (btn && btn.getAttribute('data-name')) || sid;
+  if (!confirm('Delete session \u201c' + name + '\u201d and all its data? This cannot be undone.')) return;
+  if (btn) { btn.disabled = true; btn.textContent = 'Deleting…'; }
+  try {
+    var res = await fetch(API_URL + '/sessions/' + sid, {method: 'DELETE', headers: _cmdAdminHeaders()});
+    var d = await res.json();
+    if (!res.ok) throw new Error(d.detail || ('HTTP ' + res.status));
+    toast('Deleted ' + name);
+  } catch (e) {
+    toast('Delete failed: ' + e.message);
+  }
+  loadStorageAdmin();
 }
 
 // ── Commodity markets (instructor, docs/LIFECYCLE_SPEC.md Phase 0) ──
