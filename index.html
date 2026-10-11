@@ -358,6 +358,10 @@ input[type=text]:focus,input[type=number]:focus{outline:none;border-color:var(--
 .plan-tr:hover{background:var(--s2);}
 .plan-tr:last-child{border-bottom:none;}
 .plan-td{padding:9px 12px;font-size:11px;color:var(--text);vertical-align:middle;}
+/* Actions (Approve / BC / Revise) stay in view when the portfolio table is wider than the page */
+#plan-main-table th:last-child,#plan-main-table td:last-child{position:sticky;right:0;z-index:1;background:var(--s1);box-shadow:-8px 0 8px -6px rgba(0,0,0,.6);}
+#plan-main-table thead th:last-child{background:var(--s2);}
+#plan-main-table .plan-tr:hover td:last-child{background:var(--s2);}
 .plan-td.mono{font-family:'DM Mono',monospace;}
 .plan-td.right{text-align:right;}
 .plan-td.center{text-align:center;}
@@ -728,7 +732,7 @@ body.on-checklist .submit-bar{display:none;}
   z-index:9500;opacity:0;transition:all .2s;pointer-events:none;}
 .toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
 
-::-webkit-scrollbar{width:3px;}
+::-webkit-scrollbar{width:3px;height:8px;}   /* height: horizontal bars must be findable */
 ::-webkit-scrollbar-track{background:transparent;}
 ::-webkit-scrollbar-thumb{background:var(--border2);border-radius:2px;}
 
@@ -2652,8 +2656,9 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
     <div style="font-size:10px;color:var(--muted2);margin-top:6px;line-height:1.5;">Each team's cars sold in a regulated market form its fleet there; shortfalls are provided for every quarter and settled in the period's last Q4, after a credit market between teams. Buyers' CO2 taxes and EV incentives move demand country by country. Applies from the next clearing; switching a regime off releases its provision.</div>
     <label style="display:flex;gap:10px;align-items:flex-start;cursor:pointer;margin-top:12px;">
       <input id="cfg-ev-market" type="checkbox" onchange="settingsSaveEvMarket(this.checked)" style="margin-top:3px;">
-      <span style="font-size:12px;color:#cbd5e1;">EV adoption by country
-        <span style="display:block;font-size:10px;color:var(--muted2);margin-top:4px;">BEV demand in each country follows its charging infrastructure (real 2025 densities growing on an S-curve), the BEVs on offer and their prices. Off: buyers treat BEVs like other cars everywhere.</span>
+      <span style="font-size:12px;color:#cbd5e1;">Charging infrastructure grows over the game
+        <span style="display:block;font-size:10px;color:var(--muted2);margin-top:4px;">Checked: each country's public charging network grows on an S-curve from its real 2025 density, and BEV appeal grows with it. Unchecked: the networks stay at their 2025 level. Either way buyers weigh running cost (energy prices, ETS2 from 2028, each car's efficiency) and each country's own EV preference, so 2025 BEV shares match reality. Fixed once round 1 has started.</span>
+        <span id="cfg-ev-note" style="display:block;font-size:10px;color:#f59e0b;margin-top:4px;"></span>
       </span>
     </label>
     <span id="cfg-emissions-status" style="font-size:12px;color:#22c55e;display:none;">Saved ✓</span>
@@ -13512,7 +13517,7 @@ function _renderEmissionsTab() {
   // the market reached; BEV demand also follows the offers and their prices
   var ev = _emTab.ev;
   if (ev && ev.enabled) {
-    h += head('EV MARKET BY COUNTRY', 'charging infrastructure grows on an S-curve · BEV demand = your offers × prices × readiness');
+    h += head('EV MARKET BY COUNTRY', (ev.infrastructure_grows ? 'charging infrastructure grows on an S-curve' : 'charging infrastructure held at its 2025 level') + ' · BEV demand = your offers × prices × readiness');
     var evRows = (ev.countries || []).filter(function(c) { return c.units_last_q > 0 || ['DE','FR','GB','IT','ES','NL','US','CN','JP','IN'].indexOf(c.country_code) >= 0; })
       .sort(function(a, b) { return (b.units_last_q || 0) - (a.units_last_q || 0); }).slice(0, 18);
     h += '<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;"><tr style="border-bottom:1px solid var(--border);">'
@@ -13526,7 +13531,8 @@ function _renderEmissionsTab() {
         + td(Math.round(c.real_bev_share_2025 * 100) + '%') + td(c.bev_share_last_q == null ? '—' : Math.round(c.bev_share_last_q * 100) + '%') + '</tr>';
     });
     h += '</table></div><div style="font-size:9px;color:var(--muted);margin-top:6px;line-height:1.5;">BEV appeal × multiplies the attraction of a BEV (of a plug-in hybrid by its square root) in that country. '
-       + 'It is anchored so the 2025 offers give the real 2025 share, then grows with the charging network (Netherlands and Korea near saturation, Italy, Poland, Turkey, India catching up). '
+       + (ev.infrastructure_grows ? 'It is anchored so the 2025 offers give the real 2025 share, then grows with the charging network (Netherlands and Korea near saturation, Italy, Poland, Turkey, India catching up). '
+          : 'It is anchored so the 2025 offers give the real 2025 share; in this session the charging networks stay at their 2025 level, so it does not change. ')
        + 'The prices of your BEVs and how many good BEVs are on offer move the rest. '
        + 'Buyers also weigh what a car costs to run against a typical petrol car of its segment: energy per km x '
        + (ev.km_per_year || 14000).toLocaleString() + ' km a year x ' + (ev.running_years || 3) + ' years (fleet buyers ' + (ev.running_years_fleet || 5) + '), '
@@ -16532,6 +16538,7 @@ async function loadSettingsPage() {
       if (ep) ep.value = (sd.session || {}).emissions_regime || 'off';
       const evc = document.getElementById('cfg-ev-market');
       if (evc) evc.checked = !!(sd.session || {}).ev_market;
+      _settingsLoadEvMode();
     }
     loadCommodityMarketAdmin();
     loadEmissionsMarketAdmin();
@@ -16720,9 +16727,27 @@ async function settingsSaveEvMarket(on) {
     const res = await fetch(`${API_URL}/sessions/${sessionId}/ev-market`, {
       method: 'PATCH', headers: _cmdAdminHeaders(true), body: JSON.stringify({enabled: !!on})
     });
+    if (res.status === 409) { toast('EV adoption is fixed once round 1 has started'); _settingsLoadEvMode(); return; }
     if (!res.ok) throw new Error(await res.text());
-    toast('✓ EV adoption by country ' + (on ? 'on' : 'off'));
+    toast(on ? '✓ Charging infrastructure grows over the game' : '✓ Charging infrastructure stays at its 2025 level');
+    _settingsLoadEvMode();
   } catch(e) { toast('❌ Save failed: ' + e.message); }
+}
+
+// EV demand model in force (GET /ev-market: mode static / dynamic / off, locked once round 1 started)
+async function _settingsLoadEvMode() {
+  var cb = document.getElementById('cfg-ev-market'), note = document.getElementById('cfg-ev-note');
+  if (!cb || !sessionId) return;
+  try {
+    var r = await fetch(`${API_URL}/sessions/${sessionId}/ev-market`);
+    if (!r.ok) return;
+    var d = await r.json();
+    cb.checked = !!d.infrastructure_grows;
+    cb.disabled = !!d.locked;
+    if (note) note.textContent = d.mode === 'off'
+      ? 'This session started before running cost existed: no EV demand model (fixed).'
+      : (d.locked ? 'Fixed: round 1 has started.' : '');
+  } catch (e) { /* keep the session row's value */ }
 }
 
 async function settingsSaveEmissions(preset) {
