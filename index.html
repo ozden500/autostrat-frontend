@@ -1596,7 +1596,7 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
         <label class="ctrl-lbl-top">Development Path</label>
         <div style="display:flex;gap:6px;margin-top:4px;">
           <button class="mod-path-btn active" id="path-new" onclick="setDevPath('new',this)">🆕 New</button>
-          <button class="mod-path-btn" id="path-modify" onclick="setDevPath('modify',this)">✏️ Modify Existing</button>
+          <button class="mod-path-btn" id="path-derivative" onclick="setDevPath('derivative',this)">🔀 Derive from Existing</button>
           <button class="mod-path-btn" id="path-reuse" onclick="setDevPath('reuse',this)">♻️ Reuse</button>
         </div>
       </div>
@@ -3329,11 +3329,11 @@ var _VIS = (function() {
   }
 
   // ── Module map: the 5 module zones on a muted silhouette ──
-  // slots = {platform:'new'|'modify'|'reuse'|null, ice_pwt:…, epwt:…, tophat:…, eands:…}
+  // slots = {platform:'new'|'derivative'|'reuse'|null, ice_pwt:…, epwt:…, tophat:…, eands:…}
   // focus = slot to emphasise (e.g. the section being edited).
-  var MODE_COL = {new:'var(--cyan)', modify:'var(--gold)', reuse:'var(--muted2)',
+  var MODE_COL = {new:'var(--cyan)', derivative:'var(--gold)', modify:'var(--gold)', reuse:'var(--muted2)',
                   ready:'var(--green)', dev:'var(--gold)', late:'var(--red)'};
-  var MODE_LBL = {new:'New', modify:'Modify', reuse:'Reuse', ready:'Ready', dev:'In development', late:'Late for SOP'};
+  var MODE_LBL = {new:'New', derivative:'Derivative', modify:'Derivative', reuse:'Reuse', ready:'Ready', dev:'In development', late:'Late for SOP'};
   var SLOT_LBL = {platform:'Platform', ice_pwt:'ICE PWT', epwt:'e-PWT', tophat:'Top Hat', eands:'E&S'};
   function moduleMap(o) {
     o = o || {};
@@ -4996,7 +4996,7 @@ function setDevPath(path, btn) {
   document.querySelectorAll('.mod-path-btn').forEach(b=>b.classList.remove('active'));
   btn.classList.add('active');
   const sr = document.getElementById('mod-source-row');
-  if (path==='modify'||path==='reuse') {
+  if (path==='derivative'||path==='reuse') {
     sr.style.display='block'; populateSourceSelect();
     document.getElementById('mod-specs-area').style.display = path==='reuse'?'none':'block';
     document.getElementById('mod-cost-preview').style.display = path==='reuse'?'none':'block';
@@ -8978,7 +8978,7 @@ var _WARRANTY_E = {
   APPEAL: {2: 0.985, 3: 1.00, 5: 1.03, 7: 1.05},
   DESIGN_REF: 60.0, DESIGN_HALVING: 30.0, LAUNCH_Q: 4,
   RAMP_LAUNCH: {SLOW: 0.15, STANDARD: 0.30, FAST: 0.50},
-  NEWNESS: {'new': 1.0, 'modify': 0.5, 'reuse': 0.0},
+  NEWNESS: {'new': 1.0, 'derivative': 0.5, 'reuse': 0.0},   // a derivative slot uses its own (.deriv.newness)
   QUALITY_TIER: {BASIC: 1.30, STANDARD: 1.00, PREMIUM: 0.80, WORLD_CLASS: 0.65},
   QC: {INCOMING: 1.10, PROCESS: 1.00, EOL: 0.90},
   AUTOMATION: {1: 1.15, 2: 1.00, 3: 0.92, 4: 0.87},
@@ -9545,7 +9545,7 @@ async function submitModule() {
       body: JSON.stringify({team_id:teamId, session_id:sessionId,
         module_type:currentModType, config_key:configKey, name,
         specs:getModuleSpecs(),
-        developed_from_module_id:currentDevPath==='modify'?sourceId:null})
+        developed_from_module_id:currentDevPath==='derivative'?sourceId:null})
     });
     const data = await res.json();
     if (data.success) {
@@ -9600,7 +9600,7 @@ async function loadModuleLibrary() {
       const tpc=m.per_unit_tpc_eur?'€'+Math.round(m.per_unit_tpc_eur).toLocaleString()+'/veh':'—';
       const wt=m.total_weight_kg?Math.round(m.total_weight_kg)+'kg':'—';
       const readyLabel=done?'READY':(m.ready_year?`READY Y${m.ready_year-2024}Q${m.ready_quarter}`:'IN DEV');
-      const devBadge=m.development_type==='modify'?' <span style="color:var(--purple);font-size:8px;">MOD</span>':'';
+      const devBadge=_devBadge(m);
       return `<div style="padding:8px 0;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;">
         <div style="font-family:'DM Mono',monospace;font-size:11px;color:${sc};width:14px;">${si}</div>
         <div style="flex:1;">
@@ -11072,7 +11072,7 @@ function _buildModuleGantt(mods, vehicles, todayQabs, sessionCfg) {
       h+='<div style="display:flex;align-items:center;margin-bottom:4px;">';
       h+='<div style="width:170px;flex-shrink:0;padding-right:10px;overflow:hidden;">';
       h+='<div style="font-size:10px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">'+(isCancelled?'<s>':'')+m.name+(isCancelled?'</s>':'')+'</div>';
-      h+='<div style="font-family:DM Mono,monospace;font-size:8px;color:var(--muted2);">'+(m.development_type==='modify'?'MOD':'NEW')+(isDone?' ✓ READY':isCancelled?' ✗':(m.ready_year?' → '+readyStr:''))+(underfunded?' <span style="color:#f97316;">⚠'+allocPct+'%</span>':'')+'</div>';
+      h+='<div style="font-family:DM Mono,monospace;font-size:8px;color:var(--muted2);">'+(_devTypeOf(m)==='derivative'?'DER':'NEW')+(isDone?' ✓ READY':isCancelled?' ✗':(m.ready_year?' → '+readyStr:''))+(underfunded?' <span style="color:#f97316;">⚠'+allocPct+'%</span>':'')+'</div>';
       h+='</div>';
       h+='<div style="flex:1;height:24px;position:relative;">';
       for(var gq2=qMin+1;gq2<=qMax;gq2++)
@@ -11494,7 +11494,7 @@ async function loadModulePipeline() {
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px;">
             <span style="display:flex;align-items:center;gap:6px;">
               ${rankLabel}
-              <span style="font-size:11px;font-weight:600;">${m.name||'—'}${m.development_type==='modify'?' <span style="color:var(--purple);font-size:8px;">MOD</span>':''}</span>
+              <span style="font-size:11px;font-weight:600;">${m.name||'—'}${_devBadge(m)}</span>
             </span>
             <div style="display:flex;align-items:center;gap:6px;">
               ${allocBadge}
@@ -11779,7 +11779,7 @@ function _buildBizCasePanels(byYear,mktEcon,modTpc,modRd,mktsBC,plants,tpcNum,rd
 
   // ── PANEL 3: INVESTMENT ───────────────────────────────────────────────────
   html += ph('03 — INVESTMENT · R&D & PLANT CAPEX', 'var(--orange)');
-  var maxRd=Math.max.apply(null,modRd.map(function(m){return m.rd;}))||1;
+  var maxRd=Math.max.apply(null,modRd.map(function(m){return m.rd;}))||1, anySunk=false;
   var maxCpx=Math.max.apply(null,(plants||[]).filter(function(p){return p._manuf;}).map(function(p){return p._manuf.grand_total_inv_m||p._manuf.total_investment_m||0;}))||1;
   html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">';
   // R&D col
@@ -11791,9 +11791,11 @@ function _buildBizCasePanels(byYear,mktEcon,modTpc,modRd,mktsBC,plants,tpcNum,rd
       html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:5px;">'+
         '<div style="'+TS+'color:var(--muted2);width:100px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+m.name+'</div>'+
         '<div style="flex:1;height:8px;background:var(--border2);border-radius:2px;">'+
-        '<div style="width:'+Math.round(m.rd/maxRd*100)+'%;height:100%;background:var(--orange);border-radius:2px;opacity:0.7;"></div></div>'+
-        '<div style="'+TS+'color:var(--orange);width:55px;text-align:right;">€'+Math.round(m.rd)+'M</div></div>';
+        '<div style="width:'+Math.round(m.rd/maxRd*100)+'%;height:100%;background:'+(m.sunk?'var(--muted2)':'var(--orange)')+';border-radius:2px;opacity:0.7;"></div></div>'+
+        '<div style="'+TS+'color:'+(m.sunk?'var(--muted2)':'var(--orange)')+';width:55px;text-align:right;">€'+Math.round(m.rd)+'M'+(m.sunk?'*':'')+'</div></div>';
+      if (m.sunk) anySunk=true;
     });
+    if (anySunk) html += '<div style="'+TS+'color:var(--muted2);margin-top:4px;">* reused module: its R&amp;D was spent on its own programme (sunk), not counted here</div>';
     html += '<div style="border-top:1px solid var(--border);margin-top:6px;padding-top:6px;display:flex;justify-content:space-between;">'+
       '<span style="'+TH+'color:var(--muted);">Total R&D</span>'+
       '<span style="'+TN+'color:var(--orange);">€'+Math.round(rdM)+'M</span></div>';
@@ -12100,7 +12102,7 @@ function openModDetailModal(moduleId) {
   var subQ = (mod.submitted_quarter && mod.submitted_year) ? 'Q'+mod.submitted_quarter+' '+mod.submitted_year : '—';
   var rdyQ = (mod.ready_quarter && mod.ready_year) ? 'Q'+mod.ready_quarter+' '+mod.ready_year : '—';
   var ltQ  = mod.lead_time_quarters != null ? mod.lead_time_quarters + ' qtr' + (mod.lead_time_quarters !== 1 ? 's' : '') : '—';
-  var devTypeLabel = {reuse:'Reuse', modify:'Modify', 'new':'New Dev'}[mod.development_type] || (mod.development_type || '—');
+  var devTypeLabel = {reuse:'Reuse', derivative:'Derivative', 'new':'New Dev'}[_devTypeOf(mod)] || (mod.development_type || '—');
   [['Submitted', subQ], ['Ready', rdyQ], ['Lead Time', ltQ], ['Dev Type', devTypeLabel]].forEach(function(pair) {
     html += '<div style="background:var(--s2);border:1px solid var(--border);border-radius:4px;padding:10px 12px;">' +
       '<div style="font-family:DM Mono,monospace;font-size:7px;text-transform:uppercase;letter-spacing:1px;' +
@@ -14066,6 +14068,9 @@ document.addEventListener('click', function(e) {
     var mid  = btn.getAttribute('data-modid');
     var nf2  = btn.getAttribute('data-nextfn');
     selectPropModule(pk2, mid, nf2);
+  }
+  if (action === 'prop-mod-derive') {
+    selectPropParent(btn.getAttribute('data-propkey'), btn.getAttribute('data-modid'), btn.getAttribute('data-nextfn'));
   }
   if (action === 'prop-mod-detail') {
     e.stopPropagation();
@@ -18971,7 +18976,7 @@ function _renderTcModCostTab() {
 
   var devTint = function(dt) {
     if (dt === 'new')    return 'background:rgba(103,232,249,0.15);';
-    if (dt === 'modify') return 'background:rgba(251,191,36,0.15);';
+    if (dt === 'modify' || dt === 'derivative') return 'background:rgba(251,191,36,0.15);';
     return '';
   };
 
@@ -21235,7 +21240,7 @@ var _deployedModules    = null; // cached deployed-module-capacities response fo
 var _prop = {
   study:       null,   // selected study vehicle object
   modules:     [],     // all team modules
-  platform:    null,   // {mode:'reuse'|'new'|'modify', module:obj, specs:{}}
+  platform:    null,   // {mode:'reuse'|'new'|'derivative', module:obj, specs:{}, parent:obj (derivative), deriv:terms}
   pwt:         null,   // {mode, type:'ice_pwt'|'epwt', module, specs}
   tophat:      null,   // {mode, module, specs}
   eands:       null,   // {mode, module, specs}
@@ -21550,13 +21555,13 @@ function _getEffectivePwtType() {
   // 2. Fallback: infer from platform when study has no PWT defined
   var pm = _prop.platform;
   if (pm) {
-    if ((pm.mode === 'reuse' || pm.mode === 'modify') && pm.module) {
+    if (pm.mode === 'reuse' && pm.module) {
       var pck = pm.module.config_key || '';
       if (pck.indexOf('MULTI') !== -1) return 'MULTI';
       if (pck.indexOf('BEV')  !== -1) return 'BEV';
       if (pck.indexOf('ICE')  !== -1) return 'ICE';
     }
-    if (pm.mode === 'new' && pm.specs && pm.specs.pwt) {
+    if (_slotDesigned(pm) && pm.specs && pm.specs.pwt) {
       var pw = pm.specs.pwt;
       if (pw === 'ice_and_bev') return 'MULTI';
       if (pw === 'bev_only')    return 'BEV';
@@ -21613,12 +21618,13 @@ function buildModuleOptions(modType, propKey, nextFn) {
 
   // ── Mode selector cards ──
   var html = '<div class="prop-mod-options">';
-  ['reuse','modify','new'].forEach(function(mode) {
-    var icons = {reuse:'♻️', modify:'✏️', 'new':'🆕'};
-    var titles= {reuse:'Reuse', modify:'Modify', 'new':'New Development'};
+  // Battery packs are configured per vehicle (no battery modules to derive from).
+  (modType === 'battery' ? ['reuse','new'] : ['reuse','derivative','new']).forEach(function(mode) {
+    var icons = {reuse:'♻️', derivative:'🔀', 'new':'🆕'};
+    var titles= {reuse:'Reuse', derivative:'Derivative', 'new':'New Development'};
     var descs = {
       reuse:'Share an existing module · Zero additional R&D cost · SOP ≥ module ready date',
-      modify:'Evolve an existing module · Reduced cost & time',
+      derivative:'New version built on an existing module · Specs within a limited range · Less R&D, time & tooling · Parent unchanged',
       'new':'Full R&D from scratch · Configure target specs'
     };
     var sel = currentSel && currentSel.mode===mode ? ' selected' : '';
@@ -21632,8 +21638,9 @@ function buildModuleOptions(modType, propKey, nextFn) {
   html += '</div>';
 
   // ── Reuse / Modify: side-by-side comparison table ──
-  if (currentSel && (currentSel.mode==='reuse' || currentSel.mode==='modify')) {
-    var list = currentSel.mode==='reuse' ? completed : mods;
+  if (currentSel && (currentSel.mode==='reuse' || (currentSel.mode==='derivative' && !currentSel.parent))) {
+    var list = completed;
+    var _pickAction = currentSel.mode==='derivative' ? 'prop-mod-derive' : 'prop-mod-select';
     list = list.filter(function(m){ return _isPropModuleCompatible(m, modType).ok; });
     if (list.length === 0) {
       html += '<div style="color:var(--muted2);font-size:11px;padding:12px;background:var(--s3);border-radius:3px;">' +
@@ -21674,6 +21681,9 @@ function buildModuleOptions(modType, propKey, nextFn) {
         }
       }
     } else {
+      if (currentSel.mode === 'derivative')
+        html += '<div style="font-family:DM Mono,monospace;font-size:9px;color:var(--purple);margin-top:10px;">'
+          + 'Pick the module to derive from. You then adjust its design within a limited range; the module itself stays as it is.</div>';
       // Table header
       html += '<div style="overflow-x:auto;margin-top:10px;">';
       html += '<table style="width:100%;border-collapse:collapse;min-width:500px;">';
@@ -21711,7 +21721,7 @@ function buildModuleOptions(modType, propKey, nextFn) {
         var rowBdr = isSel ? 'border-left:3px solid var(--gold);' : 'border-left:3px solid transparent;';
 
         html += '<tr style="border-bottom:1px solid var(--border);cursor:pointer;' + rowBg + rowBdr + '" ' +
-          'data-action="prop-mod-select" data-propkey="' + propKey + '" ' +
+          'data-action="' + _pickAction + '" data-propkey="' + propKey + '" ' +
           'data-modid="' + m.id + '" data-nextfn="' + nextFn + '">';
         html += '<td style="padding:8px 10px;font-weight:600;font-size:11px;color:var(--white);">' + m.name + '</td>';
         html += '<td style="padding:8px 10px;text-align:center;">' +
@@ -21762,7 +21772,11 @@ function buildModuleOptions(modType, propKey, nextFn) {
   }
 
   // ── New Development: spec sliders + live cost preview ──
-  else if (currentSel && currentSel.mode==='new') {
+  else if (_slotDesigned(currentSel)) {
+    if (currentSel.mode === 'derivative')
+      html += '<div id="prop-deriv-panel-' + propKey + '" style="margin-top:10px;padding:9px 11px;background:var(--s2);'
+        + 'border:1px solid rgba(167,139,250,.35);border-radius:3px;font-family:DM Mono,monospace;font-size:9px;color:var(--muted2);">'
+        + 'Derivative of ' + (currentSel.parent.name || '') + '</div>';
     if (propKey === 'platform') {
       // ── Full platform configurator ──
       if (!currentSel.specs) currentSel.specs = {};
@@ -22253,6 +22267,7 @@ function propMeSelect(idx) {
 }
 
 function onPropPlatformChange() {
+  _derivUi('platform');
   var size   = (document.getElementById('prop-plat-size')  || {}).value || '';
   var pwt    = (document.getElementById('prop-plat-pwt')   || {}).value || '';
   var rel    = parseFloat((document.getElementById('prop-plat-rel')   || {}).value || 50) / 100;
@@ -22426,10 +22441,343 @@ function costRow(label, val, col) {
 }
 
 
+// ── Derivative modules (2026-10-11) ───────────────────────────────────────────────────────────
+// A derivative is a NEW module built on one of the team's own modules (its parent, which stays as
+// it is and keeps serving its vehicles). It keeps the parent's architecture (config key; an engine
+// may change type within its cylinder family) and moves its specs only within an envelope around
+// the parent's. How far it moves (change, 0..1) sets the share of a clean-sheet module's R&D and
+// lead time it costs, the share of tooling it pays where the parent's tooling exists, and how new
+// its design counts for warranty launch defects. Mirror of cost_engines.derivative_terms
+// (parity-checked: tools/engine_parity_check.py check_derivative); create_team_module applies it.
+var _DERIV_E = {
+  // spec: [kind, width, default] — 'pct' a 0-1 rating (0-100 inputs normalised), 'rel' a
+  // fraction of the parent's value, 'abs' the spec's own units.
+  ENVELOPE: {
+    platform: {reliability: ['pct', 0.15, 0.5], comfort: ['pct', 0.15, 0.5], safety: ['pct', 0.15, 0.5],
+               cost_opt: ['pct', 0.10, 0.0], weight_opt: ['pct', 0.10, 0.0]},
+    ice_pwt:  {power: ['rel', 0.20, 100.0], emission_tech: ['pct', 0.20, 0.1], reliability: ['pct', 0.15, 0.5],
+               cost_opt: ['pct', 0.10, 0.0], weight_opt: ['pct', 0.10, 0.0]},
+    epwt:     {power_kw: ['rel', 0.20, 150.0], efficiency: ['abs', 0.03, 0.7], reliability: ['pct', 0.15, 0.5],
+               cost_opt: ['pct', 0.10, 0.0], weight_opt: ['pct', 0.10, 0.0]},
+    tophat:   {reliability: ['pct', 0.15, 0.5], comfort: ['pct', 0.15, 0.5], safety: ['pct', 0.15, 0.5],
+               roominess: ['abs', 0.3, 2.5], premiumness: ['abs', 0.15, 0.3]},
+    eands:    {adas_level: ['abs', 1.0, 1.0], sensor_suite: ['pct', 0.20, 0.3], connectivity: ['pct', 0.20, 0.3],
+               infotainment: ['pct', 0.20, 0.3], cybersecurity: ['pct', 0.20, 0.2]}
+  },
+  ENGINE_SWAP: 0.5,            // change added when an engine changes type within its cylinder family
+  RD: [0.25, 0.35], LT: [0.40, 0.30], RETOOL: [0.30, 0.40], NEWNESS: [0.30, 0.40],   // a + b·change
+  TOL: 1e-6,
+  _r: function(x, d) { var f = Math.pow(10, d); return Math.floor(x * f + 0.5) / f; },
+  _val: function(kind, v, dflt) {
+    if (v == null || v === '') return dflt;
+    var n = parseFloat(v); if (isNaN(n)) return dflt;
+    return kind === 'pct' ? (n > 1 ? n / 100 : n) : n;
+  },
+  // → {ok, reason, change, rd_f, lt_f, retool_f, newness, limits{spec:[lo,hi]}} (limits in stored units)
+  terms: function(modType, parentCk, parentSpecs, ck, specs) {
+    var E = _DERIV_E, env = E.ENVELOPE[modType], ps = parentSpecs || {}, ts = specs || {};
+    var out = {ok: false, reason: '', change: 0, rd_f: 1, lt_f: 1, retool_f: 1, newness: 1, limits: {}};
+    if (!env) { out.reason = 'No derivative for ' + modType; return out; }
+    var pck = String(parentCk || ''), tck = String(ck || pck), extra = 0;
+    if (tck !== pck) {
+      if (modType === 'ice_pwt' && pck.split('_')[0] === tck.split('_')[0]) extra = E.ENGINE_SWAP;
+      else { out.reason = 'Architecture change (' + pck + ' to ' + tck + ') needs New development'; return out; }
+    }
+    var tot = 0, n = 0, bad = '';
+    Object.keys(env).forEach(function(key) {
+      var kind = env[key][0], width = env[key][1], dflt = env[key][2];
+      var p = E._val(kind, ps[key], dflt), t = E._val(kind, ts[key], p);
+      var w = kind === 'rel' ? width * Math.abs(p) : width;
+      out.limits[key] = [E._r(p - w, 6), E._r(p + w, 6)];
+      var d = Math.abs(t - p);
+      if (w <= 0) return;
+      if (d > w + E.TOL && !bad) bad = key;
+      tot += Math.min(d / w, 1.0); n++;
+    });
+    if (bad) { out.reason = bad + ' outside the derivative range: needs New development'; return out; }
+    var c = Math.min(1.0, (n ? tot / n : 0) + extra);
+    out.ok = true; out.change = E._r(c, 4);
+    out.rd_f = E._r(E.RD[0] + E.RD[1] * c, 4);           out.lt_f = E._r(E.LT[0] + E.LT[1] * c, 4);
+    out.retool_f = E._r(E.RETOOL[0] + E.RETOOL[1] * c, 4); out.newness = E._r(E.NEWNESS[0] + E.NEWNESS[1] * c, 4);
+    return out;
+  }
+};
+
+// A module's development type: 'new' / 'derivative' / 'reuse'. Rows written before the derivative
+// redesign say 'modify' — the same thing (financial_engine.dev_type_of).
+function _devTypeOf(m) {
+  var d = String((m && m.development_type) || 'new').toLowerCase();
+  return d === 'modify' ? 'derivative' : d;
+}
+function _devBadge(m) {
+  return _devTypeOf(m) === 'derivative' ? ' <span style="color:var(--purple);font-size:8px;">DER</span>' : '';
+}
+
+// Proposal slots that are designed in the proposal (specs on the slot, engines run on them):
+// New development, and a Derivative once its parent is chosen. Reuse reads the module it picked.
+function _slotDesigned(p) {
+  return !!p && (p.mode === 'new' || (p.mode === 'derivative' && !!p.parent));
+}
+// The config key a slot builds on an existing module with (reuse: the module; derivative: its parent).
+function _slotExistingCk(p) {
+  if (!p) return null;
+  if (p.mode === 'reuse' && p.module) return p.module.config_key || null;
+  if (p.mode === 'derivative' && p.parent) return p.parent.config_key || null;
+  return null;
+}
+
+var _DERIV_SLOT_TYPE = {platform: 'platform', pwt: 'ice_pwt', epwt: 'epwt', tophat: 'tophat', eands: 'eands'};
+// Each slot's configurator controls: spec → [input id, UI units per stored unit]
+var _DERIV_UI = {
+  platform: {reliability: ['prop-plat-rel', 100], comfort: ['prop-plat-com', 100], safety: ['prop-plat-saf', 100],
+             cost_opt: ['prop-plat-coopt', 100], weight_opt: ['prop-plat-woopt', 100]},
+  pwt:      {power: ['prop-ice-power', 1], emission_tech: ['prop-ice-emission_tech', 100], reliability: ['prop-ice-reliability', 100],
+             cost_opt: ['prop-ice-cost_opt', 100], weight_opt: ['prop-ice-weight_opt', 100]},
+  epwt:     {power_kw: ['prop-epwt-power_kw', 1], efficiency: ['prop-epwt-efficiency', 1], reliability: ['prop-epwt-reliability', 100],
+             cost_opt: ['prop-epwt-cost_opt', 100], weight_opt: ['prop-epwt-weight_opt', 100]},
+  tophat:   {reliability: ['prop-th-reliability', 100], comfort: ['prop-th-comfort', 100], safety: ['prop-th-safety', 100],
+             roominess: ['prop-th-roominess', 1], premiumness: ['prop-th-premiumness', 1]},
+  eands:    {adas_level: ['prop-eands-adas_level', 1], sensor_suite: ['prop-eands-sensor_suite', 100],
+             connectivity: ['prop-eands-connectivity', 100], infotainment: ['prop-eands-infotainment', 100],
+             cybersecurity: ['prop-eands-cybersecurity', 100]}
+};
+// The architecture selectors a derivative cannot change
+var _DERIV_LOCKS = {platform: ['prop-plat-size', 'prop-plat-pwt'], pwt: ['prop-ice-cyl'],
+                    epwt: ['prop-epwt-class', 'prop-epwt-mb'], tophat: ['prop-th-config'],
+                    eands: ['prop-eands-arch', 'prop-eands-mb']};
+var _DERIV_SPEC_LBL = {reliability: 'Reliability', comfort: 'Comfort', safety: 'Safety', cost_opt: 'Cost opt',
+                       weight_opt: 'Weight opt', power: 'Power', emission_tech: 'Emission tech', power_kw: 'Power',
+                       efficiency: 'Efficiency', roominess: 'Roominess', premiumness: 'Premiumness',
+                       adas_level: 'ADAS', sensor_suite: 'Sensors', connectivity: 'Connectivity',
+                       infotainment: 'Infotainment', cybersecurity: 'Cyber'};
+
+// A designed slot as the module it creates: {modType, ck, specs} on the stored scale (0-1 ratings),
+// exactly what _savePropNew posts and the backend's derivative_terms checks.
+function _propStoredSpecs(propKey) {
+  var p = _prop[propKey]; if (!p) return null;
+  var ps = p.specs || {};
+  if (propKey === 'platform') {
+    return {modType: 'platform',
+            ck: ps.size && ps.pwt ? (_PROP_SIZE_ABBR[ps.size] || 'MEDIUM') + '_' + (_PROP_PWT_ABBR[ps.pwt] || 'ICE') : null,
+            specs: {reliability: (ps.reliability || 50) / 100, comfort: (ps.comfort || 50) / 100,
+                    safety: (ps.safety || 50) / 100, cost_opt: (ps.cost_opt || 0) / 100, weight_opt: (ps.weight_opt || 0) / 100}};
+  }
+  if (propKey === 'pwt') {
+    return {modType: 'ice_pwt', ck: ps.config_key || null,
+            specs: {reliability: (ps.reliability || 50) / 100, emission_tech: (ps.emission_tech || 10) / 100,
+                    power: ps.power || 100, cost_opt: (ps.cost_opt || 0) / 100, weight_opt: (ps.weight_opt || 0) / 100}};
+  }
+  if (propKey === 'epwt') {
+    return {modType: 'epwt', ck: ps.config_key || null,
+            specs: {reliability: (ps.reliability || 50) / 100, efficiency: ps.efficiency || 0.7,
+                    power_kw: ps.power_kw || 150, cost_opt: (ps.cost_opt || 0) / 100, weight_opt: (ps.weight_opt || 0) / 100}};
+  }
+  if (propKey === 'tophat') {
+    return {modType: 'tophat', ck: ps.config_key || null,
+            specs: {reliability: (ps.reliability || 50) / 100, comfort: (ps.comfort || 50) / 100,
+                    safety: (ps.safety || 50) / 100, roominess: ps.roominess || 2.5,
+                    premiumness: ps.premiumness || 0.3, cost_opt: 0, weight_opt: 0}};
+  }
+  if (propKey === 'eands') {
+    return {modType: 'eands', ck: ps.config_key || null,
+            specs: {adas_level: ps.adas_level || 1, sensor_suite: (ps.sensor_suite || 30) / 100,
+                    connectivity: (ps.connectivity || 30) / 100, infotainment: (ps.infotainment || 30) / 100,
+                    cybersecurity: (ps.cybersecurity || 20) / 100}};
+  }
+  return null;
+}
+
+// The parent's design on the configurator's scale (0-100 sliders, selector keys from its config key):
+// a derivative starts exactly where its parent is.
+function _derivUiSpecs(propKey, mod) {
+  var s = (mod && mod.specs) || {}, ck = (mod && mod.config_key) || '', ui = {}, map = _DERIV_UI[propKey] || {};
+  Object.keys(map).forEach(function(k) {
+    var v = parseFloat(s[k]); if (isNaN(v)) return;
+    ui[k] = map[k][1] === 100 ? (v > 1 ? v : Math.round(v * 10000) / 100) : v;
+  });
+  if (propKey === 'platform') {
+    var pp = ck.split('_'), sizeInv = {};
+    Object.keys(_PROP_SIZE_ABBR).forEach(function(k) { sizeInv[_PROP_SIZE_ABBR[k]] = k; });
+    ui.size = sizeInv[pp[0]] || '';
+    ui.pwt = {ICE: 'ice_only', BEV: 'bev_only', MULTI: 'ice_and_bev'}[pp[1]] || '';
+  } else if (propKey === 'pwt') {
+    ui.config_key = ck; ui.cylinders = ck.split('_')[0].replace('CYL', '');
+  } else if (propKey === 'epwt' || propKey === 'eands') {
+    var i = ck.lastIndexOf('_');
+    ui.config_key = ck; ui.make_buy = i > 0 ? ck.slice(i + 1) : 'MAKE';
+    if (propKey === 'epwt') ui.epwt_class = i > 0 ? ck.slice(0, i) : ck; else ui.ee_arch = i > 0 ? ck.slice(0, i) : ck;
+  } else {
+    ui.config_key = ck;
+  }
+  return ui;
+}
+
+// The derivative terms of a slot's current design (cached on the slot as .deriv; null = not valid).
+function _derivSlotTerms(propKey) {
+  var p = _prop[propKey];
+  if (!p || p.mode !== 'derivative' || !p.parent) return null;
+  var st = _propStoredSpecs(propKey); if (!st) return null;
+  var t = _DERIV_E.terms(st.modType, p.parent.config_key, p.parent.specs || {}, st.ck, st.specs);
+  p.deriv = t.ok ? t : null;
+  p.derivReason = t.ok ? '' : t.reason;
+  return t;
+}
+
+// Called at the start of every configurator handler: locks the architecture selectors and holds
+// each slider inside the derivative envelope (value only, so the slider keeps its own scale and
+// the parent's value stays on the step grid), then refreshes the derivative panel.
+var _derivClamping = false;
+function _derivUi(propKey) {
+  var p = _prop[propKey];
+  if (!p || p.mode !== 'derivative' || !p.parent) return;
+  (_DERIV_LOCKS[propKey] || []).forEach(function(id) {
+    var el = document.getElementById(id); if (el) { el.disabled = true; el.title = 'Locked: a derivative keeps its parent’s architecture'; }
+  });
+  if (!_derivClamping) {
+    var lim = _DERIV_E.terms(_DERIV_SLOT_TYPE[propKey], p.parent.config_key, p.parent.specs || {}, p.parent.config_key, {}).limits;
+    var map = _DERIV_UI[propKey] || {}, moved = [];
+    Object.keys(map).forEach(function(k) {
+      var el = document.getElementById(map[k][0]); if (!el || !lim[k]) return;
+      var f = map[k][1], step = parseFloat(el.step) || 1, base = parseFloat(el.min) || 0;
+      var dec = (String(el.step).split('.')[1] || '').length;
+      var lo = base + Math.ceil((lim[k][0] * f - base) / step - 1e-9) * step;
+      var hi = base + Math.floor((lim[k][1] * f - base) / step + 1e-9) * step;
+      var v = parseFloat(el.value), nv = v;
+      if (lo > hi) nv = parseFloat(_derivUiSpecs(propKey, p.parent)[k]);
+      else if (v < lo) nv = lo; else if (v > hi) nv = hi;
+      if (!isNaN(nv) && Math.abs(nv - v) > 1e-9) { el.value = nv.toFixed(dec); moved.push(el); }
+    });
+    if (moved.length) {
+      _derivClamping = true;
+      try { moved.forEach(function(el) { el.dispatchEvent(new Event('input')); }); } finally { _derivClamping = false; }
+    }
+  }
+  setTimeout(function() { _derivPanel(propKey); }, 0);
+}
+
+// The derivative panel above the configurator: what the design costs against a new module.
+function _derivPanel(propKey) {
+  var el = document.getElementById('prop-deriv-panel-' + propKey);
+  var p = _prop[propKey];
+  if (!el || !p || !p.parent) return;
+  var t = _derivSlotTerms(propKey), MO = 'font-family:DM Mono,monospace;';
+  var par = p.parent, eng = _propSlotEngine(propKey);
+  var fullRd = eng ? (eng.total_rd_cost_eur_m || 0) : 0;
+  var rdy = par.ready_year ? (par.ready_year + 'Q' + par.ready_quarter) : '';
+  var h = '<div style="' + MO + 'font-size:8px;color:var(--purple);text-transform:uppercase;letter-spacing:1px;margin-bottom:5px;">'
+    + 'Derivative of ' + (par.name || '') + ' <span style="color:var(--muted2);">(' + (par.config_key || '') + ')</span> · parent unchanged</div>';
+  if (!t || !t.ok) {
+    h += '<div style="' + MO + 'font-size:9px;color:var(--red);">⚠ ' + ((t && t.reason) || 'Configure the design') + '</div>';
+  } else {
+    var cell = function(lbl, val, sub) {
+      return '<div style="padding:6px 8px;background:var(--s3);border-radius:3px;"><div style="' + MO + 'font-size:7px;color:var(--muted2);text-transform:uppercase;">' + lbl + '</div>'
+        + '<div style="' + MO + 'font-size:11px;color:var(--white);">' + val + '</div>'
+        + (sub ? '<div style="' + MO + 'font-size:7px;color:var(--muted2);">' + sub + '</div>' : '') + '</div>';
+    };
+    h += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:6px;">'
+      + cell('Change vs parent', Math.round(t.change * 100) + '%', 'of the derivative range')
+      + cell('R&D', fullRd > 0 ? '€' + (fullRd * t.rd_f).toFixed(1) + 'M' : Math.round(t.rd_f * 100) + '%',
+             Math.round(t.rd_f * 100) + '% of €' + fullRd.toFixed(1) + 'M new')
+      + cell('Lead time', Math.round(t.lt_f * 100) + '%', 'of a new module' + (rdy ? '; not before ' + rdy : ''))
+      + cell('Tooling', Math.round(t.retool_f * 100) + '%', 'where the parent is built / sourced')
+      + cell('Launch defects', Math.round(t.newness * 100) + '%', 'of a new module’s')
+      + '</div>';
+  }
+  var lim = _DERIV_E.terms(_DERIV_SLOT_TYPE[propKey], par.config_key, par.specs || {}, par.config_key, {}).limits;
+  var map = _DERIV_UI[propKey] || {}, rng = [];
+  Object.keys(map).forEach(function(k) {
+    if (!lim[k]) return;
+    var f = map[k][1], lo = Math.max(0, lim[k][0] * f), hi = lim[k][1] * f, d = f === 100 ? 0 : (hi < 10 ? 2 : 0);
+    rng.push(_DERIV_SPEC_LBL[k] + ' ' + lo.toFixed(d) + '–' + hi.toFixed(d) + (f === 100 ? '%' : ''));
+  });
+  h += '<div style="' + MO + 'font-size:7.5px;color:var(--muted2);margin-top:6px;">Allowed range: ' + rng.join(' · ')
+    + ' · <a href="#" style="color:var(--purple);" onclick="_derivChangeParent(\'' + propKey + '\');return false;">change parent</a></div>';
+  el.innerHTML = h;
+}
+
+// Re-render a proposal slot's section (the same target setPropModMode renders into).
+function _rerenderPropSlot(propKey, nextFn) {
+  var secMap = {platform:2, pwt:3, epwt:3, battery:3, tophat:4, eands:5};
+  var modMap = {platform:'platform', pwt:'ice_pwt', epwt:'epwt', battery:'battery', tophat:'tophat', eands:'eands'};
+  var elMap  = {platform:'prop-platform-content', pwt:'prop-pwt-ice-content', epwt:'prop-pwt-epwt-content',
+                battery:'prop-pwt-battery-content', tophat:'prop-tophat-content', eands:'prop-eands-content'};
+  buildModuleSection(secMap[propKey], modMap[propKey], propKey, elMap[propKey], nextFn);
+}
+var _PROP_NEXT_FN = {platform: 'advanceToPWT', pwt: 'advanceToTopHat', epwt: 'advanceToTopHat',
+                     battery: 'advanceToTopHat', tophat: 'advanceToEandS', eands: 'advanceToReview'};
+// Derivative: the module picked is the PARENT; the configurator opens on its design.
+function selectPropParent(propKey, moduleId, nextFn) {
+  var mod = _prop.modules.find(function(m) { return m.id === moduleId; });
+  if (!mod) return;
+  _prop[propKey] = {mode: 'derivative', parent: mod, module: null, specs: _derivUiSpecs(propKey, mod)};
+  _rerenderPropSlot(propKey, nextFn || _PROP_NEXT_FN[propKey]);
+}
+function _derivChangeParent(propKey) {
+  _prop[propKey] = {mode: 'derivative', parent: null, module: null, specs: {}};
+  _rerenderPropSlot(propKey, _PROP_NEXT_FN[propKey]);
+}
+
+// A slot's BOM engine run on its own specs (New or Derivative), the same call each
+// configurator makes. null when the slot reads an existing module.
+function _propSlotEngine(propKey) {
+  var p = _prop[propKey]; if (!_slotDesigned(p)) return null;
+  var s = p.specs || {};
+  try {
+    if (propKey==='platform') {
+      // _PC.calc(size, pwt, co, wo, saf, rel, com) — pwt is lowercase e.g. 'ice_only'
+      if (!s.size||!s.pwt) return null;
+      return _PC.calc(s.size, s.pwt,
+        (s.cost_opt||0)/100, (s.weight_opt||0)/100,
+        (s.safety||50)/100, (s.reliability||50)/100, (s.comfort||50)/100);
+    }
+    // Specs are stored 0-100 (see onProp*Change); each engine expects 0-1 for the ratio-style
+    // drivers — normalise here (matching the platform branch above and the §4 config cards).
+    if (propKey==='pwt')     { if(!s.config_key) return null; return _ICE_PC.calc(s.config_key,s.power||100,(s.emission_tech||10)/100,(s.reliability||50)/100,(s.cost_opt||0)/100,(s.weight_opt||0)/100); }
+    if (propKey==='epwt')    { if(!s.config_key) return null; return _EPWT_PC.calc(s.config_key,s.power_kw||150,s.efficiency||0.7,(s.reliability||50)/100,(s.cost_opt||0)/100,(s.weight_opt||0)/100); }
+    if (propKey==='battery') { if(!s.chemistry||!s.make_buy) return null; return _BATTERY_PC.calc(s.chemistry+'_'+s.make_buy,s.target_kwh||60,(s.cost_opt||0)/100,(s.reliability||50)/100); }
+    if (propKey==='tophat')  { if(!s.config_key) return null; return _TOPHAT_PC.calc(s.config_key,(s.reliability||50)/100,(s.comfort||50)/100,(s.safety||50)/100,s.roominess||2.5,s.premiumness||0.3,(s.cost_opt||0)/100,(s.weight_opt||0)/100); }
+    if (propKey==='eands')   { if(!s.config_key) return null; return _EANDS_PC.calc(s.config_key,s.adas_level||1,s.sensor_suite||30,s.connectivity||30,s.infotainment||30,s.cybersecurity||20,(s.cost_opt||0)/100,(s.weight_opt||0)/100); }
+  } catch(e) { console.warn('Slot engine', propKey, e); }
+  return null;
+}
+
+// What a slot puts into the business case as development: New = its clean-sheet R&D, Derivative =
+// that × rd_f, Reuse = nothing (that R&D was spent on the module's own programme; sunk).
+function _slotRdM(p) {
+  if (!p || !p.module || p.mode === 'reuse') return 0;
+  return parseFloat(p.module.total_rd_spend_m || 0);
+}
+// The reused modules' R&D, shown as a memo next to the business case's investment.
+function _slotReusedRdM(p) {
+  return (p && p.mode === 'reuse' && p.module) ? parseFloat(p.module.total_rd_spend_m || 0) : 0;
+}
+
+// Share of first-time supplier tooling a module pays in a zone (§8): a derivative whose parent
+// already holds a contract there pays its retool_f. Mirror of main._mzc_retool_f.
+function _mzcRetoolF(moduleId, zoneKey) {
+  if (!moduleId) return 1;
+  var keys = ['platform', 'pwt', 'epwt', 'tophat', 'eands'];
+  for (var i = 0; i < keys.length; i++) {
+    var p = _prop[keys[i]];
+    if (p && p.mode === 'derivative' && p.parent && p.deriv && p.module && p.module.id === moduleId)
+      return _mzcCapacity[p.parent.id + '__' + zoneKey] ? p.deriv.retool_f : 1;
+  }
+  return 1;
+}
+// Share of a plant module's capacity investment a derivative pays where its parent is deployed (§7).
+function _plantRetoolF(type, locKey, slotKey) {
+  var p = _prop[slotKey];
+  if (!p || p.mode !== 'derivative' || !p.parent || !p.deriv) return 1;
+  var ents = ((((_deployedModules || {})[type] || {})[locKey] || {})[slotKey]) || [];
+  return ents.some(function(e) { return e.module_id === p.parent.id; }) ? p.deriv.retool_f : 1;
+}
+
 function setPropModMode(propKey, mode, nextFn) {
   if (!_prop[propKey]) _prop[propKey] = {};
   _prop[propKey].mode   = mode;
   _prop[propKey].module = null;
+  _prop[propKey].parent = null;   // derivative: chosen next, from the module list
+  _prop[propKey].deriv  = null;
   // Preserve specs when switching modes, initialise if missing
   if (!_prop[propKey].specs) _prop[propKey].specs = {};
   var modTypeMap = {platform:'platform', pwt:'ice_pwt', epwt:'epwt', battery:'battery', tophat:'tophat', eands:'eands'};
@@ -22469,7 +22817,7 @@ function buildPlatformSection() {
 function advanceToPWT() {
   var s2 = document.getElementById('prop-sec-2-status');
   if (s2 && _prop.platform) {
-    if (_prop.platform.mode === 'new') s2.textContent = '\u2713 New development';
+    if (_slotDesigned(_prop.platform)) s2.textContent = '\u2713 ' + (_prop.platform.mode === 'derivative' ? 'Derivative of ' + _prop.platform.parent.name : 'New development');
     else if (!_prop.platform.module) return; // must select
   }
   setPropStep(3);
@@ -22522,14 +22870,14 @@ function buildPWTSection() {
 }
 function advanceToTopHat() {
   var _pwtT = _getEffectivePwtType();
-  if (_pwtT !== 'BEV' && _prop.pwt  && _prop.pwt.mode  !== 'new' && !_prop.pwt.module)
+  if (_pwtT !== 'BEV' && _prop.pwt  && !_slotDesigned(_prop.pwt)  && !_prop.pwt.module)
     { toast('⚠ Select an ICE powertrain module to continue'); return; }
-  if (_pwtT !== 'ICE' && _prop.epwt && _prop.epwt.mode !== 'new' && !_prop.epwt.module)
+  if (_pwtT !== 'ICE' && _prop.epwt && !_slotDesigned(_prop.epwt) && !_prop.epwt.module)
     { toast('⚠ Select an e-Motor module to continue'); return; }
   var s3 = document.getElementById('prop-sec-3-status');
   if (s3) {
-    var pwtName  = _prop.pwt  && _prop.pwt.module  ? _prop.pwt.module.name  : (_prop.pwt&&_prop.pwt.mode==='new'?'New ICE':'—');
-    var epwtName = _prop.epwt && _prop.epwt.module ? _prop.epwt.module.name : (_prop.epwt&&_prop.epwt.mode==='new'?'New e-Motor':'—');
+    var pwtName  = _prop.pwt  && _prop.pwt.module  ? _prop.pwt.module.name  : (_slotDesigned(_prop.pwt)?(_prop.pwt.mode==='derivative'?'Derived ICE':'New ICE'):'—');
+    var epwtName = _prop.epwt && _prop.epwt.module ? _prop.epwt.module.name : (_slotDesigned(_prop.epwt)?(_prop.epwt.mode==='derivative'?'Derived e-Motor':'New e-Motor'):'—');
     s3.textContent = '\u2713 ' + pwtName + ' / ' + epwtName;
   }
   setPropStep(4);
@@ -22548,6 +22896,7 @@ function onPropTopHatChange() {
   var ck   = document.getElementById('prop-th-config')?.value;    if (!ck) return;
   // Constrain roominess to this segment × body's realistic band, then read the (clamped) value.
   _applyRoominessRange('prop-th-roominess', 'prop-th-roominess-val', tophatRoominessRange(ck));
+  _derivUi('tophat');
   var rel  = parseFloat(document.getElementById('prop-th-reliability')?.value  || 50) / 100;
   var com  = parseFloat(document.getElementById('prop-th-comfort')?.value       || 50) / 100;
   var saf  = parseFloat(document.getElementById('prop-th-safety')?.value        || 50) / 100;
@@ -22611,6 +22960,7 @@ function onPropICEPWTChange() {
   var ck  = document.getElementById('prop-ice-config')?.value; if (!ck) return;
   // Constrain the power slider to this engine's realistic band, then read the (clamped) value.
   _applyIcePowerRange('prop-ice-power', 'prop-ice-power-val', icePowerRangeFromKey(ck));
+  _derivUi('pwt');
   var pw  = parseFloat(document.getElementById('prop-ice-power')?.value        || 100);
   var et  = parseFloat(document.getElementById('prop-ice-emission_tech')?.value || 10) / 100;
   var rel = parseFloat(document.getElementById('prop-ice-reliability')?.value   || 50) / 100;
@@ -22640,6 +22990,7 @@ function onPropICEPWTChange() {
 
 function onPropEPWTChange() {
   var cls = document.getElementById('prop-epwt-class')?.value; if (!cls) return;
+  _derivUi('epwt');
   var mb  = document.getElementById('prop-epwt-mb')?.value || 'MAKE';
   var ck  = cls + '_' + mb;
   var pw  = parseFloat(document.getElementById('prop-epwt-power_kw')?.value    || 150);
@@ -22674,6 +23025,7 @@ function onPropEPWTChange() {
 
 function onPropEandsChange() {
   var arch = document.getElementById('prop-eands-arch')?.value; if (!arch) return;
+  _derivUi('eands');
   var mb   = document.getElementById('prop-eands-mb')?.value || 'MAKE';
   var ck   = arch + '_' + mb;
   var adas  = parseFloat(document.getElementById('prop-eands-adas_level')?.value    || 1);
@@ -22770,7 +23122,7 @@ function onPropBatteryChange() {
 function advanceToEandS() {
   var s4 = document.getElementById('prop-sec-4-status');
   if (s4 && _prop.tophat) {
-    if (_prop.tophat.mode==='new') s4.textContent = '\u2713 New development';
+    if (_slotDesigned(_prop.tophat)) s4.textContent = '\u2713 ' + (_prop.tophat.mode === 'derivative' ? 'Derivative of ' + _prop.tophat.parent.name : 'New development');
     else if (!_prop.tophat.module) return;
   }
   setPropStep(5);
@@ -22782,7 +23134,7 @@ function buildEandSSection() {
 function advanceToReview() {
   var s5 = document.getElementById('prop-sec-5-status');
   if (s5 && _prop.eands) {
-    if (_prop.eands.mode==='new') s5.textContent = '\u2713 New development';
+    if (_slotDesigned(_prop.eands)) s5.textContent = '\u2713 ' + (_prop.eands.mode === 'derivative' ? 'Derivative of ' + _prop.eands.parent.name : 'New development');
     else if (!_prop.eands.module) return;
   }
   setPropStep(6);
@@ -22808,7 +23160,7 @@ function _s6Toggle(id) {
 // rolled_up_specs, so the displayed score and the saved/scored value always agree.
 //   specsByMod/modeByMod keyed: platform, pwt, epwt, battery, tophat.
 function _blendVehicleRatings(specsByMod, modeByMod, hasIce, hasBev) {
-  function n01(v, mode){ v = parseFloat(v); if (isNaN(v)) return null; return mode === 'new' ? v/100 : (v > 1 ? v/100 : v); }
+  function n01(v, mode){ v = parseFloat(v); if (isNaN(v)) return null; return (mode === 'new' || mode === 'derivative') ? v/100 : (v > 1 ? v/100 : v); }
   function blend(contribs){ var num=0, den=0; contribs.forEach(function(c){ if (c.v != null) { num += c.v*c.w; den += c.w; } }); return den > 0 ? num/den : null; }
   var pl = specsByMod.platform||{}, pwt = specsByMod.pwt||{}, ep = specsByMod.epwt||{}, bat = specsByMod.battery||{}, th = specsByMod.tophat||{};
   var mPl = modeByMod.platform, mPwt = modeByMod.pwt, mEp = modeByMod.epwt, mBat = modeByMod.battery, mTh = modeByMod.tophat;
@@ -22833,28 +23185,8 @@ function buildReviewSection() {
   var el = document.getElementById('prop-review-content');
   if (!el) return;
 
-  // ── Re-run BOM engines from stored specs ──
-  function _recalc(propKey) {
-    var p = _prop[propKey]; if (!p || p.mode !== 'new') return null;
-    var s = p.specs || {};
-    try {
-      if (propKey==='platform') {
-        // _PC.calc(size, pwt, co, wo, saf, rel, com) — pwt is lowercase e.g. 'ice_only'
-        if (!s.size||!s.pwt) return null;
-        return _PC.calc(s.size, s.pwt,
-          (s.cost_opt||0)/100, (s.weight_opt||0)/100,
-          (s.safety||50)/100, (s.reliability||50)/100, (s.comfort||50)/100);
-      }
-      // Specs are stored 0-100 (see onProp*Change); each engine expects 0-1 for the ratio-style
-      // drivers — normalise here (matching the platform branch above and the §4 config cards).
-      if (propKey==='pwt')     { if(!s.config_key) return null; return _ICE_PC.calc(s.config_key,s.power||100,(s.emission_tech||10)/100,(s.reliability||50)/100,(s.cost_opt||0)/100,(s.weight_opt||0)/100); }
-      if (propKey==='epwt')    { if(!s.config_key) return null; return _EPWT_PC.calc(s.config_key,s.power_kw||150,s.efficiency||0.7,(s.reliability||50)/100,(s.cost_opt||0)/100,(s.weight_opt||0)/100); }
-      if (propKey==='battery') { if(!s.chemistry||!s.make_buy) return null; return _BATTERY_PC.calc(s.chemistry+'_'+s.make_buy,s.target_kwh||60,(s.cost_opt||0)/100,(s.reliability||50)/100); }
-      if (propKey==='tophat')  { if(!s.config_key) return null; return _TOPHAT_PC.calc(s.config_key,(s.reliability||50)/100,(s.comfort||50)/100,(s.safety||50)/100,s.roominess||2.5,s.premiumness||0.3,(s.cost_opt||0)/100,(s.weight_opt||0)/100); }
-      if (propKey==='eands')   { if(!s.config_key) return null; return _EANDS_PC.calc(s.config_key,s.adas_level||1,s.sensor_suite||30,s.connectivity||30,s.infotainment||30,s.cybersecurity||20,(s.cost_opt||0)/100,(s.weight_opt||0)/100); }
-    } catch(e) { console.warn('Review recalc',propKey,e); }
-    return null;
-  }
+  // ── Re-run BOM engines from stored specs (New and Derivative slots) ──
+  function _recalc(propKey) { return _propSlotEngine(propKey); }
 
   function _getInfo(propKey, label, color, hex) {
     var p = _prop[propKey];
@@ -22865,15 +23197,17 @@ function buildReviewSection() {
     m.mode=p.mode; m.specs=p.specs||{}; m.configKey=(p.specs||{}).config_key||'';
     if (propKey==='platform' && !m.configKey && m.specs.size && m.specs.pwt)
       m.configKey = (m.specs.size+'_'+m.specs.pwt).toUpperCase();
-    if (p.mode==='new') {
+    if (_slotDesigned(p)) {
       var r=_recalc(propKey);
+      // A derivative costs rd_f of the clean-sheet R&D (create_team_module books the same share).
+      var _rdF = p.mode === 'derivative' ? ((_derivSlotTerms(propKey) || {}).rd_f || 1) : 1;
       if (r) {
         if (r.is_multi_energy) {
           m.isMulti = true;
           m.tpc     = r.ice_ready.std_platform_tpc_eur||0;
           m.tpc_bev = r.bev_ready.std_platform_tpc_eur||0;
-          m.rd      = r.total_rd_cost_eur_m||0;
-          m.fte     = r.std_fte_months||0;
+          m.rd      = (r.total_rd_cost_eur_m||0) * _rdF;
+          m.fte     = (r.std_fte_months||0) * _rdF;
           m.weight  = r.ice_ready.total_net_weight_kg||0;
           m.mat_cost= r.ice_ready.total_material_cost_eur||0;
           m.proc_cost=r.ice_ready.total_process_cost_eur||0;
@@ -22884,8 +23218,8 @@ function buildReviewSection() {
         } else {
           m.tpc    = r.std_platform_tpc_eur||0;
           m.tpc_bev= r.std_platform_tpc_eur||0;
-          m.rd     = r.total_rd_cost_eur_m||0;
-          m.fte    = r.std_fte_months||0;
+          m.rd     = (r.total_rd_cost_eur_m||0) * _rdF;
+          m.fte    = (r.std_fte_months||0) * _rdF;
           m.weight = r.total_net_weight_kg||0;
           m.mat_cost = r.total_material_cost_eur||0;
           m.proc_cost= r.total_process_cost_eur||0;
@@ -22978,7 +23312,7 @@ function buildReviewSection() {
   // 1.0 = 100%. That single flaw inflated the radar AND the market/consumption/performance engines
   // (their internal d01 shares it). These 0-1 locals are the one normalised source for the radar
   // and every engine call below. Premiumness/efficiency are already stored 0-1 in both modes.
-  function _pct01(v, mode){ v=parseFloat(v); if(isNaN(v)) return null; return mode==='new' ? v/100 : (v>1 ? v/100 : v); }
+  function _pct01(v, mode){ v=parseFloat(v); if(isNaN(v)) return null; return (mode==='new' || mode==='derivative') ? v/100 : (v>1 ? v/100 : v); }
   var _thMode = M.tophat.mode, _plMode = M.platform.mode, _pwtMode = M.pwt.mode;
   // Reliability/safety/comfort are WEIGHTED blends across every module that exposes the slider
   // (platform + powertrain(s) + battery + tophat) — see _blendVehicleRatings.
@@ -23141,8 +23475,8 @@ function buildReviewSection() {
       if (!m || !m.mode) return;
       var cx = capex[k] || {plant:0, supplier:0};
       var capM = (cx.plant||0) + (cx.supplier||0);
-      var mTag = m.mode === 'new' ? 'NEW' : m.mode === 'reuse' ? 'REUSE' : 'MODIFY';
-      var mCol = m.mode === 'new' ? m.color : 'var(--green)';
+      var mTag = m.mode === 'new' ? 'NEW' : m.mode === 'reuse' ? 'REUSE' : 'DERIV';
+      var mCol = m.mode === 'new' ? m.color : m.mode === 'derivative' ? 'var(--purple)' : 'var(--green)';
       var did = 's6-mod-' + k;
       out += '<div onclick="_s6Toggle(\''+did+'\')" style="cursor:pointer;display:grid;grid-template-columns:'+COLS+';gap:8px;align-items:center;padding:7px 10px;border-bottom:1px solid rgba(255,255,255,.04);background:var(--s2);border-left:3px solid '+m.color+';">'
         + '<div style="display:flex;align-items:center;gap:6px;overflow:hidden;"><span style="width:6px;height:6px;border-radius:1px;background:'+m.color+';flex-shrink:0;"></span>'
@@ -24095,14 +24429,15 @@ var _PROP_SIZE_LABEL = {micro:'Micro',small:'Small',medium:'Medium',large:'Large
 // available for \u00a78 capacity reservation. Returns false on failure (caller should
 // block the step advance), true if created, undefined if nothing to do.
 async function _savePropNew(slot, modType, ck, specs, autoName) {
-  if (!slot || slot.mode !== 'new' || !ck) return;
+  if (!_slotDesigned(slot) || !ck) return;
   if (slot.module && slot.module.id) return; // already saved
   try {
     var r = await fetch(API_URL + '/teams/' + teamId + '/modules', {
       method: 'POST', headers: {'Content-Type':'application/json'},
       body: JSON.stringify({team_id:teamId, session_id:sessionId,
         module_type:modType, config_key:ck, name:autoName, specs:specs,
-        developed_from_module_id: null, development_status: 'draft'})
+        developed_from_module_id: slot.mode === 'derivative' ? slot.parent.id : null,
+        development_status: 'draft'})
     });
     var d = await r.json();
     if (d.success && d.module_id) {
@@ -24112,6 +24447,7 @@ async function _savePropNew(slot, modType, ck, specs, autoName) {
       return true;
     }
     console.warn('createPropModule failed', modType, d.detail || d);
+    if (d.detail) toast('\u26a0 ' + d.detail);
     return false;
   } catch(e) {
     console.warn('createPropModule failed', modType, e);
@@ -24129,52 +24465,23 @@ async function advanceToComponentsSourcing() {
   (teamModuleLibrary||[]).forEach(function(m){ _modCounts[m.module_type]=(_modCounts[m.module_type]||0)+1; });
   function _nextModName(type,base){ _modCounts[type]=(_modCounts[type]||0)+1; return base+'-'+String(_modCounts[type]).padStart(3,'0'); }
 
-  if (_prop.platform && _prop.platform.mode === 'new') {
-    var ps = _prop.platform.specs || {};
-    var ck = ps.size && ps.pwt ? (_PROP_SIZE_ABBR[ps.size]||'MEDIUM')+'_'+(_PROP_PWT_ABBR[ps.pwt]||'ICE') : null;
-    if ((await _savePropNew(_prop.platform, 'platform', ck,
-      {reliability:(ps.reliability||50)/100, comfort:(ps.comfort||50)/100,
-       safety:(ps.safety||50)/100, cost_opt:(ps.cost_opt||0)/100, weight_opt:(ps.weight_opt||0)/100},
-      _nextModName('platform', 'PL-'+(_PROP_SIZE_LABEL[ps.size]||'Platform')))) === false) {
-      toast('\u26a0 Failed to create new platform module \u2014 cannot continue'); return;
-    }
-  }
-  if (_prop.pwt && _prop.pwt.mode === 'new') {
-    var ps = _prop.pwt.specs || {};
-    if ((await _savePropNew(_prop.pwt, 'ice_pwt', ps.config_key||null,
-      {reliability:(ps.reliability||50)/100, emission_tech:(ps.emission_tech||10)/100,
-       power:ps.power||100, cost_opt:(ps.cost_opt||0)/100, weight_opt:(ps.weight_opt||0)/100},
-      _nextModName('ice_pwt', 'IC-'+(ps.config_key||'ICE').replace(/_ICE$/,'').replace(/_/g,'-')))) === false) {
-      toast('\u26a0 Failed to create new ICE PWT module \u2014 cannot continue'); return;
-    }
-  }
-  if (_prop.epwt && _prop.epwt.mode === 'new') {
-    var ps = _prop.epwt.specs || {};
-    if ((await _savePropNew(_prop.epwt, 'epwt', ps.config_key||null,
-      {reliability:(ps.reliability||50)/100, efficiency:ps.efficiency||0.7,
-       power_kw:ps.power_kw||150, cost_opt:(ps.cost_opt||0)/100, weight_opt:(ps.weight_opt||0)/100},
-      _nextModName('epwt', 'EP-'+(ps.epwt_class||'ePWT').replace(/_/g,'-')))) === false) {
-      toast('\u26a0 Failed to create new ePWT module \u2014 cannot continue'); return;
-    }
-  }
-  if (_prop.tophat && _prop.tophat.mode === 'new') {
-    var ps = _prop.tophat.specs || {};
-    if ((await _savePropNew(_prop.tophat, 'tophat', ps.config_key||null,
-      {reliability:(ps.reliability||50)/100, comfort:(ps.comfort||50)/100,
-       safety:(ps.safety||50)/100, roominess:ps.roominess||2.5,
-       premiumness:ps.premiumness||0.3, cost_opt:0, weight_opt:0},
-      _nextModName('tophat', 'TH-'+((ps.config_key||'Body').replace(/_/g,'-')||'Body')))) === false) {
-      toast('\u26a0 Failed to create new Top Hat module \u2014 cannot continue'); return;
-    }
-  }
-  if (_prop.eands && _prop.eands.mode === 'new') {
-    var ps = _prop.eands.specs || {};
-    if ((await _savePropNew(_prop.eands, 'eands', ps.config_key||null,
-      {adas_level:ps.adas_level||1, sensor_suite:(ps.sensor_suite||30)/100,
-       connectivity:(ps.connectivity||30)/100, infotainment:(ps.infotainment||30)/100,
-       cybersecurity:(ps.cybersecurity||20)/100},
-      _nextModName('eands', 'ES-L'+(ps.adas_level||1)))) === false) {
-      toast('\u26a0 Failed to create new E&S module \u2014 cannot continue'); return;
+  // New and Derivative slots become draft modules (specs on the stored scale, _propStoredSpecs).
+  var _SAVE_NAME = {
+    platform: function(ps){ return 'PL-'+(_PROP_SIZE_LABEL[ps.size]||'Platform'); },
+    pwt:      function(ps){ return 'IC-'+(ps.config_key||'ICE').replace(/_ICE$/,'').replace(/_/g,'-'); },
+    epwt:     function(ps){ return 'EP-'+(ps.epwt_class||'ePWT').replace(/_/g,'-'); },
+    tophat:   function(ps){ return 'TH-'+((ps.config_key||'Body').replace(/_/g,'-')||'Body'); },
+    eands:    function(ps){ return 'ES-L'+(ps.adas_level||1); }
+  };
+  var _SAVE_LBL = {platform:'platform', pwt:'ICE PWT', epwt:'ePWT', tophat:'Top Hat', eands:'E&S'};
+  var _saveSlots = ['platform','pwt','epwt','tophat','eands'];
+  for (var _si = 0; _si < _saveSlots.length; _si++) {
+    var _sk = _saveSlots[_si], _slot = _prop[_sk];
+    if (!_slotDesigned(_slot)) continue;
+    var _st = _propStoredSpecs(_sk);
+    var _nm = _nextModName(_st.modType, _SAVE_NAME[_sk](_slot.specs || {}) + (_slot.mode === 'derivative' ? '-D' : ''));
+    if ((await _savePropNew(_slot, _st.modType, _st.ck, _st.specs, _nm)) === false) {
+      toast('\u26a0 Failed to create ' + (_slot.mode === 'derivative' ? 'derivative ' : 'new ') + _SAVE_LBL[_sk] + ' module \u2014 cannot continue'); return;
     }
   }
 
@@ -24645,13 +24952,14 @@ var _COMMODITY_E = {
 // financial_engine.vehicle_vave_pool (parity-checked): per module POOL_MAX x unit cost x
 // (1 - cost_opt)^GAMMA x maturity; difficulty = 1 + DIFF_K x cost-weighted cost_opt.
 var _LIFECYCLE_E = {
-  POOL_MAX: 0.10, POOL_GAMMA: 1.5, MATURITY: {'new': 1.0, modify: 0.8, reuse: 0.5}, DIFF_K: 1.0,
+  POOL_MAX: 0.10, POOL_GAMMA: 1.5, MATURITY: {'new': 1.0, derivative: 0.8, reuse: 0.5}, DIFF_K: 1.0,
   co: function(v) { var x = parseFloat(v) || 0; return Math.max(0, Math.min(1, x > 1 ? x / 100 : x)); },
   pool: function(parts) {
     var tot = 0, pool = 0, cw = 0;
     (parts || []).forEach(function(p) {
       var tpc = parseFloat(p.tpc) || 0, co = _LIFECYCLE_E.co(p.co);
-      var mat = _LIFECYCLE_E.MATURITY[String(p.dev || 'new').toLowerCase()];
+      var dv = String(p.dev || 'new').toLowerCase();   // pre-2026-10-11 rows say 'modify'
+      var mat = _LIFECYCLE_E.MATURITY[dv === 'modify' ? 'derivative' : dv];
       if (mat === undefined) mat = 1.0;
       pool += Math.round(_LIFECYCLE_E.POOL_MAX * tpc * Math.pow(1 - co, _LIFECYCLE_E.POOL_GAMMA) * mat * 100) / 100;
       tot += tpc; cw += tpc * co;
@@ -24667,9 +24975,10 @@ function _propPoolParts() {
   ['platform', 'pwt', 'epwt', 'tophat', 'eands'].forEach(function(k) {
     var p = (typeof _prop !== 'undefined' && _prop) ? _prop[k] : null;
     if (!p || !p.module) return;
-    var m = p.module, isNew = p.mode === 'new';
+    var m = p.module, isNew = _slotDesigned(p);
     var co = isNew ? ((p.specs || {}).cost_opt || 0) : ((m.specs || {}).cost_opt || 0);
-    var dev = isNew ? 'new' : (p.mode === 'modify' || m.development_type === 'modify' ? 'modify' : 'reuse');
+    var dev = p.mode === 'new' ? 'new' : p.mode === 'derivative' ? 'derivative'
+            : (_devTypeOf(m) === 'derivative' ? 'derivative' : 'reuse');
     out.push({type: k, tpc: parseFloat(m.per_unit_tpc_eur || 0), co: co, dev: dev});
   });
   return out;
@@ -25253,7 +25562,7 @@ function _computeStandardModuleCosts() {
     var tpc=parseFloat(p.module.per_unit_tpc_eur||0);
     var dmp=p.module.dmp?parseFloat(p.module.dmp.total_eur||0):tpc*0.85;
     var make=p.module.make?parseFloat(p.module.make.total_eur||0):tpc*0.15;
-    var rd=parseFloat(p.module.total_rd_spend_m||0);
+    var rd=_slotRdM(p);   // reuse: sunk, not this programme's
     var cx=capex[k]||{plant:0,supplier:0};
     var plantCx=cx.plant||0, supCx=cx.supplier||0;
     var invTot=rd+plantCx+supCx;
@@ -25453,6 +25762,7 @@ function _calcFacilityInv(type,fac){
     var gfMod=gf[d.key]||{inv_m:0,cap_k:1},rateK=gfMod.cap_k>0?gfMod.inv_m/gfMod.cap_k:0;
     var spareK=Math.max(0,(mc.installed_k||0)-(mc.used_k||0)),incK=mc.incremental_k||0;
     var newCapNeeded=Math.max(0,incK-spareK),tierFactor=(mc.installed_k||0)>0?0.65:1.00;
+    tierFactor=Math.min(tierFactor,_plantRetoolF(type,locKey,d.key));   // derivative on its parent's line
     var incInvM=Math.round(newCapNeeded*rateK*tierFactor*10)/10;
     modules[d.key]={installed_k:mc.installed_k||0,used_k:mc.used_k||0,spare_k:spareK,incremental_k:incK,greenfield_inv_m:gfMod.inv_m,greenfield_cap_k:gfMod.cap_k,rate_k:Math.round(rateK*10)/10,incremental_inv_m:incInvM};
     totalInv+=incInvM;
@@ -25828,8 +26138,8 @@ function _renderSimplifiedFootprint(){
   });
   // Platform / tophat match against current proposal
   // config_key lives on .module for reuse/modify; .config_key is only set on new mode at confirmProposal time
-  var _propPlatKey=(_prop.platform&&_prop.platform.mode!=='new'&&_prop.platform.module)?_prop.platform.module.config_key:null;
-  var _propTopKey=(_prop.tophat&&_prop.tophat.mode!=='new'&&_prop.tophat.module)?_prop.tophat.module.config_key:null;
+  var _propPlatKey=_slotExistingCk(_prop.platform);
+  var _propTopKey=_slotExistingCk(_prop.tophat);
   function _hasModule(lk,slot,cfgKey){
     if(!cfgKey)return false;
     return ((vpData[lk]||{})[slot]||[]).some(function(e){return e.config_key===cfgKey;});
@@ -27436,7 +27746,7 @@ function _mzcEstimateInvestment(sk, moduleId, zoneKey, autoLevel, needK) {
   // qualification cost that doesn't depend on how many you order), scaled by the zone's local labour.
   // Capacity above is deliberately NOT zone-scaled: production equipment is globally traded, so
   // labor_index (Mexico 0.13 vs W. Europe 1.10) applies to local qualification/installation only.
-  var toolingM = isFirstTime ? _mzcSupplierGfM(sk, _MODINV_E.V_REF) * _MZC_TOOLING_SHARE * zone.labor_index : 0;
+  var toolingM = isFirstTime ? _mzcSupplierGfM(sk, _MODINV_E.V_REF) * _MZC_TOOLING_SHARE * zone.labor_index * _mzcRetoolF(moduleId, zoneKey) : 0;
   var capacityM = _mzcEstimateCapexM(sk, autoLevel, c.contracted_k || 0, shortfall);
   return { shortfall: shortfall, isFirstTime: isFirstTime, toolingM: toolingM, capacityM: capacityM, totalM: toolingM + capacityM };
 }
@@ -27938,7 +28248,7 @@ function _buildPlantFromDecision(){
     var _vct=_vcl.find(function(c){return c.code===vp.country_code;})||_vcl[0]||{name:vp.country_code,code:vp.country_code};
     vp.country_name=_vct.name||vp.country_code;
     // Auto-detect platform_shared: true only if current proposal's platform module is already deployed here
-    var _propPlatCK2=(_prop.platform&&_prop.platform.mode!=='new'&&_prop.platform.module)?_prop.platform.module.config_key:null;
+    var _propPlatCK2=_slotExistingCk(_prop.platform);
     var _dpLk=((_deployedModules||{}).vehicle_plants||{})[ops.selected_plant_key]||{};
     vp.platform_shared=_propPlatCK2?(_dpLk.platform||[]).some(function(e){return e.config_key===_propPlatCK2;}):false;
    } else {
@@ -28253,7 +28563,7 @@ async function advanceToBizCase() {
 // current warranty period (Commercial → Warranty tab, else the default).
 function _propWarranty(tpcEur, plants) {
   var E = _WARRANTY_E;
-  var getS = function(k) { var p = _prop[k] || {}; return (p.mode === 'new' ? p.specs : (p.module ? p.module.specs : null)) || {}; };
+  var getS = function(k) { var p = _prop[k] || {}; return (_slotDesigned(p) ? p.specs : (p.module ? p.module.specs : null)) || {}; };
   var mode = function(k) { return (_prop[k] || {}).mode; };
   var pwtType = (getS('platform').pwt) || 'ice_only';
   var hasIce = pwtType === 'ice_only' || pwtType === 'ice_and_bev';
@@ -28268,7 +28578,9 @@ function _propWarranty(tpcEur, plants) {
   } catch (e) {}
   var ks = ['platform', 'pwt', 'tophat', 'eands'].filter(function(k) { return _prop[k] && (_prop[k].module || _prop[k].mode); });
   var newShare = ks.length ? ks.reduce(function(s, k) {
-    var n = E.NEWNESS[String(mode(k) || 'new').toLowerCase()]; return s + (n === undefined ? 1 : n);
+    var p = _prop[k] || {};
+    var n = (p.mode === 'derivative' && p.deriv) ? p.deriv.newness : E.NEWNESS[_devTypeOf({development_type: mode(k)})];
+    return s + (n === undefined ? 1 : n);
   }, 0) / ks.length : 0;
   var confirmed = (plants || []).filter(function(p) { return p.vehicle_capacity_yr != null; });
   var pq = E.plantQuality(_prop.operations || {}, confirmed.length ? confirmed : (plants || []));
@@ -28342,7 +28654,7 @@ function _propConsSaved() {
   if (typeof _CONS_E === 'undefined' || !_prop || !_prop.study) return null;
   function _getS(propKey) {
     var p = _prop[propKey] || {};
-    return (p.mode === 'new' ? p.specs : (p.module ? p.module.specs : null)) || {};
+    return (_slotDesigned(p) ? p.specs : (p.module ? p.module.specs : null)) || {};
   }
   var _plS = _getS('platform'), _pwtS = _getS('pwt'), _thS = _getS('tophat');
   var _edmS = _getS('epwt'), _batS = _getS('battery'), _esS = _getS('eands');
@@ -28383,7 +28695,7 @@ async function _ensurePropCo2() {
 }
 function _propCo2() {
   var cons = _propConsSaved();
-  var specs = {pwt_type: (_prop.platform && ((_prop.platform.mode === 'new' ? _prop.platform.specs : (_prop.platform.module || {}).specs) || {}).pwt) || 'ice_only'};
+  var specs = {pwt_type: (_prop.platform && ((_slotDesigned(_prop.platform) ? _prop.platform.specs : (_prop.platform.module || {}).specs) || {}).pwt) || 'ice_only'};
   if (cons && cons.ice) {
     specs.ice_co2_g_km = cons.ice.co2_g_km; specs.hybrid_type = cons.ice.hybrid_type;
     if (cons.ice.phev_blended_co2 != null) specs.phev_blended_co2 = cons.ice.phev_blended_co2;
@@ -28527,11 +28839,9 @@ function calcPropBizCase() {
   })
 
   // Total investment: R&D + tooling capex
+  // New: clean-sheet R&D; Derivative: its share; Reuse: none (spent on the module's own programme).
   var rdM = 0;
-  ['platform','pwt','epwt','battery','tophat','eands'].forEach(function(k) {
-    var p = _prop[k];
-    if (p && p.module) rdM += parseFloat(p.module.total_rd_spend_m||0);
-  });
+  ['platform','pwt','epwt','battery','tophat','eands'].forEach(function(k) { rdM += _slotRdM(_prop[k]); });
   var toolingM=0;
   var _ops=_prop.operations||{};
   // OEM plant capex only. supplier_parks is deliberately NOT summed here: nothing ever pushes into
@@ -28614,7 +28924,8 @@ function calcPropBizCase() {
     var p=_prop[k];
     if(p&&p.module){
       if(parseFloat(p.module.per_unit_tpc_eur||0)>0) _modTpc.push({name:p.module.name||k,tpc:parseFloat(p.module.per_unit_tpc_eur)});
-      if(parseFloat(p.module.total_rd_spend_m||0)>0)  _modRd.push({name:p.module.name||k,rd:parseFloat(p.module.total_rd_spend_m)});
+      if(_slotRdM(p)>0)  _modRd.push({name:p.module.name||k,rd:_slotRdM(p)});
+      else if(_slotReusedRdM(p)>0) _modRd.push({name:p.module.name||k,rd:_slotReusedRdM(p),sunk:true});
     }
   });
   // Render panels into prop-bc-content
@@ -28866,7 +29177,7 @@ async function confirmProposal(acceptedSop) {
     // ── Compute performance & market specs for simulation ─────────────────────────
     function _getS(propKey) {
       var p = _prop[propKey] || {};
-      return (p.mode === 'new' ? p.specs : (p.module ? p.module.specs : null)) || {};
+      return (_slotDesigned(p) ? p.specs : (p.module ? p.module.specs : null)) || {};
     }
     var _plS  = _getS('platform'), _pwtS = _getS('pwt'),    _thS  = _getS('tophat');
     var _edmS = _getS('epwt'),     _batS = _getS('battery'), _esS  = _getS('eands');
