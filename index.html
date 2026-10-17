@@ -22609,6 +22609,14 @@ function _propStoredSpecs(propKey) {
                     connectivity: (ps.connectivity || 30) / 100, infotainment: (ps.infotainment || 30) / 100,
                     cybersecurity: (ps.cybersecurity || 20) / 100}};
   }
+  if (propKey === 'battery') {
+    // the pack (a team module since 2026-10-17): the args _BATTERY_PC.calc gets in _propSlotEngine.
+    // Chemistry / make-buy travel in the config key (specs are numbers); the backend copies them back.
+    var mb = ps.make_buy || 'MAKE';
+    return {modType: 'battery', ck: ps.chemistry ? ps.chemistry + '_' + mb : null,
+            specs: {target_kwh: ps.target_kwh || 60, reliability: (ps.reliability || 50) / 100,
+                    cost_opt: (ps.cost_opt || 0) / 100}};
+  }
   return null;
 }
 
@@ -24496,13 +24504,16 @@ async function advanceToComponentsSourcing() {
     pwt:      function(ps){ return 'IC-'+(ps.config_key||'ICE').replace(/_ICE$/,'').replace(/_/g,'-'); },
     epwt:     function(ps){ return 'EP-'+(ps.epwt_class||'ePWT').replace(/_/g,'-'); },
     tophat:   function(ps){ return 'TH-'+((ps.config_key||'Body').replace(/_/g,'-')||'Body'); },
-    eands:    function(ps){ return 'ES-L'+(ps.adas_level||1); }
+    eands:    function(ps){ return 'ES-L'+(ps.adas_level||1); },
+    battery:  function(ps){ return 'BT-'+(ps.chemistry||'Pack').replace(/_/g,'-')+'-'+Math.round(ps.target_kwh||60); }
   };
-  var _SAVE_LBL = {platform:'platform', pwt:'ICE PWT', epwt:'ePWT', tophat:'Top Hat', eands:'E&S'};
-  var _saveSlots = ['platform','pwt','epwt','tophat','eands'];
+  var _SAVE_LBL = {platform:'platform', pwt:'ICE PWT', epwt:'ePWT', battery:'battery', tophat:'Top Hat', eands:'E&S'};
+  // The battery too since 2026-10-17: its R&D, engineers and lead time count like any module's.
+  var _saveSlots = ['platform','pwt','epwt','battery','tophat','eands'];
   for (var _si = 0; _si < _saveSlots.length; _si++) {
     var _sk = _saveSlots[_si], _slot = _prop[_sk];
     if (!_slotDesigned(_slot)) continue;
+    if (_sk === 'battery' && !/bev/.test((_prop.platform && _prop.platform.specs && _prop.platform.specs.pwt) || '')) continue;
     var _st = _propStoredSpecs(_sk);
     var _nm = _nextModName(_st.modType, _SAVE_NAME[_sk](_slot.specs || {}) + (_slot.mode === 'derivative' ? '-D' : ''));
     if ((await _savePropNew(_slot, _st.modType, _st.ck, _st.specs, _nm)) === false) {
@@ -29198,6 +29209,7 @@ async function confirmProposal(acceptedSop) {
     var platformId = (_prop.platform && _prop.platform.module) ? _prop.platform.module.id : null;
     var tophatId   = (_prop.tophat && _prop.tophat.module) ? _prop.tophat.module.id : null;
     var eandsId    = (_prop.eands  && _prop.eands.module)  ? _prop.eands.module.id  : null;
+    var batteryId  = (_prop.battery && _prop.battery.module) ? _prop.battery.module.id : null;
 
     // ── Compute performance & market specs for simulation ─────────────────────────
     function _getS(propKey) {
@@ -29296,6 +29308,13 @@ async function confirmProposal(acceptedSop) {
     var _spAdjTpc=(_prop.operations&&_prop.operations.supply_plan&&_prop.operations.supply_plan._total_piece_adj_eur)||0;
     var _enrichedTpc = _baseTpc + _manufVar + _buyAdj + _spAdjTpc;
 
+    // Every module the car is built from, by type (financial_engine.vehicle_module_ids): the four
+    // columns below hold one powertrain and no battery, so a dual model's e-motor and the battery
+    // pack are linked here -- their readiness, BC gate and SOP count like the others (2026-10-17).
+    _rolledSpecs.module_ids = {};
+    [['platform', platformId], ['ice_pwt', pwtId], ['epwt', epwtId], ['battery', batteryId],
+     ['tophat', tophatId], ['eands', eandsId]].forEach(function(e) { if (e[1]) _rolledSpecs.module_ids[e[0]] = e[1]; });
+
     var patch = {
       status:             'plan',
       platform_module_id: platformId,
@@ -29381,7 +29400,7 @@ async function confirmProposal(acceptedSop) {
       // and the platform could be starved while a powertrain took the quarter.
       // The backend resequences defensively too, but that is a net, not a plan.
       await (async function(){
-        var _mids = [platformId, pwtId, epwtId, tophatId, eandsId].filter(Boolean);
+        var _mids = [platformId, pwtId, epwtId, batteryId, tophatId, eandsId].filter(Boolean);
         for (var _i = 0; _i < _mids.length; _i++) {
           try {
             await fetch(API_URL + '/modules/' + _mids[_i] + '/activate', { method: 'POST' });
