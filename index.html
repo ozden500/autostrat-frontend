@@ -1611,6 +1611,7 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
         <select id="mod-source-select" onchange="onSourceModuleChange()">
           <option value="">— select from library —</option>
         </select>
+        <div id="mod-deriv-panel" style="margin-top:8px;"></div>
       </div>
 
       <!-- Module name -->
@@ -5010,6 +5011,94 @@ function setDevPath(path, btn) {
     document.getElementById('mod-specs-area').style.display='block';
     document.getElementById('mod-cost-preview').style.display='block';
   }
+  _labDerivPanel();
+}
+
+// ── Module Lab "Derive from Existing" (2026-10-17) ──────────────────────────────────────────
+// The parent's design is the starting point, the sliders stay inside _DERIV_E's envelope (as the
+// proposal's _derivUi does) and the panel shows what the derivative costs: the same rule
+// create_team_module applies through cost_engines.derivative_terms.
+var _LAB_ENGINE_CALC = {platform:'_lastPlatformCalc', ice_pwt:'_lastICEPWTCalc', epwt:'_lastEPWTCalc',
+                        tophat:'_lastTopHatCalc', eands:'_lastEandsCalc', battery:'_lastBatteryCalc'};
+// lab slider units per stored unit: 0-100 % sliders hold 0-1 ratings
+function _labScale(sp) { return (sp.unit === '%' && sp.max === 100) ? 100 : 1; }
+function _labParent() {
+  if (currentDevPath !== 'derivative') return null;
+  var id = (document.getElementById('mod-source-select') || {}).value;
+  return id ? ((teamModuleLibrary || []).find(function(m) { return m.id === id; }) || null) : null;
+}
+// The sliders on the stored scale (0-1 ratings), what the derivative test compares with the parent
+function _labStoredSpecs() {
+  var out = {};
+  (MOD_SPECS[currentModType] || []).forEach(function(sp) {
+    var el = document.getElementById('msr-' + sp.id);
+    if (el) out[sp.id] = parseFloat(el.value) / _labScale(sp);
+  });
+  return out;
+}
+function _labSetSlider(sp, el, v) {
+  el.value = v;
+  var lbl = document.getElementById('msv-' + sp.id);
+  if (lbl) lbl.textContent = el.value + sp.unit;
+}
+function onSourceModuleChange() {
+  var par = _labParent();
+  if (par) {
+    (MOD_SPECS[currentModType] || []).forEach(function(sp) {
+      var el = document.getElementById('msr-' + sp.id), v = parseFloat((par.specs || {})[sp.id]);
+      if (!el || isNaN(v)) return;
+      var f = _labScale(sp);
+      _labSetSlider(sp, el, f === 100 && v <= 1 ? Math.round(v * 100) : v);
+    });
+  }
+  scheduleCostCalc();
+}
+function _labDerivClamp() {
+  var par = _labParent(); if (!par) return;
+  var lim = _DERIV_E.terms(currentModType, par.config_key, par.specs || {}, par.config_key, {}).limits;
+  (MOD_SPECS[currentModType] || []).forEach(function(sp) {
+    var el = document.getElementById('msr-' + sp.id); if (!el || !lim[sp.id]) return;
+    var f = _labScale(sp), step = parseFloat(el.step) || 1, base = parseFloat(el.min) || 0;
+    var dec = (String(el.step).split('.')[1] || '').length;
+    var lo = base + Math.ceil((lim[sp.id][0] * f - base) / step - 1e-9) * step;
+    var hi = base + Math.floor((lim[sp.id][1] * f - base) / step + 1e-9) * step;
+    var v = parseFloat(el.value), nv = lo > hi ? v : Math.min(Math.max(v, lo), hi);
+    if (Math.abs(nv - v) > 1e-9) _labSetSlider(sp, el, nv.toFixed(dec));
+  });
+}
+function _labDerivTerms() {
+  var par = _labParent(); if (!par) return null;
+  return _DERIV_E.terms(currentModType, par.config_key, par.specs || {}, getSelectedConfigKey() || par.config_key, _labStoredSpecs());
+}
+function _labDerivPanel() {
+  var el = document.getElementById('mod-deriv-panel'); if (!el) return;
+  var par = _labParent();
+  if (!par) { el.innerHTML = ''; return; }
+  var t = _labDerivTerms(), eng = window[_LAB_ENGINE_CALC[currentModType]] || null;
+  var full = eng ? (eng.total_rd_cost_eur_m || 0) : 0, MO = 'font-family:DM Mono,monospace;';
+  var rdy = par.ready_year ? (par.ready_year + 'Q' + par.ready_quarter) : '';
+  var h = '<div style="' + MO + 'font-size:8px;color:var(--purple);text-transform:uppercase;letter-spacing:1px;margin-bottom:5px;">'
+    + 'Derivative of ' + (par.name || '') + ' <span style="color:var(--muted2);">(' + (par.config_key || '') + ')</span> · parent unchanged</div>';
+  if (!t || !t.ok) {
+    h += '<div style="' + MO + 'font-size:9px;color:var(--red);">⚠ ' + ((t && t.reason) || 'Configure the design') + '</div>';
+  } else {
+    var row = function(lbl, val) {
+      return '<div style="display:flex;justify-content:space-between;' + MO + 'font-size:9px;padding:2px 0;">'
+        + '<span style="color:var(--muted2);">' + lbl + '</span><span style="color:var(--white);">' + val + '</span></div>';
+    };
+    h += row('Change vs parent', Math.round(t.change * 100) + '% of the range')
+      + row('R&D', (full > 0 ? '€' + (full * t.rd_f).toFixed(1) + 'M · ' : '') + Math.round(t.rd_f * 100) + '% of a new module' + (full > 0 ? ' (€' + full.toFixed(1) + 'M)' : ''))
+      + row('Lead time', Math.round(t.lt_f * 100) + '% of a new module' + (rdy ? '; not before ' + rdy : ''))
+      + row('Tooling', Math.round(t.retool_f * 100) + '% where the parent is built / sourced');
+  }
+  var lim = _DERIV_E.terms(currentModType, par.config_key, par.specs || {}, par.config_key, {}).limits, rng = [];
+  (MOD_SPECS[currentModType] || []).forEach(function(sp) {
+    if (!lim[sp.id]) return;
+    var f = _labScale(sp), lo = Math.max(0, lim[sp.id][0] * f), hi = lim[sp.id][1] * f, d = f === 100 ? 0 : (hi < 10 ? 2 : 0);
+    rng.push(sp.name + ' ' + lo.toFixed(d) + '–' + hi.toFixed(d) + sp.unit);
+  });
+  if (rng.length) h += '<div style="' + MO + 'font-size:7.5px;color:var(--muted2);margin-top:5px;">Allowed range: ' + rng.join(' · ') + '</div>';
+  el.innerHTML = h;
 }
 
 function getStructuralKey(module) {
@@ -5117,6 +5206,8 @@ function getModuleSpecs() {
 
 function scheduleCostCalc() {
   clearTimeout(costDebounceTimer);
+  // a derivative's sliders stay in its envelope; its panel follows the engines' result
+  if (currentDevPath === 'derivative') { _labDerivClamp(); setTimeout(_labDerivPanel, 450); }
   if (currentModType === 'platform') {
     costDebounceTimer = setTimeout(fetchPlatformStdCost, 400);
   } else if (currentModType === 'ice_pwt') {
@@ -9542,6 +9633,11 @@ async function submitModule() {
   if (!name) { toast('⚠ Enter a module name'); return; }
   if (currentDevPath==='reuse') { toast('✓ Module reused — available immediately'); return; }
   const sourceId = document.getElementById('mod-source-select')?.value||null;
+  if (currentDevPath==='derivative') {
+    if (!sourceId) { toast('⚠ Select the module to derive from'); return; }
+    const _dt = _labDerivTerms();
+    if (_dt && !_dt.ok) { toast('⚠ ' + _dt.reason); return; }
+  }
   const msgEl = document.getElementById('mod-msg');
   msgEl.textContent='Submitting...'; msgEl.style.color='var(--cyan)';
   try {
