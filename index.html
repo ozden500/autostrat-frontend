@@ -2657,7 +2657,7 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
     <label style="display:flex;gap:10px;align-items:flex-start;cursor:pointer;margin-top:12px;">
       <input id="cfg-ev-market" type="checkbox" onchange="settingsSaveEvMarket(this.checked)" style="margin-top:3px;">
       <span style="font-size:12px;color:#cbd5e1;">Charging infrastructure grows over the game
-        <span style="display:block;font-size:10px;color:var(--muted2);margin-top:4px;">Checked: each country's public charging network grows on an S-curve from its real 2025 density, and BEV appeal grows with it. Unchecked: the networks stay at their 2025 level. Either way buyers weigh running cost (energy prices, ETS2 from 2028, each car's efficiency) and each country's own EV preference, so 2025 BEV shares match reality. Fixed once round 1 has started.</span>
+        <span style="display:block;font-size:10px;color:var(--muted2);margin-top:4px;">Checked: each country's public charging network grows on an S-curve from its real 2025 density, and BEV appeal grows with it. Unchecked: the networks stay at their 2025 level. Either way buyers weigh running cost (energy prices, ETS2 from 2028, each car's efficiency) and each country's own EV preference, so 2025 BEV shares match reality. Set it during set-up: it is fixed once round 1 has been cleared.</span>
         <span id="cfg-ev-note" style="display:block;font-size:10px;color:#f59e0b;margin-top:4px;"></span>
       </span>
     </label>
@@ -16727,7 +16727,7 @@ async function settingsSaveEvMarket(on) {
     const res = await fetch(`${API_URL}/sessions/${sessionId}/ev-market`, {
       method: 'PATCH', headers: _cmdAdminHeaders(true), body: JSON.stringify({enabled: !!on})
     });
-    if (res.status === 409) { toast('EV adoption is fixed once round 1 has started'); _settingsLoadEvMode(); return; }
+    if (res.status === 409) { toast('EV adoption is fixed once round 1 has been cleared'); _settingsLoadEvMode(); return; }
     if (!res.ok) throw new Error(await res.text());
     toast(on ? '✓ Charging infrastructure grows over the game' : '✓ Charging infrastructure stays at its 2025 level');
     _settingsLoadEvMode();
@@ -16746,7 +16746,7 @@ async function _settingsLoadEvMode() {
     cb.disabled = !!d.locked;
     if (note) note.textContent = d.mode === 'off'
       ? 'This session started before running cost existed: no EV demand model (fixed).'
-      : (d.locked ? 'Fixed: round 1 has started.' : '');
+      : (d.locked ? 'Fixed: round 1 has been cleared.' : '');
   } catch (e) { /* keep the session row's value */ }
 }
 
@@ -24463,7 +24463,27 @@ var _PROP_SIZE_LABEL = {micro:'Micro',small:'Small',medium:'Medium',large:'Large
 // block the step advance), true if created, undefined if nothing to do.
 async function _savePropNew(slot, modType, ck, specs, autoName) {
   if (!_slotDesigned(slot) || !ck) return;
-  if (slot.module && slot.module.id) return; // already saved
+  var sig = JSON.stringify([ck, specs, slot.mode === 'derivative' ? slot.parent.id : null]);
+  if (slot.module && slot.module.id) {
+    // Already saved as a draft: re-cost it if the design changed since (going back to §2-§5).
+    // Same id, so §8's contracts stay attached; the books charge what this stores.
+    if (slot.module._sig === sig) return;
+    try {
+      var ru = await fetch(API_URL + '/modules/' + slot.module.id + '/draft', {
+        method: 'PATCH', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({config_key: ck, specs: specs,
+          developed_from_module_id: slot.mode === 'derivative' ? slot.parent.id : null})
+      });
+      var du = await ru.json();
+      if (ru.ok && du.success) { slot.module._sig = sig; return true; }
+      console.warn('draft re-cost failed', modType, du.detail || du);
+      if (du.detail) toast('⚠ ' + du.detail);
+      return false;
+    } catch(e) {
+      console.warn('draft re-cost failed', modType, e);
+      return false;
+    }
+  }
   try {
     var r = await fetch(API_URL + '/teams/' + teamId + '/modules', {
       method: 'POST', headers: {'Content-Type':'application/json'},
@@ -24476,6 +24496,7 @@ async function _savePropNew(slot, modType, ck, specs, autoName) {
     if (d.success && d.module_id) {
       if (!slot.module) slot.module = {};
       slot.module.id = d.module_id;
+      slot.module._sig = sig;
       toast('\u23f3 New ' + modType + ' module queued: ' + autoName);
       return true;
     }
@@ -24488,11 +24509,10 @@ async function _savePropNew(slot, modType, ck, specs, autoName) {
   }
 }
 
-async function advanceToComponentsSourcing() {
-  var vp = (_prop.operations && _prop.operations.vehicle_plants) || [];
-  var confirmed = vp.filter(function(p){ return p.vehicle_capacity_yr > 0; });
-  if (!confirmed.length) { toast('\u26a0 Confirm at least one vehicle plant allocation first.'); return; }
-
+// The proposal's New / Derivative slots as draft modules (module ids for §8 capacity): created at
+// §7→§8, re-costed in place when the design changed since (_savePropNew), and synced again at
+// confirm. false = a save failed (toasted).
+async function _savePropModules() {
   // \u2500\u2500 Create 'new development' modules (as drafts) so module_id is available for \u00a78 capacity \u2500\u2500
   var _modCounts = {};
   (teamModuleLibrary||[]).forEach(function(m){ _modCounts[m.module_type]=(_modCounts[m.module_type]||0)+1; });
@@ -24517,9 +24537,18 @@ async function advanceToComponentsSourcing() {
     var _st = _propStoredSpecs(_sk);
     var _nm = _nextModName(_st.modType, _SAVE_NAME[_sk](_slot.specs || {}) + (_slot.mode === 'derivative' ? '-D' : ''));
     if ((await _savePropNew(_slot, _st.modType, _st.ck, _st.specs, _nm)) === false) {
-      toast('\u26a0 Failed to create ' + (_slot.mode === 'derivative' ? 'derivative ' : 'new ') + _SAVE_LBL[_sk] + ' module \u2014 cannot continue'); return;
+      toast('\u26a0 Failed to save ' + (_slot.mode === 'derivative' ? 'derivative ' : 'new ') + _SAVE_LBL[_sk] + ' module \u2014 cannot continue'); return false;
     }
   }
+  return true;
+}
+
+async function advanceToComponentsSourcing() {
+  var vp = (_prop.operations && _prop.operations.vehicle_plants) || [];
+  var confirmed = vp.filter(function(p){ return p.vehicle_capacity_yr > 0; });
+  if (!confirmed.length) { toast('\u26a0 Confirm at least one vehicle plant allocation first.'); return; }
+
+  if ((await _savePropModules()) === false) return;
 
   var s7 = document.getElementById('prop-sec-7-status');
   if (s7) {
@@ -29203,6 +29232,11 @@ async function confirmProposal(acceptedSop) {
   if (btn) { btn.disabled = true; btn.textContent = 'Submitting...'; }
 
   try {
+    // Drafts follow the design as it is now (a §2-§5 change after §8 re-costs them)
+    if ((await _savePropModules()) === false) {
+      if (btn) { btn.disabled = false; btn.textContent = '\u2713 SUBMIT PROPOSAL'; }
+      return;
+    }
     // \u2500\u2500 Collect module IDs (new ones already created as 'draft' at the \u00a77\u21928 transition) \u2500\u2500
     var pwtId      = (_prop.pwt    && _prop.pwt.module)    ? _prop.pwt.module.id    : null;
     var epwtId     = (_prop.epwt   && _prop.epwt.module)   ? _prop.epwt.module.id   : null;
