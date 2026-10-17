@@ -9389,6 +9389,9 @@ var _MARKET_E = {
     // a facelift's age credit), at most -15. o.age_quarters, 0 for a proposal at launch (2026-10-06).
     var _ageQ = parseFloat(o.age_quarters) || 0;
     if (_ageQ > 0) utility = Math.max(0, utility - Math.min(15, _ageQ * 0.5));
+    // Shared design with another of the team's models (o.shared_pts, _SHARED_E; main._mce_utility)
+    var _sdPts = parseFloat(o.shared_pts) || 0;
+    if (_sdPts > 0) utility = Math.max(0, utility - _sdPts);
     utility = Math.round(utility);
 
     // ── 4. Market share (logit vs segment-specific external competitors) ─
@@ -21423,6 +21426,7 @@ async function loadVehicleProposal() {
       fetch(API_URL + '/module-configs/epwt'),
     ]);
     const vehicles = (await vRes.json()).vehicles || [];
+    _prop.teamVehicles = vehicles;    // the team's other models: shared design (_propSharedDesign)
     _prop.modules      = (await mRes.json()).modules   || [];
     _propTopHatConfigs = (await thRes.json()).configs  || [];
     _propICEPWTConfigs = (await iceRes.json()).configs || [];
@@ -22624,6 +22628,66 @@ var _DERIV_E = {
   }
 };
 
+// Shared design ("badge engineering", 2026-10-17): utility points a model loses when it visibly
+// shares its design with another of the team's models on sale. Segment sensitivity (vans hardly,
+// premium a lot) x the model's own proposition (premiumness) x exposure; a cheaper twin weighs
+// fully, a dearer one half. What buyers see: top hat 70%, E&S 15%, platform 10%, powertrain 5%;
+// a derivative shares 1 - 0.6 x change with its parent. Fleet buyers ignore it. Mirror of
+// financial_engine.sd_module_similarity / sd_overlap / shared_design_pts (parity-checked).
+var _SHARED_E = {
+  GROUP_OF: {tophat: 'tophat', eands: 'eands', platform: 'platform', ice_pwt: 'powertrain', epwt: 'powertrain', battery: 'powertrain'},
+  VIS_W: {tophat: 0.70, eands: 0.15, platform: 0.10, powertrain: 0.05},
+  SEG_SENS: {a_segment: 0.45, b_segment: 0.55, c_segment: 0.70, d_segment: 0.85, e_segment: 1.0, f_segment: 1.0,
+             sports: 1.0, mpv: 0.45, pickup: 0.35, c_van: 0.15, d_van: 0.15, e_van: 0.15},
+  MAX_PTS: 6.0, DERIV_K: 0.6, DERIV_C_LEGACY: 0.5, UPMARKET_F: 0.5, PROP_F: [0.5, 1.5],
+  _r2: function(x) { return Math.floor(x * 100 + 0.5) / 100; },
+  _change: function(m) {
+    var d = m.derivative;
+    return (d && typeof d === 'object' && d.change != null) ? parseFloat(d.change) : this.DERIV_C_LEGACY;
+  },
+  similarity: function(a, b) {
+    if (!a || !b) return 0;
+    var ia = a.id, ib = b.id;
+    if (ia && ia === ib) return 1;
+    var pa = a.developed_from_module_id, pb = b.developed_from_module_id;
+    var sa = pa ? 1 - this.DERIV_K * this._change(a) : 0, sb = pb ? 1 - this.DERIV_K * this._change(b) : 0;
+    if (pa && ib && pa === ib) return sa;
+    if (pb && ia && pb === ia) return sb;
+    if (pa && pa === pb) return sa * sb;
+    return 0;
+  },
+  overlap: function(ma, mb) {
+    var self = this, tot = 0;
+    Object.keys(this.VIS_W).forEach(function(g) {
+      var best = 0;
+      (ma || []).forEach(function(a) {
+        if (self.GROUP_OF[a.module_type] !== g) return;
+        (mb || []).forEach(function(b) {
+          if (self.GROUP_OF[b.module_type] === g) best = Math.max(best, self.similarity(a, b));
+        });
+      });
+      tot += self.VIS_W[g] * best;
+    });
+    return Math.min(1, tot);
+  },
+  // twins: [[overlap, twin price EUR k], ...]
+  pts: function(seg, prem, priceK, twins) {
+    var p = parseFloat(priceK) || 0, keep = 1, self = this;
+    (twins || []).forEach(function(t) {
+      var ov = parseFloat(t[0]) || 0;
+      if (ov <= 0) return;
+      var f = (p > 0 && (parseFloat(t[1]) || 0) > p) ? self.UPMARKET_F : 1;
+      keep *= 1 - Math.min(1, ov * f);
+    });
+    var exposure = 1 - keep;
+    if (exposure <= 0) return 0;
+    var pr = (prem == null) ? 0.3 : parseFloat(prem);
+    if (pr > 1) pr /= 100;
+    var propF = Math.min(this.PROP_F[1], Math.max(this.PROP_F[0], 0.5 + pr));
+    return this._r2(this.MAX_PTS * exposure * (this.SEG_SENS[seg] != null ? this.SEG_SENS[seg] : 0.7) * propF);
+  }
+};
+
 // A module's development type: 'new' / 'derivative' / 'reuse'. Rows written before the derivative
 // redesign say 'modify' — the same thing (financial_engine.dev_type_of).
 function _devTypeOf(m) {
@@ -22750,6 +22814,39 @@ function _derivSlotTerms(propKey) {
   p.deriv = t.ok ? t : null;
   p.derivReason = t.ok ? '' : t.reason;
   return t;
+}
+
+// The proposal's shared design (_SHARED_E) against the team's models on sale or approved: the
+// modules it reuses, and its derivatives (the parent + how far they moved). New slots share nothing.
+function _propSharedDesign(priceK, prem) {
+  var out = {pts: 0, twins: []};
+  var mods = [], byId = {};
+  (_prop.modules || []).forEach(function(m) { byId[m.id] = m; });
+  ['platform', 'pwt', 'epwt', 'battery', 'tophat', 'eands'].forEach(function(k) {
+    var p = _prop[k]; if (!p) return;
+    if (p.mode === 'reuse' && p.module) mods.push(byId[p.module.id] || p.module);
+    else if (p.mode === 'derivative' && p.parent) {
+      var t = _derivSlotTerms(k);
+      mods.push({module_type: _DERIV_SLOT_TYPE[k] || k, developed_from_module_id: p.parent.id,
+                 derivative: {change: t && t.ok ? t.change : 1}});
+    }
+  });
+  if (!mods.length) return out;
+  var ownId = _prop.study && _prop.study.id, twins = [];
+  (_prop.teamVehicles || []).forEach(function(v) {
+    if (v.id === ownId || (v.status !== 'on_sale' && v.status !== 'approved')) return;
+    var rs = v.rolled_up_specs || {}, ids = [];
+    ['platform_module_id', 'pwt_module_id', 'tophat_module_id', 'eands_module_id'].forEach(function(c) { if (v[c]) ids.push(v[c]); });
+    Object.keys(rs.module_ids || {}).forEach(function(k) { var m = rs.module_ids[k]; if (m && ids.indexOf(m) < 0) ids.push(m); });
+    var ov = _SHARED_E.overlap(mods, ids.map(function(i) { return byId[i]; }).filter(Boolean));
+    if (ov > 0) {
+      twins.push([ov, v.price_eur_k || rs.price_eur_k]);
+      out.twins.push({name: v.name || 'model', overlap: ov});
+    }
+  });
+  var seg = _prop.study ? _prop.study.segment_code : 'c_segment';
+  out.pts = _SHARED_E.pts(seg, prem, priceK, twins);
+  return out;
 }
 
 // Called at the start of every configurator handler: locks the architecture selectors and holds
@@ -23720,7 +23817,7 @@ function buildReviewSection() {
     var _comPrice = (_prop.commercial && _prop.commercial.years && _prop.commercial.years.length > 0)
       ? _prop.commercial.years[0].price : null;
     try {
-      _propMkt = _MARKET_E.calc({
+      var _mIn = {
         segment_code:   _prop.study ? _prop.study.segment_code : 'c_segment',
         price_eur_k:    _comPrice,
         pwt_type:       plS.pwt || (hasIce ? 'ice_only' : hasBev ? 'bev_only' : 'ice_only'),
@@ -23737,7 +23834,15 @@ function buildReviewSection() {
         connectivity:   esS.connectivity|| 30,
         brand_code:     _prop.study ? (_prop.study.brand_code || '') : '',
         brand_scores:   _brandScores || null
-      });
+      };
+      _propMkt = _MARKET_E.calc(_mIn);
+      // shared design with the team's other models, at the list price the score used
+      var _sd = _propSharedDesign(_propMkt.price_eur_k, _mIn.premiumness);
+      if (_sd.pts > 0) {
+        _mIn.shared_pts = _sd.pts;
+        _propMkt = _MARKET_E.calc(_mIn);
+      }
+      _propMkt.shared = _sd;
     } catch(e) { console.warn('Market engine error:', e); }
   }
 
@@ -23988,6 +24093,14 @@ function buildReviewSection() {
     h += '<div style="font-family:Orbitron,sans-serif;font-size:40px;font-weight:800;color:'+utilColor+';line-height:1;">'+mkt.utility_score+'</div>';
     h += '<div style="font-family:DM Mono,monospace;font-size:8px;color:var(--muted2);margin-top:3px;">out of 100 — at launch</div>';
     h += '<div style="font-family:DM Mono,monospace;font-size:7px;color:var(--muted);margin-top:5px;line-height:1.4;">Ages −0.5 pts/quarter<br>after SOP (max −15)</div>';
+    if (mkt.shared && mkt.shared.pts > 0) {
+      h += '<div style="font-family:DM Mono,monospace;font-size:7px;color:#fb923c;margin-top:5px;line-height:1.4;" '
+         + 'title="Buyers mark a model down when it visibly shares its design with another of your models on sale: '
+         + 'mostly the top hat, a little E&amp;S, platform and powertrain. Strong in premium segments, weak for vans; '
+         + 'a cheaper twin hurts more than a dearer one. Fleet buyers ignore it.">'
+         + 'Shared design −' + mkt.shared.pts.toFixed(1) + ' pts<br>with ' + mkt.shared.twins.map(function(t) {
+             return t.name + ' (' + Math.round(t.overlap * 100) + '%)'; }).join(', ') + '</div>';
+    }
     h += '</div>';
 
     // Middle: KPI tiles
