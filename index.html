@@ -9200,8 +9200,20 @@ var _LAUNCH_E = {
     var years = [];
     rows.forEach(function(r) { if (r[2] > 0 && years.indexOf(r[0]) < 0) years.push(r[0]); });
     years.sort(function(a, b) { return a - b; });
+    // a plan on §9's volume curve counts its first four quarters on sale (its SOP year is partial)
+    var curveRev = 0;
+    ((commercialPlan || {}).markets || []).forEach(function(m) {
+      var ann = parseFloat(m.annual_volume) || 0;
+      if (!m.selected || ann <= 0) return;
+      var ys = m.years || [{}], d = parseFloat((ys[0] || {}).discount) || 0;
+      ys.forEach(function(y) { if (sopYear && parseInt(y.year, 10) === parseInt(sopYear, 10)) d = parseFloat(y.discount) || 0; });
+      var f4 = 0; for (var i = 0; i < 4; i++) f4 += _VOLCURVE_E.factor(i);
+      curveRev += ann * f4 / 4 * parseFloat(m.msrp_eur_k || 0) * 1000 * L.OEM_SHARE * (1 - d / 100);
+    });
     var rev;
-    if (years.length) {
+    if (curveRev > 0) {
+      rev = curveRev;
+    } else if (years.length) {
       var yr = (sopYear && years.indexOf(parseInt(sopYear, 10)) >= 0) ? parseInt(sopYear, 10) : years[0];
       rev = 0;
       rows.forEach(function(r) { if (r[0] === yr) rev += r[2] * r[1] * 1000 * L.OEM_SHARE * (1 - r[3] / 100); });
@@ -9221,6 +9233,30 @@ var _LAUNCH_E = {
     });
     var eff = stdM > 0 ? Math.exp(-spent / stdM) : 1;
     return Math.round(gap0 * eff * Math.pow(1 - L.CLOSE_Q, t) * 1e6) / 1e6;
+  }
+};
+
+// §9 volume curve (2026-10-20, docs/LIFECYCLE_PLAN_SPEC.md §2). Twin of financial_engine.
+// plan_volume_factor / plan_year_volumes (parity-checked): the share of the new model's annual
+// volume it sells in its i-th quarter on sale, from clearing's awareness gap (average awareness,
+// standard launch spend) and model-age penalty, through exp(LAMBDA x U) and the team nest ^THETA.
+var _VOLCURVE_E = {
+  THETA: 0.6, AWARENESS: 50, LAMBDA: 0.04, AGE_PTS: 0.5, AGE_MAX: 15,
+  factor: function(i) {
+    var E = _VOLCURVE_E, L = _LAUNCH_E;
+    i = Math.max(0, Math.floor(i));
+    var g = i <= L.FADE_Q ? L.GAP_MAX * (L.AWARE_OFFSET - E.AWARENESS / 100) * Math.exp(-1) * Math.pow(1 - L.CLOSE_Q, i) : 0;
+    var age = Math.min(E.AGE_MAX, E.AGE_PTS * i);
+    return Math.round(Math.pow(1 - g, E.THETA) * Math.exp(-E.LAMBDA * E.THETA * age) * 1e6) / 1e6;
+  },
+  yearVolumes: function(annual, sopQ, eopQ) {
+    var out = {}, a = parseFloat(annual) || 0;
+    for (var q = sopQ; q <= eopQ; q++) {
+      var y = 2025 + Math.floor(q / 4);
+      out[y] = (out[y] || 0) + a / 4 * _VOLCURVE_E.factor(q - sopQ);
+    }
+    Object.keys(out).forEach(function(y) { out[y] = Math.round(out[y] / 10) * 10; });
+    return out;
   }
 };
 
@@ -24922,13 +24958,17 @@ function buildCommercialSection() {
     _prop.commercial.markets=SALES_MARKETS.map(function(sm){
       return {region:sm.region,selected:sm.default_vol_pct>0,plant_id:null,
               msrp_eur_k:Math.round(defPK*(sm.default_price_idx||1)*10)/10,
+              annual_volume:Math.round(8000*sm.default_vol_pct/100),
               years:lyrs.map(function(yr,i){return {year:yr,discount:5,volume:Math.round(8000*(ramp[i]||0.7)*sm.default_vol_pct/100)};})};
     });
   }
+  var _sopQ=v&&v.start_year?(parseInt(v.start_year)-2025)*4+(parseInt(v.start_quarter)||1)-1:null;
+  var _eopQ=v&&v.end_year?(parseInt(v.end_year)-2025)*4+(parseInt(v.end_quarter)||4)-1:null;
   _prop.commercial.markets.forEach(function(mkt){
     if(!mkt.years||!mkt.years.length) mkt.years=lyrs.map(function(yr){return{year:yr,discount:5,volume:0};});
     if(!mkt.msrp_eur_k) mkt.msrp_eur_k=defPK;
     if(!mkt.plant_id){var cp=_findClosestPlant(mkt.region);if(cp)mkt.plant_id=cp.id;}
+    _propComApplyCurve(mkt,lyrs,_sopQ,_eopQ);
   });
   var plants=(_prop.operations&&(_prop.operations.vehicle_plants||_prop.operations.plants))||[];
   var tpcNum=_computeBaseTpc();
@@ -24975,6 +25015,8 @@ function buildCommercialSection() {
       html+='<div style="display:flex;align-items:center;gap:12px;margin-bottom:10px;">';
       html+='<div style="font-size:9px;color:var(--muted2);">MSRP (€ k):</div>';
       html+='<input type="number" min="5" max="500" step="0.5" value="'+(mkt.msrp_eur_k||defPK)+'" id="prop-com-msrp-'+sm.region+'" oninput="onPropComMsrp(\''+sm.region+'\',this.value)" style="width:90px;background:var(--s2);border:1px solid var(--border2);border-radius:2px;color:var(--gold);font-family:DM Mono,monospace;font-size:12px;text-align:center;padding:4px 6px;">';
+      html+='<div style="font-size:9px;color:var(--muted2);margin-left:12px;" title="Units a year the new model sells here once launched, before it ages. Each year below follows from it.">Annual volume, new model:</div>';
+      html+='<input type="number" min="0" max="2000000" step="500" value="'+(mkt.annual_volume||0)+'" id="prop-com-annual-'+sm.region+'" onchange="onPropComAnnual(\''+sm.region+'\',this.value)" style="width:100px;background:var(--s2);border:1px solid var(--border2);border-radius:2px;color:var(--text);font-family:DM Mono,monospace;font-size:12px;text-align:center;padding:4px 6px;">';
       html+='</div>';
       html+='<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;min-width:860px;">';
       html+='<thead><tr>';
@@ -24988,7 +25030,7 @@ function buildCommercialSection() {
         html+='<tr id="prop-com-'+sm.region+'-yr-'+i+'-row" style="border-bottom:1px solid var(--border);'+bg+'">';
         html+='<td style="padding:6px 10px;font-family:DM Mono,monospace;font-size:11px;font-weight:700;color:var(--white);text-align:center;">'+yr.year+'</td>';
         html+='<td style="padding:4px 6px;text-align:center;"><input type="number" min="0" max="40" step="0.5" value="'+yr.discount+'" oninput="onPropComYearDiscount(\''+sm.region+'\','+i+',this.value)" style="width:65px;background:var(--s2);border:1px solid var(--border2);border-radius:2px;color:var(--text);font-family:DM Mono,monospace;font-size:11px;text-align:center;padding:3px;"></td>';
-        html+='<td style="padding:4px 6px;text-align:center;"><input type="number" min="0" max="500000" step="500" value="'+yr.volume+'" oninput="onPropComYearVolume(\''+sm.region+'\','+i+',this.value)" style="width:90px;background:var(--s2);border:1px solid var(--border2);border-radius:2px;color:var(--text);font-family:DM Mono,monospace;font-size:11px;text-align:center;padding:3px;"></td>';
+        html+='<td style="padding:6px 10px;font-family:DM Mono,monospace;font-size:11px;color:var(--text);text-align:center;">'+(yr.volume||0).toLocaleString()+'</td>';
         html+='<td style="padding:6px 10px;font-family:DM Mono,monospace;font-size:10px;color:var(--muted2);text-align:center;">€'+Math.round(netRev).toLocaleString()+'</td>';
         html+='<td id="prop-com-'+sm.region+'-yr-'+i+'-cost" style="padding:6px 10px;font-family:DM Mono,monospace;font-size:10px;color:var(--orange);text-align:center;">€'+Math.round(totalCost).toLocaleString()+'</td>';
         var mc=margin>=0?'var(--cyan)':'var(--red)';
@@ -25016,6 +25058,8 @@ function buildCommercialSection() {
       html+='<td style="padding:6px 10px;font-family:DM Mono,monospace;font-size:10px;color:var(--orange);text-align:center;" id="prop-com-'+sm.region+'-total-cost">'+totCostM.toFixed(2)+'€M</td>';
       html+='<td style="padding:6px 10px;font-family:DM Mono,monospace;font-size:11px;font-weight:700;color:'+tgcC+';text-align:center;" id="prop-com-'+sm.region+'-total-gc">'+(totGC>=0?'+':'')+totGC.toFixed(2)+'€M</td></tr>';
       html+='</tbody></table></div>';
+      html+='<div style="font-family:DM Mono,monospace;font-size:9px;color:var(--muted2);margin-top:6px;">Yearly volumes follow the model\'s life: the launch ramp, then ageing (buyers score a model −0.5 points a quarter since SOP, at most −15): '
+        +Math.round(_VOLCURVE_E.factor(0)*100)+'% of the annual volume at SOP, '+Math.round(_VOLCURVE_E.factor(12)*100)+'% after 3 years, '+Math.round(_VOLCURVE_E.factor(30)*100)+'% from 7½ years. SOP and EOP years count only their quarters on sale.</div>';
     }
     html+='</div>';
   });
@@ -25046,6 +25090,22 @@ function onPropComYearDiscount(region,idx,val){
   var mkt=((_prop.commercial&&_prop.commercial.markets)||[]).find(function(m){return m.region===region;});
   if(mkt&&mkt.years&&mkt.years[idx])mkt.years[idx].discount=parseFloat(val)||0;
   _refreshMarketRows(region);
+}
+// §9 volume curve: each year's volume from the market's annual volume of the new model
+// (_VOLCURVE_E). A plan saved before 2026-10-20 starts from its largest year.
+function _propComApplyCurve(mkt,lyrs,sopQ,eopQ){
+  if(sopQ===null||eopQ===null||eopQ<sopQ)return;
+  if(mkt.annual_volume===undefined||mkt.annual_volume===null)
+    mkt.annual_volume=(mkt.years||[]).reduce(function(a,y){return Math.max(a,parseInt(y.volume)||0);},0);
+  var vols=_VOLCURVE_E.yearVolumes(mkt.annual_volume,sopQ,eopQ);
+  var disc={};(mkt.years||[]).forEach(function(y){disc[y.year]=y.discount;});
+  mkt.years=lyrs.map(function(yr){return {year:yr,discount:disc[yr]!==undefined?disc[yr]:5,volume:vols[yr]||0};});
+}
+function onPropComAnnual(region,val){
+  var mkt=((_prop.commercial&&_prop.commercial.markets)||[]).find(function(m){return m.region===region;});
+  if(!mkt)return;
+  mkt.annual_volume=Math.max(0,parseInt(val)||0);
+  buildCommercialSection();
 }
 function onPropComYearVolume(region,idx,val){
   var mkt=((_prop.commercial&&_prop.commercial.markets)||[]).find(function(m){return m.region===region;});
@@ -25354,6 +25414,46 @@ var _LIFECYCLE_E = {
     var cow = tot > 0 ? cw / tot : 0;
     return {pool_eur: Math.round(pool * 100) / 100, difficulty: Math.round((1 + _LIFECYCLE_E.DIFF_K * cow) * 10000) / 10000,
             co_weighted: Math.round(cow * 10000) / 10000};
+  },
+  // §10 lifecycle assumption (docs/LIFECYCLE_PLAN_SPEC.md §3): the chain of cost-down projects the
+  // allocator would fund on this model, on its terms (financial_engine.lifecycle_candidates:
+  // LC_VAVE_CAPTURE / LC_VAVE_PAYBACK / LC_PHASES / LC_ENG_SHARE / LC_RAMP_FIRST / LC_HORIZON_Q /
+  // LC_MIN_LEFT_Q / LC_TAX_KEEP / LC_STD hurdle), one at a time from SOP. units[i] = cars sold in
+  // the i-th quarter on sale (the last is EOP); choice 'std' = the largest size clearing HURDLE,
+  // 'S' / 'M' / 'L' = that size while it pays back its cost. Per quarter: save EUR/car, eng and
+  // capex EUR M.
+  VAVE: {S: {cap: 0.15, pay: 0.5, e: 1, ind: 1}, M: {cap: 0.30, pay: 0.8, e: 2, ind: 1}, L: {cap: 0.50, pay: 1.2, e: 3, ind: 2}},
+  ENG_SHARE: 0.25, RAMP_FIRST: 0.5, HORIZON_Q: 12, MIN_LEFT_Q: 2, TAX_KEEP: 0.75, HURDLE: 1.5,
+  costDowns: function(pool, choice, units, ratePa) {
+    var E = _LIFECYCLE_E, n = units.length, out = {save: [], eng: [], capex: [], projects: []};
+    for (var k = 0; k < n; k++) { out.save.push(0); out.eng.push(0); out.capex.push(0); }
+    var sizes = choice === 'std' ? ['L', 'M', 'S'] : E.VAVE[choice] ? [choice] : [];
+    var hurdle = choice === 'std' ? E.HURDLE : 1.0;
+    if (!sizes.length || !pool || !(pool.pool_eur > 0)) return out;
+    var rq = Math.pow(1 + ratePa, 0.25) - 1, eop = n - 1, d = 0, captured = 0;
+    while (d <= eop) {
+      var uq = units[d] || 0;
+      if (uq <= 0) { d++; continue; }
+      var pick = null;
+      for (var z = 0; z < sizes.length && !pick; z++) {
+        var V = E.VAVE[sizes[z]], co = d + V.e + V.ind;
+        var s = V.cap * (pool.pool_eur - captured);
+        if (co > eop - E.MIN_LEFT_Q || s < 1) continue;
+        var capex = s * uq * 4 * V.pay * pool.difficulty / 1e6, eng = E.ENG_SHARE * capex, pv = 0;
+        for (var t = co; t <= Math.min(eop, co + E.HORIZON_Q - 1); t++)
+          pv += (t === co ? E.RAMP_FIRST : 1) * uq * s / 1e6 / Math.pow(1 + rq, t - d + 1);
+        pv *= E.TAX_KEEP;
+        if (pv / (capex + eng) >= hurdle) pick = {size: sizes[z], V: V, co: co, s: s, capex: capex, eng: eng, bc: pv / (capex + eng)};
+      }
+      if (!pick) break;
+      for (var a = d; a < d + pick.V.e; a++) out.eng[a] += pick.eng / pick.V.e;
+      for (var b = d + pick.V.e; b < pick.co; b++) out.capex[b] += pick.capex / pick.V.ind;
+      for (var c = pick.co; c <= eop; c++) out.save[c] += (c === pick.co ? E.RAMP_FIRST : 1) * pick.s;
+      out.projects.push({size: pick.size, decided: d, changeover: pick.co, saving_eur: pick.s,
+                         capex_m: pick.capex, eng_m: pick.eng, bc: pick.bc});
+      captured += pick.s; d = pick.co + 1;
+    }
+    return out;
   }
 };
 // The proposal's modules as pool parts (battery is not a module slot, as in the backend).
@@ -26241,7 +26341,9 @@ function _suggestedVolK(){
   var mkts=((_prop.commercial&&_prop.commercial.markets)||[]).filter(function(m){return m.selected!==false;});
   if(!mkts.length)return 0;
   var total=0;
-  mkts.forEach(function(m){var ys=m.years||[];if(!ys.length)return;total+=ys.reduce(function(s,y){return s+(y.volume||0);},0)/ys.length;});
+  mkts.forEach(function(m){
+    if(parseFloat(m.annual_volume)>0){total+=parseFloat(m.annual_volume);return;}   // §9 volume curve
+    var ys=m.years||[];if(!ys.length)return;total+=ys.reduce(function(s,y){return s+(y.volume||0);},0)/ys.length;});
   return Math.round(total/1000);
 }
 
@@ -29110,6 +29212,14 @@ function _propCo2() {
           }};
 }
 
+function onPropLcPlan(v) {
+  if (!_prop.commercial) _prop.commercial = {};
+  _prop.commercial.lifecycle_plan = v;
+  calcPropBizCase();
+}
+function _qLabelAbs(qabs, i) {
+  return qabs === null || qabs === undefined ? 'quarter ' + (i + 1) + ' on sale' : 'Q' + (qabs % 4 + 1) + ' ' + (2025 + Math.floor(qabs / 4));
+}
 function calcPropBizCase() {
   var comYears = (_prop.commercial && _prop.commercial.years) || [];
   var marketingM = 0; // Marketing is now brand-level (set in Brand Management page)
@@ -29174,6 +29284,26 @@ function calcPropBizCase() {
   var _fcfYr=_fcfMk.length>0&&_fcfMk[0].years
     ? _fcfMk[0].years.map(function(y){return y.year;})
     : comYears.map(function(r){return r.year;});
+  // §9 volume curve: the quarters SOP..EOP, each market's units from its annual volume. A plan
+  // without one (older proposals) keeps four even quarters a calendar year.
+  var _st=_prop.study||{};
+  var _sopQ=_st.start_year?(parseInt(_st.start_year)-2025)*4+(parseInt(_st.start_quarter)||1)-1:null;
+  var _eopQ=_st.end_year?(parseInt(_st.end_year)-2025)*4+(parseInt(_st.end_quarter)||4)-1:null;
+  var _curve=_sopQ!==null&&_eopQ!==null&&_eopQ>=_sopQ&&_fcfMk.length>0
+    &&_fcfMk.every(function(m){return m.annual_volume!==undefined&&m.annual_volume!==null;});
+  var _periods=[];
+  if(_curve){for(var _pq=_sopQ;_pq<=_eopQ;_pq++)_periods.push({yr:2025+Math.floor(_pq/4),i:_pq-_sopQ});}
+  else _fcfYr.forEach(function(yr){for(var q=0;q<4;q++)_periods.push({yr:yr,i:_periods.length});});
+  var _uQ=function(mkt,yd,p){return _curve?Math.round((parseFloat(mkt.annual_volume)||0)/4*_VOLCURVE_E.factor(p.i)):Math.round(yd.volume/4);};
+  // §10 lifecycle assumption: the cost-down projects the allocator would fund on this model
+  var _lcPlan=(_prop.commercial&&_prop.commercial.lifecycle_plan)||'std';
+  var _lcUnits=_periods.map(function(p){
+    if(_fcfMk.length) return _fcfMk.reduce(function(s,m){var yd=(m.years||[]).find(function(y){return y.year===p.yr;})||{volume:0};return s+_uQ(m,yd,p);},0);
+    var cr=comYears.find(function(r){return r.year===p.yr;})||comYears[0]||{volume:0};
+    return Math.round(cr.volume/4);
+  });
+  var _lcPool=_LIFECYCLE_E.pool(_propPoolParts());
+  var _lcPath=_LIFECYCLE_E.costDowns(_lcPool,_lcPlan,_lcUnits,(SESSION_DISCOUNT_RATE||8)/100);
   var fcfArr=[];
   // Countries in this proposal's regions the team has not entered (Markets tab): their entry
   // fees are an upfront outlay and a standard network there a quarterly cost. The team's
@@ -29182,23 +29312,24 @@ function calcPropBizCase() {
   var _asPwt = (_prop.study && _prop.study.rolled_up_specs && _prop.study.rolled_up_specs.pwt_type) || 'ice_only';
   if (!_AFTERSALES_E.PWT[_asPwt]) _asPwt = 'ice_only';
   var _asRate = (SESSION_DISCOUNT_RATE || 8) / 100;
-  _fcfYr.forEach(function(yr){
-    for(var q=0;q<4;q++){
-      var revM=0,cogsM=0,asTailM=0,unitsQ=0;
+  _periods.forEach(function(p,pi){
+    var yr=p.yr;
+    {
+      var revM=0,cogsM=0,asTailM=0,unitsQ=0,lcSave=_lcPath.save[pi]||0;
       if(_fcfMk.length>0){
         _fcfMk.forEach(function(mkt){
           var yd=(mkt.years||[]).find(function(y){return y.year===yr;})||{discount:5,volume:0};
           var plant=_fcfPl.find(function(p){return p.id===mkt.plant_id;})||_fcfPl[0]||null;
           var mfr=plant?plant._manuf:_m;
           if(!mfr)return;
-          var uQ=Math.round(yd.volume/4);
+          var uQ=_uQ(mkt,yd,p);
           var nR=_oemUnitRev((mkt.msrp_eur_k||0), yd.discount);
           var lo=plant?(((MARKET_LOGISTICS_COST[plant.region]||{})[mkt.region])||{l:200,t:0}):{l:200,t:0};
           var co2Car=_co2.car(yr, mkt.region);
           _co2Sum.eur+=uQ*co2Car; _co2Sum.units+=uQ;
           var landed=tpcNum+_srcAdj+mfr.buy_cost_adj+_manufVarDelta(mfr)+lo.l+nR*lo.t
                      +_wty.qualityDelta+(fcfArr.length<_WARRANTY_E.LAUNCH_Q?_wty.launchCar:_wty.car)
-                     +_cmd.eur+co2Car+_varDelta;
+                     +_cmd.eur+co2Car+_varDelta-lcSave;
           revM+=uQ*nR/1e6; cogsM+=uQ*landed/1e6; unitsQ+=uQ;
           asTailM+=uQ*_AFTERSALES_E.carValue(mkt.msrp_eur_k||0,_asPwt,_wty.years,_propAftersalesPolicy(mkt.region),_asRate).npv_eur/1e6;
         });
@@ -29210,7 +29341,7 @@ function calcPropBizCase() {
         asTailM=uQ*_AFTERSALES_E.carValue(cr.price,_asPwt,_wty.years,_propAftersalesPolicy(),_asRate).npv_eur/1e6;
         var co2CarF=_co2.car(yr, 'EU');
         _co2Sum.eur+=uQ*co2CarF; _co2Sum.units+=uQ;
-        cogsM+=uQ*(_wty.qualityDelta+(fcfArr.length<_WARRANTY_E.LAUNCH_Q?_wty.launchCar:_wty.car)+_cmd.eur+co2CarF+_varDelta)/1e6;
+        cogsM+=uQ*(_wty.qualityDelta+(fcfArr.length<_WARRANTY_E.LAUNCH_Q?_wty.launchCar:_wty.car)+_cmd.eur+co2CarF+_varDelta-lcSave)/1e6;
         unitsQ+=uQ;
       }
       // Head-office overhead this model adds (its own admin + the volume-linked share),
@@ -29220,8 +29351,11 @@ function calcPropBizCase() {
       var launchM=fcfArr.length===0?_lcStd*0.75:fcfArr.length===1?_lcStd*0.25:0;
       // + the lifetime parts contribution of the cars sold this quarter, valued at the sale
       // (_AFTERSALES_E.carValue at the hurdle), after tax. Not in EBIT: it arrives over 15 years.
-      var ebitM=gpM-sgaM-rdMq-marketingM-launchM-_newMkt.runQ, fcfM=ebitM*0.75+asTailM*0.75;
-      fcfArr.push({rev:revM,cogs:cogsM,gp:gpM,ebit:ebitM,fcf:fcfM,mktg:marketingM+launchM,asTail:asTailM,units:unitsQ});
+      // lifecycle cost-downs: engineering is expensed, tooling is cash like the programme's
+      var lcEngM=_lcPath.eng[pi]||0, lcCapM=_lcPath.capex[pi]||0;
+      var ebitM=gpM-sgaM-rdMq-marketingM-launchM-_newMkt.runQ-lcEngM, fcfM=ebitM*0.75+asTailM*0.75-lcCapM;
+      fcfArr.push({yr:yr,rev:revM,cogs:cogsM,gp:gpM,ebit:ebitM,fcf:fcfM,mktg:marketingM+launchM,asTail:asTailM,units:unitsQ,
+                   lcSave:unitsQ*lcSave/1e6,lcEng:lcEngM,lcCap:lcCapM});
     }
   })
 
@@ -29280,7 +29414,7 @@ function calcPropBizCase() {
   // ── Compute 6-panel supporting data ──────────────────────────────────────
   var _bcYears = typeof _fcfYr !== 'undefined' ? _fcfYr : [];
   var _byYear = _bcYears.map(function(yr,i){
-    var sl=fcfArr.slice(i*4,i*4+4);
+    var sl=fcfArr.filter(function(f){return f.yr===yr;});
     return {year:yr,
       rev:sl.reduce(function(s,f){return s+f.rev;},0),
       cogs:sl.reduce(function(s,f){return s+f.cogs;},0),
@@ -29376,10 +29510,28 @@ function calcPropBizCase() {
           var parts = _propPoolParts();
           if (!parts.length) return '';
           var pl = _LIFECYCLE_E.pool(parts), tot = parts.reduce(function(a, p) { return a + p.tpc; }, 0);
+          var pr = _lcPath.projects, last = pr.length ? pr[pr.length - 1] : null;
+          var capT = pr.reduce(function(a, x) { return a + x.capex_m; }, 0), engT = pr.reduce(function(a, x) { return a + x.eng_m; }, 0);
+          var savT = fcfArr.reduce(function(a, f) { return a + (f.lcSave || 0); }, 0);
+          var got = pr.reduce(function(a, x) { return a + x.saving_eur; }, 0);
+          var opt = function(v, l) { return '<option value="' + v + '"' + (_lcPlan === v ? ' selected' : '') + '>' + l + '</option>'; };
+          var sizes = {}; pr.forEach(function(x) { sizes[x.size] = (sizes[x.size] || 0) + 1; });
           return '<div style="font-family:DM Mono,monospace;font-size:10px;color:var(--muted2);margin-top:4px;">'
             + 'Lifecycle cost-down potential: ~€' + Math.round(pl.pool_eur) + '/car (' + (tot > 0 ? (pl.pool_eur / tot * 100).toFixed(1) : '0') + '% of module cost) left for cost-downs in production, '
             + 'at design cost optimisation ' + Math.round(pl.co_weighted * 100) + '%. More Cost Optimization in §2–§5 lowers the cost from SOP '
-            + 'but leaves less to find later, and what is left costs more to get (×' + pl.difficulty.toFixed(2) + '). Engineering → 🔄 Lifecycle funds cost-downs from a yearly budget.</div>';
+            + 'but leaves less to find later, and what is left costs more to get (×' + pl.difficulty.toFixed(2) + '). Engineering → 🔄 Lifecycle funds cost-downs from a yearly budget.</div>'
+            + '<div style="font-family:DM Mono,monospace;font-size:10px;color:var(--muted2);margin-top:4px;">'
+            + 'Lifecycle assumption in this business case: <select onchange="onPropLcPlan(this.value)" style="background:var(--s2);border:1px solid var(--border2);color:var(--text);border-radius:2px;padding:1px 4px;font-size:10px;font-family:DM Mono,monospace;">'
+            + opt('std', 'Standard') + opt('none', 'None') + opt('S', 'Small steps') + opt('M', 'Medium steps') + opt('L', 'Large steps') + '</select> '
+            + (_lcPlan === 'none' ? 'no cost-downs: the unit cost stays at its SOP level for the whole life.'
+               : !pr.length ? 'no cost-down pays back on this model (' + (_lcPlan === 'std' ? 'none clears the standard hurdle ' + _LIFECYCLE_E.HURDLE.toFixed(1) : 'it does not repay its cost') + ' before EOP).'
+               : pr.length + ' cost-down project' + (pr.length > 1 ? 's' : '') + ' (' + Object.keys(sizes).map(function(k) { return sizes[k] + '×' + k; }).join(', ') + '), '
+                 + '−€' + Math.round(got) + '/car by ' + _qLabelAbs(_sopQ !== null && _curve ? _sopQ + last.changeover : null, last.changeover)
+                 + ' (' + Math.round(got / Math.max(1, pl.pool_eur) * 100) + '% of the potential): savings €' + Math.round(savT) + 'M over the life for €'
+                 + Math.round(capT) + 'M tooling + €' + Math.round(engT) + 'M engineering. '
+                 + (_lcPlan === 'std' ? 'Standard = the largest project that clears the allocator\'s hurdle (' + _LIFECYCLE_E.HURDLE.toFixed(1) + '× its cost), one at a time from SOP.'
+                    : 'Every project this size, while it repays its cost.'))
+            + ' Quality, material, special-series and facelift projects are not in §10.</div>';
         })()
       + '<div style="font-family:DM Mono,monospace;font-size:10px;color:var(--muted2);margin-top:4px;">'
         + 'Launch campaign (planning assumption): standard budget €' + Math.round(_lcStd) + 'M = '
