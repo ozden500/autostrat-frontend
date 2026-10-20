@@ -383,6 +383,12 @@ input[type=text]:focus,input[type=number]:focus{outline:none;border-color:var(--
 .plan-act-revise{font-family:'DM Mono',monospace;font-size:8px;padding:3px 8px;border-radius:2px;
   border:1px solid var(--border2);background:var(--s2);color:var(--muted2);cursor:pointer;}
 .plan-act-revise:hover{color:var(--text);}
+.plan-act-eop{font-family:'DM Mono',monospace;font-size:8px;padding:3px 8px;border-radius:2px;
+  border:1px solid rgba(240,180,41,.35);background:rgba(240,180,41,.06);color:var(--gold);cursor:pointer;}
+.plan-act-eop:hover{background:rgba(240,180,41,.16);}
+.eop-pv{display:grid;grid-template-columns:1fr auto;gap:5px 14px;font-size:11px;margin:12px 0 4px;}
+.eop-pv .k{color:var(--muted2);} .eop-pv .v{font-family:'DM Mono',monospace;text-align:right;}
+.eop-note{font-size:10px;color:var(--muted2);line-height:1.5;margin-top:8px;}
 .plan-act-del{font-family:'DM Mono',monospace;font-size:8px;padding:3px 7px;border-radius:2px;
   border:1px solid rgba(224,58,82,.35);background:rgba(224,58,82,.08);color:var(--red);cursor:pointer;}
 .plan-act-del:hover{background:rgba(224,58,82,.2);}
@@ -2987,6 +2993,27 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
     <div style="display:flex;gap:8px;justify-content:flex-end;">
       <button class="btn-mm-cancel" onclick="closeStudyModal()">CANCEL</button>
       <button class="btn-mm-save" onclick="saveStudy()">＋ CREATE STUDY</button>
+    </div>
+  </div>
+</div>
+
+<div class="model-modal" id="eopModal">
+  <div class="mm-panel" style="max-width:460px;width:92vw;">
+    <div class="mm-title">CHANGE EOP</div>
+    <div class="mm-sub" id="eop-sub">—</div>
+    <div class="mm-grid">
+      <div class="mm-field"><label>New EOP year</label><select id="eop-yr" onchange="_eopPreview()"></select></div>
+      <div class="mm-field"><label>Quarter</label><select id="eop-qtr" onchange="_eopPreview()">
+        <option value="1">Q1</option><option value="2">Q2</option><option value="3">Q3</option><option value="4">Q4</option></select></div>
+    </div>
+    <div id="eop-preview"></div>
+    <div class="eop-note">Up to 8 quarters past the original EOP cost nothing; each quarter beyond costs 0.5% of the
+      model's R&amp;D and 1% of its supplier tooling, at most 24 quarters. Decide an extension at least 2 quarters
+      before the current EOP. Bringing EOP forward pays supplier cancellation (1% of tooling per quarter cut) and
+      writes off the programme's remaining book value at the new EOP.</div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px;">
+      <button class="btn-mm-cancel" onclick="closeEopModal()">CANCEL</button>
+      <button class="btn-mm-save" id="eop-save" onclick="saveEop()">SAVE</button>
     </div>
   </div>
 </div>
@@ -12867,6 +12894,9 @@ function buildVehicleTable() {
       ? '<button class="plan-act-revise" data-vid="'+vid+'" data-action="revise">← Revise</button>'
       : '';  // Approval only via Business Case modal
     var delBtn = '<button class="plan-act-del" data-vid="'+vid+'" data-action="delete">✕</button>';
+    var eopBtn = v._normStatus === 'approved'
+      ? '<button class="plan-act-eop" data-vid="'+vid+'" data-action="eop" title="Extend or bring forward the end of production">EOP</button>'
+      : '';
 
     // Discount input — editable for approved/on_sale vehicles
     var discVal = parseFloat(v.discount_pct||0).toFixed(1);
@@ -12894,12 +12924,84 @@ function buildVehicleTable() {
       + '<td class="plan-td center">'+statusBadge(v.status)+'</td>'
       + discCell
       + '<td class="plan-td" style="white-space:nowrap;display:flex;gap:4px;align-items:center;">'
-        + bcBtn + statusBtn + delBtn
+        + bcBtn + eopBtn + statusBtn + delBtn
       + '</td>'
       + '</tr>';
   }).join('');
 }
 
+
+// ── EOP extension / early stop (docs/EOP_EXTENSION_SPEC.md) ──
+var _eopVid = null, _eopOk = false;
+function openEopModal(vid) {
+  var v = activeVehicles.find(function(x){ return x.id === vid; });
+  if (!v) return;
+  _eopVid = vid;
+  var ey = parseInt(v.end_year || 2030), eq = parseInt(v.end_quarter || 4);
+  var yr = document.getElementById('eop-yr');
+  var html = '';
+  for (var y = Math.max(2025, ey - 6); y <= ey + 7; y++) html += '<option' + (y === ey ? ' selected' : '') + '>' + y + '</option>';
+  yr.innerHTML = html;
+  document.getElementById('eop-qtr').value = String(eq);
+  document.getElementById('eop-sub').textContent = v.name + ' · SOP Q' + v.start_quarter + ' ' + v.start_year +
+    ' · current EOP Q' + eq + ' ' + ey;
+  document.getElementById('eopModal').classList.add('open');
+  _eopPreview();
+}
+function closeEopModal() { document.getElementById('eopModal').classList.remove('open'); }
+function _eopRow(k, v, col) {
+  return '<div class="k">' + k + '</div><div class="v"' + (col ? ' style="color:' + col + '"' : '') + '>' + v + '</div>';
+}
+async function _eopPreview() {
+  var box = document.getElementById('eop-preview'), save = document.getElementById('eop-save');
+  var y = document.getElementById('eop-yr').value, q = document.getElementById('eop-qtr').value;
+  _eopOk = false; save.disabled = true; save.style.opacity = .5;
+  box.innerHTML = '<div class="eop-note">Calculating…</div>';
+  try {
+    var r = await fetch(API_URL + '/sessions/' + sessionId + '/vehicles/' + _eopVid + '/eop-preview?eop_year=' + y + '&eop_quarter=' + q);
+    var d = await r.json();
+    if (!d.ok) { box.innerHTML = '<div class="eop-note" style="color:var(--red)">' + (d.reason || d.detail || 'Not allowed') + '</div>'; return; }
+    var m = function(x){ return '€' + (Math.round((x || 0) * 10) / 10).toLocaleString() + 'M'; };
+    var h = '<div class="eop-pv">';
+    h += _eopRow('Change', d.kind === 'extend' ? 'Extend ' + (d.eop_to - d.eop_from) + ' q' :
+                 d.kind === 'stop' ? 'Bring forward ' + d.cut_q + ' q' : 'No change');
+    h += _eopRow('Original EOP · limit', d.eop_original_label + ' · ' + d.max_eop_label);
+    h += _eopRow('Past original EOP', d.cum_q + ' q (free up to ' + d.free_q + ')', d.cum_q > d.free_q ? 'var(--gold)' : '');
+    if (d.kind === 'extend') {
+      h += _eopRow('Extension R&D (this quarter)', m(d.rd_m), d.rd_m > 0 ? 'var(--red)' : '');
+      h += _eopRow('Supplier tooling (capex)', m(d.tooling_m), d.tooling_m > 0 ? 'var(--red)' : '');
+      h += _eopRow('Programme depreciation / q', m(d.dep_q_before_m) + ' → ' + m(d.dep_q_after_m), 'var(--green)');
+    }
+    if (d.kind === 'stop') {
+      h += _eopRow('Supplier cancellation', m(d.cancel_m), 'var(--red)');
+      h += _eopRow('Book value written off at new EOP', '≈ ' + m(d.writeoff_at_eop_m), 'var(--red)');
+    }
+    h += _eopRow('Age at EOP · age penalty', d.age_at_eop_q + ' q · −' + d.age_penalty_pts + ' pts',
+                 d.age_penalty_pts >= 10 ? 'var(--red)' : '');
+    (d.successor_overlap || []).forEach(function(o){
+      h += _eopRow('Overlaps ' + o.name, o.overlap_q + ' q', o.overlap_q > 2 ? 'var(--gold)' : '');
+    });
+    h += '</div>';
+    if ((d.history || []).length) h += '<div class="eop-note">Earlier changes: ' + d.history.map(function(x){
+      return x.decided + ' ' + x.from + '→' + x.to; }).join(', ') + '</div>';
+    box.innerHTML = h;
+    _eopOk = d.kind !== 'none';
+    save.disabled = !_eopOk; save.style.opacity = _eopOk ? 1 : .5;
+  } catch (e) { box.innerHTML = '<div class="eop-note" style="color:var(--red)">Preview failed: ' + e.message + '</div>'; }
+}
+async function saveEop() {
+  if (!_eopOk) return;
+  var y = parseInt(document.getElementById('eop-yr').value), q = parseInt(document.getElementById('eop-qtr').value);
+  try {
+    var r = await fetch(API_URL + '/sessions/' + sessionId + '/vehicles/' + _eopVid + '/eop', {
+      method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({eop_year: y, eop_quarter: q})});
+    var d = await r.json();
+    if (!r.ok) { toast('⚠ ' + (d.detail || 'EOP change refused')); return; }
+    toast('✓ EOP moved to Q' + q + ' ' + y);
+    closeEopModal();
+    await loadVehiclePlan();
+  } catch (e) { toast('⚠ EOP change failed: ' + e.message); }
+}
 
 async function updateVehicleDiscount(vid, val) {
   var pct = Math.min(40, Math.max(-30, parseFloat(val) || 0));
@@ -14155,11 +14257,12 @@ document.addEventListener('click', function(e) {
   var action = btn.getAttribute('data-action');
   if (!action) return;
   // vid is only required for vehicle-specific actions
-  if (!vid && ['bc','approve','revise','delete','study-submit'].indexOf(action) >= 0) return;
+  if (!vid && ['bc','approve','revise','delete','study-submit','eop'].indexOf(action) >= 0) return;
   if (action === 'bc')           { openBCModal(vid); }
   if (action === 'approve')      { promoteVehicle(vid, 'approved'); }
   if (action === 'revise')       { promoteVehicle(vid, 'plan'); }
   if (action === 'delete')       { deleteVehicle(vid); }
+  if (action === 'eop')          { openEopModal(vid); }
   if (action === 'study-submit')       { submitStudyProposal(vid); }
   if (action === 'prop-select-study') { selectStudy(vid); }
   if (action === 'prop-mod-mode') {
