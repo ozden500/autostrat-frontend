@@ -5104,8 +5104,10 @@ function _labDerivPanel() {
   var t = _labDerivTerms(), eng = window[_LAB_ENGINE_CALC[currentModType]] || null;
   var full = eng ? (eng.total_rd_cost_eur_m || 0) : 0, MO = 'font-family:DM Mono,monospace;';
   var rdy = par.ready_year ? (par.ready_year + 'Q' + par.ready_quarter) : '';
+  var thSegL = currentModType === 'tophat' ? _tophatSegmentOf(par) : null;
   var h = '<div style="' + MO + 'font-size:8px;color:var(--purple);text-transform:uppercase;letter-spacing:1px;margin-bottom:5px;">'
-    + 'Derivative of ' + (par.name || '') + ' <span style="color:var(--muted2);">(' + (par.config_key || '') + ')</span> · parent unchanged</div>';
+    + 'Derivative of ' + (par.name || '') + ' <span style="color:var(--muted2);">(' + (par.config_key || '') + ')</span> · parent unchanged'
+    + (thSegL ? ' · for ' + thSegL + ' vehicles only' : '') + '</div>';
   if (!t || !t.ok) {
     h += '<div style="' + MO + 'font-size:9px;color:var(--red);">⚠ ' + ((t && t.reason) || 'Configure the design') + '</div>';
   } else {
@@ -14593,26 +14595,9 @@ function onVehicleSegmentChange() {
     return;
   }
 
-  // Filter tophats: config_key starts with segment code prefix
-  // Tophat config_key format: B_HB, C_SEDAN, F_SUV etc.
-  // Segment code: b_segment, c_segment etc.
-  // Match: tophat segment_code from specs or from config_key prefix
-  const segPrefix = segment.split('_')[0].toUpperCase(); // 'B', 'C', 'F', 'MPV', 'PICKUP' etc.
-
-  const validTophats = _vmAllMods.filter(m => {
-    if (m.module_type !== 'tophat') return false;
-    if (m.development_status !== 'completed') return false;
-    // config_key format: B_HB, C_SEDAN, CVAN_VAN, DVAN_VAN etc.
-    const ck = (m.config_key||'').toUpperCase();
-    // For van segments: c_van→CVAN, d_van→DVAN, e_van→EVAN
-    const segMap = {
-      'A_SEGMENT':'A', 'B_SEGMENT':'B', 'C_SEGMENT':'C', 'D_SEGMENT':'D',
-      'E_SEGMENT':'E', 'F_SEGMENT':'F', 'MPV':'MPV', 'PICKUP':'PICKUP',
-      'SPORTS':'SPORTS', 'C_VAN':'CVAN', 'D_VAN':'DVAN', 'E_VAN':'EVAN'
-    };
-    const expectedPrefix = segMap[segment.toUpperCase()] || segPrefix;
-    return ck.startsWith(expectedPrefix + '_') || ck.startsWith(expectedPrefix);
-  });
+  // A top hat stays in its donor's segment (_tophatSegmentOf; the backend checks it again)
+  const validTophats = _vmAllMods.filter(m =>
+    m.module_type === 'tophat' && m.development_status === 'completed' && _tophatSegmentOf(m) === segment);
 
   thSel.innerHTML = '<option value="">— none —</option>';
   if (validTophats.length === 0) {
@@ -21877,11 +21862,24 @@ function _isPropModuleCompatible(mod, modType) {
       return {ok:false, reason:'ICE vehicle — no e-Motor needed'};
   }
   if (modType === 'tophat') {
-    var thConf = (_propTopHatConfigs || []).find(function(c){ return c.config_key === ck; });
-    if (thConf && thConf.segment_code && thConf.segment_code !== seg)
-      return {ok:false, reason:'Wrong segment ('+thConf.segment_code+')'};
+    var thSegOf = _tophatSegmentOf(mod);
+    if (!thSegOf || thSegOf !== seg)
+      return {ok:false, reason:'Top hat of ' + (thSegOf || 'an unknown segment') + ': stays in its segment'};
   }
   return {ok:true};
+}
+
+// A top hat stays in its donor's segment (2026-10-20): it may be reused or derived only for a
+// vehicle of the segment it was developed for. The backend sends donor_segment (the earliest
+// vehicle built on it, else its parent's, else its config key's: financial_engine.tophat_segments)
+// and checks it again on the vehicle PATCH / POST.
+var _TOPHAT_PREFIX_SEGMENT = {A:'a_segment', B:'b_segment', C:'c_segment', D:'d_segment', E:'e_segment',
+  F:'f_segment', CVAN:'c_van', DVAN:'d_van', EVAN:'e_van', MPV:'mpv', PICKUP:'pickup', SPORTS:'sports'};
+function _tophatConfigSegment(ck) {
+  return _TOPHAT_PREFIX_SEGMENT[String(ck || '').split('_')[0].toUpperCase()] || null;
+}
+function _tophatSegmentOf(mod) {
+  return (mod && (mod.donor_segment || _tophatConfigSegment(mod.config_key))) || null;
 }
 
 function buildModuleOptions(modType, propKey, nextFn) {
@@ -22174,7 +22172,7 @@ function buildModuleOptions(modType, propKey, nextFn) {
       var thSeg     = _prop.study ? _prop.study.segment_code : '';
       var thSegUp   = thSeg ? thSeg.split('_')[0].toUpperCase() : '';
       var thAvail   = (_propTopHatConfigs||[]).filter(function(c){return c.segment_code===thSeg;});
-      if (!thAvail.length && (_propTopHatConfigs||[]).length) thAvail = _propTopHatConfigs;
+      if (!thAvail.length && !thSeg && (_propTopHatConfigs||[]).length) thAvail = _propTopHatConfigs;
       var studyBody = _prop.study && _prop.study.rolled_up_specs ? (_prop.study.rolled_up_specs.body_type||'').toUpperCase() : '';
       var thBodyMatched = false;
       if (studyBody) { var bf=thAvail.filter(function(c){ return (c.body_type||'').toUpperCase()===studyBody; }); if (bf.length) { thAvail=bf; thBodyMatched=true; } }
