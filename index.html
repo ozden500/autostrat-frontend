@@ -12932,7 +12932,7 @@ function buildVehicleTable() {
 
 
 // ── EOP extension / early stop (docs/EOP_EXTENSION_SPEC.md) ──
-var _eopVid = null, _eopOk = false;
+var _eopVid = null, _eopOk = false, _eopSeq = 0;
 function openEopModal(vid) {
   var v = activeVehicles.find(function(x){ return x.id === vid; });
   if (!v) return;
@@ -12957,9 +12957,11 @@ async function _eopPreview() {
   var y = document.getElementById('eop-yr').value, q = document.getElementById('eop-qtr').value;
   _eopOk = false; save.disabled = true; save.style.opacity = .5;
   box.innerHTML = '<div class="eop-note">Calculating…</div>';
+  var seq = ++_eopSeq;      // only the latest pick renders: a slow earlier answer must not overwrite it
   try {
     var r = await fetch(API_URL + '/sessions/' + sessionId + '/vehicles/' + _eopVid + '/eop-preview?eop_year=' + y + '&eop_quarter=' + q);
     var d = await r.json();
+    if (seq !== _eopSeq) return;
     if (!d.ok) { box.innerHTML = '<div class="eop-note" style="color:var(--red)">' + (d.reason || d.detail || 'Not allowed') + '</div>'; return; }
     var m = function(x){ return '€' + (Math.round((x || 0) * 10) / 10).toLocaleString() + 'M'; };
     var h = '<div class="eop-pv">';
@@ -12987,11 +12989,15 @@ async function _eopPreview() {
     box.innerHTML = h;
     _eopOk = d.kind !== 'none';
     save.disabled = !_eopOk; save.style.opacity = _eopOk ? 1 : .5;
-  } catch (e) { box.innerHTML = '<div class="eop-note" style="color:var(--red)">Preview failed: ' + e.message + '</div>'; }
+  } catch (e) {
+    if (seq === _eopSeq) box.innerHTML = '<div class="eop-note" style="color:var(--red)">Preview failed: ' + e.message + '</div>';
+  }
 }
 async function saveEop() {
   if (!_eopOk) return;
   var y = parseInt(document.getElementById('eop-yr').value), q = parseInt(document.getElementById('eop-qtr').value);
+  var save = document.getElementById('eop-save');
+  _eopOk = false; save.disabled = true; save.textContent = 'SAVING…'; save.style.opacity = .5;
   try {
     var r = await fetch(API_URL + '/sessions/' + sessionId + '/vehicles/' + _eopVid + '/eop', {
       method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({eop_year: y, eop_quarter: q})});
@@ -13001,6 +13007,10 @@ async function saveEop() {
     closeEopModal();
     await loadVehiclePlan();
   } catch (e) { toast('⚠ EOP change failed: ' + e.message); }
+  finally {
+    save.textContent = 'SAVE';
+    if (document.getElementById('eopModal').classList.contains('open')) _eopPreview();   // refused: re-check
+  }
 }
 
 async function updateVehicleDiscount(vid, val) {
