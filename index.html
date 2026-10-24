@@ -6021,7 +6021,7 @@ function _bomDetail(matLines, procLines, r, collapseKey) {
   if (tpc > 0) {
     h += '<div style="margin-bottom:14px;">';
     h += '<div style="font-size:8px;'+MO+'text-transform:uppercase;letter-spacing:2px;color:var(--muted);margin-bottom:6px;display:flex;align-items:center;gap:8px;">' +
-         'Cost Composition — % of Platform TPC' +
+         'Cost Composition — % of Module TPC' +
          '<span style="flex:1;height:1px;background:var(--border);display:inline-block;"></span>' +
          '<span style="color:var(--white);font-size:10px;font-weight:600;">€' + Math.round(tpc).toLocaleString() + '/veh</span>' +
          '</div>';
@@ -12132,7 +12132,7 @@ function _buildBizCasePanels(byYear,mktEcon,modTpc,modRd,mktsBC,plants,tpcNum,rd
   // Cumulative FCF chart
   if (cumFcf.length>1) {
     html += '<div style="margin-bottom:12px;">';
-    html += '<div style="'+TH+'color:var(--muted);margin-bottom:6px;">Cumulative Cash Flow ('+TH+'quarters)</div>';
+    html += '<div style="'+TH+'color:var(--muted);margin-bottom:6px;">Cumulative Cash Flow (quarters)</div>';
     var minC=Math.min.apply(null,cumFcf), maxC=Math.max.apply(null,cumFcf), rngC=maxC-minC||1;
     var svgW=400, svgH=80;
     var pts=cumFcf.map(function(v,i){
@@ -21890,6 +21890,9 @@ function buildModuleOptions(modType, propKey, nextFn) {
 
   // ── Mode selector cards ──
   var html = '<div class="prop-mod-options">';
+  // Reuse and Derivative both pick from the completed compatible modules: with none, the
+  // card is shown disabled rather than opening an empty list.
+  var _nCompat = completed.filter(function(m){ return _isPropModuleCompatible(m, modType).ok; }).length;
   // Battery packs are configured per vehicle (no battery modules to derive from).
   (modType === 'battery' ? ['reuse','new'] : ['reuse','derivative','new']).forEach(function(mode) {
     var icons = {reuse:'♻️', derivative:'🔀', 'new':'🆕'};
@@ -21900,6 +21903,14 @@ function buildModuleOptions(modType, propKey, nextFn) {
       'new':'Full R&D from scratch · Configure target specs'
     };
     var sel = currentSel && currentSel.mode===mode ? ' selected' : '';
+    if (mode !== 'new' && _nCompat === 0 && !sel) {
+      html += '<div class="prop-mod-option" aria-disabled="true" style="opacity:.45;cursor:not-allowed;" ' +
+        'title="No completed module fits this segment / powertrain yet">' +
+        '<div class="prop-mod-option-icon">' + icons[mode] + '</div>' +
+        '<div class="prop-mod-option-title">' + titles[mode] + '</div>' +
+        '<div class="prop-mod-option-desc">None available yet for this segment / powertrain · use New Development</div></div>';
+      return;
+    }
     html += '<div class="prop-mod-option' + sel + '" ' +
       'data-action="prop-mod-mode" data-propkey="' + propKey + '" ' +
       'data-mode="' + mode + '" data-nextfn="' + nextFn + '">' +
@@ -23611,8 +23622,10 @@ function buildReviewSection() {
     } else if (p.module) {
       var mod=p.module;
       m.tpc=parseFloat(mod.per_unit_tpc_eur||0); m.tpc_bev=m.tpc;
-      m.rd=parseFloat(mod.total_rd_spend_m||0);
-      m.fte=parseFloat(mod.total_rd_fte||0);     m.weight=parseFloat(mod.total_weight_kg||0);
+      // A reused module's R&D was spent on its own programme (sunk): §10 counts none,
+      // so §6 shows it as a memo only.
+      m.rdSunk=parseFloat(mod.total_rd_spend_m||0);
+      m.weight=parseFloat(mod.total_weight_kg||0);
       m.name=mod.name; m.configKey=mod.config_key||''; m.specs=mod.specs||{};
       m.dmp  = mod.dmp  || null;
       m.make = mod.make || null;
@@ -23864,7 +23877,7 @@ function buildReviewSection() {
       var dmpV  = m.dmp  ? parseFloat(m.dmp.total_eur||0)  : m.tpc*0.85;
       var makeV = m.make ? parseFloat(m.make.total_eur||0) : m.tpc*0.15;
       var costRows = [
-        specRow('R&D Investment',            '€'+_f(m.rd)+'M'),
+        specRow('R&D Investment',            '€'+_f(m.rd)+'M' + (m.rdSunk>0 ? ' (reused: €'+_f(m.rdSunk)+'M sunk)' : '')),
         specRow('Plant Capex (greenfield)',  cx.plant>0 ? '€'+_f(cx.plant)+'M' : '—'),
         specRow('Supplier Capex (greenfield)', cx.supplier>0 ? '€'+_f(cx.supplier)+'M' : '—'),
         specRow('DMP (material purchase)',   '€'+_f(dmpV).toLocaleString()),
@@ -24933,6 +24946,9 @@ function buildComponentsSourcingSection() {
   html += '</div>';
 
   el.innerHTML = html;
+  // The static "configure plant allocation first" only applies before §7 is done.
+  var s8 = document.getElementById('prop-sec-8-status');
+  if (s8 && _spConfirmedPlants().length && !/^✓/.test(s8.textContent)) s8.textContent = '— set sourcing zones, then confirm';
   renderOpsAggregateSummary();
   _mzcLoadCapacity();
 }
@@ -28572,7 +28588,8 @@ function _renderSourcingInputsPanel(){
   }
   h+='</div>';
   if(!expanded){
-    h+='<div style="'+MO+'font-size:7.5px;color:var(--muted2);text-align:right;">'+nPlants+' plant'+(nPlants===1?'':'s')+' · '+nDecisions+' module sourcing zone'+(nDecisions===1?'':'s')+' configured</div>';
+    var _plantTxt=vPlants.length+' vehicle plant'+(vPlants.length===1?'':'s')+(pwtPlants.length?' + '+pwtPlants.length+' powertrain plant'+(pwtPlants.length===1?'':'s'):'');
+    h+='<div style="'+MO+'font-size:7.5px;color:var(--muted2);text-align:right;">'+_plantTxt+' · '+nDecisions+' module sourcing zone'+(nDecisions===1?'':'s')+' configured</div>';
   }
   h+='</div>';
   if(expanded){
