@@ -21643,7 +21643,7 @@ function _propTallyRefresh() {
 function _propTallyRender() {
   var el = document.getElementById('prop-tally');
   if (!el) return;
-  if (!_prop || !_prop.study) { el.style.display = 'none'; return; }
+  if (!_prop || !_prop.study) { el.style.display = 'none'; _propDstripRender(); return; }
   var v = _propTallyLive() ? _propBcView : null;
   var tpc = 0, rd = 0;
   ['platform', 'pwt', 'epwt', 'battery', 'tophat', 'eands'].forEach(function(k) {
@@ -21676,6 +21676,8 @@ function _propTallyRender() {
   el.style.cssText = 'display:flex;flex-wrap:wrap;gap:6px 22px;align-items:baseline;margin-top:6px;padding:7px 12px;' +
     'border:1px solid var(--border2);border-radius:4px;background:var(--s1);font-family:DM Mono,monospace;';
   _propComAfterRefresh(v);
+  _propDstripRender();
+  _propSecResults();
 }
 // §9: what each market's car earns once §10's warranty and emissions costs are added.
 function _propComAfterRefresh(v) {
@@ -21693,17 +21695,164 @@ function _propComAfterRefresh(v) {
   });
 }
 
-// Any edit or click inside the proposal refreshes the tally (debounced).
+// ── Folded detail (diagrams, reference tables): closed by default, state kept per key ──
+var _propFoldOpen = {};
+function _propFold(key, title, html) {
+  if (!html) return '';
+  var open = !!_propFoldOpen[key];
+  return '<div style="margin-top:10px;border:1px solid var(--border2);border-radius:4px;">' +
+    '<div onclick="_propFoldToggle(\'' + key + '\')" style="cursor:pointer;padding:7px 12px;font-family:DM Mono,monospace;font-size:8px;' +
+    'letter-spacing:1px;text-transform:uppercase;color:var(--muted);display:flex;gap:8px;align-items:center;">' +
+    '<span id="prop-fold-' + key + '-chev">' + (open ? '▾' : '▸') + '</span>' + title + '</div>' +
+    '<div id="prop-fold-' + key + '" style="display:' + (open ? 'block' : 'none') + ';padding:0 10px 10px;">' + html + '</div></div>';
+}
+function _propFoldToggle(key) {
+  _propFoldOpen[key] = !_propFoldOpen[key];
+  var b = document.getElementById('prop-fold-' + key), c = document.getElementById('prop-fold-' + key + '-chev');
+  if (b) b.style.display = _propFoldOpen[key] ? 'block' : 'none';
+  if (c) c.textContent = _propFoldOpen[key] ? '▾' : '▸';
+}
+
+// ── Decision strip + result headers: what each step decides, drives and needs ──
+function _propSlotOk(k) {
+  var p = _prop[k];
+  if (!p || !p.mode) return false;
+  if (_slotDesigned(p)) return !!_propSlotEngine(k);
+  return !!p.module;
+}
+function _propPwtSlots() {
+  var t = _getEffectivePwtType();
+  return t === 'ICE' ? ['pwt'] : t === 'BEV' ? ['epwt', 'battery'] : ['pwt', 'epwt', 'battery'];
+}
+// Market-years whose gross contribution is not positive (the §9 → §10 gate, renderComValidation)
+function _propComNegatives() {
+  var mkts = ((_prop.commercial && _prop.commercial.markets) || []).filter(function(m) { return m.selected; });
+  var plants = (_prop.operations && (_prop.operations.vehicle_plants || _prop.operations.plants)) || [];
+  var neg = [];
+  mkts.forEach(function(mkt) {
+    var plant = plants.find(function(p) { return p.id === mkt.plant_id; }) || plants[0] || null;
+    var lo = plant ? (((MARKET_LOGISTICS_COST[plant.region] || {})[mkt.region]) || {l: 200, t: 0}) : {l: 200, t: 0};
+    var lX = _computeUnitEconCostSold(plant).baseC + lo.l;
+    (mkt.years || []).forEach(function(yr) {
+      var nR = _oemUnitRev(mkt.msrp_eur_k, yr.discount);
+      if ((nR - (lX + nR * lo.t)) * yr.volume / 1e6 <= 0 && yr.volume > 0) neg.push(mkt.region + ' ' + yr.year);
+    });
+  });
+  return neg;
+}
+var _PROP_DSTRIP = {
+  1: ['Which study request to turn into a proposal', 'Segment, body, powertrain and the SOP / EOP window, all fixed by the study'],
+  2: ['Reuse, derive or develop the platform; size, powertrain compatibility and ratings', 'Platform €/car, R&D, development lead time, plant capex'],
+  3: ['The powertrain: ICE and / or e-drive and battery, reused, derived or new', 'Powertrain €/car, R&D, CO₂ and range, emissions cost per car'],
+  4: ['Reuse, derive or develop the top hat (body, closures, interior); its ratings', 'Top hat €/car, R&D, comfort and premium appeal'],
+  5: ['E/E architecture, ADAS level, connectivity, make or buy', 'E&S €/car, R&D, technology appeal'],
+  6: ['Nothing new: check the car before industrialising it', 'Performance, cost per car and appeal against the segment'],
+  7: ['Which plant builds it, line capacity (k/yr) and automation; the powertrain plant', 'Plant capex, transformation €/car, how many cars you can build'],
+  8: ['Sourcing zone and supplier automation per module, then reserve the capacity', 'Supplier capex, landed parts €/car (labour, freight, duty), supply risk'],
+  9: ['Markets, MSRP, annual volume and discount', 'Revenue, logistics and tariffs, and the NPV in the bar above'],
+  10: ['The lifecycle cost-down assumption; then submit for approval', 'What the board approves: NPV, IRR and payback']
+};
+function _propDstripChecks(n) {
+  var c = function(ok, label) { return {ok: ok, label: label}; };
+  var ops = _prop.operations || {};
+  switch (n) {
+    case 1: return [c(!!_prop.study, 'a study selected')];
+    case 2: return [c(_propSlotOk('platform'), _prop.platform && _prop.platform.mode === 'reuse' ? 'a platform picked from the list' : 'platform size and powertrain set')];
+    case 3: return _propPwtSlots().map(function(k) { return c(_propSlotOk(k), {pwt: 'ICE powertrain', epwt: 'e-drive', battery: 'battery pack'}[k] + ' configured'); });
+    case 4: return [c(_propSlotOk('tophat'), 'top hat configured')];
+    case 5: return [c(_propSlotOk('eands'), 'E&S configured (architecture chosen)')];
+    case 6: return [c(true, 'nothing to set: press Continue when the specs look right')];
+    case 7: return [c(((ops.vehicle_plants || []).filter(function(p) { return p.vehicle_capacity_yr > 0; })).length > 0, 'a vehicle plant allocation confirmed')];
+    case 8: return [c(true, 'sourcing zones set (defaults are local)'),
+                    c(!!ops._sourcingCapexM, 'capacity reserved with Confirm Sourcing Plan (recommended)', true)];
+    case 9: var neg = _propComNegatives();
+            return [c(((_prop.commercial && _prop.commercial.markets) || []).some(function(m) { return m.selected; }), 'at least one market selected'),
+                    c(!neg.length, neg.length ? neg.length + ' market-year(s) lose money: ' + neg.slice(0, 3).join(', ') + (neg.length > 3 ? '…' : '') : 'every market-year has a positive gross contribution')];
+    case 10: return [c(!!_prop._bizcase, 'business case calculated'), c(true, 'press Submit Proposal')];
+  }
+  return [];
+}
+function _propDstripRender() {
+  for (var n = 1; n <= 10; n++) {
+    var body = document.getElementById('prop-sec-' + n + '-body');
+    if (!body) continue;
+    var el = document.getElementById('prop-dstrip-' + n);
+    if (!el) { el = document.createElement('div'); el.id = 'prop-dstrip-' + n; body.insertBefore(el, body.firstChild); }
+    if (body.style.display === 'none') continue;
+    var d = _PROP_DSTRIP[n], chk = _propDstripChecks(n);
+    var LB = 'font-size:7px;letter-spacing:1.5px;text-transform:uppercase;color:var(--gold);margin-bottom:3px;';
+    el.innerHTML = '<div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;padding:9px 12px;margin-bottom:12px;' +
+      'border:1px solid rgba(200,164,60,.25);border-radius:4px;background:var(--s1);font-family:DM Mono,monospace;font-size:9px;color:var(--text);line-height:1.5;">' +
+      '<div style="min-width:0;"><div style="' + LB + '">You decide</div>' + d[0] + '</div>' +
+      '<div style="min-width:0;"><div style="' + LB + '">It drives</div>' + d[1] + '</div>' +
+      '<div style="min-width:0;"><div style="' + LB + '">To continue</div>' + chk.map(function(x) {
+        return '<div style="color:' + (x.ok ? 'var(--green)' : 'var(--orange)') + ';">' + (x.ok ? '✓ ' : '○ ') + x.label + '</div>';
+      }).join('') + '</div></div>';
+  }
+}
+// Completed sections' headers show what was chosen and what it costs, not just "✓ New development".
+function _propSecResults() {
+  var e = function(x) { return '€' + Math.round(x).toLocaleString(); };
+  var modeTxt = function(k) {
+    var p = _prop[k]; if (!p || !p.mode) return '';
+    if (p.mode === 'reuse') return p.module ? 'Reuse ' + p.module.name : 'Reuse';
+    if (p.mode === 'derivative') return p.parent ? 'Derivative of ' + p.parent.name : 'Derivative';
+    return 'New';
+  };
+  var slotTxt = function(keys) {
+    var tpc = 0, rd = 0, names = [];
+    keys.forEach(function(k) { if (!_propSlotOk(k)) return; var t = _propSlotTally(k); tpc += t.tpc; rd += t.rd; names.push(modeTxt(k)); });
+    if (!names.length) return null;
+    return '✓ ' + names.join(' + ') + ' · ' + e(tpc) + '/car · R&D ' + (rd > 0 ? e(rd) + 'M' : 'none');
+  };
+  var set = function(n, txt) {
+    var s = document.getElementById('prop-sec-' + n + '-status');
+    if (s && txt && n < (_prop.currentSec || 1)) s.textContent = txt;
+  };
+  set(2, slotTxt(['platform']));
+  set(3, slotTxt(_propPwtSlots()));
+  set(4, slotTxt(['tophat']));
+  set(5, slotTxt(['eands']));
+}
+
+// Any edit or click while the proposal page is on screen refreshes the tally (debounced). The page
+// is tested, not the target: a button that re-renders its own panel is detached by the time this runs.
 ['input', 'change', 'click'].forEach(function(ev) {
-  document.addEventListener(ev, function(e) {
-    if (e.target && e.target.closest && e.target.closest('#page-proposal') && !e.target.closest('#prop-tally')) _propTallySchedule();
+  document.addEventListener(ev, function() {
+    var pg = document.getElementById('page-proposal');
+    if (pg && pg.offsetParent !== null) _propTallySchedule();
   });
 });
 
+// Stepper: a step already reached opens its section (to review or change it) and scrolls to it.
+function _propStepClick(n) {
+  if (n > (_prop.currentSec || 1)) { toast('Finish step ' + (_prop.currentSec || 1) + ' first'); return; }
+  var body = document.getElementById('prop-sec-' + n + '-body'), chev = document.getElementById('prop-chev-' + n);
+  if (body) body.style.display = 'block';
+  if (chev) chev.textContent = '▲';
+  _propScrollToSec(n);
+  _propTallySchedule();
+}
+function _propScrollToSec(n) {
+  var sec = document.getElementById('prop-sec-' + n), main = sec && sec.closest('.main');
+  var sticky = document.getElementById('prop-sticky');
+  if (!sec || !main || !sec.offsetParent) return;   // proposal page not on screen
+  var top = sec.getBoundingClientRect().top - main.getBoundingClientRect().top + main.scrollTop - (sticky ? sticky.offsetHeight : 0) - 8;
+  main.scrollTo({top: Math.max(0, top), behavior: 'smooth'});
+}
+document.addEventListener('DOMContentLoaded', function() {
+  for (var i = 1; i <= 10; i++) {
+    var st = document.getElementById('pstep-' + i);
+    if (st) { st.style.cursor = 'pointer'; st.setAttribute('onclick', '_propStepClick(' + i + ')'); }
+  }
+});
+
 function setPropStep(n) {
+  var _moved = _prop.currentSec !== n;
   _prop.currentSec = n;
   _propVisRefresh();
   _propTallySchedule();
+  if (_moved) setTimeout(function() { _propScrollToSec(n); }, 60);
   // Update progress bar
   for (var i = 1; i <= 10; i++) {
     var el = document.getElementById('pstep-' + i);
@@ -22734,7 +22883,8 @@ function _propPlatDiagram(size, pwt, r) {
   if (!el) return;
   if (!size || !pwt || !r) { el.innerHTML = ''; return; }
   var src = r.is_multi_energy ? (window._mePropSelected === 'bev' ? r.bev_ready : r.ice_ready) : r;
-  el.innerHTML = _VIS.platform({size:size, pwt:pwt, lines:(src && src.material_lines) || [], variant:window._mePropSelected});
+  el.innerHTML = _propFold('diag-plat', 'Technical diagram &amp; part list',
+    _VIS.platform({size:size, pwt:pwt, lines:(src && src.material_lines) || [], variant:window._mePropSelected}));
 }
 
 function _renderPropMultiSummary(r) {
@@ -23305,8 +23455,11 @@ function selectPropModule(propKey, moduleId, nextFn) {
   var secNum    = secMap[propKey];
   var statusEl  = document.getElementById('prop-sec-' + secNum + '-status');
   if (statusEl && mod) statusEl.textContent = '\u2713 ' + mod.name + ' (' + mod.config_key + ')';
-  // Advance after brief delay
-  setTimeout(function(){ window[nextFn] && window[nextFn](); }, 200);
+  // Stay on the step (every step moves on through its Continue button): redraw it so the pick
+  // shows as selected and the decision strip turns green.
+  var rebuild = {2: buildPlatformSection, 3: buildPWTSection, 4: buildTopHatSection, 5: buildEandSSection}[secNum];
+  if (rebuild) rebuild();
+  _propTallySchedule();
 }
 
 // ── Step builders ──────────────────────────────────────────
@@ -23317,7 +23470,7 @@ function advanceToPWT() {
   var s2 = document.getElementById('prop-sec-2-status');
   if (s2 && _prop.platform) {
     if (_slotDesigned(_prop.platform)) s2.textContent = '\u2713 ' + (_prop.platform.mode === 'derivative' ? 'Derivative of ' + _prop.platform.parent.name : 'New development');
-    else if (!_prop.platform.module) return; // must select
+    else if (!_prop.platform.module) { toast('\u26a0 Pick a platform from the list to continue'); return; }
   }
   setPropStep(3);
   buildPWTSection();
@@ -23453,7 +23606,7 @@ function onPropICECylChange() {
 function _propPtDiagram(kind, bomDiv, html) {
   var id = 'prop-' + kind + '-diagram', el = document.getElementById(id);
   if (!el) { el = document.createElement('div'); el.id = id; bomDiv.parentNode.insertBefore(el, bomDiv.nextSibling); }
-  el.innerHTML = html;
+  el.innerHTML = _propFold('diag-' + kind, 'Technical diagram &amp; part list', html);
 }
 function onPropICEPWTChange() {
   var ck  = document.getElementById('prop-ice-config')?.value; if (!ck) return;
@@ -23622,7 +23775,7 @@ function advanceToEandS() {
   var s4 = document.getElementById('prop-sec-4-status');
   if (s4 && _prop.tophat) {
     if (_slotDesigned(_prop.tophat)) s4.textContent = '\u2713 ' + (_prop.tophat.mode === 'derivative' ? 'Derivative of ' + _prop.tophat.parent.name : 'New development');
-    else if (!_prop.tophat.module) return;
+    else if (!_prop.tophat.module) { toast('⚠ Pick a top hat from the list to continue'); return; }
   }
   setPropStep(5);
   buildEandSSection();
@@ -23634,7 +23787,7 @@ function advanceToReview() {
   var s5 = document.getElementById('prop-sec-5-status');
   if (s5 && _prop.eands) {
     if (_slotDesigned(_prop.eands)) s5.textContent = '\u2713 ' + (_prop.eands.mode === 'derivative' ? 'Derivative of ' + _prop.eands.parent.name : 'New development');
-    else if (!_prop.eands.module) return;
+    else if (!_prop.eands.module) { toast('⚠ Pick an E&S module from the list to continue'); return; }
   }
   setPropStep(6);
   buildReviewSection();
@@ -25287,20 +25440,7 @@ function _refreshMarketRows(region){
   _propTallySchedule();
 }
 function renderComValidation(){
-  var mkts=((_prop.commercial&&_prop.commercial.markets)||[]).filter(function(m){return m.selected;});
-  var plants=(_prop.operations&&(_prop.operations.vehicle_plants||_prop.operations.plants))||[];
-  var neg=[];
-  mkts.forEach(function(mkt){
-    var plant=plants.find(function(p){return p.id===mkt.plant_id;})||plants[0]||null;
-    var lo=plant?(((MARKET_LOGISTICS_COST[plant.region]||{})[mkt.region])||{l:200,t:0}):{l:200,t:0};
-    var baseC=_computeUnitEconCostSold(plant).baseC;
-    var lX=baseC+lo.l;
-    (mkt.years||[]).forEach(function(yr,i){
-      var nR=_oemUnitRev(mkt.msrp_eur_k, yr.discount);
-      var gc=(nR-(lX+nR*lo.t))*yr.volume/1e6;
-      if(gc<=0&&yr.volume>0)neg.push(mkt.region+' '+yr.year);
-    });
-  });
+  var neg=_propComNegatives();
   var warn=document.getElementById('prop-com-gc-warning');
   var btn=document.getElementById('prop-com-continue-btn');
   if(warn){warn.style.display=neg.length>0?'block':'none';warn.textContent=neg.length>0?'⚠ '+neg.length+' market-year(s) negative gross contribution: '+neg.join(', ')+'. Adjust MSRP or volume.':'';}
@@ -27909,7 +28049,8 @@ async function buildMfgPlantSection() {
   var CS='border-radius:4px;padding:12px;cursor:pointer;border:1px solid var(--gold);background:var(--s3);';
 
   var _allocMode2=(ops&&ops.allocation_mode)||'new',_selLk2=(ops&&ops.selected_plant_key)||null;
-  var html=_renderStandardCostSummary();
+  var _sc7=_computeStandardModuleCosts();
+  var html=_propFold('ops-std','Standard cost by module, from §2–§5 · €'+Math.round(_sc7.totTpc).toLocaleString()+'/car · R&amp;D €'+Math.round(_sc7.totRd).toLocaleString()+'M',_renderStandardCostSummary());
   html+='<div id="prop-ops-footprint-area">'+_renderSimplifiedFootprint()+'</div>';
   html+='<div id="prop-ops-alloc-area">';
   if(_allocMode2==='existing'&&_selLk2){html+=_renderPlantAllocationPanel(_selLk2);}
