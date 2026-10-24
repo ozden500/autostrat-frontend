@@ -27070,13 +27070,16 @@ function _buildFootprintLocMap(){
 
 function _renderSimplifiedFootprint(){
   var dm=_deployedModules||{},vpData=dm.vehicle_plants||{};
-  // Build reserved capacity per locKey (deduplicate by vehicle_id)
-  var _reservedByLoc={};
+  // Build reserved capacity per locKey (deduplicate by vehicle_id). Capacity = the lines the
+  // team's models run there (each vehicle plant's target capacity, what clearing builds on);
+  // the plant record's capacity_k is only the fallback when no model is built there.
+  var _reservedByLoc={},_linesByLoc={};
   Object.keys(vpData).forEach(function(lk){
     var seen={};
     Object.values(vpData[lk]).forEach(function(arr){
       (arr||[]).forEach(function(e){
-        if(e.vehicle_id&&!seen[e.vehicle_id]){seen[e.vehicle_id]=true;_reservedByLoc[lk]=(_reservedByLoc[lk]||0)+(e.est_volume_yr||0);}
+        if(e.vehicle_id&&!seen[e.vehicle_id]){seen[e.vehicle_id]=true;_reservedByLoc[lk]=(_reservedByLoc[lk]||0)+(e.est_volume_yr||0);
+          _linesByLoc[lk]=(_linesByLoc[lk]||0)+(e.capacity_yr||0);}
       });
     });
   });
@@ -27122,7 +27125,7 @@ function _renderSimplifiedFootprint(){
     if(!ccName)(INDUSTRIAL_COUNTRIES[p.region]||[]).forEach(function(c){if(c.code===p.country_code)ccName=c.name;});
     var isBuilding=p.status==='building';
     var locLabel=(isBuilding?'🚧 ':'🏭 ')+p.region+(ccName?' · '+ccName:'');
-    var totalCapK=p.capacity_k||0;
+    var totalCapK=_linesByLoc[lk]>0?Math.round(_linesByLoc[lk]/1000):(p.capacity_k||0);
     var reservedK=Math.round((_reservedByLoc[lk]||0)/1000);
     var lastRnd=_propVoByPlant[lk];
     var loadPct=totalCapK>0?Math.round(reservedK/totalCapK*100):null;
