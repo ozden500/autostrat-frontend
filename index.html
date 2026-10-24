@@ -1201,28 +1201,38 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
   <div class="pg-title">COMMERCIAL</div>
   <div class="pg-sub">Pricing · Marketing · Distribution · Customer Experience</div>
 
-  <!-- Tab bar -->
-  <div style="display:flex;flex-wrap:wrap;gap:0;margin-bottom:18px;border-bottom:1px solid var(--border);">
-    <button id="com-tab-btn-overview" onclick="switchComTab('overview')"
-      style="font-family:'DM Mono',monospace;font-size:10px;padding:8px 20px;border:none;border-bottom:2px solid var(--cyan);background:transparent;color:var(--cyan);cursor:pointer;letter-spacing:.5px;"><span class="vis-tab-i" data-vis-icon="overview"></span>THIS ROUND</button>
-    <button id="com-tab-btn-pricing" onclick="switchComTab('pricing')"
-      style="font-family:'DM Mono',monospace;font-size:10px;padding:8px 20px;border:none;border-bottom:2px solid transparent;background:transparent;color:var(--muted);cursor:pointer;letter-spacing:.5px;"><span class="vis-tab-i" data-vis-icon="tag"></span>PRICING</button>
-    <button id="com-tab-btn-sales-planning" onclick="switchComTab('sales-planning')"
-      style="font-family:'DM Mono',monospace;font-size:10px;padding:8px 20px;border:none;border-bottom:2px solid transparent;background:transparent;color:var(--muted);cursor:pointer;letter-spacing:.5px;"><span class="vis-tab-i" data-vis-icon="sales"></span>SALES PLAN</button>
-    <button id="com-tab-btn-markets" onclick="switchComTab('markets')"
-      style="font-family:'DM Mono',monospace;font-size:10px;padding:8px 20px;border:none;border-bottom:2px solid transparent;background:transparent;color:var(--muted);cursor:pointer;letter-spacing:.5px;"><span class="vis-tab-i" data-vis-icon="globe"></span>MARKETS</button>
-    <button id="com-tab-btn-warranty" onclick="switchComTab('warranty')"
-      style="font-family:'DM Mono',monospace;font-size:10px;padding:8px 20px;border:none;border-bottom:2px solid transparent;background:transparent;color:var(--muted);cursor:pointer;letter-spacing:.5px;"><span class="vis-tab-i" data-vis-icon="shield"></span>WARRANTY</button>
-    <button id="com-tab-btn-emissions" onclick="switchComTab('emissions')"
-      style="font-family:'DM Mono',monospace;font-size:10px;padding:8px 20px;border:none;border-bottom:2px solid transparent;background:transparent;color:var(--muted);cursor:pointer;letter-spacing:.5px;"><span class="vis-tab-i" data-vis-icon="leaf"></span>EMISSIONS</button>
-    <button id="com-tab-btn-aftersales" onclick="switchComTab('aftersales')"
-      style="font-family:'DM Mono',monospace;font-size:10px;padding:8px 20px;border:none;border-bottom:2px solid transparent;background:transparent;color:var(--muted);cursor:pointer;letter-spacing:.5px;"><span class="vis-tab-i" data-vis-icon="wrench"></span>AFTERSALES</button>
-    <button id="com-tab-btn-launches" onclick="switchComTab('launches')"
-      style="font-family:'DM Mono',monospace;font-size:10px;padding:8px 20px;border:none;border-bottom:2px solid transparent;background:transparent;color:var(--muted);cursor:pointer;letter-spacing:.5px;"><span class="vis-tab-i" data-vis-icon="rocket"></span>LAUNCHES</button>
-    <button id="com-tab-btn-brand" onclick="switchComTab('brand')"
-      style="font-family:'DM Mono',monospace;font-size:10px;padding:8px 20px;border:none;border-bottom:2px solid transparent;background:transparent;color:var(--muted);cursor:pointer;letter-spacing:.5px;"><span class="vis-tab-i" data-vis-icon="brand"></span>BRAND</button>
-    <button id="com-tab-btn-fleet" onclick="switchComTab('fleet')"
-      style="font-family:'DM Mono',monospace;font-size:10px;padding:8px 20px;border:none;border-bottom:2px solid transparent;background:transparent;color:var(--muted);cursor:pointer;letter-spacing:.5px;"><span class="vis-tab-i" data-vis-icon="truck"></span>FLEET</button>
+  <!-- Tab bar: decisions to revisit each round, then policies that carry forward until changed -->
+  <div style="display:flex;flex-wrap:wrap;gap:8px 0;margin-bottom:18px;border-bottom:1px solid var(--border);">
+    <div style="display:flex;flex-direction:column;margin-right:28px;">
+      <div style="font-family:'DM Mono',monospace;font-size:7px;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted);padding:0 0 2px 2px;">Each round <span style="letter-spacing:0;text-transform:none;color:var(--muted2);">· review and set</span></div>
+      <div style="display:flex;flex-wrap:wrap;">
+      <button id="com-tab-btn-overview" onclick="switchComTab('overview')"
+        style="font-family:'DM Mono',monospace;font-size:10px;padding:8px 20px;border:none;border-bottom:2px solid var(--cyan);background:transparent;color:var(--cyan);cursor:pointer;letter-spacing:.5px;"><span class="vis-tab-i" data-vis-icon="overview"></span>THIS ROUND</button>
+      <button id="com-tab-btn-pricing" onclick="switchComTab('pricing')"
+        style="font-family:'DM Mono',monospace;font-size:10px;padding:8px 20px;border:none;border-bottom:2px solid transparent;background:transparent;color:var(--muted);cursor:pointer;letter-spacing:.5px;"><span class="vis-tab-i" data-vis-icon="tag"></span>PRICING</button>
+      <button id="com-tab-btn-sales-planning" onclick="switchComTab('sales-planning')"
+        style="font-family:'DM Mono',monospace;font-size:10px;padding:8px 20px;border:none;border-bottom:2px solid transparent;background:transparent;color:var(--muted);cursor:pointer;letter-spacing:.5px;"><span class="vis-tab-i" data-vis-icon="sales"></span>SALES PLAN</button>
+      <button id="com-tab-btn-launches" onclick="switchComTab('launches')"
+        style="font-family:'DM Mono',monospace;font-size:10px;padding:8px 20px;border:none;border-bottom:2px solid transparent;background:transparent;color:var(--muted);cursor:pointer;letter-spacing:.5px;"><span class="vis-tab-i" data-vis-icon="rocket"></span>LAUNCHES</button>
+      </div>
+    </div>
+    <div style="display:flex;flex-direction:column;">
+      <div style="font-family:'DM Mono',monospace;font-size:7px;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted);padding:0 0 2px 2px;">Policies <span style="letter-spacing:0;text-transform:none;color:var(--muted2);">· carry forward until you change them</span></div>
+      <div style="display:flex;flex-wrap:wrap;">
+      <button id="com-tab-btn-markets" onclick="switchComTab('markets')"
+        style="font-family:'DM Mono',monospace;font-size:10px;padding:8px 20px;border:none;border-bottom:2px solid transparent;background:transparent;color:var(--muted);cursor:pointer;letter-spacing:.5px;"><span class="vis-tab-i" data-vis-icon="globe"></span>MARKETS</button>
+      <button id="com-tab-btn-fleet" onclick="switchComTab('fleet')"
+        style="font-family:'DM Mono',monospace;font-size:10px;padding:8px 20px;border:none;border-bottom:2px solid transparent;background:transparent;color:var(--muted);cursor:pointer;letter-spacing:.5px;"><span class="vis-tab-i" data-vis-icon="truck"></span>FLEET</button>
+      <button id="com-tab-btn-brand" onclick="switchComTab('brand')"
+        style="font-family:'DM Mono',monospace;font-size:10px;padding:8px 20px;border:none;border-bottom:2px solid transparent;background:transparent;color:var(--muted);cursor:pointer;letter-spacing:.5px;"><span class="vis-tab-i" data-vis-icon="brand"></span>BRAND</button>
+      <button id="com-tab-btn-warranty" onclick="switchComTab('warranty')"
+        style="font-family:'DM Mono',monospace;font-size:10px;padding:8px 20px;border:none;border-bottom:2px solid transparent;background:transparent;color:var(--muted);cursor:pointer;letter-spacing:.5px;"><span class="vis-tab-i" data-vis-icon="shield"></span>WARRANTY</button>
+      <button id="com-tab-btn-emissions" onclick="switchComTab('emissions')"
+        style="font-family:'DM Mono',monospace;font-size:10px;padding:8px 20px;border:none;border-bottom:2px solid transparent;background:transparent;color:var(--muted);cursor:pointer;letter-spacing:.5px;"><span class="vis-tab-i" data-vis-icon="leaf"></span>EMISSIONS</button>
+      <button id="com-tab-btn-aftersales" onclick="switchComTab('aftersales')"
+        style="font-family:'DM Mono',monospace;font-size:10px;padding:8px 20px;border:none;border-bottom:2px solid transparent;background:transparent;color:var(--muted);cursor:pointer;letter-spacing:.5px;"><span class="vis-tab-i" data-vis-icon="wrench"></span>AFTERSALES</button>
+      </div>
+    </div>
   </div>
 
   <!-- ── FLEET tab: fleet policy per model, order book, deliveries ── -->
