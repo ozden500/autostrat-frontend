@@ -1204,7 +1204,7 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
   <!-- Tab bar -->
   <div style="display:flex;flex-wrap:wrap;gap:0;margin-bottom:18px;border-bottom:1px solid var(--border);">
     <button id="com-tab-btn-overview" onclick="switchComTab('overview')"
-      style="font-family:'DM Mono',monospace;font-size:10px;padding:8px 20px;border:none;border-bottom:2px solid var(--cyan);background:transparent;color:var(--cyan);cursor:pointer;letter-spacing:.5px;"><span class="vis-tab-i" data-vis-icon="overview"></span>OVERVIEW</button>
+      style="font-family:'DM Mono',monospace;font-size:10px;padding:8px 20px;border:none;border-bottom:2px solid var(--cyan);background:transparent;color:var(--cyan);cursor:pointer;letter-spacing:.5px;"><span class="vis-tab-i" data-vis-icon="overview"></span>THIS ROUND</button>
     <button id="com-tab-btn-pricing" onclick="switchComTab('pricing')"
       style="font-family:'DM Mono',monospace;font-size:10px;padding:8px 20px;border:none;border-bottom:2px solid transparent;background:transparent;color:var(--muted);cursor:pointer;letter-spacing:.5px;"><span class="vis-tab-i" data-vis-icon="tag"></span>PRICING</button>
     <button id="com-tab-btn-sales-planning" onclick="switchComTab('sales-planning')"
@@ -1286,30 +1286,13 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
     </div>
   </div>
 
-  <!-- ── OVERVIEW tab ─────────────────────────────── -->
+  <!-- ── THIS ROUND tab (was Overview: a prototype whose price / marketing controls saved nothing) ── -->
   <div id="com-tab-overview">
-    <div class="kpi-grid g4">
-      <div class="kpi kk-g"><div class="kl">Market Share</div><div class="kv" id="com-share" style="color:var(--gold)">14.2%</div><div class="kd up" id="com-share-delta">▲ +0.4pp</div></div>
-      <div class="kpi kk-c"><div class="kl">Blended ASP</div><div class="kv" id="com-asp">€28.5k</div><div class="kd up">▲ mix shift</div></div>
-      <div class="kpi kk-b"><div class="kl">Brand Index</div><div class="kv" id="com-brand">72/100</div><div class="kd up">▲ +3pts</div></div>
-      <div class="kpi kk-r"><div class="kl">NPS</div><div class="kv" id="com-nps">+41</div><div class="kd dn">▼ -4pts</div></div>
-    </div>
     <div class="kpi-grid g2">
-      <div class="card">
-        <div class="card-title"><span class="tag tc">PRICING</span> Per-Segment Prices</div>
-        <div class="ctrl"><div class="ctrl-lbl"><span>Mass Market</span><span class="ctrl-v" id="cm-p1">€19,900</span></div><input id="cm-p1-range" type="range" min="14000" max="28000" step="100" value="19900" oninput="svp('cm-p1',this.value)"></div>
-        <div class="ctrl"><div class="ctrl-lbl"><span>SUV & Crossover</span><span class="ctrl-v" id="cm-p2">€32,500</span></div><input id="cm-p2-range" type="range" min="24000" max="52000" step="500" value="32500" oninput="svp('cm-p2',this.value)"></div>
-        <div class="ctrl"><div class="ctrl-lbl"><span>Electric Vehicles</span><span class="ctrl-v" id="cm-p3">€36,800</span></div><input id="cm-p3-range" type="range" min="26000" max="60000" step="500" value="36800" oninput="svp('cm-p3',this.value)"></div>
-        <div class="ctrl"><div class="ctrl-lbl"><span>Premium / Luxury</span><span class="ctrl-v" id="cm-p4">€58,000</span></div><input id="cm-p4-range" type="range" min="40000" max="120000" step="1000" value="58000" oninput="svp('cm-p4',this.value)"></div>
-        <div class="ctrl"><div class="ctrl-lbl"><span>Commercial Vehicles</span><span class="ctrl-v" id="cm-p5">€24,400</span></div><input id="cm-p5-range" type="range" min="18000" max="45000" step="200" value="24400" oninput="svp('cm-p5',this.value)"></div>
-      </div>
-      <div class="card">
-        <div class="card-title"><span class="tag tc">MARKETING</span> Spend & Positioning</div>
-        <div class="ctrl"><div class="ctrl-lbl"><span>Marketing Budget (€M/qtr)</span><span class="ctrl-v" id="cm-mkt">€380M</span></div><input type="range" min="50" max="800" step="10" value="380" oninput="svm('cm-mkt',this.value)"></div>
-        <div class="ctrl"><label class="ctrl-lbl-top">Media Mix</label><select><option>Digital-first</option><option>TV + Digital</option><option>Brand events</option><option>Performance mktg</option></select></div>
-        <div class="ctrl"><label class="ctrl-lbl-top">Campaign Theme</label><select><option>Sustainability & EV</option><option>Performance & Design</option><option>Value for money</option><option>Safety & family</option><option>Mobility services</option></select></div>
-      </div>
+      <div class="kpi kk-g"><div class="kl">Market Share</div><div class="kv" id="com-share" style="color:var(--gold)">—</div><div class="kd" id="com-share-delta">last cleared quarter</div></div>
+      <div class="kpi kk-c"><div class="kl">Blended ASP</div><div class="kv" id="com-asp">—</div><div class="kd">last cleared quarter</div></div>
     </div>
+    <div id="com-board"><div style="color:var(--muted2);font-family:'DM Mono',monospace;font-size:11px;padding:16px 0;">Loading this round’s decisions…</div></div>
   </div>
 
   <!-- ── PRICING tab ──────────────────────────────── -->
@@ -13137,6 +13120,127 @@ var _REGION_COUNTRIES = {
 var _REGION_DEFAULT_WEIGHTS = {EU:0.60, NA:0.25, APAC:0.15, SA:0.0, MEA:0.0};
 var _REGION_FLAGS = {EU:'🌍', NA:'🌎', APAC:'🌏', SA:'🌎', MEA:'🌍'};
 
+// ── Commercial → THIS ROUND: every decision area's state this quarter, from the tabs' own
+// endpoints (display only), and the tab badges (CP2). Status: 'need' = act this round,
+// 'review' = a default or a position worth a look, 'ok' = a decision in force.
+var _comBoard = {rows: null, busy: false};
+var _COM_REGIME_LBL = {EU: 'EU cars', EU_LCV: 'EU vans', UK: 'UK cars', UK_LCV: 'UK vans', US: 'US', CN: 'China',
+                       IN: 'India', KR: 'Korea', JP: 'Japan'};
+async function loadCommercialBoard() {
+  if (!sessionId || !teamId || _comBoard.busy) return;
+  _comBoard.busy = true;
+  var base = API_URL + '/sessions/' + sessionId + '/teams/' + teamId;
+  var get = function(u) { return fetch(u).then(function(r) { return r.ok ? r.json() : null; }).catch(function() { return null; }); };
+  try {
+    var res = await Promise.all([
+      get(base + '/launches'), get(base + '/fleet'), get(base + '/emissions'), get(base + '/warranty'), get(base + '/markets'),
+      roundId ? get(API_URL + '/sessions/' + sessionId + '/rounds/' + roundId + '/sales-plans?team_id=' + teamId) : null,
+      get(API_URL + '/teams/' + teamId + '/vehicles')
+    ]);
+    _comBoard.rows = _comBoardRows(res[0], res[1], res[2], res[3], res[4], res[5], res[6]);
+  } finally { _comBoard.busy = false; }
+  _renderComBoard();
+  _comBadges();
+}
+function _comQabs() { return (currentRoundYear - 2025) * 4 + (currentRoundQuarter || 1) - 1; }
+// Models on sale this quarter (approved, SOP ≤ now ≤ EOP): the ones a Commercial decision applies to
+function _comOnSale(vehicles) {
+  var q = _comQabs();
+  return (vehicles || []).filter(function(v) {
+    if (v.session_id && v.session_id !== sessionId) return false;
+    if (v.status !== 'approved' && v.status !== 'on_sale') return false;
+    var s = v.start_year ? (v.start_year - 2025) * 4 + (v.start_quarter || 1) - 1 : -999;
+    var e = v.end_year ? (v.end_year - 2025) * 4 + (v.end_quarter || 4) - 1 : 999;
+    return s <= q && q <= e;
+  });
+}
+function _comBoardRows(L, F, E, W, M, SP, V) {
+  var rows = [], q = _comQabs(), e = function(x) { return '€' + Math.round(x).toLocaleString(); };
+  var row = function(st, tab, area, text) { rows.push({st: st, tab: tab, area: area, text: text}); };
+  // Sales plan: every model's plan frozen before the round closes (S&OP sessions)
+  if (SP && (SP.vehicles || []).length) {
+    var n = SP.vehicles.length, f = SP.vehicles.filter(function(v) { return v.is_frozen; }).length;
+    row(f < n ? 'need' : 'ok', 'sales-planning', 'Sales plan', f + ' of ' + n + ' models frozen' + (f < n ? ': freeze each before the round closes' : ''));
+  }
+  // Launches: models in their launch window this quarter
+  ((L && L.vehicles) || []).filter(function(v) { return v.in_window && !v.auto; }).forEach(function(v) {
+    var last = v.window && q >= v.window[1], gapNow = (v.gaps_with_decisions || []).find(function(g) { return g.qabs === q; });
+    var unfunded = !(v.this_quarter_m > 0);
+    row(unfunded && (last || !(v.spent_to_date_m > 0)) ? 'need' : unfunded ? 'review' : 'ok', 'launches', 'Launches',
+      _esc(v.name) + (last ? ': last launch quarter' : ': launch window') + ' · this quarter ' + e(v.this_quarter_m || 0) + 'M (standard ' +
+      e(v.suggested_now_m || 0) + 'M)' + (gapNow ? ' · awareness gap −' + Math.round(gapNow.gap * 100) + '%' : ''));
+  });
+  // Fleet: models still on the default policy
+  if (F && (F.models || []).length) {
+    var dflt = F.models.filter(function(m) { return m.is_default; });
+    row(dflt.length ? 'review' : 'ok', 'fleet', 'Fleet', dflt.length
+      ? dflt.length + ' of ' + F.models.length + ' models on the default policy (' + (dflt[0].policy && dflt[0].policy.discount_pct) + '% discount), not yet reviewed'
+      : 'policy set for every model' + (F.reputation != null ? ' · delivery reputation ' + Math.round(F.reputation * 100) + '%' : ''));
+  }
+  // Emissions: regimes where the fleet is short of its target
+  if (E && E.position && E.position.regimes && E.preset && E.preset !== 'off') {
+    var short = Object.keys(E.position.regimes).filter(function(k) { return (E.position.regimes[k].excess || 0) > 0; });
+    row(short.length ? 'review' : 'ok', 'emissions', 'Emissions', short.length
+      ? 'short in ' + short.map(function(k) { return _COM_REGIME_LBL[k] || k; }).join(', ') + ' · ' + e(E.position.provision_m || 0) + 'M provided'
+      : 'no regime short' + (E.position.receivable_m ? ' · ' + e(E.position.receivable_m) + 'M of credits to sell' : ''));
+  }
+  // Pricing: the retail discount in force on the models on sale
+  var sale = _comOnSale(V && V.vehicles);
+  if (sale.length) {
+    var ds = sale.map(function(v) { return parseFloat(v.discount_pct || 0); });
+    var lo = Math.min.apply(null, ds), hi = Math.max.apply(null, ds);
+    row('ok', 'pricing', 'Pricing', sale.length + ' model' + (sale.length > 1 ? 's' : '') + ' on sale · base discount ' + (lo === hi ? lo : lo + '–' + hi) +
+      '% (market norm ~4%)' + (sale.some(function(v) { return v.regional_discounts; }) ? ', with regional settings' : ''));
+  }
+  if (W && W.current) row('ok', 'warranty', 'Warranty', W.current.years + '-year warranty · ' + e(W.current.expense_m || 0) + 'M a quarter');
+  if (M && M.summary) row('ok', 'markets', 'Markets', M.summary.active + ' countries' + (M.summary.entering ? ' + ' + M.summary.entering + ' entering' : '') +
+    ' · ' + e(M.summary.network_m || 0) + 'M a quarter network' + (M.summary.entry_m ? ' · ' + e(M.summary.entry_m) + 'M entry this quarter' : ''));
+  row('ok', 'brand', 'Brand', 'brand budgets and positioning carry forward');
+  row('ok', 'aftersales', 'Aftersales', 'parts price and retention programmes carry forward');
+  var rank = {need: 0, review: 1, ok: 2};
+  return rows.sort(function(a, b) { return rank[a.st] - rank[b.st]; });
+}
+function _renderComBoard() {
+  var el = document.getElementById('com-board');
+  if (!el || !_comBoard.rows) return;
+  var DM = 'font-family:DM Mono,monospace;';
+  var ST = {need: ['needs you', 'var(--red)'], review: ['review', 'var(--gold)'], ok: ['in force', 'var(--green)']};
+  var nNeed = _comBoard.rows.filter(function(r) { return r.st === 'need'; }).length;
+  var nRev = _comBoard.rows.filter(function(r) { return r.st === 'review'; }).length;
+  var h = '<div style="' + DM + 'font-size:8px;letter-spacing:1.5px;text-transform:uppercase;color:var(--gold);margin:4px 0 8px;">This round · Q' +
+    currentRoundQuarter + ' ' + currentRoundYear + ' · ' + (nNeed ? nNeed + ' need you' : 'nothing urgent') + (nRev ? ' · ' + nRev + ' to review' : '') + '</div>';
+  h += '<div style="border:1px solid var(--border2);border-radius:4px;overflow:hidden;">';
+  _comBoard.rows.forEach(function(r, i) {
+    var s = ST[r.st];
+    h += '<div onclick="switchComTab(\'' + r.tab + '\')" style="cursor:pointer;display:grid;grid-template-columns:96px 110px minmax(0,1fr) 60px;gap:10px;align-items:center;padding:9px 12px;' +
+      (i ? 'border-top:1px solid var(--border2);' : '') + 'background:' + (r.st === 'need' ? 'rgba(239,68,68,.06)' : 'var(--s1)') + ';">' +
+      '<span style="' + DM + 'font-size:9px;color:' + s[1] + ';white-space:nowrap;">● ' + s[0] + '</span>' +
+      '<span style="font-size:12px;font-weight:600;color:var(--white);">' + r.area + '</span>' +
+      '<span style="' + DM + 'font-size:10px;color:var(--text);min-width:0;">' + r.text + '</span>' +
+      '<span style="' + DM + 'font-size:9px;color:var(--cyan);text-align:right;">Open →</span></div>';
+  });
+  h += '</div><div style="' + DM + 'font-size:8px;color:var(--muted2);margin-top:6px;">Refreshed when you open this tab. Each row opens its tab.</div>';
+  el.innerHTML = h;
+}
+// Tab badges: a red count for "needs you", an amber dot for "review"
+function _comBadges() {
+  var by = {};
+  (_comBoard.rows || []).forEach(function(r) {
+    var b = by[r.tab] || (by[r.tab] = {need: 0, review: 0});
+    if (r.st === 'need') b.need++; else if (r.st === 'review') b.review++;
+  });
+  var tot = Object.keys(by).reduce(function(s, k) { return s + by[k].need; }, 0);
+  ['overview','pricing','sales-planning','markets','warranty','emissions','aftersales','launches','brand','fleet'].forEach(function(t) {
+    var btn = document.getElementById('com-tab-btn-' + t); if (!btn) return;
+    var old = btn.querySelector('.com-badge'); if (old) old.remove();
+    var b = by[t];
+    var html = t === 'overview' ? (tot ? '<span class="com-badge" style="margin-left:6px;background:var(--red);color:#fff;border-radius:8px;padding:0 5px;font-size:8px;">' + tot + '</span>' : '')
+      : b && b.need ? '<span class="com-badge" style="margin-left:6px;background:var(--red);color:#fff;border-radius:8px;padding:0 5px;font-size:8px;">' + b.need + '</span>'
+      : b && b.review ? '<span class="com-badge" style="margin-left:5px;color:var(--gold);">●</span>' : '';
+    if (html) btn.insertAdjacentHTML('beforeend', html);
+  });
+}
+
 function switchComTab(tab) {
   _comActiveTab = tab;
   ['overview','pricing','sales-planning','markets','warranty','emissions','aftersales','launches','brand','fleet'].forEach(function(t) {
@@ -13149,6 +13253,7 @@ function switchComTab(tab) {
     }
     if (pane) pane.style.display = active ? '' : 'none';
   });
+  if (tab === 'overview') loadCommercialBoard();
   if (tab === 'pricing') renderCommercialPricing();
   if (tab === 'sales-planning') loadSalesPlanTab();
   if (tab === 'markets') loadMarketsTab();
@@ -13978,6 +14083,7 @@ function _renderWarrantyTab() {
 
 async function loadCommercialPage() {
   if (_comActiveTab === 'pricing') renderCommercialPricing();
+  loadCommercialBoard();   // the This round board and the tab badges, whichever tab is open
 }
 
 async function renderCommercialPricing() {
