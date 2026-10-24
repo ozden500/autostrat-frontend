@@ -21679,6 +21679,7 @@ function _propTallyRender() {
   _propComAfterRefresh(v);
   _propDstripRender();
   _propLadderRender();
+  _propSliderFx();
   _propSecResults();
 }
 // §9: what each market's car earns once §10's warranty and emissions costs are added.
@@ -21870,6 +21871,40 @@ function _propLadderRender() {
   }
 }
 
+// §2–§5 sliders: what one more tenth of the slider's range does to the module's cost per car and
+// R&D, from the slot's own engine (the spec is nudged, costed and put back; display only).
+function _propSliderFx() {
+  var sec = _prop.currentSec || 1;
+  var slots = {2: ['platform'], 3: _propPwtSlots(), 4: ['tophat'], 5: ['eands']}[sec] || [];
+  var tpcOf = function(r) { return r ? (r.is_multi_energy ? (r.ice_ready.std_platform_tpc_eur || 0) : (r.std_platform_tpc_eur || 0)) : 0; };
+  slots.forEach(function(k) {
+    var p = _prop[k], ui = _DERIV_UI[k];
+    if (!ui || !p || !_slotDesigned(p) || !p.specs) return;
+    var r0 = _propSlotEngine(k); if (!r0) return;
+    Object.keys(ui).forEach(function(key) {
+      var el = document.getElementById(ui[key][0]);
+      if (!el || el.type !== 'range' || !el.offsetParent || p.specs[key] === undefined || p.specs[key] === null) return;
+      var mn = parseFloat(el.min), mx = parseFloat(el.max), cur = parseFloat(p.specs[key]);
+      if (!(mx > mn) || isNaN(cur)) return;
+      var gs = parseFloat(el.step) || 0, st = (mx - mn) / 10;
+      if (gs > 0) st = Math.max(gs, Math.round(st / gs) * gs);   // whole slider steps (ADAS moves by 1)
+      var up = cur + st <= mx + 1e-9, nv = up ? cur + st : cur - st;
+      p.specs[key] = nv;
+      var r1 = _propSlotEngine(k);
+      p.specs[key] = cur;
+      if (!r1) return;
+      var dT = (tpcOf(r1) - tpcOf(r0)) * (up ? 1 : -1), dR = ((r1.total_rd_cost_eur_m || 0) - (r0.total_rd_cost_eur_m || 0)) * (up ? 1 : -1);
+      var fx = document.getElementById(el.id + '-fx');
+      if (!fx) { fx = document.createElement('div'); fx.id = el.id + '-fx'; el.parentNode.insertBefore(fx, el.nextSibling); }
+      var dec = st < 1 ? (st < 0.1 ? 2 : 1) : 0;
+      var sg = function(x, u) { return (x < 0 ? '−' : '+') + u + Math.abs(x).toLocaleString(undefined, {maximumFractionDigits: u ? 0 : 1}); };
+      fx.style.cssText = 'font-family:DM Mono,monospace;font-size:7.5px;color:var(--muted2);text-align:right;margin-top:1px;';
+      fx.textContent = (Math.abs(dT) < 0.5 && Math.abs(dR) < 0.05) ? 'no cost effect'
+        : '+' + st.toFixed(dec) + ' → ' + sg(Math.round(dT), '€') + '/car · ' + sg(Math.round(dR * 10) / 10, '') + 'M R&D';
+    });
+  });
+}
+
 // Completed sections' headers show what was chosen and what it costs, not just "✓ New development".
 function _propSecResults() {
   var e = function(x) { return '€' + Math.round(x).toLocaleString(); };
@@ -21987,6 +22022,10 @@ function renderStudyList(studies) {
       '<div style="flex:1;">' +
         '<div class="prop-study-card-name">' + v.name + '</div>' +
         '<div class="prop-study-card-meta">' + sn + ' &nbsp;&#183;&nbsp; ' + body + ' &nbsp;&#183;&nbsp; ' + pwt + ' &nbsp;&#183;&nbsp; ' + sop + ' &#8594; ' + eop + '</div>' +
+        '<div style="font-family:DM Mono,monospace;font-size:8px;color:var(--muted2);margin-top:3px;">Fixed by the study: segment, body, powertrain, SOP and EOP.</div>' +
+        (v.start_year && ((v.start_year - 2025) * 4 + (v.start_quarter || 1) - 1) < ((currentRoundYear - 2025) * 4 + (currentRoundQuarter || 1) - 1)
+          ? '<div style="font-family:DM Mono,monospace;font-size:8px;color:var(--orange);margin-top:2px;">⚠ SOP ' + sop + ' is already past (now Q' + currentRoundQuarter + ' ' + currentRoundYear +
+            '): the plan below starts from a quarter that has gone. Revise the study’s timing on Product Plan first.</div>' : '') +
       '</div>' +
       '<div>' + statusBadge(v.status) + '</div>' +
     '</div>';
@@ -22236,7 +22275,10 @@ function buildModuleOptions(modType, propKey, nextFn) {
   var html = '<div class="prop-mod-options">';
   // Reuse and Derivative both pick from the completed compatible modules: with none, the
   // card is shown disabled rather than opening an empty list.
-  var _nCompat = completed.filter(function(m){ return _isPropModuleCompatible(m, modType).ok; }).length;
+  var _compat = completed.filter(function(m){ return _isPropModuleCompatible(m, modType).ok; });
+  var _nCompat = _compat.length;
+  var _minTpc = _compat.reduce(function(a, m) { var t = parseFloat(m.per_unit_tpc_eur || 0); return t > 0 && (a === null || t < a) ? t : a; }, null);
+  var _pickTxt = _nCompat + ' to choose from' + (_minTpc ? ' · from €' + Math.round(_minTpc).toLocaleString() + '/car' : '');
   // Battery packs are configured per vehicle (no battery modules to derive from).
   (modType === 'battery' ? ['reuse','new'] : ['reuse','derivative','new']).forEach(function(mode) {
     var icons = {reuse:'♻️', derivative:'🔀', 'new':'🆕'};
@@ -22260,7 +22302,9 @@ function buildModuleOptions(modType, propKey, nextFn) {
       'data-mode="' + mode + '" data-nextfn="' + nextFn + '">' +
       '<div class="prop-mod-option-icon">' + icons[mode] + '</div>' +
       '<div class="prop-mod-option-title">' + titles[mode] + '</div>' +
-      '<div class="prop-mod-option-desc">' + descs[mode] + '</div></div>';
+      '<div class="prop-mod-option-desc">' + descs[mode] + '</div>' +
+      (mode !== 'new' ? '<div style="font-family:DM Mono,monospace;font-size:8px;color:var(--gold);margin-top:5px;">' + _pickTxt + '</div>' : '') +
+      '</div>';
   });
   html += '</div>';
 
@@ -22371,7 +22415,14 @@ function buildModuleOptions(modType, propKey, nextFn) {
         });
 
         html += '<td style="padding:8px 10px;font-family:DM Mono,monospace;font-size:10px;color:var(--gold);text-align:right;">' + tpc + '</td>';
-        html += '<td style="padding:8px 10px;text-align:center;"><span style="font-family:DM Mono,monospace;font-size:8px;padding:2px 6px;border-radius:2px;background:' + stCol + '22;color:' + stCol + ';">' + stLbl + '</span></td>';
+        // ready date against the study's SOP (a reused module must be ready by SOP)
+        var _st = _prop.study || {}, _rdy = '';
+        if (m.ready_year) {
+          var _late = _st.start_year && ((m.ready_year - 2025) * 4 + (m.ready_quarter || 1)) > ((_st.start_year - 2025) * 4 + (_st.start_quarter || 1));
+          _rdy = '<div style="font-family:DM Mono,monospace;font-size:7px;margin-top:3px;color:' + (_late ? 'var(--red)' : 'var(--muted2)') + ';">ready Q' +
+            (m.ready_quarter || 1) + ' ' + m.ready_year + (_late ? ' · after SOP' : '') + '</div>';
+        }
+        html += '<td style="padding:8px 10px;text-align:center;"><span style="font-family:DM Mono,monospace;font-size:8px;padding:2px 6px;border-radius:2px;background:' + stCol + '22;color:' + stCol + ';">' + stLbl + '</span>' + _rdy + '</td>';
         html += '<td style="padding:8px 10px;text-align:center;">' +
           (isSel ? '<span style="color:var(--gold);font-size:14px;">\u2713</span>' :
             '<span style="color:var(--muted2);font-size:10px;">Select</span>') + '</td>';
@@ -22786,6 +22837,8 @@ function buildModuleOptions(modType, propKey, nextFn) {
       var selEandsCfgKey = selArch ? selArch + '_' + selEandsMB : '';
 
       html += '<div style="margin-top:10px;">';
+      // Same layout as §2–§4: inputs on the left, the cost analysis on the right
+      html += '<div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px;align-items:start;"><div style="min-width:0;">';
       // Architecture + Make/Buy dropdowns
       html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px;">';
       html += '<div><label class="ctrl-lbl-top">E/E Architecture</label>' +
@@ -22822,10 +22875,12 @@ function buildModuleOptions(modType, propKey, nextFn) {
       html += '</div>';
 
       // BOM preview
-      html += '<div style="margin-top:8px;font-family:DM Mono,monospace;font-size:8px;text-transform:uppercase;letter-spacing:1px;color:var(--blue);margin-bottom:6px;">Standard Cost Analysis</div>';
-      html += '<div id="prop-eands-bom" style="font-size:10px;color:var(--muted2);overflow-y:auto;max-height:300px;">';
+      html += '</div><div style="min-width:0;">';
+      html += '<div style="font-family:DM Mono,monospace;font-size:8px;text-transform:uppercase;letter-spacing:1px;color:var(--blue);margin-bottom:6px;">Standard Cost Analysis</div>';
+      html += '<div id="prop-eands-bom" style="font-size:10px;color:var(--muted2);">';
       html += selEandsCfgKey ? '' : 'Select architecture to see BOM';
       html += '</div>';
+      html += '</div></div>';
 
       // Continue button
       html += '<div style="margin-top:14px;display:flex;align-items:center;gap:12px;">';
@@ -24408,8 +24463,8 @@ function buildReviewSection() {
     }
     if (_propMkt) {
       var _uc = _propMkt.utility_score >= 70 ? '#4ade80' : _propMkt.utility_score >= 50 ? '#fbbf24' : '#f87171';
-      tiles += kpiTile('' + _propMkt.utility_score, 'Utility', _uc);
-      tiles += kpiTile(_propMkt.market.est_share_pct + '%', 'Est. Share', 'var(--white)');
+      tiles += kpiTile(_propMkt.utility_score + '/100', 'Utility · ' + (_propMkt.utility_score >= 70 ? 'strong' : _propMkt.utility_score >= 50 ? 'average' : 'weak (<50)'), _uc);
+      tiles += kpiTile(_propMkt.market.est_share_pct + '%', 'Est. segment share', 'var(--white)');
       tiles += kpiTile(_propMkt.positioning, 'Positioning', _propMkt.positioning_color);
     }
     if (tiles) h += '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;">' + tiles + '</div>';
@@ -24551,7 +24606,9 @@ function buildReviewSection() {
 
   // ── PERFORMANCE RADAR (always visible — the single perf-vs-benchmark visual) ──
   // Chart on the left, per-axis score table on the right (filled by drawProposalRadar/_drawDualRadar).
-  h += sRule(dualVariant ? 'PERFORMANCE RADAR — ICE vs BEV' : 'PERFORMANCE RADAR — vs SEGMENT BENCHMARK');
+  // Folded like the other §6 detail (the KPI tiles above carry the headline figures).
+  h += collapseHdr('s6-radar', dualVariant ? 'PERFORMANCE RADAR — ICE vs BEV' : 'PERFORMANCE RADAR — vs SEGMENT BENCHMARK');
+  h += '<div id="s6-radar" style="display:none;">';
   h += '<div id="prop-radar-legend" style="display:flex;gap:8px;margin-bottom:6px;flex-wrap:wrap;justify-content:center;font-family:DM Mono,monospace;font-size:8px;"></div>';
   h += '<div style="display:flex;gap:24px;align-items:center;flex-wrap:wrap;margin-bottom:12px;">';
   h += '<div style="flex:0 0 auto;">';
@@ -24560,6 +24617,7 @@ function buildReviewSection() {
   h += '</div>';
   h += '<div id="prop-radar-table" style="flex:1 1 300px;min-width:280px;"></div>';
   h += '</div>';
+  h += '</div>'; // end radar collapsible
 
   // ── MATERIAL BOM (collapsible) ────────────────────────────────
   h += collapseHdr('s6-bom', 'MATERIAL BOM BY VARIANT');
@@ -25377,6 +25435,11 @@ function buildCommercialSection() {
       html+='<div style="display:flex;align-items:center;gap:12px;margin-bottom:10px;">';
       html+='<div style="font-size:9px;color:var(--muted2);">MSRP (€ k):</div>';
       html+='<input type="number" min="5" max="500" step="0.5" value="'+(mkt.msrp_eur_k||defPK)+'" id="prop-com-msrp-'+sm.region+'" oninput="onPropComMsrp(\''+sm.region+'\',this.value)" style="width:90px;background:var(--s2);border:1px solid var(--border2);border-radius:2px;color:var(--gold);font-family:DM Mono,monospace;font-size:12px;text-align:center;padding:4px 6px;">';
+      // One discount for the market; the per-year cells below stay for anyone who wants to vary it
+      var _dAll=(mkt.years||[]).map(function(y){return parseFloat(y.discount)||0;});
+      var _dSame=_dAll.length&&_dAll.every(function(d){return d===_dAll[0];});
+      html+='<div style="font-size:9px;color:var(--muted2);margin-left:12px;">Discount %, all years:</div>';
+      html+='<input type="number" min="0" max="40" step="0.5" value="'+(_dSame?_dAll[0]:'')+'" placeholder="'+(_dSame?'':'varies')+'" id="prop-com-discall-'+sm.region+'" onchange="onPropComDiscountAll(\''+sm.region+'\',this.value)" title="Sets every year; change single years in the table" style="width:70px;background:var(--s2);border:1px solid var(--border2);border-radius:2px;color:var(--gold);font-family:DM Mono,monospace;font-size:11px;padding:4px 6px;">';
       html+='<div style="font-size:9px;color:var(--muted2);margin-left:12px;" title="Units a year the new model sells here once launched, before it ages. Each year below follows from it.">Annual volume, new model:</div>';
       html+='<input type="number" min="0" max="2000000" step="500" value="'+(mkt.annual_volume||0)+'" id="prop-com-annual-'+sm.region+'" onchange="onPropComAnnual(\''+sm.region+'\',this.value)" style="width:100px;background:var(--s2);border:1px solid var(--border2);border-radius:2px;color:var(--text);font-family:DM Mono,monospace;font-size:12px;text-align:center;padding:4px 6px;">';
       html+='</div>';
@@ -25449,6 +25512,12 @@ function onPropComMsrp(region,val){
   var mkt=((_prop.commercial&&_prop.commercial.markets)||[]).find(function(m){return m.region===region;});
   if(mkt)mkt.msrp_eur_k=parseFloat(val)||0;
   _refreshMarketRows(region);
+}
+function onPropComDiscountAll(region,val){
+  var mkt=((_prop.commercial&&_prop.commercial.markets)||[]).find(function(m){return m.region===region;});
+  if(!mkt||val===''||isNaN(parseFloat(val)))return;
+  (mkt.years||[]).forEach(function(y){y.discount=parseFloat(val);});
+  buildCommercialSection();
 }
 function onPropComYearDiscount(region,idx,val){
   var mkt=((_prop.commercial&&_prop.commercial.markets)||[]).find(function(m){return m.region===region;});
@@ -26948,7 +27017,10 @@ function renderOpsAggregateSummary(){
   (ops.vehicle_plants||[]).forEach(function(f){if(!f._computed)return;tVP+=f._computed.total_inv_m||0;});
   (ops.powertrain_plants||[]).forEach(function(f){if(!f._computed)return;tPWT+=f._computed.total_inv_m||0;});
   function _s(id,v){var e=document.getElementById(id);if(e)e.textContent=String(v);}
-  _s('prop-ops-agg-vp','€'+Math.round(tVP)+'M');_s('prop-ops-agg-pwt','€'+Math.round(tPWT)+'M');_s('prop-ops-agg-sp','€'+_spTotalSupplierInvestmentM().toFixed(1)+'M');_s('prop-ops-agg-cost','€'+totals.totalLanded);
+  // Before an allocation is confirmed the figure is the default plant's estimate, not a charge.
+  var _cf=function(l){return (l||[]).some(function(f){return f.vehicle_capacity_yr>0;});};
+  var _est=' · estimate until confirmed';
+  _s('prop-ops-agg-vp','€'+Math.round(tVP)+'M'+(_cf(ops.vehicle_plants)?'':_est));_s('prop-ops-agg-pwt','€'+Math.round(tPWT)+'M'+(_cf(ops.powertrain_plants)||!tPWT?'':_est));_s('prop-ops-agg-sp','€'+_spTotalSupplierInvestmentM().toFixed(1)+'M');_s('prop-ops-agg-cost','€'+totals.totalLanded);
   // Re-render the §7 transformation cost impact panel as plant allocations are confirmed/removed
   var impEl=document.getElementById('prop-ops-impact-area');
   if(impEl)impEl.innerHTML=_renderPlantTransformationImpact();
@@ -28162,6 +28234,10 @@ async function buildMfgPlantSection() {
   var _allocMode2=(ops&&ops.allocation_mode)||'new',_selLk2=(ops&&ops.selected_plant_key)||null;
   var _sc7=_computeStandardModuleCosts();
   var html=_propFold('ops-std','Standard cost by module, from §2–§5 · €'+Math.round(_sc7.totTpc).toLocaleString()+'/car · R&amp;D €'+Math.round(_sc7.totRd).toLocaleString()+'M',_renderStandardCostSummary());
+  // The three moves §7 asks for, in order (the tables below are where each happens)
+  var _stp=function(n,t){return '<div style="display:flex;gap:8px;align-items:baseline;"><span style="font-family:Orbitron,sans-serif;font-size:11px;color:var(--gold);">'+n+'</span><span>'+t+'</span></div>';};
+  html+='<div style="display:flex;flex-wrap:wrap;gap:6px 22px;margin:12px 0;font-family:DM Mono,monospace;font-size:9px;color:var(--text);">'+
+    _stp('1','Click a vehicle plant row, set k/yr, Confirm Allocation')+_stp('2','Click the powertrain plant row, Confirm PWT Allocation')+_stp('3','Continue to sourcing')+'</div>';
   html+='<div id="prop-ops-footprint-area">'+_renderSimplifiedFootprint()+'</div>';
   html+='<div id="prop-ops-alloc-area">';
   if(_allocMode2==='existing'&&_selLk2){html+=_renderPlantAllocationPanel(_selLk2);}
