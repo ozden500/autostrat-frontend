@@ -1298,7 +1298,7 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
   <!-- ── PRICING tab ──────────────────────────────── -->
   <div id="com-tab-pricing" style="display:none;">
     <div style="font-size:11px;color:var(--muted2);margin-bottom:16px;">
-      Set the sales discount applied to each vehicle at market clearing. Changes take effect on the next round.
+      Set each model's retail discount for this round. It applies when this round clears and carries forward until you change it.
     </div>
     <div id="com-pricing-body">
       <div style="color:var(--muted2);font-family:'DM Mono',monospace;font-size:11px;padding:16px 0;">Loading vehicles…</div>
@@ -2719,7 +2719,7 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
     <div class="m-row"><div class="m-name">R&D intensity</div><div class="m-val" id="rp-rd">—</div></div>
     <div class="m-row"><div class="m-name" id="rp-evmix-name">EV mix</div><div class="m-val" id="rp-evmix">—</div></div>
     <div class="m-row"><div class="m-name">Net debt/EBITDA</div><div class="m-val" id="rp-nd">—</div></div>
-    <div class="m-row"><div class="m-name">Brand index</div><div class="m-val" id="rp-brand">—</div></div>
+    <div class="m-row"><div class="m-name" title="The Brand tab's STRENGTH figure (awareness is a separate number, shown there and on Launches)">Brand strength</div><div class="m-val" id="rp-brand">—</div></div>
     <div class="m-row"><div class="m-name">CO₂ compliance</div><div class="m-val" id="rp-co2">—</div></div>
   </div>
 </div>
@@ -13170,11 +13170,13 @@ function _comBoardRows(L, F, E, W, M, SP, V) {
       _esc(v.name) + (last ? ': last launch quarter' : ': launch window') + ' · this quarter ' + e(v.this_quarter_m || 0) + 'M (standard ' +
       e(v.suggested_now_m || 0) + 'M)' + (gapNow ? ' · awareness gap −' + Math.round(gapNow.gap * 100) + '%' : ''));
   });
-  // Fleet: models still on the default policy
-  if (F && (F.models || []).length) {
-    var dflt = F.models.filter(function(m) { return m.is_default; });
+  // Fleet: models on sale still on the default policy
+  var _saleIds = _comOnSale(V && V.vehicles).reduce(function(a, v) { a[v.id] = true; return a; }, {});
+  var _fm = ((F && F.models) || []).filter(function(m) { return !V || _saleIds[m.vehicle_id]; });
+  if (_fm.length) {
+    var dflt = _fm.filter(function(m) { return m.is_default; });
     row(dflt.length ? 'review' : 'ok', 'fleet', 'Fleet', dflt.length
-      ? dflt.length + ' of ' + F.models.length + ' models on the default policy (' + (dflt[0].policy && dflt[0].policy.discount_pct) + '% discount), not yet reviewed'
+      ? dflt.length + ' of ' + _fm.length + ' models on the default policy (' + (dflt[0].policy && dflt[0].policy.discount_pct) + '% discount), not yet reviewed'
       : 'policy set for every model' + (F.reputation != null ? ' · delivery reputation ' + Math.round(F.reputation * 100) + '%' : ''));
   }
   // Emissions: regimes where the fleet is short of its target
@@ -13279,6 +13281,11 @@ async function loadFleetTab() {
     var d = await res.json();
     if (!res.ok) throw new Error(d.detail || ('HTTP ' + res.status));
     _flTab.data = d;
+    try {
+      var vr = await fetch(API_URL + '/teams/' + teamId + '/vehicles');
+      var vj = vr.ok ? await vr.json() : null;
+      _flTab.onSale = vj ? _comOnSale(vj.vehicles).reduce(function(a, v) { a[v.id] = true; return a; }, {}) : null;
+    } catch (ve) { _flTab.onSale = null; }
     _renderFleetTab();
   } catch (e) {
     if (el) el.innerHTML = '<div style="color:var(--red);font-family:DM Mono,monospace;font-size:11px;padding:16px 0;">Fleet unavailable: ' + _esc(e.message) + '</div>';
@@ -13343,7 +13350,10 @@ function _renderFleetTab() {
     return '<td style="padding:4px 10px;font-size:9px;color:var(--muted);text-align:right;">' + _esc(o.label) + '</td>'; }).join('') + '</tr><tr>'
     + ob.map(function(o) { return '<td style="padding:4px 10px;font-size:11px;color:var(--text);text-align:right;"><b>' + n(o.units) + '</b></td>'; }).join('') + '</tr></table>';
 
+  // Only models on sale get a policy form: a model past EOP sells nothing (its contracts pass to its successor)
+  var _flSale = _flTab.onSale, _flPast = [];
   (d.models || []).forEach(function(md) {
+    if (_flSale && !_flSale[md.vehicle_id]) { _flPast.push(md.name); return; }
     var p = md.policy || {}, dis = d.locked ? ' disabled' : '';
     h += '<div style="border:1px solid var(--border);border-radius:6px;padding:10px 12px;margin-bottom:10px;background:var(--s2);">';
     h += '<div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:6px;align-items:baseline;">'
@@ -13364,6 +13374,7 @@ function _renderFleetTab() {
        + (md.order_book || []).map(function(o) { return _esc(o.label) + ' ' + n(o.units); }).join(' · ') + '</div>';
     h += '</div>';
   });
+  if (_flPast.length) h += '<div style="font-size:9px;color:var(--muted2);margin:-2px 0 10px;">Past EOP, no policy to set: ' + _flPast.map(_esc).join(', ') + '. Their remaining contracts pass to the successor.</div>';
   h += '<div style="font-size:9px;color:var(--muted);line-height:1.6;">A deeper discount wins a lot more fleet volume (fleet buyers are very price-sensitive) but every contract keeps that price for a year. '
      + 'The cap limits what you commit: with plants near full, fleet cars take capacity from higher-margin retail cars, and a delivery you cannot make is penalised. '
      + 'Fleet cars earn list price net of VAT, less a ' + Math.round((C.FLEET_DELIVERY_FEE || 0.03) * 100) + '% delivery fee and the discount; no dealer margin.</div>';
@@ -14094,9 +14105,8 @@ async function renderCommercialPricing() {
   try {
     var res = await fetch(API_URL + '/teams/' + teamId + '/vehicles');
     var data = await res.json();
-    vehicles = (data.vehicles || []).filter(function(v) {
-      return v.status === 'approved' || v.status === 'on_sale';
-    });
+    // models on sale this quarter: a model past EOP sells nothing, so its discount is not a decision
+    vehicles = _comOnSale(data.vehicles || []);
   } catch(e) {
     el.innerHTML = '<div style="color:var(--red);font-family:DM Mono,monospace;font-size:11px;">Failed to load vehicles.</div>';
     return;
@@ -14875,12 +14885,15 @@ async function loadBrandsPage() {
     if (!rid) { renderAllBrands(); return; }
     _brandDataRoundId = rid;
 
-    // Fetch brand scores
-    var bsRes = await fetch(API_URL+'/sessions/'+sessionId+'/rounds/'+rid+'/brand-scores');
-    if (bsRes.ok) {
+    // Fetch brand scores: from the latest round that has them. The open round is not cleared yet,
+    // so it has none, and reading only it showed every brand at the defaults (50 / 50 / 100 /
+    // €100M) while the panel showed the real brand index (2026-10-24).
+    _brandScores = null;
+    for (var _bi = rounds2.length - 1; _bi >= 0 && _bi >= rounds2.length - 4 && !_brandScores; _bi--) {
+      var bsRes = await fetch(API_URL+'/sessions/'+sessionId+'/rounds/'+rounds2[_bi].id+'/brand-scores');
+      if (!bsRes.ok) continue;
       var bsData = await bsRes.json();
-      var myScore = (bsData.scores||[]).find(function(s){ return s.team_id===teamId; });
-      _brandScores = myScore || null;
+      _brandScores = (bsData.scores||[]).find(function(s){ return s.team_id===teamId; }) || null;
     }
 
     // Fetch my marketing decision
