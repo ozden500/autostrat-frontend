@@ -1520,8 +1520,9 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
     <div style="display:flex;align-items:center;gap:12px;margin-top:14px;">
       <button onclick="submitFinancingDecision()" id="fcp-submit"
         style="background:var(--gold);color:#000;font-family:DM Mono,monospace;font-size:10px;font-weight:700;padding:8px 20px;border:none;border-radius:5px;cursor:pointer;letter-spacing:0.5px;">
-        SUBMIT FOR NEXT ROUND ▶
+        SUBMIT FINANCING ▶
       </button>
+      <div style="font-family:DM Mono,monospace;font-size:9px;color:var(--muted2);max-width:260px;line-height:1.4;">Applied at this round's clearing; a new submission replaces the earlier one. The option cards above save when clicked.</div>
       <div id="fcp-pending-badge" style="display:none;background:rgba(251,191,36,0.15);border:1px solid var(--gold);color:var(--gold);font-family:DM Mono,monospace;font-size:9px;padding:4px 10px;border-radius:4px;">
         ⏳ Decision pending for next round
       </div>
@@ -18552,7 +18553,8 @@ function _finStripRender() {
   }
   stripEl.innerHTML = '<div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;padding:9px 12px;margin:0 0 12px;border:1px solid rgba(200,164,60,.25);'
     + 'border-radius:4px;background:var(--s1);font-family:DM Mono,monospace;font-size:9px;color:var(--text);line-height:1.5;">'
-    + '<div style="min-width:0;"><div style="' + LB + '">You decide</div>Head-office staffing · dividend policy · payment terms, factoring &amp; credit line · supplier price-downs · captive loan offers · bonds, shares, special dividend, leaseback</div>'
+    + '<div style="min-width:0;"><div style="' + LB + '">You decide</div>Head-office staffing · dividend policy · payment terms, factoring &amp; credit line · supplier price-downs · captive loan offers '
+    + '<span style="color:var(--muted2);">(option cards: saved when clicked, carry forward)</span> · bonds, shares, special dividend, leaseback <span style="color:var(--muted2);">(sliders at the bottom: Submit financing)</span></div>'
     + '<div style="min-width:0;"><div style="' + LB + '">It drives</div>SG&amp;A, cash and interest · credit rating (net debt / EBITDA, interest cover, EBIT margin) · share price and TSR · retail demand (captive offers)</div>'
     + '<div style="min-width:0;"><div style="' + LB + '">Status</div>' + (st.join('') || '<div style="color:var(--muted2);">—</div>') + '</div></div>';
   // EBIT bridge
@@ -18814,9 +18816,20 @@ async function loadFinancePanel() {
     if (dr.ok) {
       var ddata = await dr.json();
       var pending = (ddata.decisions||[]).filter(function(d){ return d.status==='pending'; });
-      var badge = document.getElementById('fcp-pending-badge');
-      if (badge) badge.style.display = pending.length ? 'block' : 'none';
+      // an all-zero pending row is a withdrawn submission
+      pending = pending.filter(function(x) { return ['borrow_lt_m', 'repay_lt_m', 'shares_issued_m', 'shares_repurchased_m', 'dividend_m', 'leaseback_share']
+        .some(function(k) { return (parseFloat(x[k]) || 0) > 0; }); });
       _finPending = pending.length > 0;
+      if (pending.length) {
+        // put the submitted values back on the sliders, so what is shown is what will clear
+        var p0 = pending[0], map = {blt: 'borrow_lt_m', rlt: 'repay_lt_m', iss: 'shares_issued_m', rep: 'shares_repurchased_m', div: 'dividend_m', tenor: 'bond_tenor_years', lb: 'leaseback_share'};
+        Object.keys(map).forEach(function(k) {
+          var v = parseFloat(p0[map[k]]) || (k === 'tenor' ? 5 : 0), inp = document.getElementById('fcp-' + k);
+          if (inp) inp.value = String(v);
+          fcpUpd(k, v);
+        });
+      }
+      _fcpShowPending(pending.length ? _fcpDecision : null);
       _finStripRender();
     }
   } catch(e) { console.warn('loadFinancePanel:', e); }
@@ -19315,10 +19328,12 @@ function _cfTreasuryHtml(d, head, eur, pct, num) {
 }
 
 async function submitFinancingDecision() {
-  if (!sessionId || !teamId) { alert('No session or team active.'); return; }
+  var msg = function(t, col) { var s = document.getElementById('fcp-status'); if (s) { s.textContent = t; s.style.color = col; } };
+  if (!sessionId || !teamId) { msg('No session or team active.', 'var(--red)'); return; }
   var d = _fcpDecision;
   var hasAny = ['blt','rlt','iss','rep','div','lb'].some(function(k){ return d[k] > 0; });
-  if (!hasAny) { alert('Set at least one financing action before submitting.'); return; }
+  // all-zero is allowed only to withdraw an earlier submission (the new one replaces it)
+  if (!hasAny && !_finPending) { msg('Set at least one action above (bond, buy-back, shares, dividend or leaseback) before submitting.', 'var(--gold)'); return; }
 
   var btn = document.getElementById('fcp-submit');
   if (btn) { btn.disabled = true; btn.textContent = 'Submitting…'; }
@@ -19342,17 +19357,33 @@ async function submitFinancingDecision() {
       body: JSON.stringify(payload),
     });
     if (!res.ok) throw new Error('HTTP ' + res.status);
-    var badge = document.getElementById('fcp-pending-badge');
-    if (badge) badge.style.display = 'block';
-    _finPending = true; _finStripRender();
-    var status = document.getElementById('fcp-status');
-    if (status) { status.textContent = '✓ Decision submitted — will be applied in next market clearing'; status.style.color = 'var(--green)'; }
+    var t = new Date();
+    _finPending = hasAny; _finStripRender();
+    _fcpShowPending(hasAny ? d : null);
+    msg(hasAny ? '✓ Saved ' + String(t.getHours()).padStart(2, '0') + ':' + String(t.getMinutes()).padStart(2, '0') + ' · applied at this round\'s clearing'
+               : '✓ Earlier submission withdrawn', 'var(--green)');
   } catch(e) {
-    var status = document.getElementById('fcp-status');
-    if (status) { status.textContent = '✗ Error: ' + e.message; status.style.color = 'var(--red)'; }
+    msg('✗ Not saved: ' + e.message, 'var(--red)');
   } finally {
-    if (btn) { btn.disabled = false; btn.textContent = 'SUBMIT FOR NEXT ROUND ▶'; }
+    if (btn) { btn.disabled = false; btn.textContent = 'SUBMIT FINANCING ▶'; }
   }
+}
+
+// The pending (submitted, not yet cleared) financing decision: badge text, and the sliders set to it
+// when the page reopens. d uses the slider keys (blt, rlt, iss, rep, div, tenor, lb); null = none.
+function _fcpShowPending(d) {
+  var badge = document.getElementById('fcp-pending-badge');
+  if (!badge) return;
+  if (!d) { badge.style.display = 'none'; return; }
+  var e = function(v) { return '€' + Math.round(v).toLocaleString() + 'M'; }, parts = [];
+  if (d.blt > 0) parts.push('bond ' + e(d.blt) + ' (' + (d.tenor || 5) + 'y)');
+  if (d.rlt > 0) parts.push('bond buy-back ' + e(d.rlt));
+  if (d.iss > 0) parts.push('new shares ' + e(d.iss));
+  if (d.rep > 0) parts.push('share buy-back ' + e(d.rep));
+  if (d.div > 0) parts.push('special dividend ' + e(d.div));
+  if (d.lb > 0) parts.push('leaseback ' + Math.round(d.lb * 100) + '%');
+  badge.textContent = '⏳ Submitted: ' + (parts.join(' · ') || 'no action') + ' · applied at this round\'s clearing';
+  badge.style.display = 'block';
 }
 
 
