@@ -29203,6 +29203,12 @@ function _buildPlantFromDecision(){
     vp={id:targetId,region:'EU',country_code:'DE',country_name:'Germany',jph:40,automation_level:2,platform_shared:false,module_capacity:{},_computed:null};
     ops.vehicle_plants.push(vp);
   }
+  // The line is the allocation the team confirmed. capacity_target_k is only set when the volume
+  // box is typed in; without it the §9-suggested volume used to win, so rebuilding §7 after §9
+  // (Continue from §6 again, or Revise) resized a confirmed 50k line to §9's ~7k: capex €226M →
+  // €65M and a smaller plant, while the allocation and §8's reservation still said 50k (2026-10-24).
+  // Order: a volume being typed now, then the confirmed allocation, then the suggestion.
+  capK=ops.capacity_target_k||vp.vehicle_capacity_yr||_suggestedVolK()||50;
   // A new greenfield plant (allocation_mode 'new') has no plant key: its location comes from the
   // region / country selects (onPropOpsNewRegion / -Country), but its line is set up below like an
   // existing one's. It used to be skipped: the plant stayed a placeholder with no capacity, §7
