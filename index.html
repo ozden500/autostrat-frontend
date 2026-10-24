@@ -14200,6 +14200,13 @@ async function renderCommercialPricing() {
     var data = await res.json();
     // models on sale this quarter: a model past EOP sells nothing, so its discount is not a decision
     vehicles = _comOnSale(data.vehicles || []);
+    // last quarter per region and the discount preview (GET …/pricing-context, read-only)
+    try {
+      var cr = await fetch(API_URL + '/sessions/' + sessionId + '/teams/' + teamId + '/pricing-context');
+      var cj = cr.ok ? await cr.json() : null;
+      _comPxCtx = cj ? {} : null;           // null = endpoint unavailable: show no context line
+      ((cj && cj.vehicles) || []).forEach(function(cv) { _comPxCtx[cv.vehicle_id] = cv; });
+    } catch (ce) { _comPxCtx = null; }
   } catch(e) {
     el.innerHTML = '<div style="color:var(--red);font-family:DM Mono,monospace;font-size:11px;">Failed to load vehicles.</div>';
     return;
@@ -14242,7 +14249,7 @@ async function renderCommercialPricing() {
 
     var effPct = _computeEffectiveDiscount(rd, v.commercial_plan);
 
-    if (_cardCollapsed[vid] === undefined) _cardCollapsed[vid] = true;
+    if (_cardCollapsed[vid] === undefined) _cardCollapsed[vid] = false;   // open: the sliders are the decision
     var isCollapsed = _cardCollapsed[vid];
     h += '<div style="background:var(--s2);border:1px solid var(--border2);border-radius:6px;padding:18px 22px;">';
 
@@ -14277,7 +14284,7 @@ async function renderCommercialPricing() {
       h += '<div style="display:grid;grid-template-columns:26px 160px 1fr 52px 130px'+(hasCtry?' 120px':'')+';align-items:center;gap:10px;padding:8px 12px;background:var(--s3);">';
       h += '<div style="'+MONO+'font-size:13px;">'+flag+'</div>';
       h += '<div style="'+MONO+'font-size:9px;font-weight:600;color:var(--text);letter-spacing:.3px;">'+sm.label+'</div>';
-      h += '<input type="range" min="-30" max="40" step="0.5" value="'+defDisc.toFixed(1)+'"'
+      h += '<input type="range" min="-30" max="40" step="0.5" value="'+defDisc.toFixed(1)+'" list="com-norm-ticks" title="Market norm 4%"'
          + ' id="com-reg-range-'+vid+'-'+region+'"'
          + ' oninput="onComRegionDefaultSlide(\''+vid+'\',\''+region+'\',this.value,'+msrp+')"'
          + ' style="width:100%;accent-color:var(--gold);cursor:pointer;">';
@@ -14290,6 +14297,9 @@ async function renderCommercialPricing() {
            + (expanded ? '▼ Collapse' : '▶ Countries') + '</button>';
       }
       h += '</div>';
+      // what to decide against: last quarter here, and what the discount on the slider would do
+      if (_comPxCtx) h += '<div id="com-reg-ctx-'+vid+'-'+region+'" style="'+MONO+'font-size:9px;color:var(--muted2);padding:5px 12px 7px 48px;background:var(--s3);line-height:1.5;">'
+         + _comPxCtxHtml(vid, region, defDisc) + '</div>';
 
       // Country sub-rows (collapsed by default)
       if (hasCtry) {
@@ -14332,7 +14342,37 @@ async function renderCommercialPricing() {
   });
 
   h += '</div>';
+  h += '<datalist id="com-norm-ticks"><option value="0"></option><option value="4" label="norm"></option></datalist>';
   el.innerHTML = h;
+}
+
+// Pricing context per model × region from GET …/pricing-context: last cleared quarter (cars, the
+// discount they sold at, OEM net revenue and margin per car, share of the region's retail buyers)
+// and, at the slider's discount, the server's preview (cars vs last quarter, margin per car), so
+// the line reads as a trade-off: cars won or lost against margin, and the contribution it nets.
+var _comPxCtx = {};
+function _comPxCtxHtml(vid, region, pct) {
+  if (!_comPxCtx) return '';
+  var cv = _comPxCtx[vid], g = cv && cv.regions && cv.regions[region];
+  if (!cv) return 'No sales data yet.';
+  if (!g) return 'Not sold here last quarter' + (cv.as_of ? ' (' + cv.as_of + ')' : '') + '.';
+  var e = function(x) { return (x < 0 ? '−€' : '€') + Math.round(Math.abs(x)).toLocaleString(); };
+  var k = function(u) { return u >= 1000 ? (u / 1000).toFixed(1) + 'k' : Math.round(u).toString(); };
+  var h = '<span style="color:var(--text);">' + (cv.as_of || 'Last quarter') + ':</span> ' + k(g.units) + ' cars at ' + g.discount_last_pct.toFixed(1) +
+    '% · OEM net ' + e(g.net_per_car_eur) + '/car' + (g.margin_per_car_eur != null ? ' · margin ' + e(g.margin_per_car_eur) + '/car' : '') +
+    ' · ' + g.share_pct.toFixed(1) + '% of buyers';
+  var p = null, want = Math.round(parseFloat(pct) * 2) / 2;
+  (g.preview || []).forEach(function(r) { if (r[0] === want) p = r; });
+  if (p && Math.abs(want - g.discount_last_pct) >= 0.25) {
+    var units = g.units * p[1], dU = (p[1] - 1) * 100;
+    var c0 = g.margin_per_car_eur != null ? g.units * g.margin_per_car_eur / 1e6 : null, c1 = p[3] != null ? units * p[3] / 1e6 : null;
+    var dC = (c0 != null && c1 != null) ? c1 - c0 : null;
+    h += '<br><span style="color:var(--gold);">At ' + want.toFixed(1) + '%: ≈ ' + (dU >= 0 ? '+' : '−') + Math.abs(dU).toFixed(1) + '% cars (' + k(units) + ')' +
+      (p[3] != null ? ' · margin ' + e(p[3]) + '/car' : '') + '</span>' +
+      (dC != null ? ' · <b style="color:' + (dC >= 0 ? 'var(--green)' : 'var(--red)') + ';">contribution ' + (dC >= 0 ? '+' : '−') + '€' + Math.abs(dC).toFixed(1) + 'M a quarter</b>' : '') +
+      ' <span title="Estimate from the clearing’s own-price response at your share of buyers; rivals’ prices, awareness and supply held at last quarter">ⓘ</span>';
+  }
+  return h;
 }
 
 function _cpRegionWeights(cp) {
@@ -14428,6 +14468,8 @@ function onComRegionDefaultSlide(vid, region, val, msrp) {
   var netEl = document.getElementById('com-reg-net-'+vid+'-'+region);
   if (valEl) valEl.textContent = _discLbl(pct);
   if (netEl && msrp > 0) netEl.textContent = '€'+Math.round(msrp*1000*(1-pct/100)).toLocaleString()+'/unit';
+  var ctxEl = document.getElementById('com-reg-ctx-'+vid+'-'+region);
+  if (ctxEl) ctxEl.innerHTML = _comPxCtxHtml(vid, region, pct);
 
   // Propagate to non-customized countries
   (_REGION_COUNTRIES[region]||[]).forEach(function(c) {
