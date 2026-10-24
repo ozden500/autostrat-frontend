@@ -1425,6 +1425,9 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
     <div class="kpi kk-r"><div class="kl">Net Debt</div><div class="kv" id="fin-debt" style="color:var(--red)">€6,240M</div><div class="kd dn" id="fin-debt-sub">1.5× EBITDA</div></div>
     <div class="kpi kk-b"><div class="kl">Free Cash Flow</div><div class="kv" id="fin-cashflow">€455M</div><div class="kd up" id="fin-cashflow-sub">▲ strong</div></div>
   </div>
+  <!-- Decision strip + EBIT bridge (_finStripRender) -->
+  <div id="fin-strip"></div>
+  <div id="fin-bridge"></div>
   <!-- ── Three statements: P&L / Balance Sheet / Cash Flow ── -->
   <div style="display:flex;gap:0;margin-bottom:12px;border-bottom:1px solid var(--border);">
     <div class="fin-stmt-tab active" data-tab="pl" onclick="switchFinTab('pl')"
@@ -18522,6 +18525,75 @@ function _finPlOther(s) {
        + n('fs_ebit_m') - n('ebit_m');
 }
 
+// Decision strip (what you decide · what it drives · status) and the EBIT bridge from the
+// previous to the last cleared quarter: display only, from the loaded statements and /finance
+var _finPending = false;
+function _finStripRender() {
+  var S = _finStmts, c = S.cur, p = S.prev, pj = S.proj, cf = (_cfPanel && _cfPanel.data) || {};
+  var stripEl = document.getElementById('fin-strip'), brEl = document.getElementById('fin-bridge');
+  if (!stripEl || !brEl) return;
+  var n = function(s, k) { return s ? (parseFloat(s[k]) || 0) : 0; };
+  var M = function(v) { return (v < 0 ? '−€' : '€') + Math.abs(Math.round(v)).toLocaleString() + 'M'; };
+  var dM = function(v) { return (v > 0 ? '+€' : v < 0 ? '−€' : '±€') + Math.abs(Math.round(v)).toLocaleString() + 'M'; };
+  var LB = 'font-size:7px;letter-spacing:1.5px;text-transform:uppercase;color:var(--gold);margin-bottom:3px;';
+  // Status
+  var st = [];
+  if (c) {
+    var cash = n(c, 'cash_m'), buf = parseFloat(cf.treasury_buffer_m);
+    var pjCash = pj && pj.closing_cash_m != null ? parseFloat(pj.closing_cash_m) : null;
+    var low = !isNaN(buf) && cash < buf;
+    st.push('<div style="color:' + (low ? 'var(--gold)' : 'var(--green)') + ';">● cash ' + M(cash) + (!isNaN(buf) ? (low ? ', below the ' : ', above the ') + M(buf) + ' buffer' : '')
+      + (pjCash != null ? ' · ' + M(pjCash) + ' projected at quarter end' : '') + '</div>');
+    var rt = c.credit_rating || cf.rating;
+    st.push(c.covenant_breached ? '<div style="color:var(--red);">● covenant breached: LT debt above 2.5× equity</div>'
+                                : '<div style="color:var(--green);">● covenant OK' + (rt ? ' · rating ' + _esc(rt) : '') + '</div>');
+    st.push(_finPending ? '<div style="color:var(--gold);">● financing decision submitted, applied at clearing</div>'
+                        : '<div style="color:var(--muted2);">● no bond / share / dividend action set (optional)</div>');
+  }
+  stripEl.innerHTML = '<div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;padding:9px 12px;margin:0 0 12px;border:1px solid rgba(200,164,60,.25);'
+    + 'border-radius:4px;background:var(--s1);font-family:DM Mono,monospace;font-size:9px;color:var(--text);line-height:1.5;">'
+    + '<div style="min-width:0;"><div style="' + LB + '">You decide</div>Head-office staffing · dividend policy · payment terms, factoring &amp; credit line · supplier price-downs · captive loan offers · bonds, shares, special dividend, leaseback</div>'
+    + '<div style="min-width:0;"><div style="' + LB + '">It drives</div>SG&amp;A, cash and interest · credit rating (net debt / EBITDA, interest cover, EBIT margin) · share price and TSR · retail demand (captive offers)</div>'
+    + '<div style="min-width:0;"><div style="' + LB + '">Status</div>' + (st.join('') || '<div style="color:var(--muted2);">—</div>') + '</div></div>';
+  // EBIT bridge
+  if (!c || !p || c.is_opening_balance) { brEl.innerHTML = ''; return; }
+  var parts = function(s) {
+    var wo = n(s, 'eop_writeoff_m');
+    return {
+      'Gross profit': n(s, 'gross_profit_m'),
+      'R&D': -n(s, 'rd_expense_m'),
+      'SG&A': -n(s, 'sga_m'),
+      'Marketing (brand, launch, special series)': -(n(s, 'marketing_m') + n(s, 'launch_marketing_m') + n(s, 'lifecycle_mkt_m')),
+      'Sales network & market entry': -(n(s, 'sales_network_m') + n(s, 'market_entry_m')),
+      'Aftersales programmes': -n(s, 'aftersales_opex_m'),
+      'CO₂ compliance & credits': n(s, 'co2_credit_income_m') - n(s, 'co2_compliance_m'),
+      'Depreciation (ongoing)': -(n(s, 'depreciation_total_m') - wo),
+      'Written off at end of production': -wo,
+      'Financial services': n(s, 'fs_ebit_m')
+    };
+  };
+  var a = parts(p), b = parts(c), dE = n(c, 'ebit_m') - n(p, 'ebit_m'), rows = [], acc = 0;
+  Object.keys(b).forEach(function(k) { var d = b[k] - a[k]; acc += d; rows.push({k: k, d: d}); });
+  rows.push({k: 'Fees, lease rent, supply chain & other', d: dE - acc});
+  rows.sort(function(x, y) { return Math.abs(y.d) - Math.abs(x.d); });
+  var top = rows.slice(0, 5), rest = rows.slice(5).reduce(function(s, r) { return s + r.d; }, 0);
+  var big = Math.max.apply(null, top.map(function(r) { return Math.abs(r.d); }).concat([1]));
+  var bar = function(r) {
+    var w = Math.round(Math.abs(r.d) / big * 100), col = r.d >= 0 ? 'var(--green)' : 'var(--red)';
+    return '<div style="display:grid;grid-template-columns:minmax(0,1.4fr) 90px minmax(0,1fr);gap:10px;align-items:center;">'
+      + '<span style="color:var(--muted2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + _esc(r.k) + '</span>'
+      + '<span style="text-align:right;color:' + col + ';">' + dM(r.d) + '</span>'
+      + '<span style="display:block;height:6px;background:var(--border2);"><span style="display:block;height:6px;width:' + w + '%;background:' + col + ';"></span></span></div>';
+  };
+  brEl.innerHTML = '<div style="padding:9px 12px;margin:0 0 14px;border:1px solid var(--border);border-radius:4px;background:var(--s1);font-family:DM Mono,monospace;font-size:9.5px;line-height:1.7;">'
+    + '<div style="' + LB + 'color:var(--muted);">What moved EBIT</div>'
+    + '<div style="font-size:11px;margin-bottom:4px;">' + _esc(S.prevHdr) + ' ' + M(n(p, 'ebit_m')) + ' → ' + _esc(S.curHdr) + ' <b style="color:' + (n(c, 'ebit_m') >= 0 ? 'var(--text)' : 'var(--red)') + ';">' + M(n(c, 'ebit_m')) + '</b>'
+    + ' <span style="color:' + (dE >= 0 ? 'var(--green)' : 'var(--red)') + ';">(' + dM(dE) + ')</span>'
+    + (pj && pj.ebit_m != null ? ' <span style="color:var(--gold);">· ' + _esc(S.projHdr) + ' ' + M(parseFloat(pj.ebit_m)) + ' (pro-forma)</span>' : '') + '</div>'
+    + top.map(bar).join('')
+    + (Math.abs(rest) >= 0.5 ? '<div style="color:var(--muted);">everything else ' + dM(rest) + '</div>' : '') + '</div>';
+}
+
 // Operating cash flow lines not stored as their own columns (CO2 receivable / provision,
 // prepaid): the residual, so the section foots to cfo_total_m
 function _finCfoOther(s) {
@@ -18641,6 +18713,7 @@ function renderFinStatement() {
     note.innerHTML = msg;
     note.style.display = msg ? 'block' : 'none';
   }
+  _finStripRender();
 }
 
 async function loadFinancePanel() {
@@ -18743,6 +18816,8 @@ async function loadFinancePanel() {
       var pending = (ddata.decisions||[]).filter(function(d){ return d.status==='pending'; });
       var badge = document.getElementById('fcp-pending-badge');
       if (badge) badge.style.display = pending.length ? 'block' : 'none';
+      _finPending = pending.length > 0;
+      _finStripRender();
     }
   } catch(e) { console.warn('loadFinancePanel:', e); }
 }
@@ -19069,6 +19144,7 @@ function _cfRender() {
   var rlt = document.getElementById('fcp-rlt');
   var ltd = parseFloat((d.metrics || {}).long_term_debt_m);
   if (rlt && ltd >= 0) rlt.max = Math.max(250, Math.ceil(ltd / 250) * 250);
+  _finStripRender();   // the status line reads the treasury buffer from here
 }
 
 // Captive finance offers by region (financial_engine.captive_offer_at / captive_terms)
@@ -19268,6 +19344,7 @@ async function submitFinancingDecision() {
     if (!res.ok) throw new Error('HTTP ' + res.status);
     var badge = document.getElementById('fcp-pending-badge');
     if (badge) badge.style.display = 'block';
+    _finPending = true; _finStripRender();
     var status = document.getElementById('fcp-status');
     if (status) { status.textContent = '✓ Decision submitted — will be applied in next market clearing'; status.style.color = 'var(--green)'; }
   } catch(e) {
