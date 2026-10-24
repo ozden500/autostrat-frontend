@@ -13141,6 +13141,7 @@ async function loadCommercialBoard() {
   } finally { _comBoard.busy = false; }
   _renderComBoard();
   _comBadges();
+  if (typeof _comDecorateAll === 'function') _comDecorateAll();   // the strips' Status column
 }
 function _comQabs() { return (currentRoundYear - 2025) * 4 + (currentRoundQuarter || 1) - 1; }
 // Models on sale this quarter (approved, SOP ≤ now ≤ EOP): the ones a Commercial decision applies to
@@ -13221,7 +13222,7 @@ function _renderComBoard() {
       '<span style="' + DM + 'font-size:10px;color:var(--text);min-width:0;">' + r.text + '</span>' +
       '<span style="' + DM + 'font-size:9px;color:var(--cyan);text-align:right;">Open →</span></div>';
   });
-  h += '</div><div style="' + DM + 'font-size:8px;color:var(--muted2);margin-top:6px;">Refreshed when you open this tab. Each row opens its tab.</div>';
+  h += '</div><div style="' + DM + 'font-size:8px;color:var(--muted2);margin-top:6px;">Refreshed when you open this tab and after every Commercial save. Each row opens its tab.</div>';
   el.innerHTML = h;
 }
 // Tab badges: a red count for "needs you", an amber dot for "review"
@@ -13242,6 +13243,97 @@ function _comBadges() {
     if (html) btn.insertAdjacentHTML('beforeend', html);
   });
 }
+
+// ── Commercial tabs: decision strip (CP3) + "How it works" fold + Saved stamp (CP4) ──────────
+// Each tab gets the proposal flow's strip at the top: what you decide, what it drives, and its
+// status (the This round board's rows for the tab + when it was last saved). The tab's long intro
+// (its first ≥200-character line-height:1.6 paragraph) is moved into a fold, closed by default.
+// Applied after every render by a MutationObserver per pane, so the tab renderers stay as they are.
+var _COM_STRIP = {
+  'sales-planning': ['Next quarter’s sales forecast and closing stock per country; then freeze each model', 'Production required at each plant (Industrial Ops → Manufacturing) and stock-outs'],
+  pricing:    ['Retail discount per region (or per country) for each model on sale', 'Buyers won or lost against the ~4% norm, and revenue per car'],
+  launches:   ['A launch budget for each model in its launch window (2 quarters before SOP to 1 after)', 'How fast a new model’s awareness gap closes'],
+  fleet:      ['Per model: offer to fleets, fleet discount and the most fleet cars a quarter', 'Fleet contracts for the next 4 quarters, capacity taken from retail, delivery reputation'],
+  markets:    ['Enter or exit countries; network spend per country', 'Where you may sell, your share there, and network / entry costs'],
+  brand:      ['Brand budget and its split over the image dimensions', 'Brand strength and awareness, which every model’s attraction carries'],
+  emissions:  ['Credit-market stance per regime; BEV price gap for dual-energy models', 'Compliance cost or credit income, and buyers’ CO₂ charges'],
+  warranty:   ['Company-wide warranty period; quality system and inspection per vehicle', 'Warranty cost per car (COGS) and the demand effect of the period'],
+  aftersales: ['Parts price and retention programme per region; parts logistics and field service', 'Parts contribution, post-warranty retention, new-car loyalty and repair cost']
+};
+var _comHowOpen = {}, _comSavedAt = {}, _comDecoTimer = {};
+function _comDecorate(tab) {
+  var pane = document.getElementById('com-tab-' + tab), d = _COM_STRIP[tab];
+  if (!pane || !d) return;
+  var strip = pane.querySelector(':scope > .com-strip');
+  if (!strip) { strip = document.createElement('div'); strip.className = 'com-strip'; pane.insertBefore(strip, pane.firstChild); }
+  var rows = (_comBoard.rows || []).filter(function(r) { return r.tab === tab; });
+  var COL = {need: 'var(--red)', review: 'var(--gold)', ok: 'var(--green)'};
+  var LB = 'font-size:7px;letter-spacing:1.5px;text-transform:uppercase;color:var(--gold);margin-bottom:3px;';
+  var st = rows.map(function(r) { return '<div style="color:' + COL[r.st] + ';">● ' + r.text + '</div>'; }).join('') || '<div style="color:var(--muted2);">—</div>';
+  if (_comSavedAt[tab]) st += '<div style="color:var(--green);margin-top:2px;">Saved ✓ ' + _comSavedAt[tab] + '</div>';
+  var html = '<div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;padding:9px 12px;margin-bottom:12px;border:1px solid rgba(200,164,60,.25);' +
+    'border-radius:4px;background:var(--s1);font-family:DM Mono,monospace;font-size:9px;color:var(--text);line-height:1.5;">' +
+    '<div style="min-width:0;"><div style="' + LB + '">You decide</div>' + d[0] + '</div>' +
+    '<div style="min-width:0;"><div style="' + LB + '">It drives</div>' + d[1] + '</div>' +
+    '<div style="min-width:0;"><div style="' + LB + '">Status</div>' + st + '</div></div>';
+  if (strip.innerHTML !== html) strip.innerHTML = html;   // unchanged → no mutation → no observer loop
+  if (!pane.querySelector('.com-how')) {
+    var intro = Array.prototype.find.call(pane.querySelectorAll('div[style*="line-height:1.6"]'), function(el) {
+      return !el.closest('.com-strip') && el.textContent.trim().length >= 200;
+    });
+    if (intro) {
+      var open = !!_comHowOpen[tab], w = document.createElement('div');
+      w.className = 'com-how'; w.style.cssText = 'margin-bottom:12px;';
+      w.innerHTML = '<div onclick="_comHowToggle(\'' + tab + '\')" style="cursor:pointer;font-family:DM Mono,monospace;font-size:8px;letter-spacing:1px;text-transform:uppercase;color:var(--muted);">' +
+        '<span class="com-how-chev">' + (open ? '▾' : '▸') + '</span> How it works</div><div class="com-how-body" style="display:' + (open ? 'block' : 'none') + ';margin-top:6px;"></div>';
+      intro.parentNode.insertBefore(w, intro);
+      w.querySelector('.com-how-body').appendChild(intro);
+    }
+  }
+}
+function _comHowToggle(tab) {
+  _comHowOpen[tab] = !_comHowOpen[tab];
+  var pane = document.getElementById('com-tab-' + tab); if (!pane) return;
+  var b = pane.querySelector('.com-how-body'), c = pane.querySelector('.com-how-chev');
+  if (b) b.style.display = _comHowOpen[tab] ? 'block' : 'none';
+  if (c) c.textContent = _comHowOpen[tab] ? '▾' : '▸';
+}
+function _comDecorateAll() { Object.keys(_COM_STRIP).forEach(_comDecorate); }
+document.addEventListener('DOMContentLoaded', function() {
+  if (typeof MutationObserver === 'undefined') return;
+  Object.keys(_COM_STRIP).forEach(function(tab) {
+    var pane = document.getElementById('com-tab-' + tab); if (!pane) return;
+    new MutationObserver(function() {
+      clearTimeout(_comDecoTimer[tab]);
+      _comDecoTimer[tab] = setTimeout(function() { _comDecorate(tab); }, 60);
+    }).observe(pane, {childList: true, subtree: true});
+    _comDecorate(tab);
+  });
+});
+// A successful save to a Commercial endpoint stamps its tab and refreshes the board and badges
+// (one place for every tab's save path, so none of them needs its own hook).
+var _COM_SAVE_URL = [[/\/fleet$/, 'fleet'], [/\/launches$/, 'launches'], [/\/aftersales$/, 'aftersales'], [/\/emissions$/, 'emissions'],
+                     [/\/warranty$/, 'warranty'], [/\/vehicles\/[^/]+\/quality$/, 'warranty'], [/\/teams\/[^/]+\/markets$/, 'markets'],
+                     [/\/brand-decisions$/, 'brand'], [/\/sales-plans(\/freeze|\/unfreeze)?(\?|$)/, 'sales-planning'], [/\/vehicles\/[^/?]+$/, 'pricing']];
+var _comBoardTimer = null;
+(function() {
+  var _f = window.fetch;
+  window.fetch = function(url, opts) {
+    var p = _f.apply(this, arguments);
+    var m = opts && opts.method && opts.method !== 'GET' ? String(url) : null;
+    var pg = document.getElementById('page-commercial');
+    if (m && pg && pg.offsetParent !== null) {
+      var hit = _COM_SAVE_URL.find(function(x) { return x[0].test(m.split('?')[0]) || x[0].test(m); });
+      if (hit) p.then(function(r) {
+        if (!r.ok) return;
+        var t = new Date(); _comSavedAt[hit[1]] = ('0' + t.getHours()).slice(-2) + ':' + ('0' + t.getMinutes()).slice(-2);
+        _comDecorate(hit[1]);
+        clearTimeout(_comBoardTimer); _comBoardTimer = setTimeout(loadCommercialBoard, 1200);
+      }).catch(function() {});
+    }
+    return p;
+  };
+})();
 
 function switchComTab(tab) {
   _comActiveTab = tab;
@@ -13362,12 +13454,13 @@ function _renderFleetTab() {
        + _esc(md.segment_code || '') + ' · fleet is ' + Math.round((md.fleet_share_of_segment || 0) * 100) + '% of this segment</span></div></div>'
        + (md.is_default ? '<div style="font-size:9px;color:var(--gold);">default policy — not yet reviewed</div>' : '<div style="font-size:9px;color:var(--green);">your policy</div>') + '</div>';
     h += '<div style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;margin:8px 0;">'
-       + '<label style="font-size:10px;color:var(--text);display:flex;align-items:center;gap:5px;"><input type="checkbox" id="fl-on-' + md.vehicle_id + '"' + (p.active ? ' checked' : '') + dis + '> Offer to fleets</label>'
-       + '<div><div style="font-size:8px;color:var(--muted);text-transform:uppercase;">Fleet discount %</div><input type="number" min="0" max="' + (C.FLEET_MAX_DISCOUNT_PCT || 40) + '" step="0.5" id="fl-disc-' + md.vehicle_id + '" value="' + (p.discount_pct != null ? p.discount_pct : 20) + '"' + dis
+       + '<label style="font-size:10px;color:var(--text);display:flex;align-items:center;gap:5px;"><input type="checkbox" id="fl-on-' + md.vehicle_id + '"' + (p.active ? ' checked' : '') + dis + ' onchange="_flSave(\'' + md.vehicle_id + '\')"> Offer to fleets</label>'
+       + '<div><div style="font-size:8px;color:var(--muted);text-transform:uppercase;">Fleet discount %</div><input type="number" min="0" max="' + (C.FLEET_MAX_DISCOUNT_PCT || 40) + '" step="0.5" id="fl-disc-' + md.vehicle_id + '" onchange="_flSave(\'' + md.vehicle_id + '\')" value="' + (p.discount_pct != null ? p.discount_pct : 20) + '"' + dis
        + ' style="width:70px;background:var(--s1);color:var(--text);border:1px solid var(--border);font-family:DM Mono,monospace;font-size:10px;padding:3px 5px;border-radius:4px;"></div>'
-       + '<div><div style="font-size:8px;color:var(--muted);text-transform:uppercase;">Max fleet cars / quarter</div><input type="number" min="0" step="100" id="fl-max-' + md.vehicle_id + '" value="' + (p.max_units_q != null ? p.max_units_q : '') + '" placeholder="no limit"' + dis
+       + '<div><div style="font-size:8px;color:var(--muted);text-transform:uppercase;">Max fleet cars / quarter</div><input type="number" min="0" step="100" id="fl-max-' + md.vehicle_id + '" onchange="_flSave(\'' + md.vehicle_id + '\')" value="' + (p.max_units_q != null ? p.max_units_q : '') + '" placeholder="no limit"' + dis
        + ' style="width:110px;background:var(--s1);color:var(--text);border:1px solid var(--border);font-family:DM Mono,monospace;font-size:10px;padding:3px 5px;border-radius:4px;"></div>'
-       + (d.locked ? '' : '<button onclick="_flSave(\'' + md.vehicle_id + '\')" style="background:var(--gold);color:#000;font-family:DM Mono,monospace;font-size:9px;font-weight:700;padding:5px 12px;border:none;border-radius:4px;cursor:pointer;">SAVE</button>')
+       // saves on change (CP4); a model still on the default can adopt it as its policy as it stands
+       + (d.locked || !md.is_default ? '' : '<button onclick="_flSave(\'' + md.vehicle_id + '\')" style="background:transparent;color:var(--gold);font-family:DM Mono,monospace;font-size:9px;font-weight:700;padding:5px 12px;border:1px solid var(--gold);border-radius:4px;cursor:pointer;">Keep this policy</button>')
        + '</div>';
     h += '<div style="font-size:9px;color:var(--muted2);">Last quarter ' + n(md.last_quarter_units) + ' cars sold · contracts in ' + (md.countries || []).length + ' countries'
        + (md.avg_contract_discount != null ? ' · average contract discount ' + md.avg_contract_discount + '%' : '') + ' · order book: '
