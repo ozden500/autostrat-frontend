@@ -13161,7 +13161,7 @@ function _comBoardRows(L, F, E, W, M, SP, V) {
   // Sales plan: every model's plan frozen before the round closes (S&OP sessions)
   if (SP && (SP.vehicles || []).length) {
     var n = SP.vehicles.length, f = SP.vehicles.filter(function(v) { return v.is_frozen; }).length;
-    row(f < n ? 'need' : 'ok', 'sales-planning', 'Sales plan', (f < n ? 'not frozen: freeze before the round closes (one freeze covers all ' + n + ' models)' : 'frozen (' + n + ' models)'));
+    row(f < n ? 'review' : 'ok', 'sales-planning', 'Sales plan', (f < n ? 'not frozen: freeze to review plant plans before clearing (else clearing uses your saved forecasts)' : 'frozen (' + n + ' models)'));
   }
   // Launches: models in their launch window this quarter
   ((L && L.vehicles) || []).filter(function(v) { return v.in_window && !v.auto; }).forEach(function(v) {
@@ -13250,7 +13250,7 @@ function _comBadges() {
 // (its first ≥200-character line-height:1.6 paragraph) is moved into a fold, closed by default.
 // Applied after every render by a MutationObserver per pane, so the tab renderers stay as they are.
 var _COM_STRIP = {
-  'sales-planning': ['Next quarter’s sales forecast and closing stock per country for every model; then freeze (one freeze covers all models)', 'Production required at each plant (Industrial Ops → Manufacturing) and stock-outs'],
+  'sales-planning': ['Next quarter’s sales forecast and closing stock per country for every model; then one freeze for all models', 'Production required at each plant (Industrial Ops → Manufacturing) and stock-outs'],
   pricing:    ['Retail discount per region (or per country) for each model on sale', 'Buyers won or lost against the ~4% norm, and revenue per car'],
   launches:   ['A launch budget for each model in its launch window (2 quarters before SOP to 1 after)', 'How fast a new model’s awareness gap closes'],
   fleet:      ['Per model: offer to fleets, fleet discount and the most fleet cars a quarter', 'Fleet contracts for the next 4 quarters, capacity taken from retail, delivery reputation'],
@@ -31701,10 +31701,22 @@ function _renderSalesPlanPage() {
   var el = document.getElementById('sales-plan-content');
   if (!el) return;
   var vs = _salesPlanState.vehicles, nf = vs.filter(function(v){ return v.is_frozen; }).length;
+  var frozen = nf > 0 && nf === vs.length, n = vs.length;
+  var BTN = 'font-family:DM Mono,monospace;font-size:9px;padding:5px 12px;border-radius:2px;cursor:pointer;';
+  var ctl = frozen
+    ? (_salesPlanState.confirmUnfreeze
+        ? '<span style="color:var(--gold);">Unfreezing deletes the plant plans and rebuilds them on the next freeze: any change made in Industrial Ops → Manufacturing is lost.</span> '
+          + '<button onclick="unfreezeSalesPlan(true)" style="' + BTN + 'border:1px solid rgba(251,191,36,.5);background:rgba(251,191,36,.12);color:var(--gold);">Unfreeze anyway</button> '
+          + '<button onclick="_salesPlanState.confirmUnfreeze=false;_renderSalesPlanPage()" style="' + BTN + 'border:1px solid var(--border2);background:transparent;color:var(--muted2);">Cancel</button>'
+        : '<button onclick="unfreezeSalesPlan()" style="' + BTN + 'border:1px solid rgba(251,191,36,.3);background:rgba(251,191,36,.08);color:var(--gold);">✏ Unfreeze</button>')
+    : '<button onclick="freezeSalesPlan()" style="' + BTN + 'border:1px solid rgba(74,222,128,.4);background:rgba(74,222,128,.08);color:var(--green);">🔒 Freeze sales plan (' + n + ' model' + (n === 1 ? '' : 's') + ')</button>';
   var h = '<div style="font-family:DM Mono,monospace;font-size:10px;line-height:1.5;margin-bottom:10px;padding:8px 12px;border:1px solid var(--border2);border-radius:3px;background:var(--s1);">'
-    + (nf && nf === vs.length ? '<b style="color:var(--green);">✓ Sales plan frozen.</b> ' : '<b style="color:var(--gold);">Not frozen yet' + (nf ? ' (' + nf + ' of ' + vs.length + ')' : '') + '.</b> ')
-    + '<span style="color:var(--muted2);">Set every model\'s forecast and closing stock, then freeze before the round closes. Freezing locks the plan for <b>all your models at once</b> '
-    + '(any model\'s Freeze button does it) and turns Required into plant production plans (Industrial Ops → Manufacturing). Unfreeze to edit again until clearing runs.</span></div>';
+    + '<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:4px;">'
+    + (frozen ? '<b style="color:var(--green);">✓ Sales plan frozen</b>' : '<b style="color:var(--gold);">Not frozen</b>') + ctl + '</div>'
+    + '<span style="color:var(--muted2);">' + (frozen
+        ? 'Your plant production plans are built from it: review them in Industrial Ops → Manufacturing. Unfreeze to change a forecast until clearing runs.'
+        : 'Edits save as you type. Freezing turns every model\'s Required into plant production plans now, so you can review them in Industrial Ops → Manufacturing before the round clears. '
+          + 'If you do not freeze, clearing builds the plant plans from your saved forecasts.') + '</span></div>';
   vs.forEach(function(vdata) {
     h += _spVehicleCard(vdata);
   });
@@ -31751,15 +31763,8 @@ function _spVehicleCard(vdata) {
   h += '<span style="color:var(--muted2);">Fcst: <span id="sp-v-fc-' + vid + '" style="color:var(--text);">' + totFc.toLocaleString() + '</span></span>';
   h += '<span style="color:var(--muted2);">Required: <span id="sp-v-req-' + vid + '" style="color:var(--cyan);font-weight:700;">' + totReq.toLocaleString() + '</span></span>';
   h += '</div>';
-  // Freeze / Unfreeze button (stop click propagating to toggle)
-  h += '<div onclick="event.stopPropagation()" style="display:flex;align-items:center;gap:6px;">';
-  if (frozen) {
-    h += '<span style="font-family:DM Mono,monospace;font-size:8px;padding:3px 8px;border-radius:2px;background:rgba(74,222,128,.12);color:var(--green);">✓ FROZEN</span>';
-    h += '<button onclick="unfreezeSalesPlan(\'' + vid + '\')" style="font-family:DM Mono,monospace;font-size:8px;padding:3px 10px;border-radius:2px;border:1px solid rgba(251,191,36,.3);background:rgba(251,191,36,.08);color:var(--gold);cursor:pointer;">✏ Unfreeze</button>';
-  } else {
-    h += '<button onclick="freezeSalesPlan(\'' + vid + '\')" style="font-family:DM Mono,monospace;font-size:8px;padding:3px 10px;border-radius:2px;border:1px solid rgba(74,222,128,.4);background:rgba(74,222,128,.08);color:var(--green);cursor:pointer;">🔒 Freeze</button>';
-  }
-  h += '</div>';
+  // Freezing is one decision for the whole team (header of the tab), not per model
+  if (frozen) h += '<span style="font-family:DM Mono,monospace;font-size:8px;color:var(--green);" title="Frozen with the whole sales plan">🔒</span>';
   h += '</div>';
 
   // ── Expanded: region rows ──────────────────────────────────────
@@ -31853,8 +31858,7 @@ function _spOnForecast(vid, countryCode, val) {
   c.forecast_sales = val;
   c.production_required = Math.max(0, val + (c.target_closing_fgi||0) - (c.opening_fgi||0));
   _spPatchTotals(vid, c.region);
-  if (_salesPlanSaveTimer) clearTimeout(_salesPlanSaveTimer);
-  _salesPlanSaveTimer = setTimeout(function(){ _saveSalesPlanUpdates(vid); }, 800);
+  _spQueueSave(vid);
 }
 
 function _spOnTarget(vid, countryCode, val) {
@@ -31866,8 +31870,7 @@ function _spOnTarget(vid, countryCode, val) {
   c.target_closing_fgi = val;
   c.production_required = Math.max(0, (c.forecast_sales||0) + val - (c.opening_fgi||0));
   _spPatchTotals(vid, c.region);
-  if (_salesPlanSaveTimer) clearTimeout(_salesPlanSaveTimer);
-  _salesPlanSaveTimer = setTimeout(function(){ _saveSalesPlanUpdates(vid); }, 800);
+  _spQueueSave(vid);
 }
 
 function _spPatchTotals(vid, reg) {
@@ -31896,7 +31899,12 @@ function _spPatchTotals(vid, reg) {
   if (vrEl) vrEl.textContent = vReq.toLocaleString();
 }
 
-var _salesPlanSaveTimer = null;
+// One pending save per model (a shared timer dropped model A's edit when B was edited within 800 ms)
+var _salesPlanSaveTimers = {};
+function _spQueueSave(vid) {
+  if (_salesPlanSaveTimers[vid]) clearTimeout(_salesPlanSaveTimers[vid]);
+  _salesPlanSaveTimers[vid] = setTimeout(function(){ delete _salesPlanSaveTimers[vid]; _saveSalesPlanUpdates(vid); }, 800);
+}
 async function _saveSalesPlanUpdates(vid) {
   var vdata = _salesPlanState.vehicles.find(function(v){ return v.vehicle_id === vid; });
   if (!vdata) return;
@@ -31911,26 +31919,30 @@ async function _saveSalesPlanUpdates(vid) {
   } catch(e) { /* non-fatal */ }
 }
 
-async function freezeSalesPlan(vid) {
+async function freezeSalesPlan() {
   try {
-    await _saveSalesPlanUpdates(vid);
+    // save every model's edits first (the freeze covers the whole team)
+    Object.keys(_salesPlanSaveTimers).forEach(function(k){ clearTimeout(_salesPlanSaveTimers[k]); });
+    _salesPlanSaveTimers = {};
+    await Promise.all(_salesPlanState.vehicles.map(function(v){ return _saveSalesPlanUpdates(v.vehicle_id); }));
     var res  = await fetch(API_URL + '/sessions/' + sessionId + '/rounds/' + roundId + '/sales-plans/freeze?team_id=' + teamId, {method:'POST'});
     if (!res.ok) { var e = await res.json(); toast('✗ ' + (e.detail||'Freeze failed')); return; }
     var data = await res.json();
-    var vdata = _salesPlanState.vehicles.find(function(v){ return v.vehicle_id === vid; });
-    if (vdata) vdata.is_frozen = true;
+    _salesPlanState.vehicles.forEach(function(v){ v.is_frozen = true; });
     toast('✓ Sales plan frozen · ' + data.mfg_plans_created + ' plant plans generated');
     _renderSalesPlanPage();
   } catch(e) { toast('✗ ' + e.message); }
 }
 
-async function unfreezeSalesPlan(vid) {
+async function unfreezeSalesPlan(confirmed) {
+  // first click: say what unfreezing discards (the server deletes the unlocked plant plans)
+  if (!confirmed) { _salesPlanState.confirmUnfreeze = true; _renderSalesPlanPage(); return; }
+  _salesPlanState.confirmUnfreeze = false;
   try {
     var res = await fetch(API_URL + '/sessions/' + sessionId + '/rounds/' + roundId + '/sales-plans/unfreeze?team_id=' + teamId, {method:'POST'});
     if (res.status === 409) { toast('⚠ Cannot unfreeze — clearing has already run.'); return; }
     if (!res.ok) { var e = await res.json(); toast('✗ ' + (e.detail||'Unfreeze failed')); return; }
-    var vdata = _salesPlanState.vehicles.find(function(v){ return v.vehicle_id === vid; });
-    if (vdata) vdata.is_frozen = false;
+    _salesPlanState.vehicles.forEach(function(v){ v.is_frozen = false; });
     toast('✓ Unfrozen — edit forecasts then re-freeze.');
     _renderSalesPlanPage();
     if (document.getElementById('ops-manufacturing') && document.getElementById('ops-manufacturing').classList.contains('active')) loadMfgPlanTab();
