@@ -13767,7 +13767,9 @@ async function _rpRefresh() {
     var pl = document.getElementById('rp-pos-lbl'); if (pl) pl.textContent = 'Your Position' + (p.as_of ? ' · ' + p.as_of : '');
     set('rp-asp', p.asp_vs_market_pct == null ? '—' : (p.asp_vs_market_pct >= 0 ? '+' : '') + p.asp_vs_market_pct.toFixed(1) + '%', p.asp_vs_market_pct > 0 ? 'up' : p.asp_vs_market_pct < 0 ? 'dn' : '');
     set('rp-rd', p.rd_intensity_pct == null ? '—' : p.rd_intensity_pct.toFixed(1) + '%');
-    set('rp-nd', p.nd_ebitda == null ? '—' : (p.nd_ebitda < 0 ? 'n/m (EBITDA < 0)' : (+p.nd_ebitda).toFixed(1) + '×') + (p.credit_rating ? ' · ' + p.credit_rating : ''), (p.nd_ebitda > 3 || p.nd_ebitda < 0) ? 'dn' : '');
+    // leverage_metrics: a negative ratio is net cash; null = EBITDA ≤ 0 (not meaningful)
+    set('rp-nd', (p.nd_ebitda == null ? (p.as_of ? 'n/m (EBITDA ≤ 0)' : '—') : (p.nd_ebitda < 0 ? 'net cash' : (+p.nd_ebitda).toFixed(1) + '×')) + (p.credit_rating ? ' · ' + p.credit_rating : ''),
+        (p.nd_ebitda > 3 || (p.nd_ebitda == null && p.as_of)) ? 'dn' : p.nd_ebitda < 0 ? 'up' : '');
     set('rp-brand', p.brand_index == null ? '—' : p.brand_index + '/100');
     var fm = p.fleet_mix || {};
     set('rp-evmix', fm.bev_share != null ? Math.round(fm.bev_share * 100) + '% BEV' + (fm.phev_share ? ' · ' + Math.round(fm.phev_share * 100) + '% PHEV' : '') : '—', '', fm.label ? 'Share of the cars you sold in ' + fm.label : '');
@@ -18423,6 +18425,7 @@ var _FIN_LINES = {
     {l:'CO\u2082 compliance (provision, penalties, credits bought)', k:'co2_compliance_m', neg:true, optional:true},
     {l:'CO\u2082 credits sold to other OEMs (expected, settled in the period\'s last Q4)', k:'co2_credit_income_m', optional:true},
     {l:'Depreciation',           k:'depreciation_total_m', neg:true},
+    {l:'  ↳ incl. book value written off at end of production (one-off)', k:'eop_writeoff_m', neg:true, optional:true},
     {l:'Factoring & reverse-factoring fees', k:'_wc_fin', neg:true, optional:true},
     {l:'Lease rent (sale-and-leaseback)', k:'lease_rent_m', neg:true, optional:true},
     {l:'Financial services (captive, after losses)', k:'fs_ebit_m', optional:true},
@@ -18473,6 +18476,8 @@ var _FIN_LINES = {
     {l:'Δ Accrued Expenses',         k:'cfo_delta_accrued_m'},
     {l:'Δ Warranty Provision',       k:'cfo_delta_warranty_m', optional:true},
     {l:'Δ Deferred Tax',             k:'cfo_delta_deferred_tax_m', optional:true},
+    {l:'Δ Finance receivables (captive loans)', k:'cfo_delta_finance_receivables_m', optional:true},
+    {l:'Δ Other (CO₂ credits & provision, prepaid)', k:'_cfo_other', optional:true},
     {l:'Cash Flow from Operations',  k:'cfo_total_m', kind:'tot'},
     {l:'INVESTING',                  kind:'head'},
     {l:'Vehicle Programme CapEx',    k:'cfi_vehicle_capex_m'},
@@ -18517,9 +18522,20 @@ function _finPlOther(s) {
        + n('fs_ebit_m') - n('ebit_m');
 }
 
+// Operating cash flow lines not stored as their own columns (CO2 receivable / provision,
+// prepaid): the residual, so the section foots to cfo_total_m
+function _finCfoOther(s) {
+  if (!s || s.cfo_total_m == null) return null;
+  var n = function(k){ return parseFloat(s[k]) || 0; };
+  return n('cfo_total_m') - n('cfo_net_income_m') - n('cfo_depreciation_m') - n('cfo_delta_ar_m') - n('cfo_delta_inventory_m')
+       - n('cfo_delta_ap_m') - n('cfo_delta_accrued_m') - n('cfo_delta_warranty_m') - n('cfo_delta_deferred_tax_m')
+       - n('cfo_delta_finance_receivables_m');
+}
+
 function _finVal(s, key) {
   if (!s) return null;
   if (key === '_pl_other') return _finPlOther(s);
+  if (key === '_cfo_other') return _finCfoOther(s);
   if (key === '_wc_fin') return (parseFloat(s.factoring_fee_m) || 0) + (parseFloat(s.rf_fee_m) || 0);
   var v = s[key];
   return (v === null || v === undefined) ? null : (parseFloat(v) || 0);
@@ -18675,15 +18691,23 @@ async function loadFinancePanel() {
       var cfi   = parseFloat(myStmt.cfi_total_m)||0;
       var fcf   = cfo + cfi;
       var ebitPct = rev > 0 ? (ebit/rev*100).toFixed(1) : '0.0';
-      var netDebt = (parseFloat(myStmt.long_term_debt_m)||0) + (parseFloat(myStmt.short_term_debt_m)||0) - (parseFloat(myStmt.cash_m)||0);
-      var ndMult  = ebit > 0 ? (netDebt/ebit).toFixed(1)+'× EBITDA' : '—';
+      // Net debt as the rating sees it (financial_engine.leverage_metrics, stored on the statement:
+      // net of the self-funded captive book, plus debt-like items); the raw sum only for old rows
+      var netDebt = myStmt.net_debt_m != null ? parseFloat(myStmt.net_debt_m)
+        : (parseFloat(myStmt.long_term_debt_m)||0) + (parseFloat(myStmt.short_term_debt_m)||0) - (parseFloat(myStmt.cash_m)||0);
+      var ndE = myStmt.nd_ebitda;
+      var ndMult  = netDebt <= 0 ? 'net cash' : ndE != null ? (+ndE).toFixed(1) + '× EBITDA (12m)' : 'n/m (EBITDA ≤ 0)';
+      var oneOff  = parseFloat(myStmt.eop_writeoff_m) || 0;
 
       document.getElementById('fin-revenue').textContent       = fmtEur(rev);
       document.getElementById('fin-revenue-delta').textContent = myStmt.is_opening_balance ? 'Pre-launch' : 'Last round';
       document.getElementById('fin-ebit').textContent          = fmtEur(ebit);
-      document.getElementById('fin-ebit-pct').textContent      = ebitPct+'% margin';
+      document.getElementById('fin-ebit-pct').textContent      = ebitPct+'% margin' + (oneOff >= 1 ? ' · excl. one-offs ' + fmtEur(ebit + oneOff) : '');
+      document.getElementById('fin-ebit-pct').title            = oneOff >= 1 ? fmtEur(oneOff) + ' book value written off at end of production (in Depreciation)' : '';
       document.getElementById('fin-debt').textContent          = fmtEur(netDebt);
+      document.getElementById('fin-debt').style.color          = netDebt <= 0 ? 'var(--green)' : 'var(--red)';
       document.getElementById('fin-debt-sub').textContent      = ndMult;
+      document.getElementById('fin-debt-sub').className        = 'kd ' + (netDebt <= 0 ? 'up' : (ndE == null || ndE > 3) ? 'dn' : '');
       document.getElementById('fin-cashflow').textContent      = fmtEur(fcf);
       document.getElementById('fin-cashflow-sub').textContent  = myStmt.is_opening_balance ? '—' : (fcf>=0?'▲ strong':'▼ negative');
 
@@ -18692,6 +18716,8 @@ async function loadFinancePanel() {
       _finStmts.cur     = myStmt;
       _finStmts.curHdr  = (data.round)      ? ('Q'+data.round.quarter+' '+data.round.year)           : 'Current';
       _finStmts.prevHdr = (data.prev_round) ? ('Q'+data.prev_round.quarter+' '+data.prev_round.year) : 'Prev';
+      // the pro-forma takes a few seconds: say so instead of a column of dashes
+      if (!_finStmts.proj) _finStmts.projHdr = (currentRoundYear ? 'Q' + (currentRoundQuarter || 1) + ' ' + currentRoundYear + 'e' : 'Next e') + ' · computing…';
       renderFinStatement();
 
       // The pro-forma is advisory — fetched separately so that a slow or failing
@@ -18699,7 +18725,7 @@ async function loadFinancePanel() {
       fetch(API_URL + '/sessions/' + sessionId + '/financial-projection?team_id=' + teamId)
         .then(function(r){ return r.ok ? r.json() : null; })
         .then(function(pj){
-          if (!pj) return;
+          if (!pj) { _finStmts.projHdr = 'Next e · n/a'; renderFinStatement(); return; }
           _finStmts.proj        = pj.projected || null;
           _finStmts.basis       = pj.basis || null;
           _finStmts.assumptions = pj.assumptions || [];
@@ -18707,7 +18733,7 @@ async function loadFinancePanel() {
           _finStmts.projHdr     = pj.round ? ('Q'+pj.round.quarter+' '+pj.round.year+'e') : 'Next e';
           renderFinStatement();
         })
-        .catch(function(e){ console.warn('financial-projection:', e); });
+        .catch(function(e){ console.warn('financial-projection:', e); _finStmts.projHdr = 'Next e · n/a'; renderFinStatement(); });
     }
 
     // Check for pending decisions
