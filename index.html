@@ -21678,6 +21678,7 @@ function _propTallyRender() {
     'border:1px solid var(--border2);border-radius:4px;background:var(--s1);font-family:DM Mono,monospace;';
   _propComAfterRefresh(v);
   _propDstripRender();
+  _propLadderRender();
   _propSecResults();
 }
 // §9: what each market's car earns once §10's warranty and emissions costs are added.
@@ -21791,6 +21792,84 @@ function _propDstripRender() {
       }).join('') + '</div></div>';
   }
 }
+// ── Cost ladder: one build-up from bought parts to the full cost per car, the same in §6–§10,
+// with the rungs the open step changes highlighted (display only). Before §9 it reads the modules
+// and the first confirmed plant (_computeDmpMake / _computeUnitEconCost, as §9's tiles); from §9 on
+// the per-car lifetime averages calcPropBizCase adds up (_propBcView), so the rungs sum to its cost.
+var _PROP_LADDER_HL = {6: ['parts', 'make'], 7: ['plant', 'buy'], 8: ['src'], 9: ['logi'], 10: ['wty', 'co2', 'lc']};
+function _propLadderHtml(n) {
+  var v = _propTallyLive() ? _propBcView : null;
+  var R = {};
+  if (v && v.units) {
+    R = {parts: v.dmp, make: v.tpc - v.dmp, plant: v.plant, buy: v.buy, src: v.src, other: v.other,
+         logi: v.logi, wty: v.wty, co2: v.co2, lc: -v.lc};
+  } else {
+    var dm = _computeDmpMake(), tpc = _computeBaseTpc();
+    if (!(tpc > 0)) return '';
+    var vp = ((_prop.operations && _prop.operations.vehicle_plants) || []).filter(function(p) { return p.vehicle_capacity_yr > 0; })[0] || null;
+    var u = _computeUnitEconCost(vp);
+    R = {parts: dm.dmp, make: tpc - dm.dmp,
+         plant: vp && u.mfr ? _manufVarDelta(u.mfr) : null, buy: vp && u.mfr ? u.mfr.buy_cost_adj : null,
+         src: (_prop.currentSec || 1) >= 8 ? u.srcAdj : null, other: _propDualCostDelta() || null};
+  }
+  var hl = _PROP_LADDER_HL[n] || [];
+  var e = function(x) { return (x < 0 ? '−€' : '€') + Math.round(Math.abs(x)).toLocaleString(); };
+  var rungs = [
+    ['parts', 'Bought parts (modules §2–§5)', ''],
+    ['make', '+ Own make at the standard plant', ''],
+    ['plant', '+ Your plant vs the standard', '§7'],
+    ['buy', '+ Buy-side volume effect', '§7'],
+    ['src', '+ Sourcing zones: labour, freight, duty', '§8'],
+    ['other', '+ Commodities and powertrain mix', ''],
+    ['logi', '+ Outbound logistics and tariff', '§9'],
+    ['=build', 'Build and deliver', ''],
+    ['wty', '+ Warranty and quality system', '§10'],
+    ['co2', '+ Emissions compliance', '§10'],
+    ['lc', '− Lifecycle cost-downs', '§10'],
+    ['=total', 'Full cost per car', '']
+  ];
+  var run = 0, open = true, h = '';
+  rungs.forEach(function(r) {
+    var k = r[0];
+    if (k.charAt(0) === '=') {
+      h += '<div style="display:flex;justify-content:space-between;gap:10px;padding:4px 8px;margin-top:2px;border-top:1px solid var(--border2);font-weight:700;color:var(--white);">' +
+        '<span>' + r[1] + (open ? '' : ' <span style="font-weight:400;color:var(--muted2);">(so far)</span>') + '</span><span>' + e(run) + '</span></div>';
+      return;
+    }
+    var val = R[k];
+    if (k === 'other' && !val) return;
+    if (val === null || val === undefined) open = false; else run += val;
+    var on = hl.indexOf(k) >= 0;
+    h += '<div style="display:flex;justify-content:space-between;gap:10px;padding:3px 8px;border-radius:3px;' +
+      (on ? 'background:var(--goldl);color:var(--gold);' : 'color:var(--text);') + '">' +
+      '<span>' + r[1] + (on ? ' ◀ this step' : '') + '</span>' +
+      '<span>' + (val === null || val === undefined ? '<span style="color:var(--muted2);">set in ' + r[2] + '</span>' : e(val)) + '</span></div>';
+  });
+  if (v && v.units) {
+    var mg = v.rev - v.cost;
+    h += '<div style="display:flex;justify-content:space-between;gap:10px;padding:3px 8px;color:var(--muted2);"><span>Earns per car (net revenue)</span><span>' + e(v.rev) + '</span></div>' +
+      '<div style="display:flex;justify-content:space-between;gap:10px;padding:3px 8px;font-weight:700;color:' + (mg < 0 ? 'var(--red)' : 'var(--green)') + ';"><span>Per car, before overhead</span><span>' + (mg < 0 ? '−' : '+') + e(Math.abs(mg)).replace('−', '') + '</span></div>';
+  }
+  return '<div style="max-width:560px;font-family:DM Mono,monospace;font-size:9px;line-height:1.5;">' + h + '</div>';
+}
+function _propLadderRender() {
+  // §6–§9; §10 opens with the verdict, whose per-car sum is the ladder's last rungs
+  for (var n = 6; n <= 9; n++) {
+    var body = document.getElementById('prop-sec-' + n + '-body');
+    if (!body || body.style.display === 'none') continue;
+    var el = document.getElementById('prop-ladder-' + n);
+    if (!el) {
+      el = document.createElement('div'); el.id = 'prop-ladder-' + n; el.style.marginBottom = '12px';
+      var ds = document.getElementById('prop-dstrip-' + n);
+      body.insertBefore(el, ds ? ds.nextSibling : body.firstChild);
+    }
+    var key = 'ladder' + n;
+    if (_propFoldOpen[key] === undefined) _propFoldOpen[key] = true;   // open by default
+    var html = _propLadderHtml(n);
+    el.innerHTML = html ? _propFold(key, 'Cost per car, built up', html) : '';
+  }
+}
+
 // Completed sections' headers show what was chosen and what it costs, not just "✓ New development".
 function _propSecResults() {
   var e = function(x) { return '€' + Math.round(x).toLocaleString(); };
@@ -29662,6 +29741,9 @@ function calcPropBizCase() {
           var _bk=_bv.mk[mkt.region]||(_bv.mk[mkt.region]={units:0,rev:0,build:0,wty:0,co2:0,lc:0});
           [_bv,_bk].forEach(function(b){b.units+=uQ;b.rev+=uQ*nR;b.build+=uQ*(landed-_wC-co2Car+lcSave);
                                        b.wty+=uQ*_wC;b.co2+=uQ*co2Car;b.lc+=uQ*lcSave;});
+          // cost-ladder rungs that vary by plant / market (the rest are the same for every car)
+          _bv.plant=(_bv.plant||0)+uQ*_manufVarDelta(mfr); _bv.buy=(_bv.buy||0)+uQ*mfr.buy_cost_adj;
+          _bv.logi=(_bv.logi||0)+uQ*(lo.l+nR*lo.t);
           asTailM+=uQ*_AFTERSALES_E.carValue(mkt.msrp_eur_k||0,_asPwt,_wty.years,_propAftersalesPolicy(mkt.region),_asRate).npv_eur/1e6;
         });
         if(tpcNum===0)cogsM=revM*0.70;
@@ -29748,6 +29830,12 @@ function calcPropBizCase() {
                  rev: _u ? _bv.rev / _u : 0, build: _u ? _bv.build / _u : 0, wty: _u ? _bv.wty / _u : 0,
                  co2: _u ? _bv.co2 / _u : 0, lc: _u ? _bv.lc / _u : 0};
   _propBcView.cost = _propBcView.build + _propBcView.wty + _propBcView.co2 - _propBcView.lc;
+  // cost ladder: modules (tpcNum, split by _dmpMake), §8 sourcing, per-car plant / buy-side /
+  // logistics averages, commodities + dual-energy mix; they add up to .build
+  _propBcView.tpc = tpcNum; _propBcView.dmp = _dmpMake.dmp; _propBcView.src = _srcAdj;
+  _propBcView.other = _cmd.eur + _varDelta;
+  _propBcView.plant = _u ? (_bv.plant || 0) / _u : 0; _propBcView.buy = _u ? (_bv.buy || 0) / _u : 0;
+  _propBcView.logi = _u ? (_bv.logi || 0) / _u : 0;
 
   // ── Compute 6-panel supporting data ──────────────────────────────────────
   var _bcYears = typeof _fcfYr !== 'undefined' ? _fcfYr : [];
