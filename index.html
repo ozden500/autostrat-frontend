@@ -1427,6 +1427,15 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
   </div>
   <!-- Decision strip + EBIT bridge (_finStripRender) -->
   <div id="fin-strip"></div>
+  <!-- Sections (switchFinSec): statements, then the decision areas -->
+  <div id="fin-sec-bar" style="display:flex;flex-wrap:wrap;gap:0;margin-bottom:14px;border-bottom:1px solid var(--border);">
+    <button id="fin-sec-btn-statements" onclick="switchFinSec('statements')" style="font-family:'DM Mono',monospace;font-size:10px;padding:8px 18px;border:none;border-bottom:2px solid transparent;background:transparent;color:var(--muted);cursor:pointer;letter-spacing:.5px;"><span class="vis-tab-i" data-vis-icon="pnl"></span>STATEMENTS</button>
+    <button id="fin-sec-btn-office" onclick="switchFinSec('office')" style="font-family:'DM Mono',monospace;font-size:10px;padding:8px 18px;border:none;border-bottom:2px solid transparent;background:transparent;color:var(--muted);cursor:pointer;letter-spacing:.5px;"><span class="vis-tab-i" data-vis-icon="office"></span>HEAD OFFICE</button>
+    <button id="fin-sec-btn-capital" onclick="switchFinSec('capital')" style="font-family:'DM Mono',monospace;font-size:10px;padding:8px 18px;border:none;border-bottom:2px solid transparent;background:transparent;color:var(--muted);cursor:pointer;letter-spacing:.5px;"><span class="vis-tab-i" data-vis-icon="balance"></span>CAPITAL &amp; RETURNS</button>
+    <button id="fin-sec-btn-wc" onclick="switchFinSec('wc')" style="font-family:'DM Mono',monospace;font-size:10px;padding:8px 18px;border:none;border-bottom:2px solid transparent;background:transparent;color:var(--muted);cursor:pointer;letter-spacing:.5px;"><span class="vis-tab-i" data-vis-icon="cash"></span>WORKING CAPITAL &amp; SUPPLIERS</button>
+    <button id="fin-sec-btn-captive" onclick="switchFinSec('captive')" style="font-family:'DM Mono',monospace;font-size:10px;padding:8px 18px;border:none;border-bottom:2px solid transparent;background:transparent;color:var(--muted);cursor:pointer;letter-spacing:.5px;"><span class="vis-tab-i" data-vis-icon="tag"></span>CAPTIVE FINANCE</button>
+  </div>
+  <div data-fin-sec="statements">
   <div id="fin-bridge"></div>
   <!-- ── Three statements: P&L / Balance Sheet / Cash Flow ── -->
   <div style="display:flex;gap:0;margin-bottom:12px;border-bottom:1px solid var(--border);">
@@ -1450,8 +1459,9 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
     </div>
     <div id="fin-stmt-note" style="margin-top:10px;font-family:DM Mono,monospace;font-size:9px;color:var(--muted);display:none;"></div>
   </div>
+  </div>
   <!-- Head-office overhead (SG&A) decisions -->
-  <div class="card" id="fin-overhead-panel" style="margin-top:12px;">
+  <div class="card" id="fin-overhead-panel" data-fin-sec="office" style="margin-top:12px;">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
       <div class="card-title" style="margin:0"><span class="tag tf">HEAD OFFICE</span> <span data-vis-icon="office"></span> Overhead (SG&amp;A)</div>
       <button onclick="loadOverheadPanel()" style="background:none;border:1px solid var(--border);color:var(--muted2);font-family:DM Mono,monospace;font-size:9px;padding:3px 10px;border-radius:4px;cursor:pointer;">↻ Refresh</button>
@@ -1459,7 +1469,7 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
     <div id="fin-overhead-body" style="font-family:DM Mono,monospace;font-size:10px;color:var(--muted2);">Loading…</div>
   </div>
   <!-- Finance & Capital Management Panel -->
-  <div class="card" id="fin-capital-panel" style="margin-top:12px;">
+  <div class="card" id="fin-capital-panel" data-fin-sec="capital wc captive" style="margin-top:12px;">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
       <div class="card-title" style="margin:0"><span class="tag tf">STRUCTURE</span> <span data-vis-icon="balance"></span> Finance &amp; Capital Management</div>
       <button onclick="loadFinancePanel()" style="background:none;border:1px solid var(--border);color:var(--muted2);font-family:DM Mono,monospace;font-size:9px;padding:3px 10px;border-radius:4px;cursor:pointer;">↻ Refresh</button>
@@ -1468,6 +1478,7 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
     <!-- Credit rating, share price, dividend policy (loadCorpFinance) -->
     <div id="fin-corpfin-body" style="font-family:DM Mono,monospace;font-size:10px;color:var(--muted2);margin-bottom:14px;">Loading…</div>
 
+    <div data-fin-sec="capital">
     <!-- Bonds & shares: the one balance-sheet figure that limits them (the full sheet is in the Balance Sheet tab) -->
     <div style="font-family:DM Mono,monospace;font-size:9px;color:var(--muted2);margin:14px 0 8px;">
       <span style="font-size:8px;text-transform:uppercase;letter-spacing:1.5px;color:#a78bfa;">BONDS, SHARES &amp; ONE-OFFS</span>
@@ -1523,6 +1534,7 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
         ⏳ Decision pending for next round
       </div>
       <div id="fcp-status" style="font-family:DM Mono,monospace;font-size:9px;color:var(--muted2);"></div>
+    </div>
     </div>
   </div>
 </div>
@@ -18522,6 +18534,22 @@ function _finPlOther(s) {
        + n('fs_ebit_m') - n('ebit_m');
 }
 
+// Financial page sections: every element with data-fin-sec (a space-separated list) shows only
+// in its section(s); the option-card renders mark their blocks the same way
+var _finSec = 'statements';
+function switchFinSec(sec) { _finSec = sec; _finSecApply(); }
+function _finSecApply() {
+  document.querySelectorAll('#page-financial [data-fin-sec]').forEach(function(el) {
+    el.style.display = el.getAttribute('data-fin-sec').split(' ').indexOf(_finSec) >= 0 ? '' : 'none';
+  });
+  document.querySelectorAll('#fin-sec-bar button').forEach(function(b) {
+    var on = b.id === 'fin-sec-btn-' + _finSec;
+    b.style.borderBottomColor = on ? 'var(--gold)' : 'transparent';
+    b.style.color = on ? 'var(--gold)' : 'var(--muted)';
+  });
+}
+document.addEventListener('DOMContentLoaded', _finSecApply);
+
 // Decision strip (what you decide · what it drives · status) and the EBIT bridge from the
 // previous to the last cleared quarter: display only, from the loaded statements and /finance
 var _finPending = false;
@@ -19068,7 +19096,7 @@ function _cfRender() {
     return;
   }
   var r = d.rating;
-  var h = head('CREDIT RATING &amp; SHARE PRICE', 'as of ' + d.as_of + ' · what investors and lenders see');
+  var h = '<div data-fin-sec="capital">' + head('CREDIT RATING &amp; SHARE PRICE', 'as of ' + d.as_of + ' · what investors and lenders see');
   h += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(125px,1fr));gap:8px;margin-bottom:12px;">';
   var nde = num(m.nd_ebitda), cov = num(m.interest_cover);
   h += tile('Credit rating', r, _CF_RATING_COL[r] || 'var(--text)',
@@ -19142,8 +19170,9 @@ function _cfRender() {
        '. A dividend never takes cash below €' + (C.DIVIDEND_CASH_FLOOR_M || 500) + 'M or exceeds retained earnings. ' +
        'Buybacks and special dividends are one-off amounts below.</div>';
   if (d.locked) h += '<div style="color:var(--gold);font-size:9px;margin-top:4px;">This round has cleared; set the policy in the next one.</div>';
-  h += _cfTreasuryHtml(d, head, eur, pct, num);
+  h += '</div>' + _cfTreasuryHtml(d, head, eur, pct, num);
   el.innerHTML = h;
+  _finSecApply();
   // a bond buy-back can retire at most the long-term debt outstanding
   var rlt = document.getElementById('fcp-rlt');
   var ltd = parseFloat((d.metrics || {}).long_term_debt_m);
@@ -19211,8 +19240,8 @@ function _cfTreasuryHtml(d, head, eur, pct, num) {
   var C = d.constants || {};
   var m = d.metrics || {};
   var T = d.treasury || {};
-  var h = '<div style="margin-top:14px;"></div>' +
-          head('WORKING CAPITAL &amp; CREDIT LINE', 'cash tied up in the business · carries forward until changed');
+  // sections (switchFinSec): working capital + price-downs · debt maturities (capital) · captive
+  var h = '<div data-fin-sec="wc">' + head('WORKING CAPITAL &amp; CREDIT LINE', 'cash tied up in the business · carries forward until changed');
   var dso = num(m.weighted_dso_days), dpo = num(m.dpo_days), dio = num(m.dio_days);
   h += '<div style="margin-bottom:8px;line-height:1.6;">Last quarter: customers paid in <b style="color:var(--text)">' +
        (dso == null ? '—' : dso.toFixed(0)) + ' days</b> (receivables ' + eur(num(m.accounts_receivable_m)) +
@@ -19304,6 +19333,7 @@ function _cfTreasuryHtml(d, head, eur, pct, num) {
   }
   // Debt maturity profile (team_debt_tranches) and sale-and-leaseback state
   var prof = d.debt_profile || [];
+  h += '</div><div data-fin-sec="capital">';
   if (prof.length || ((d.leaseback || {}).events || []).length)
     h += '<div style="margin-top:14px;"></div>' + head('DEBT MATURITIES &amp; LEASEBACK', 'what falls due, and what you sold and lease back');
   if (prof.length) {
@@ -19330,7 +19360,7 @@ function _cfTreasuryHtml(d, head, eur, pct, num) {
          '% of your original buildings &amp; land; rent ' + eur(LB.rent_q_m) + ' a quarter (' + pct(C.LEASE_RATE_PA || 0.07) +
          ' a year on the sale price). At most ' + Math.round((C.LEASEBACK_MAX_SOLD || 0.75) * 100) + '% can be sold.</div>';
   }
-  h += _cfCaptiveHtml(d, head, eur, pct, num, card, row);
+  h += '</div><div data-fin-sec="captive">' + _cfCaptiveHtml(d, head, eur, pct, num, card, row) + '</div>';
   return h;
 }
 
