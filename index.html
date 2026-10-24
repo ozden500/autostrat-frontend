@@ -1794,8 +1794,9 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
   <div class="pg-title">VEHICLE PROPOSAL</div>
   <div class="pg-sub">Convert a study request into a full technical proposal · Assign modules · Review specs</div>
 
-  <!-- Step progress bar -->
-  <div style="display:flex;gap:0;margin-bottom:20px;border-radius:4px;overflow:hidden;border:1px solid var(--border);">
+  <!-- Step progress bar + running tally (sticky while the sections scroll) -->
+  <div id="prop-sticky" style="position:sticky;top:-18px;z-index:20;background:var(--bg);padding:18px 0 6px;margin:-12px 0 14px;">
+  <div style="display:flex;gap:0;border-radius:4px;overflow:hidden;border:1px solid var(--border);">
     <div class="prop-step" id="pstep-1" style="background:var(--goldl);border-color:var(--gold);color:var(--gold);"><span data-vis-icon="search"></span>1 · Study</div>
     <div class="prop-step" id="pstep-2"><span data-vis-icon="platform"></span>2 · Platform</div>
     <div class="prop-step" id="pstep-3"><span data-vis-icon="engine"></span>3 · PWT</div>
@@ -1806,6 +1807,8 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
     <div class="prop-step" id="pstep-8"><span data-vis-icon="supplier"></span>8 · Sourcing</div>
     <div class="prop-step" id="pstep-9"><span data-vis-icon="tag"></span>9 · Commercial</div>
     <div class="prop-step" id="pstep-10"><span data-vis-icon="finance"></span>10 · Biz Case</div>
+  </div>
+  <div id="prop-tally" style="display:none;"></div>
   </div>
 
   <!-- SECTION 1: Study Selection -->
@@ -21586,9 +21589,121 @@ function togglePropSection(n) {
   if (chev) chev.textContent = collapsed ? '▲' : '▼';
 }
 
+// ── Running tally: the proposal so far, above every section ──────────────────
+// Display only. Before §9 it sums the slots' unit cost and R&D (the same engines §6 reads);
+// from §9 on it shows calcPropBizCase's full cost per car and NPV (_propBcView).
+var _propBcView = null;
+var _propTallyTimer = null;
+function _propTallySchedule() {
+  clearTimeout(_propTallyTimer);
+  _propTallyTimer = setTimeout(_propTallyRefresh, 300);
+}
+function _propSlotTally(k) {
+  var p = _prop[k];
+  if (!p || !p.mode) return {tpc: 0, rd: 0};
+  if (_slotDesigned(p)) {
+    var r = _propSlotEngine(k);
+    if (!r) return {tpc: 0, rd: 0};
+    var rdF = p.mode === 'derivative' ? ((_derivSlotTerms(k) || {}).rd_f || 1) : 1;
+    return {tpc: r.is_multi_energy ? (r.ice_ready.std_platform_tpc_eur || 0) : (r.std_platform_tpc_eur || 0),
+            rd: (r.total_rd_cost_eur_m || 0) * rdF};
+  }
+  return {tpc: p.module ? parseFloat(p.module.per_unit_tpc_eur || 0) : 0, rd: _slotRdM(p)};
+}
+// The one cost that most explains a weak business case, and where the team acts on it.
+function _propBcDriver(v) {
+  if (!v || !v.units) return null;
+  var f = function(x) { return '€' + Math.round(Math.abs(x)).toLocaleString(); };
+  var margin = v.rev - v.cost;
+  if (v.npv >= 0)
+    return {bad: false, text: 'Each car earns ' + f(margin) + ' after all costs; the case repays its ' + f(v.invM) + 'M investment.'};
+  if (v.build > v.rev)
+    return {bad: true, text: 'Each car costs ' + f(v.build) + ' to build and deliver but earns ' + f(v.rev) +
+            ': raise the MSRP (§9) or lower module cost (§2–§5, §7–§8).'};
+  var adds = [
+    {k: 'emissions compliance', v: v.co2, where: 'a lower-CO₂ powertrain (§3), or your fleet stance on Commercial → Emissions'},
+    {k: 'warranty and quality', v: v.wty, where: 'reliability in §2–§5, or the warranty period on Commercial → Warranty'}
+  ].sort(function(a, b) { return b.v - a.v; });
+  if (margin < 0)
+    return {bad: true, text: 'Each car loses ' + f(margin) + ' once ' + adds[0].k + ' (' + f(adds[0].v) +
+            '/car) is added. Act on ' + adds[0].where + ', or raise the MSRP (§9).'};
+  return {bad: true, text: 'Each car earns ' + f(margin) + ' before overhead, but ' + Math.round(v.units).toLocaleString() +
+          ' cars do not repay ' + f(v.invM) + 'M invested: more volume or price (§9), or reuse more modules.'};
+}
+function _propTallyLive() {
+  var mk = ((_prop.commercial && _prop.commercial.markets) || []).filter(function(m) { return m.selected; });
+  return (_prop.currentSec || 1) >= 9 && mk.length > 0;
+}
+function _propTallyRefresh() {
+  if (!_prop || !_prop.study) return _propTallyRender();
+  // From §9 on the business case is live: recompute it (it renders the tally when done).
+  if (_propTallyLive()) { try { calcPropBizCase(); return; } catch (e) { console.warn('tally bizcase', e); } }
+  _propTallyRender();
+}
+function _propTallyRender() {
+  var el = document.getElementById('prop-tally');
+  if (!el) return;
+  if (!_prop || !_prop.study) { el.style.display = 'none'; return; }
+  var v = _propTallyLive() ? _propBcView : null;
+  var tpc = 0, rd = 0;
+  ['platform', 'pwt', 'epwt', 'battery', 'tophat', 'eands'].forEach(function(k) {
+    var t = _propSlotTally(k); tpc += t.tpc; rd += t.rd;
+  });
+  var st = _prop.study;
+  var sop = st.start_year ? 'Q' + (st.start_quarter || 1) + ' ' + st.start_year : '—';
+  var LB = 'font-size:7px;letter-spacing:1px;text-transform:uppercase;color:var(--muted2);margin-right:5px;';
+  var item = function(lbl, val, col, tip) {
+    return '<span title="' + (tip || '') + '" style="white-space:nowrap;"><span style="' + LB + '">' + lbl + '</span>' +
+      '<b style="color:' + (col || 'var(--white)') + ';font-size:11px;">' + val + '</b></span>';
+  };
+  var e = function(x) { return '€' + Math.round(x).toLocaleString(); };
+  var h = '<span style="' + LB + 'color:var(--gold);">Proposal so far</span>';
+  if (v && v.units) {
+    h += item('Cost / car', e(v.cost), 'var(--white)', 'Full cost per car, as §10 counts it: build, logistics, warranty, emissions, less lifecycle cost-downs');
+    h += item('Earns / car', e(v.rev), 'var(--white)', 'Net revenue per car after discount and dealer share');
+    h += item('Investment', e(v.invM) + 'M', 'var(--white)', 'R&D + plant and supplier capex + market entry');
+    h += item('SOP', sop);
+    h += item('NPV', (v.npv < 0 ? '−' : '') + e(Math.abs(v.npv)) + 'M', v.npv < 0 ? 'var(--red)' : 'var(--green)');
+  } else {
+    h += item('Module cost / car', tpc > 0 ? e(tpc) : '—', 'var(--white)', 'Sum of the modules’ unit cost (§2–§5), before plant, sourcing, logistics, warranty and emissions');
+    h += item('R&D', rd > 0 ? e(rd) + 'M' : '—', 'var(--white)', 'New and derivative modules; reused modules add none');
+    h += item('SOP', sop);
+    h += item('NPV', 'after §9', 'var(--muted2)');
+  }
+  var d = v ? _propBcDriver(v) : null;
+  if (d) h += '<span style="flex-basis:100%;font-size:9px;color:' + (d.bad ? 'var(--red)' : 'var(--green)') + ';">' + (d.bad ? '▲ ' : '✓ ') + d.text + '</span>';
+  el.innerHTML = h;
+  el.style.cssText = 'display:flex;flex-wrap:wrap;gap:6px 22px;align-items:baseline;margin-top:6px;padding:7px 12px;' +
+    'border:1px solid var(--border2);border-radius:4px;background:var(--s1);font-family:DM Mono,monospace;';
+  _propComAfterRefresh(v);
+}
+// §9: what each market's car earns once §10's warranty and emissions costs are added.
+function _propComAfterRefresh(v) {
+  ((_prop.commercial && _prop.commercial.markets) || []).forEach(function(m) {
+    var el = document.getElementById('prop-com-' + m.region + '-after');
+    if (!el) return;
+    var x = v && v.mk && v.mk[m.region];
+    if (!x || !x.units) { el.innerHTML = ''; return; }
+    var e = function(n) { return '€' + Math.round(Math.abs(n)).toLocaleString(); };
+    var rev = x.rev / x.units, build = x.build / x.units, wty = x.wty / x.units, co2 = x.co2 / x.units, lc = x.lc / x.units;
+    var mg = rev - build - wty - co2 + lc;
+    el.innerHTML = 'After §10’s other costs: earns ' + e(rev) + ' − build ' + e(build) + ' − warranty ' + e(wty) +
+      ' − emissions ' + e(co2) + (lc > 0 ? ' + cost-downs ' + e(lc) : '') + ' = <b style="color:' + (mg < 0 ? 'var(--red)' : 'var(--green)') + ';">' +
+      (mg < 0 ? '−' : '+') + e(mg) + ' per car</b> (lifetime average). The gross contribution above leaves warranty and emissions out.';
+  });
+}
+
+// Any edit or click inside the proposal refreshes the tally (debounced).
+['input', 'change', 'click'].forEach(function(ev) {
+  document.addEventListener(ev, function(e) {
+    if (e.target && e.target.closest && e.target.closest('#page-proposal') && !e.target.closest('#prop-tally')) _propTallySchedule();
+  });
+});
+
 function setPropStep(n) {
   _prop.currentSec = n;
   _propVisRefresh();
+  _propTallySchedule();
   // Update progress bar
   for (var i = 1; i <= 10; i++) {
     var el = document.getElementById('pstep-' + i);
@@ -25074,6 +25189,7 @@ function buildCommercialSection() {
       html+='</tbody></table></div>';
       html+='<div style="font-family:DM Mono,monospace;font-size:9px;color:var(--muted2);margin-top:6px;">Yearly volumes follow the model\'s life: the launch ramp, then ageing (buyers score a model −0.5 points a quarter since SOP, at most −15): '
         +Math.round(_VOLCURVE_E.factor(0)*100)+'% of the annual volume at SOP, '+Math.round(_VOLCURVE_E.factor(12)*100)+'% after 3 years, '+Math.round(_VOLCURVE_E.factor(30)*100)+'% from 7½ years. SOP and EOP years count only their quarters on sale.</div>';
+      html+='<div id="prop-com-'+sm.region+'-after" style="font-family:DM Mono,monospace;font-size:10px;color:var(--text);margin-top:6px;"></div>';
     }
     html+='</div>';
   });
@@ -25081,6 +25197,7 @@ function buildCommercialSection() {
   html+='<div style="margin-top:14px;display:flex;justify-content:flex-end;"><button id="prop-com-continue-btn" onclick="advanceToBizCase()" style="font-family:DM Mono,monospace;font-size:10px;padding:8px 18px;border-radius:3px;border:1px solid rgba(200,164,60,.4);background:var(--goldl);color:var(--gold);cursor:pointer;">Continue → Business Case</button></div>';
   el.innerHTML=html;
   renderComValidation();
+  _propTallySchedule();
 }
 
 function onPropComInput(input){}
@@ -25167,6 +25284,7 @@ function _refreshMarketRows(region){
   var tgEl=document.getElementById('prop-com-'+region+'-total-gc');
   if(tgEl){tgEl.textContent=(totGC>=0?'+':'')+totGC.toFixed(2)+'€M';tgEl.style.color=totGC>0?'var(--green)':totGC<0?'var(--red)':'var(--muted2)';}
   renderComValidation();
+  _propTallySchedule();
 }
 function renderComValidation(){
   var mkts=((_prop.commercial&&_prop.commercial.markets)||[]).filter(function(m){return m.selected;});
@@ -29327,6 +29445,9 @@ function calcPropBizCase() {
   var _asPwt = (_prop.study && _prop.study.rolled_up_specs && _prop.study.rolled_up_specs.pwt_type) || 'ice_only';
   if (!_AFTERSALES_E.PWT[_asPwt]) _asPwt = 'ice_only';
   var _asRate = (SESSION_DISCOUNT_RATE || 8) / 100;
+  // Display only (tally, §10 verdict, §9 "after" line): unit-weighted sums of the same per-car
+  // terms the landed cost below adds up; nothing here feeds the cash flow.
+  var _bv = {units: 0, rev: 0, build: 0, wty: 0, co2: 0, lc: 0, mk: {}};
   _periods.forEach(function(p,pi){
     var yr=p.yr;
     {
@@ -29346,6 +29467,10 @@ function calcPropBizCase() {
                      +_wty.qualityDelta+(fcfArr.length<_WARRANTY_E.LAUNCH_Q?_wty.launchCar:_wty.car)
                      +_cmd.eur+co2Car+_varDelta-lcSave;
           revM+=uQ*nR/1e6; cogsM+=uQ*landed/1e6; unitsQ+=uQ;
+          var _wC=_wty.qualityDelta+(fcfArr.length<_WARRANTY_E.LAUNCH_Q?_wty.launchCar:_wty.car);
+          var _bk=_bv.mk[mkt.region]||(_bv.mk[mkt.region]={units:0,rev:0,build:0,wty:0,co2:0,lc:0});
+          [_bv,_bk].forEach(function(b){b.units+=uQ;b.rev+=uQ*nR;b.build+=uQ*(landed-_wC-co2Car+lcSave);
+                                       b.wty+=uQ*_wC;b.co2+=uQ*co2Car;b.lc+=uQ*lcSave;});
           asTailM+=uQ*_AFTERSALES_E.carValue(mkt.msrp_eur_k||0,_asPwt,_wty.years,_propAftersalesPolicy(mkt.region),_asRate).npv_eur/1e6;
         });
         if(tpcNum===0)cogsM=revM*0.70;
@@ -29426,6 +29551,13 @@ function calcPropBizCase() {
   var totalEbit = fcfArr.reduce(function(s,f){return s+f.ebit;},0);
   var avgEbitPct = totalRev > 0 ? totalEbit/totalRev*100 : 0;
 
+  // Per-car view for the tally, the verdict and §9 (lifetime unit-weighted averages)
+  var _u = _bv.units || 0;
+  _propBcView = {units: _u, npv: npv, irr: irr, invM: totalInvM, paybackQ: paybackQ, rate: rateP, mk: _bv.mk,
+                 rev: _u ? _bv.rev / _u : 0, build: _u ? _bv.build / _u : 0, wty: _u ? _bv.wty / _u : 0,
+                 co2: _u ? _bv.co2 / _u : 0, lc: _u ? _bv.lc / _u : 0};
+  _propBcView.cost = _propBcView.build + _propBcView.wty + _propBcView.co2 - _propBcView.lc;
+
   // ── Compute 6-panel supporting data ──────────────────────────────────────
   var _bcYears = typeof _fcfYr !== 'undefined' ? _fcfYr : [];
   var _byYear = _bcYears.map(function(yr,i){
@@ -29467,7 +29599,8 @@ function calcPropBizCase() {
   // Render panels into prop-bc-content
   var _bcEl=document.getElementById('prop-bc-content');
   if (_bcEl) {
-    _bcEl.innerHTML=_buildBizCasePanels(_byYear,_mktEcon,_modTpc,_modRd,_bcMkts,_bcPlants,
+    _bcEl.innerHTML=_propBcVerdictHtml(_propBcView)
+      + _buildBizCasePanels(_byYear,_mktEcon,_modTpc,_modRd,_bcMkts,_bcPlants,
       tpcNum,rdM,toolingM,totalInvM,npv,irr,paybackQ,avgEbitPct,rateP,_cumFcf,fcfArr,_bcYears,marketingM,_dmpMake,_srcAdj)
       + (_newMkt.countries.length
           ? '<div style="font-family:DM Mono,monospace;font-size:10px;color:var(--gold);margin-top:10px;">'
@@ -29598,6 +29731,46 @@ function calcPropBizCase() {
 
   var s10 = document.getElementById('prop-sec-10-status');
   if (s10) s10.textContent = 'NPV: ' + (npv>=0?'\u20ac':'-\u20ac') + Math.abs(Math.round(npv)) + 'M';
+  _propTallyRender();
+}
+
+// \u00a710 verdict, above the detail panels: is the case worth it, what one car earns and costs, and
+// the main reason (display only; the figures are calcPropBizCase's).
+function _propBcVerdictHtml(v) {
+  if (!v || !v.units) return '';
+  var DM = 'font-family:DM Mono,monospace;';
+  var e = function(x) { return '\u20ac' + Math.round(Math.abs(x)).toLocaleString(); };
+  var good = v.npv >= 0;
+  var tile = function(lbl, val, col, sub) {
+    return '<div style="flex:1 1 140px;min-width:0;">' +
+      '<div style="' + DM + 'font-size:7px;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted2);">' + lbl + '</div>' +
+      '<div style="font-family:Orbitron,sans-serif;font-size:20px;font-weight:700;color:' + col + ';margin-top:3px;">' + val + '</div>' +
+      (sub ? '<div style="' + DM + 'font-size:8px;color:var(--muted2);margin-top:2px;">' + sub + '</div>' : '') + '</div>';
+  };
+  var margin = v.rev - v.cost;
+  var step = function(lbl, val, sign, col) {
+    return '<span style="white-space:nowrap;"><span style="color:var(--muted2);">' + lbl + '</span> ' +
+      '<b style="color:' + (col || 'var(--text)') + ';">' + sign + e(val) + '</b></span>';
+  };
+  var d = _propBcDriver(v);
+  var h = '<div style="margin-bottom:14px;padding:14px 16px;border-radius:4px;border:1px solid ' + (good ? 'rgba(74,222,128,.35)' : 'rgba(239,68,68,.45)') +
+    ';background:' + (good ? 'rgba(74,222,128,.05)' : 'rgba(239,68,68,.06)') + ';">';
+  h += '<div style="' + DM + 'font-size:8px;letter-spacing:2px;text-transform:uppercase;color:' + (good ? 'var(--green)' : 'var(--red)') + ';margin-bottom:10px;">' +
+    (good ? 'Verdict \u00b7 this case pays back' : 'Verdict \u00b7 this case loses money') + '</div>';
+  h += '<div style="display:flex;flex-wrap:wrap;gap:14px 24px;">' +
+    tile('NPV', (v.npv < 0 ? '\u2212' : '') + e(v.npv) + 'M', good ? 'var(--green)' : 'var(--red)', 'at ' + v.rate.toFixed(1) + '% discount rate') +
+    tile('IRR', v.irr !== null ? v.irr.toFixed(1) + '%' : '\u2014', v.irr !== null && v.irr >= v.rate ? 'var(--green)' : 'var(--red)', v.irr === null ? 'cash flow never turns positive' : 'vs ' + v.rate.toFixed(1) + '% hurdle') +
+    tile('Payback', v.paybackQ ? v.paybackQ + ' quarters' : 'never', v.paybackQ ? 'var(--white)' : 'var(--red)', 'investment ' + e(v.invM) + 'M') +
+    tile('Per car', (margin < 0 ? '\u2212' : '+') + e(margin), margin < 0 ? 'var(--red)' : 'var(--green)', 'before overhead, lifetime average') +
+    '</div>';
+  h += '<div style="' + DM + 'font-size:9px;display:flex;flex-wrap:wrap;gap:4px 14px;margin-top:12px;padding-top:10px;border-top:1px solid var(--border2);">' +
+    step('Earns', v.rev, '') + step('\u2212 build &amp; deliver', v.build, '') + step('\u2212 warranty &amp; quality', v.wty, '') +
+    step('\u2212 emissions', v.co2, '', v.co2 > v.wty && v.co2 > 1000 ? 'var(--red)' : '') +
+    (v.lc > 0 ? step('+ cost-downs', v.lc, '') : '') +
+    step('=', margin, margin < 0 ? '\u2212' : '+', margin < 0 ? 'var(--red)' : 'var(--green)') + '</div>';
+  if (d) h += '<div style="font-size:12px;margin-top:10px;color:' + (d.bad ? 'var(--red)' : 'var(--green)') + ';">' + d.text + '</div>';
+  h += '<div style="' + DM + 'font-size:8px;color:var(--muted2);margin-top:8px;">Detail below: volumes, prices, investment, the cost build-up, P&amp;L by year and the assumptions.</div>';
+  return h + '</div>';
 }
 
 
