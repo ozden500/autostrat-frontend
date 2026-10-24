@@ -1954,11 +1954,12 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
             Vehicle moves to PLAN status · Commercial &amp; operations data saved to business case
           </div>
         </div>
-        <button onclick="confirmProposal()" id="prop-confirm-btn"
+        <button onclick="_propSubmitClick()" id="prop-confirm-btn"
           style="font-family:'DM Mono',monospace;font-size:11px;font-weight:700;padding:10px 24px;
           border-radius:3px;border:1px solid rgba(56,212,134,.5);background:rgba(56,212,134,.12);
           color:var(--green);cursor:pointer;letter-spacing:.5px;">✓ SUBMIT PROPOSAL</button>
       </div>
+      <div id="prop-submit-check" style="display:none;"></div>
     </div>
   </div>
 
@@ -21764,7 +21765,7 @@ function _propDstripChecks(n) {
     case 6: return [c(true, 'nothing to set: press Continue when the specs look right')];
     case 7: return [c(((ops.vehicle_plants || []).filter(function(p) { return p.vehicle_capacity_yr > 0; })).length > 0, 'a vehicle plant allocation confirmed')];
     case 8: return [c(true, 'sourcing zones set (defaults are local)'),
-                    c(!!ops._sourcingCapexM, 'capacity reserved with Confirm Sourcing Plan (recommended)', true)];
+                    c(true, 'Reserve capacity &amp; continue reserves the supplier capacity, then opens §9')];
     case 9: var neg = _propComNegatives();
             return [c(((_prop.commercial && _prop.commercial.markets) || []).some(function(m) { return m.selected; }), 'at least one market selected'),
                     c(!neg.length, neg.length ? neg.length + ' market-year(s) lose money: ' + neg.slice(0, 3).join(', ') + (neg.length > 3 ? '…' : '') : 'every market-year has a positive gross contribution')];
@@ -25209,8 +25210,8 @@ function buildComponentsSourcingSection() {
   html += '<div id="prop-ops-supply-plan-area">'+_renderSupplyPlanSection()+'</div>';
 
   html += '<div style="margin-top:14px;display:flex;justify-content:space-between;gap:10px;">';
-  html += '<button id="prop-ops-confirm-sourcing-btn" onclick="confirmSourcingPlan()" style="font-family:DM Mono,monospace;font-size:10px;padding:8px 16px;border-radius:3px;border:1px solid rgba(74,140,224,.4);background:rgba(74,140,224,.1);color:var(--cyan);cursor:pointer;">\u2713 Confirm Sourcing Plan \u2014 Reserve Capacity</button>';
-  html += '<button onclick="advanceToCommercialPlan()" style="font-family:DM Mono,monospace;font-size:10px;padding:8px 18px;border-radius:3px;border:1px solid rgba(200,164,60,.4);background:var(--goldl);color:var(--gold);cursor:pointer;">Continue \u2192 Commercial Plan</button>';
+  html += '<span style="font-family:DM Mono,monospace;font-size:9px;color:var(--muted2);align-self:center;">Continuing reserves the supplier capacity for these zones (re-running it updates the reservation).</span>';
+  html += '<button id="prop-ops-confirm-sourcing-btn" onclick="_propSourcingContinue()" style="font-family:DM Mono,monospace;font-size:10px;padding:8px 18px;border-radius:3px;border:1px solid rgba(200,164,60,.4);background:var(--goldl);color:var(--gold);cursor:pointer;">Reserve capacity &amp; continue \u2192 Commercial Plan</button>';
   html += '</div>';
 
   el.innerHTML = html;
@@ -25439,11 +25440,42 @@ function _refreshMarketRows(region){
   renderComValidation();
   _propTallySchedule();
 }
+// Per market that fails the gate: what a car loses there and the MSRP that clears every year
+// (net revenue must cover landed cost + tariff: nR × (1 − tariff) > landed, at the year's discount).
+function _propComFixes(){
+  var mkts=((_prop.commercial&&_prop.commercial.markets)||[]).filter(function(m){return m.selected;});
+  var plants=(_prop.operations&&(_prop.operations.vehicle_plants||_prop.operations.plants))||[];
+  var out=[];
+  mkts.forEach(function(mkt){
+    var plant=plants.find(function(p){return p.id===mkt.plant_id;})||plants[0]||null;
+    var lo=plant?(((MARKET_LOGISTICS_COST[plant.region]||{})[mkt.region])||{l:200,t:0}):{l:200,t:0};
+    var lX=_computeUnitEconCostSold(plant).baseC+lo.l, worst=0, needK=0, bad=0;
+    (mkt.years||[]).forEach(function(yr){
+      if(!(yr.volume>0))return;
+      var nR=_oemUnitRev(mkt.msrp_eur_k,yr.discount), m=nR-(lX+nR*lo.t);
+      if(m>0)return;
+      bad++; worst=Math.min(worst,m);
+      var per=_oemUnitRev(1,yr.discount)*(1-lo.t);   // net revenue per €1k MSRP, after tariff
+      if(per>0) needK=Math.max(needK,lX/per);
+    });
+    if(bad){
+      var sm=(typeof SALES_MARKETS!=='undefined'?SALES_MARKETS:[]).find(function(s){return s.region===mkt.region;});
+      out.push({region:mkt.region,label:sm?sm.label:mkt.region,years:bad,lossEur:-worst,minMsrpK:Math.ceil(needK*10+0.0001)/10});
+    }
+  });
+  return out;
+}
 function renderComValidation(){
   var neg=_propComNegatives();
   var warn=document.getElementById('prop-com-gc-warning');
   var btn=document.getElementById('prop-com-continue-btn');
-  if(warn){warn.style.display=neg.length>0?'block':'none';warn.textContent=neg.length>0?'⚠ '+neg.length+' market-year(s) negative gross contribution: '+neg.join(', ')+'. Adjust MSRP or volume.':'';}
+  if(warn){
+    warn.style.display=neg.length>0?'block':'none';
+    warn.innerHTML=neg.length>0?_propComFixes().map(function(f){
+      return '⚠ <b>'+f.label+'</b> loses up to €'+Math.round(f.lossEur).toLocaleString()+' a car ('+f.years+' year'+(f.years>1?'s':'')+
+        '). Raise its MSRP to at least <b>€'+f.minMsrpK.toFixed(1)+'k</b>, or untick the market.';
+    }).join('<br>'):'';
+  }
   if(btn){btn.disabled=neg.length>0;btn.style.opacity=neg.length>0?'0.5':'1';btn.style.cursor=neg.length>0?'not-allowed':'pointer';}
 }
 function onPropComMarketVolPct(r,v){}
@@ -28253,7 +28285,8 @@ function _calcSupplyPlanTotals(){
   return {totalAdj:sp._total_piece_adj_eur,riskScore:sp._risk_score,totalLanded:sp._total_landed_parts_eur};
 }
 
-var _spPanelExpanded = { inputs: false, results: false };
+// The decisions panel starts open (it is what §8 asks for); the cost build-up starts folded.
+var _spPanelExpanded = { inputs: true, results: false };
 function _spTogglePanel(p) {
   _spPanelExpanded[p] = !_spPanelExpanded[p];
   _refreshSupplyPlanArea();
@@ -28261,7 +28294,7 @@ function _spTogglePanel(p) {
 
 var _spPlantExpanded = {};
 function _spTogglePlantCard(pid) {
-  _spPlantExpanded[pid] = !_spPlantExpanded[pid];
+  _spPlantExpanded[pid] = _spPlantExpanded[pid] === false;   // plants start open
   _refreshSupplyPlanArea();
 }
 
@@ -28273,19 +28306,28 @@ function _renderModuleInputRow(sk, vp, dec) {
   var SEL = MO + 'font-size:8px;background:var(--panel);color:var(--white);border:1px solid var(--border2);border-radius:3px;padding:2px 4px;cursor:pointer;width:100%;';
   var typeLabel = _SP_TYPE_LABELS[sk] || sk.toUpperCase();
   var lbl = _spSlotLabel(sk);
-  var h = '<div style="' + MO + 'display:grid;grid-template-columns:1fr 150px 150px;'
-    + 'gap:6px;align-items:center;padding:4px 6px;border-radius:3px;margin-bottom:2px;background:var(--panel2);">';
-  h += '<div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'
+  // Each option shows what it does to this module's landed parts cost per car (vs the standard
+  // US buy price), so the choice can be made from the selector itself.
+  var _d = function(z, a) { var m = _calcModuleSupplyMetrics(sk, z, a, vp.region, vp.country_code); return Math.round(m.landed_eur - m.base_buy); };
+  var _sg = function(n) { return (n >= 0 ? '+€' : '−€') + Math.abs(n).toLocaleString(); };
+  var _cur = _d(dec.zone, dec.automation);
+  var _inv = (typeof _mzcEstimateInvestment === 'function' && (vp.vehicle_capacity_yr || 0) > 0)
+    ? _mzcEstimateInvestment(sk, dec.module_id != null ? dec.module_id : _spModuleIdForSlot(sk), dec.zone, dec.automation || 2, vp.vehicle_capacity_yr).totalM : null;
+  var h = '<div style="' + MO + 'display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr) 92px;'
+    + 'gap:4px 6px;align-items:center;padding:5px 6px;border-radius:3px;margin-bottom:3px;background:var(--panel2);">';
+  h += '<div style="grid-column:1/-1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'
     + '<span style="' + MO + 'font-size:7px;font-weight:600;color:var(--muted2);letter-spacing:0.5px;text-transform:uppercase;">' + typeLabel + '</span>'
     + '<span style="' + MO + 'font-size:7px;color:var(--muted2);"> — </span>'
     + '<span style="' + MO + 'font-size:8px;font-weight:600;color:var(--white);">' + lbl + '</span>'
     + '</div>';
   h += '<select style="' + SEL + '" onchange="onSpZone(\'' + vp.id + '\',\'' + sk + '\',this.value)">';
-  SP_ZONES.forEach(function(z) { h += '<option value="' + z.key + '"' + (dec.zone === z.key ? ' selected' : '') + '>' + z.flag + ' ' + z.label + '</option>'; });
+  SP_ZONES.forEach(function(z) { h += '<option value="' + z.key + '"' + (dec.zone === z.key ? ' selected' : '') + '>' + z.flag + ' ' + z.label + ' (' + _sg(_d(z.key, dec.automation)) + ')</option>'; });
   h += '</select>';
   h += '<select style="' + SEL + '" onchange="onSpAuto(\'' + vp.id + '\',\'' + sk + '\',parseInt(this.value))">';
-  SP_AUTO_LEVELS.forEach(function(al) { h += '<option value="' + al.key + '"' + (dec.automation === al.key ? ' selected' : '') + '>' + al.key + '—' + al.label + '</option>'; });
+  SP_AUTO_LEVELS.forEach(function(al) { h += '<option value="' + al.key + '"' + (dec.automation === al.key ? ' selected' : '') + '>' + al.key + '—' + al.label + ' (' + _sg(_d(dec.zone, al.key)) + ')</option>'; });
   h += '</select>';
+  h += '<div style="text-align:right;line-height:1.3;"><div style="font-size:8px;font-weight:600;color:' + (_cur > 0 ? 'var(--orange)' : 'var(--green)') + ';">' + _sg(_cur) + '/car</div>'
+    + (_inv !== null ? '<div style="font-size:7px;color:var(--muted2);">supplier capex €' + _inv.toFixed(1) + 'M</div>' : '') + '</div>';
   h += '</div>';
   return h;
 }
@@ -28295,7 +28337,7 @@ function _renderPlantInputCard(vp, sp, slots) {
   slots = slots || _spGetActivePropSlots();
   var _cl = INDUSTRIAL_COUNTRIES[vp.region] || [], _ct = _cl.find(function(c) { return c.code === vp.country_code; }) || {};
   var MO = 'font-family:DM Mono,monospace;';
-  var pExpanded = !!_spPlantExpanded[vp.id];
+  var pExpanded = _spPlantExpanded[vp.id] !== false;
   var pChevron = pExpanded ? '▲' : '▼';
   var h = '<div style="margin-bottom:10px;">';
   h += '<div style="display:flex;align-items:center;justify-content:space-between;background:var(--s2);border-radius:4px;padding:6px 10px;margin-bottom:6px;gap:8px;cursor:pointer;" '
@@ -28407,7 +28449,7 @@ function _renderPlantCostCard(vp, sp, slots) {
   var rPct = Math.round(totW > 0 ? Math.min(1, totRisk / totW) * 100 : 25);
   var rCol = rPct < 30 ? 'var(--green)' : rPct < 55 ? 'var(--gold)' : 'var(--red)';
   var rLabel = rPct < 30 ? 'LOW' : rPct < 55 ? 'MEDIUM' : 'HIGH';
-  var pExpanded = !!_spPlantExpanded[vp.id];
+  var pExpanded = _spPlantExpanded[vp.id] !== false;
   var pChevron = pExpanded ? '▲' : '▼';
   var h = '<div style="margin-bottom:14px;">';
   // ── Plant header ──
@@ -28549,7 +28591,7 @@ function _mzcCapacityStrip(sk, moduleId, zoneKey, autoLevel, needK) {
 
 async function confirmSourcingPlan() {
   var vid = _prop.study && _prop.study.id;
-  if (!vid) { toast('⚠ No vehicle selected'); return; }
+  if (!vid) { toast('⚠ No vehicle selected'); return false; }
   var sp = (_prop.operations && _prop.operations.supply_plan) || {};
   var items = [];
   function _collect(plants, slots) {
@@ -28565,7 +28607,7 @@ async function confirmSourcingPlan() {
   _collect(_spConfirmedPlants(), _spVehiclePlantSlots());
   _collect(_spConfirmedPwtPlants(), _spPwtPlantSlots());
   items = items.filter(function(it) { return it.required_k > 0; });
-  if (!items.length) { toast('⚠ Confirm plant allocations with capacity first'); return; }
+  if (!items.length) { toast('⚠ Confirm plant allocations with capacity first'); return false; }
 
   var btn = document.getElementById('prop-ops-confirm-sourcing-btn');
   if (btn) { btn.disabled = true; btn.textContent = 'Reserving capacity…'; }
@@ -28610,14 +28652,22 @@ async function confirmSourcingPlan() {
       }
       toast(msg);
       await _mzcLoadCapacity();
+      return true;
     } else {
       toast('⚠ Failed to reserve capacity');
     }
   } catch (e) {
     toast('⚠ Error reserving capacity: ' + e.message);
   } finally {
-    if (btn) { btn.disabled = false; btn.textContent = '✓ Confirm Sourcing Plan — Reserve Capacity'; }
+    if (btn) { btn.disabled = false; btn.textContent = 'Reserve capacity & continue → Commercial Plan'; }
   }
+  return false;
+}
+
+// §8 has one way on: reserve the supplier capacity (the module_zone_contracts the books charge),
+// then go to §9. Re-running it is safe: the endpoint upserts the vehicle's reservation.
+async function _propSourcingContinue() {
+  if (await confirmSourcingPlan()) advanceToCommercialPlan();
 }
 
 // Aggregates the estimated supplier investment (tooling + capacity) implied by
@@ -29740,10 +29790,16 @@ function calcPropBizCase() {
   // Render panels into prop-bc-content
   var _bcEl=document.getElementById('prop-bc-content');
   if (_bcEl) {
-    _bcEl.innerHTML=_propBcVerdictHtml(_propBcView)
+    var _bcTop=_propBcVerdictHtml(_propBcView)
       + _buildBizCasePanels(_byYear,_mktEcon,_modTpc,_modRd,_bcMkts,_bcPlants,
-      tpcNum,rdM,toolingM,totalInvM,npv,irr,paybackQ,avgEbitPct,rateP,_cumFcf,fcfArr,_bcYears,marketingM,_dmpMake,_srcAdj)
-      + (_newMkt.countries.length
+      tpcNum,rdM,toolingM,totalInvM,npv,irr,paybackQ,avgEbitPct,rateP,_cumFcf,fcfArr,_bcYears,marketingM,_dmpMake,_srcAdj);
+    // The planning assumptions: a table up front (per car, over the life, where it is decided),
+    // the full explanations folded below it.
+    var _asmTail=fcfArr.reduce(function(t,f){return t+(f.asTail||0);},0);
+    var _bcAsmTable=_propBcAsmTable({v:_propBcView, cmdEur:_cmd.enabled&&_cmd.index?_cmd.eur:null, cmdSens:_cmdSens,
+      lcPlan:_lcPlan, launchM:_lcStd, entryM:_newMkt.entryM, runQ:_newMkt.runQ, nEntry:_newMkt.countries.length,
+      asTail:_asmTail, co2On:!!(_co2.preset&&_co2.preset!=='off'), wtyYears:_wty.years});
+    var _bcAsm=(_newMkt.countries.length
           ? '<div style="font-family:DM Mono,monospace;font-size:10px;color:var(--gold);margin-top:10px;">'
             + 'Includes market entry for ' + _newMkt.countries.length + ' countries your team is not in yet ('
             + _newMkt.countries.slice(0, 8).join(', ') + (_newMkt.countries.length > 8 ? '…' : '') + '): €'
@@ -29825,9 +29881,8 @@ function calcPropBizCase() {
       + '<div style="font-family:DM Mono,monospace;font-size:10px;color:var(--muted2);margin-top:4px;">'
         + 'Launch campaign (planning assumption): standard budget €' + Math.round(_lcStd) + 'M = '
         + (_LAUNCH_E.STD_PCT * 100) + '% of first-year revenue, in the first two quarters. The actual budget is '
-        + 'decided each round on Commercial → 🚀 Launches; with none, an average brand\'s new model starts ~30% less attractive.</div>'
-      + (false ? ''
-          : '');
+        + 'decided each round on Commercial → 🚀 Launches; with none, an average brand\'s new model starts ~30% less attractive.</div>';
+    _bcEl.innerHTML=_bcTop+_bcAsmTable+_propFold('bc-asm','How each assumption is worked out',_bcAsm);
   }
 
 
@@ -29873,6 +29928,57 @@ function calcPropBizCase() {
   var s10 = document.getElementById('prop-sec-10-status');
   if (s10) s10.textContent = 'NPV: ' + (npv>=0?'\u20ac':'-\u20ac') + Math.abs(Math.round(npv)) + 'M';
   _propTallyRender();
+}
+
+// \u00a710 Submit: a case that loses money asks once, in the page, before it goes to the board.
+// The decision stays the team's; "Submit anyway" calls confirmProposal() as the button did.
+function _propSubmitClick() {
+  var box = document.getElementById('prop-submit-check');
+  var v = _propBcView, bc = _prop && _prop._bizcase;
+  var npv = bc ? bc.npv_m : (v ? v.npv : null);
+  if (npv === null || npv === undefined || npv >= 0 || !box) { if (box) box.style.display = 'none'; return confirmProposal(); }
+  var d = _propBcDriver(v);
+  box.innerHTML = '<div style="margin-top:10px;padding:12px 14px;border:1px solid rgba(239,68,68,.45);border-radius:4px;background:rgba(239,68,68,.06);' +
+    'display:flex;flex-wrap:wrap;gap:10px 16px;align-items:center;">' +
+    '<div style="flex:1 1 320px;min-width:0;font-size:12px;color:var(--text);"><b style="color:var(--red);">This case loses \u20ac' +
+    Math.round(Math.abs(npv)).toLocaleString() + 'M (NPV).</b> ' + (d ? d.text : '') + ' Submit it anyway?</div>' +
+    '<button onclick="document.getElementById(\'prop-submit-check\').style.display=\'none\'" style="font-family:DM Mono,monospace;font-size:10px;padding:8px 14px;border-radius:3px;border:1px solid var(--border2);background:var(--s2);color:var(--text);cursor:pointer;">Back to the plan</button>' +
+    '<button onclick="document.getElementById(\'prop-submit-check\').style.display=\'none\';confirmProposal()" style="font-family:DM Mono,monospace;font-size:10px;padding:8px 14px;border-radius:3px;border:1px solid rgba(239,68,68,.5);background:rgba(239,68,68,.12);color:var(--red);cursor:pointer;">Submit anyway</button></div>';
+  box.style.display = 'block';
+}
+
+// \u00a710 assumptions as one table: what each planning assumption costs per car and over the life,
+// and where the team decides it (the explanations stay in a fold below; display only).
+function _propBcAsmTable(a) {
+  var v = a.v || {};
+  var DM = 'font-family:DM Mono,monospace;';
+  var e = function(x) { return (x < 0 ? '\u2212\u20ac' : '\u20ac') + Math.round(Math.abs(x)).toLocaleString(); };
+  var life = function(perCar) { return v.units ? e(perCar * v.units / 1e6) + 'M' : '\u2014'; };
+  var opt = function(k, l) { return '<option value="' + k + '"' + (a.lcPlan === k ? ' selected' : '') + '>' + l + '</option>'; };
+  var lcSel = '<select onchange="onPropLcPlan(this.value)" style="width:auto;max-width:100%;background:var(--s2);border:1px solid var(--gold);color:var(--text);border-radius:2px;padding:1px 4px;font-size:9px;' + DM + '">' +
+    opt('std', 'Standard') + opt('none', 'None') + opt('S', 'Small steps') + opt('M', 'Medium steps') + opt('L', 'Large steps') + '</select>';
+  var rows = [
+    ['Warranty &amp; quality system', e(v.wty) + '/car', life(v.wty), a.wtyYears + '-year warranty', 'Commercial \u2192 Warranty \u00b7 reliability in \u00a72\u2013\u00a75'],
+    a.co2On ? ['Emissions compliance', e(v.co2) + '/car', life(v.co2), 'against each market\u2019s fleet target', 'Commercial \u2192 Emissions \u00b7 powertrain in \u00a73'] : null,
+    a.cmdEur !== null ? ['Commodity prices', e(a.cmdEur) + '/car', life(a.cmdEur),
+      'held at this quarter\u2019s prices; \u00b120%: NPV ' + e(a.cmdSens[1].npv) + 'M / ' + e(a.cmdSens[0].npv) + 'M', 'Engineering \u2192 Lifecycle (supply contracts)'] : null,
+    ['Lifecycle cost-downs', (v.lc > 0 ? '\u2212' : '') + e(v.lc) + '/car', v.units ? '\u2212' + life(v.lc) : '\u2014', lcSel, 'Engineering \u2192 Lifecycle (yearly budget)'],
+    ['Launch campaign', '\u2014', e(a.launchM) + 'M', 'standard budget, first two quarters', 'Commercial \u2192 Launches, each round'],
+    a.nEntry ? ['Market entry', '\u2014', e(a.entryM) + 'M + ' + e(a.runQ) + 'M/qtr', a.nEntry + ' countries not entered yet', 'Commercial \u2192 Markets'] : null,
+    a.asTail > 0 ? ['Aftersales parts (in cash flow only)', '\u2014', '+' + e(a.asTail) + 'M', 'genuine-parts contribution over 15 years', 'Commercial \u2192 Aftersales'] : null
+  ].filter(Boolean);
+  var TH = 'text-align:left;padding:5px 8px;' + DM + 'font-size:7px;letter-spacing:1px;text-transform:uppercase;color:var(--muted);font-weight:400;border-bottom:1px solid var(--border);';
+  var TD = 'padding:6px 8px;' + DM + 'font-size:9px;border-bottom:1px solid var(--border2);vertical-align:top;';
+  var h = '<div style="margin-top:14px;border:1px solid var(--border2);border-radius:4px;overflow:hidden;">' +
+    '<div style="padding:8px 14px;background:var(--s2);border-left:3px solid var(--gold);' + DM + 'font-size:8px;letter-spacing:1px;text-transform:uppercase;color:var(--gold);">07 \u2014 Planning assumptions in this case</div>' +
+    '<div style="overflow-x:auto;background:var(--s1);"><table style="width:100%;border-collapse:collapse;"><thead><tr>' +
+    '<th style="' + TH + '">Item</th><th style="' + TH + 'text-align:right;">Per car</th><th style="' + TH + 'text-align:right;">Over the life</th><th style="' + TH + '">Basis</th><th style="' + TH + '">Where you decide it</th></tr></thead><tbody>';
+  rows.forEach(function(r) {
+    h += '<tr><td style="' + TD + 'color:var(--white);">' + r[0] + '</td><td style="' + TD + 'text-align:right;white-space:nowrap;">' + r[1] +
+      '</td><td style="' + TD + 'text-align:right;white-space:nowrap;">' + r[2] + '</td><td style="' + TD + 'color:var(--muted2);">' + r[3] +
+      '</td><td style="' + TD + 'color:var(--muted2);">' + r[4] + '</td></tr>';
+  });
+  return h + '</tbody></table></div></div>';
 }
 
 // \u00a710 verdict, above the detail panels: is the case worth it, what one car earns and costs, and
