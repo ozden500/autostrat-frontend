@@ -1673,6 +1673,7 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
 
       <!-- Submit button -->
       <div id="mod-submit-area" style="display:none;margin-top:10px;">
+        <div id="mod-ready-line" style="font-family:DM Mono,monospace;font-size:10px;color:var(--text);line-height:1.6;margin-bottom:8px;"></div>
         <button class="mfg-submit-btn" onclick="submitModule()" style="width:100%">Start Development →</button>
         <div id="mod-msg" style="font-size:11px;margin-top:6px;color:var(--cyan);"></div>
       </div>
@@ -5054,6 +5055,7 @@ function setDevPath(path, btn) {
     document.getElementById('mod-cost-preview').style.display='block';
   }
   _labDerivPanel();
+  _labReadyQueue();
 }
 
 // ── Module Lab "Derive from Existing" (2026-10-17) ──────────────────────────────────────────
@@ -5248,8 +5250,51 @@ function getModuleSpecs() {
   return result;
 }
 
+// What "Start Development" would store, before the click: the server prices the design exactly as
+// create_team_module does (/calculate/module-cost 'dev': session lead time, ready date, a
+// derivative's R&D share), shown with the share of the team's engineering capacity it takes.
+var _labReadyTimer = null, _labReadySeq = 0;
+function _labReadyQueue() {
+  clearTimeout(_labReadyTimer);
+  _labReadyTimer = setTimeout(_labReadyPreview, 600);
+}
+async function _labReadyPreview() {
+  var el = document.getElementById('mod-ready-line');
+  if (!el) return;
+  var key = getSelectedConfigKey();
+  if (!key || !teamId || !sessionId || currentDevPath === 'reuse') {
+    el.innerHTML = currentDevPath === 'reuse' ? '<span style="color:var(--muted2);">Reuse: available at once, no R&D.</span>' : '';
+    return;
+  }
+  var src = currentDevPath === 'derivative' ? (document.getElementById('mod-source-select') || {}).value || null : null;
+  if (currentDevPath === 'derivative' && !src) { el.innerHTML = ''; return; }
+  var seq = ++_labReadySeq;
+  el.innerHTML = '<span style="color:var(--muted2);">Working out lead time and ready date…</span>';
+  try {
+    var res = await fetch(API_URL + '/calculate/module-cost', {method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({module_type: currentModType, config_key: key, specs: getModuleSpecs(), session_id: sessionId,
+                            team_id: teamId, developed_from_module_id: src})});
+    var d = await res.json();
+    if (seq !== _labReadySeq) return;
+    var dv = d && d.dev;
+    if (!res.ok || !dv) { el.innerHTML = ''; return; }
+    if (dv.error) { el.innerHTML = '<span style="color:var(--red);">⚠ ' + _esc(String(dv.error)) + '</span>'; return; }
+    var lt = dv.lead_time_quarters, fte = Math.round(dv.total_rd_fte || 0);
+    if (!_engState._restored) { _restoreEngState(); _engState._restored = true; _updateBlendedFTERate(); }
+    var cap = _calcCapacityMetrics().qtrCapFteMo || 0;
+    var perQ = lt > 0 ? fte / lt : fte;
+    el.innerHTML = 'Ready <b style="color:var(--gold);">Q' + dv.ready_quarter + ' ' + dv.ready_year + '</b>'
+      + ' · ' + lt + ' quarter' + (lt === 1 ? '' : 's') + ' from Q' + dv.submitted_quarter + ' ' + dv.submitted_year
+      + ' · R&D €' + (parseFloat(dv.total_rd_spend_m) || 0).toFixed(1) + 'M · ' + fte.toLocaleString() + ' FTE-months'
+      + (cap > 0 ? '<br><span style="color:var(--muted2);">about ' + Math.round(perQ).toLocaleString() + ' FTE-months a quarter, '
+          + Math.round(perQ / cap * 100) + '% of your engineering capacity (' + cap.toLocaleString() + '). The ready date assumes it is fully staffed; '
+          + 'short of engineers, development slows and the date moves.</span>' : '');
+  } catch (e) { if (seq === _labReadySeq) el.innerHTML = ''; }
+}
+
 function scheduleCostCalc() {
   clearTimeout(costDebounceTimer);
+  _labReadyQueue();
   // a derivative's sliders stay in its envelope; its panel follows the engines' result
   if (currentDevPath === 'derivative') { _labDerivClamp(); setTimeout(_labDerivPanel, 450); }
   if (currentModType === 'platform') {
@@ -11159,6 +11204,7 @@ function _qLabel(qabs){ return 'Q'+(((qabs%4)+4)%4+1)+' '+(2025+Math.floor(qabs/
 // Last statement's engineering payroll and the part charged as idle (eng_idle_m: payroll not
 // absorbed by module progress or lifecycle work), for the Capacity status and the dashboard.
 var _engIdle = {key: null, data: null, busy: false};
+var _engDashAll = false;   // dashboard timeline: every module, not only what is in development
 async function _engIdleLoad() {
   if (!sessionId || !teamId || _engIdle.busy) return;
   var key = sessionId + '|' + teamId + '|' + currentRoundYear + 'Q' + currentRoundQuarter;
@@ -11247,11 +11293,42 @@ function _renderEngineeringDashboard(mods, vehicles, todayQabs, sessionCfg) {
   h += '<span style="font-family:DM Mono,monospace;font-size:8px;letter-spacing:2px;color:var(--muted);text-transform:uppercase;">MODULE DEVELOPMENT TIMELINE</span>';
   h += '<span style="font-family:DM Mono,monospace;font-size:8px;color:var(--muted2);">TODAY: '+_qLabel(todayQabs)+'</span>';
   h += '</div>';
+  // Only what is in flight: modules in development and those that became ready in the last
+  // quarter; the rest of the library folds into one line ("show all" brings the full history back)
+  var showAll = !!_engDashAll;
+  var flight = mods.filter(function(m){
+    if (m.development_status==='cancelled') return false;
+    return m.development_status!=='completed' || (m.ready_year && _rq(m) >= todayQabs-1);
+  });
+  var doneCount = mods.filter(function(m){ return m.development_status==='completed'; }).length;
+  var gMods = showAll ? mods : flight;
+  var gVeh = showAll ? vehicles : vehicles.filter(function(v){ return v.start_year && (v.start_year-2025)*4+(v.start_quarter-1) >= todayQabs-1; });
+  var toggle = '<a href="#" onclick="_engDashAll=!_engDashAll;buildEngineeringDashboard();return false;" style="color:var(--gold);">' + (showAll ? 'show only what is in development' : 'show all ' + mods.length) + '</a>';
   h += '<div style="padding:14px;overflow-x:auto;">';
-  h += _buildModuleGantt(mods, vehicles, todayQabs, sessionCfg);
+  if (!gMods.length) {
+    h += '<div style="font-family:DM Mono,monospace;font-size:10px;color:var(--muted2);line-height:1.7;">Nothing in development. '
+       + doneCount + ' module' + (doneCount===1?'':'s') + ' ready' + (libQs.length ? ', the last since ' + _qLabel(Math.max.apply(null, libQs)) : '') + ' · ' + toggle
+       + '<br>Start one in <a href="#" onclick="engView(\'lab\');return false;" style="color:var(--gold);">Module Lab</a>, or with a new Vehicle Proposal.</div>';
+  } else {
+    if (!showAll && doneCount > flight.filter(function(m){return m.development_status==='completed';}).length)
+      h += '<div style="font-family:DM Mono,monospace;font-size:9px;color:var(--muted2);margin-bottom:8px;">Showing what is in development · ' + doneCount + ' modules ready · ' + toggle + '</div>';
+    else if (showAll)
+      h += '<div style="font-family:DM Mono,monospace;font-size:9px;color:var(--muted2);margin-bottom:8px;">All modules · ' + toggle + '</div>';
+    h += _buildModuleGantt(gMods, gVeh, todayQabs, sessionCfg);
+  }
   h += '</div></div>';
 
+  // ── Resource and FTE charts: module development only, so with nothing in development they
+  // would be empty axes; say so instead
+  var charts = inDev > 0;
+  if (!charts) {
+    h += '<div style="background:var(--s2);border-radius:4px;border:1px solid var(--border2);margin-bottom:14px;padding:12px 14px;font-family:DM Mono,monospace;font-size:10px;color:var(--muted2);line-height:1.6;">'
+       + 'The R&amp;D spend and engineering demand charts show modules in development. With none, your engineers work only on lifecycle projects '
+       + '(<a href="#" onclick="engView(\'lifecycle\');return false;" style="color:var(--gold);">Lifecycle</a>); the rest is idle.</div>';
+  }
+
   // ── Resource chart ──
+  if (charts) {
   h += '<div style="background:var(--s2);border-radius:4px;border:1px solid var(--border2);margin-bottom:14px;overflow:hidden;">';
   h += '<div style="padding:10px 14px;border-bottom:1px solid var(--border);">';
   h += '<span style="font-family:DM Mono,monospace;font-size:8px;letter-spacing:2px;color:var(--muted);text-transform:uppercase;">R&D RESOURCE PROFILE — €M / QUARTER</span>';
@@ -11297,19 +11374,26 @@ function _renderEngineeringDashboard(mods, vehicles, todayQabs, sessionCfg) {
   h += '<span style="display:flex;align-items:center;gap:4px;font-family:DM Mono,monospace;font-size:8px;color:rgba(239,68,68,.85);">'+
     '<span style="display:inline-block;width:10px;height:8px;border:1.5px solid rgba(239,68,68,.85);"></span>OVER CAPACITY</span>';
   h += '</div></div></div>';
+  }
 
-  // ── Vehicle-module matrix ──
-  var planV = vehicles.filter(function(v){return v.status!=='cancelled';});
-  if (planV.length>0) {
+  // ── Vehicle-module matrix: models in production or to come; ended ones fold into a line ──
+  var _eopQ = function(v){ return v.end_year ? (v.end_year-2025)*4+(v.end_quarter||4)-1 : null; };
+  var planV = vehicles.filter(function(v){return v.status!=='cancelled' && !(_eopQ(v)!==null && _eopQ(v) < todayQabs);});
+  var endedV = vehicles.filter(function(v){return v.status!=='cancelled' && _eopQ(v)!==null && _eopQ(v) < todayQabs;});
+  if (planV.length>0 || endedV.length>0) {
     h += '<div style="background:var(--s2);border-radius:4px;border:1px solid var(--border2);overflow:hidden;">';
     h += '<div style="padding:10px 14px;border-bottom:1px solid var(--border);">';
     h += '<span style="font-family:DM Mono,monospace;font-size:8px;letter-spacing:2px;color:var(--muted);text-transform:uppercase;">VEHICLE-MODULE READINESS MATRIX</span>';
     h += '</div>';
-    h += '<div style="padding:14px;overflow-x:auto;">'+_buildVehicleModuleMatrix(mods,planV)+'</div></div>';
+    h += '<div style="padding:14px;overflow-x:auto;">'+(planV.length ? _buildVehicleModuleMatrix(mods,planV) : '');
+    if (endedV.length)
+      h += '<div style="font-family:DM Mono,monospace;font-size:9px;color:var(--muted2);margin-top:8px;">Production ended: '
+         + endedV.map(function(v){ return _esc(v.name||'—') + ' (EOP Q' + (v.end_quarter||4) + ' ' + v.end_year + ')'; }).join(', ') + '</div>';
+    h += '</div></div>';
   }
 
   el.innerHTML = h;
-  setTimeout(function(){
+  if (charts) setTimeout(function(){
     _drawResourceChart(mods, todayQabs, sessionCfg);
     _drawFteChart(mods, todayQabs, capMetrics.qtrCapFteMo);
   }, 60);
@@ -11636,12 +11720,28 @@ function _drawFteChart(mods, todayQabs, capFteMo) {
 function _buildVehicleModuleMatrix(mods, vehicles) {
   var modMap={};
   mods.forEach(function(m){ modMap[m.id]=m; });
+  // a car's modules = the four FK columns + rolled_up_specs.module_ids, which also holds the
+  // battery pack and a dual model's e-motor (financial_engine.vehicle_module_ids)
   var slots=[
-    {key:'platform_module_id',label:'Platform'},
-    {key:'pwt_module_id',     label:'PWT'},
-    {key:'tophat_module_id',  label:'Top Hat'},
-    {key:'eands_module_id',   label:'E&S'},
+    {type:'platform', label:'Platform'},
+    {type:'ice_pwt',  label:'ICE PWT'},
+    {type:'epwt',     label:'e-Motor'},
+    {type:'tophat',   label:'Top Hat'},
+    {type:'eands',    label:'E&S'},
+    {type:'battery',  label:'Battery'},
   ];
+  var _fk={platform:'platform_module_id', tophat:'tophat_module_id', eands:'eands_module_id'};
+  var modOf=function(v, type){
+    var ids=(v.rolled_up_specs||{}).module_ids||{};
+    var id=ids[type]||(_fk[type]?v[_fk[type]]:null);
+    if(!id&&(type==='ice_pwt'||type==='epwt')&&v.pwt_module_id){
+      var pm=modMap[v.pwt_module_id];
+      if(!pm||pm.module_type===type) id=v.pwt_module_id;
+    }
+    return id||null;
+  };
+  // only the columns some vehicle uses
+  slots=slots.filter(function(s){ return vehicles.some(function(v){ return modOf(v,s.type); }); });
   var h='<table style="width:100%;border-collapse:collapse;font-family:DM Mono,monospace;font-size:9px;">';
   h+='<thead><tr>';
   h+='<th style="text-align:left;padding:5px 8px;color:var(--muted2);font-weight:400;border-bottom:1px solid var(--border2);">VEHICLE</th>';
@@ -11659,10 +11759,10 @@ function _buildVehicleModuleMatrix(mods, vehicles) {
     h+='<tr style="border-top:1px solid rgba(255,255,255,.04);'+(i%2===0?'':'background:rgba(255,255,255,.015);')+'">';
     var _vs={};
     slots.forEach(function(s){
-      var m=modMap[v[s.key]]; if(!m) return;
-      var k={platform_module_id:'platform',tophat_module_id:'tophat',eands_module_id:'eands'}[s.key]||(m.module_type==='epwt'?'epwt':'ice_pwt');
+      if(s.type==='battery') return;     // the module map draws the four body / powertrain slots
+      var m=modMap[modOf(v,s.type)]; if(!m) return;
       var rQ=m.ready_year?(m.ready_year-2025)*4+(m.ready_quarter-1):null;
-      _vs[k]=m.development_status==='completed'?'ready':(sopQ!==null&&rQ!==null&&rQ>sopQ?'late':'dev');
+      _vs[s.type]=m.development_status==='completed'?'ready':(sopQ!==null&&rQ!==null&&rQ>sopQ?'late':'dev');
     });
     var _vrs=v.rolled_up_specs||{};
     // 🤖 an AI-built model: the AI fallback vehicle, or one the team inherited from the AI fleet
@@ -11674,7 +11774,7 @@ function _buildVehicleModuleMatrix(mods, vehicles) {
     h+='<td style="padding:5px 8px;text-align:center;color:var(--muted2);">'+sop+'</td>';
     h+='<td style="padding:5px 8px;text-align:center;color:'+statusColor+';text-transform:uppercase;">'+v.status+'</td>';
     slots.forEach(function(s){
-      var modId=v[s.key];
+      var modId=modOf(v,s.type);
       if(!modId){ h+='<td style="padding:5px 8px;text-align:center;color:var(--muted2);">—</td>'; return; }
       var mod=modMap[modId];
       if(!mod){   h+='<td style="padding:5px 8px;text-align:center;color:var(--muted2);">?</td>';  return; }
@@ -11685,7 +11785,7 @@ function _buildVehicleModuleMatrix(mods, vehicles) {
       var sameQ   =sopQ!==null&&readyQ!==null&&readyQ===sopQ;
       var col=isDone?'var(--green)':conflict?'var(--red)':sameQ?'var(--gold)':'var(--gold)';
       var icon=isDone?'✓':conflict?'⚠':'⏳';
-      var lbl=isDone?'READY':(ry?ry+' Q'+rq:'IN DEV');
+      var lbl=isDone?'READY':(ry?'Q'+rq+' '+ry:'IN DEV');
       h+='<td style="padding:5px 8px;text-align:center;color:'+col+';" title="'+mod.name+'">'+icon+' '+lbl+'</td>';
     });
     h+='</tr>';
