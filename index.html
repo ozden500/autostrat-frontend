@@ -13399,7 +13399,8 @@ async function loadFleetTab() {
       var vr = await fetch(API_URL + '/teams/' + teamId + '/vehicles');
       var vj = vr.ok ? await vr.json() : null;
       _flTab.onSale = vj ? _comOnSale(vj.vehicles).reduce(function(a, v) { a[v.id] = true; return a; }, {}) : null;
-    } catch (ve) { _flTab.onSale = null; }
+      _flTab.veh = vj ? (vj.vehicles || []).reduce(function(a, v) { a[v.id] = v; return a; }, {}) : {};
+    } catch (ve) { _flTab.onSale = null; _flTab.veh = {}; }
     _renderFleetTab();
   } catch (e) {
     if (el) el.innerHTML = '<div style="color:var(--red);font-family:DM Mono,monospace;font-size:11px;padding:16px 0;">Fleet unavailable: ' + _esc(e.message) + '</div>';
@@ -13487,9 +13488,17 @@ function _renderFleetTab() {
     h += '<div style="font-size:9px;color:var(--muted2);">Last quarter ' + n(md.last_quarter_units) + ' cars sold · contracts in ' + (md.countries || []).length + ' countries'
        + (md.avg_contract_discount != null ? ' · average contract discount ' + md.avg_contract_discount + '%' : '') + ' · order book: '
        + (md.order_book || []).map(function(o) { return _esc(o.label) + ' ' + n(o.units); }).join(' · ') + '</div>';
+    // No contract runs past a planned EOP unless a successor takes it over (clearing ends them there)
+    var _fv = (_flTab.veh || {})[md.vehicle_id];
+    if (_fv && _fv.end_year && d.round && !((_fv.rolled_up_specs || {}).successor_id)) {
+      var _eq = (_fv.end_year - 2025) * 4 + (_fv.end_quarter || 4) - 1, _cq = (d.round.year - 2025) * 4 + d.round.quarter - 1;
+      if (_eq < _cq + (C.FLEET_CONTRACT_Q || 4))
+        h += '<div style="font-size:9px;color:var(--gold);margin-top:4px;">Production ends Q' + (_fv.end_quarter || 4) + ' ' + _fv.end_year
+           + (_eq <= _cq ? ': no new fleet contracts this quarter (deliveries would fall after EOP).' : ': contracts signed now run only to then. Moving EOP earlier leaves contracted cars undelivered, at the penalty.') + '</div>';
+    }
     h += '</div>';
   });
-  if (_flPast.length) h += '<div style="font-size:9px;color:var(--muted2);margin:-2px 0 10px;">Past EOP, no policy to set: ' + _flPast.map(_esc).join(', ') + '. Their remaining contracts pass to the successor.</div>';
+  if (_flPast.length) h += '<div style="font-size:9px;color:var(--muted2);margin:-2px 0 10px;">Past EOP, no policy to set: ' + _flPast.map(_esc).join(', ') + '. Their remaining contracts pass to the successor, if one is linked.</div>';
   h += '<div style="font-size:9px;color:var(--muted);line-height:1.6;">A deeper discount wins a lot more fleet volume (fleet buyers are very price-sensitive) but every contract keeps that price for a year. '
      + 'The cap limits what you commit: with plants near full, fleet cars take capacity from higher-margin retail cars, and a delivery you cannot make is penalised. '
      + 'Fleet cars earn list price net of VAT, less a ' + Math.round((C.FLEET_DELIVERY_FEE || 0.03) * 100) + '% delivery fee and the discount; no dealer margin.</div>';
