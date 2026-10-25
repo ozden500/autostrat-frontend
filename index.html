@@ -953,7 +953,7 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
     <div class="nav-item" onclick="nav('commercial',this)"><span class="nav-icon" data-vis-icon="market">◎</span> Commercial</div>
     <div class="nav-item" onclick="nav('market-intel',this)"><span class="nav-icon" data-vis-icon="search">🔍</span> Market Intelligence</div>
     <div class="nav-item" onclick="nav('financial',this)"><span class="nav-icon" data-vis-icon="finance">$</span> Financial</div>
-    <div class="nav-item" onclick="nav('engineering',this)"><span class="nav-icon" data-vis-icon="engineering">⚗</span> Engineering Lab <span class="nav-badge">14 specs</span></div>
+    <div class="nav-item" onclick="nav('engineering',this)"><span class="nav-icon" data-vis-icon="engineering">⚗</span> Engineering Lab <span class="nav-badge" id="nav-eng-badge" style="display:none"></span></div>
     <div class="nav-item" onclick="nav('proposal',this)" id="nav-proposal"><span class="nav-icon" data-vis-icon="car">🚗</span> Vehicle Proposal</div>
     <div class="nav-item" onclick="nav('plan',this)"><span class="nav-icon" data-vis-icon="plan">📅</span> Product Plan <span class="nav-badge">5yr</span></div>
     <div class="nav-item" onclick="nav('leaderboard',this);loadLeaderboard()"><span class="nav-icon" data-vis-icon="leaderboard">▲</span> Leaderboard</div>
@@ -9758,6 +9758,16 @@ function resetModuleForm() {
   const mi=document.getElementById('mod-msg'); if(mi) mi.textContent='';
 }
 
+// Nav badge: modules in development, else the library size (same count as the dashboard tiles)
+function _engNavBadge(mods) {
+  var b = document.getElementById('nav-eng-badge');
+  if (!b) return;
+  var live = (mods || []).filter(function(m){ return m.development_status !== 'cancelled'; });
+  var dev = live.filter(function(m){ return m.development_status === 'in_development'; }).length;
+  b.textContent = dev ? dev + ' in dev' : live.length + ' modules';
+  b.style.display = live.length ? '' : 'none';
+}
+
 async function loadModuleLibrary() {
   if (!teamId) return;
   try {
@@ -9768,6 +9778,7 @@ async function loadModuleLibrary() {
     const emptyEl=document.getElementById('mod-library-empty');
     const countEl=document.getElementById('lib-count');
     if(countEl) countEl.textContent=teamModuleLibrary.length;
+    _engNavBadge(teamModuleLibrary);
     const filtered=teamModuleLibrary.filter(m=>m.module_type===currentModType);
     if(filtered.length===0){ emptyEl.style.display='block'; libEl.innerHTML=''; return; }
     emptyEl.style.display='none';
@@ -10440,14 +10451,19 @@ function buildEngCapacityTab() {
   var m = _calcCapacityMetrics();
   var demand = _calcModuleDemandFteMo();
   var covPct = m.qtrCapFteMo > 0 ? Math.round(demand / m.qtrCapFteMo * 100) : (demand > 0 ? 200 : 0);
-  var covStatus = (m.qtrCapFteMo===0 && demand===0) ? 'NO MODULES'
+  // Spare capacity is not free: what module progress and lifecycle work don't absorb is booked as
+  // idle engineering (eng_idle_m), so low use is a warning, not "healthy"
+  var covStatus = (m.qtrCapFteMo===0 && demand===0) ? 'NO ENGINEERS'
+                : demand === 0  ? 'IDLE'
+                : covPct < 50   ? 'UNDERUSED'
                 : covPct <= 90  ? 'HEALTHY'
                 : covPct <= 110 ? 'TIGHT'
                 : 'OVERLOADED';
   var statusColor = covStatus==='HEALTHY' ? 'var(--green)'
-                  : covStatus==='TIGHT'   ? 'var(--gold)'
-                  : covStatus==='NO MODULES' ? 'var(--muted2)'
+                  : (covStatus==='TIGHT' || covStatus==='IDLE' || covStatus==='UNDERUSED') ? 'var(--gold)'
+                  : covStatus==='NO ENGINEERS' ? 'var(--muted2)'
                   : 'var(--red)';
+  _engIdleLoad();
   var barFill = Math.min(covPct, 100);
 
   function kpiTile(value, label, color) {
@@ -10477,7 +10493,12 @@ function buildEngCapacityTab() {
   h += '<div style="background:var(--s3);border-radius:3px;height:8px;overflow:hidden;margin-bottom:8px;">';
   h += '<div style="height:100%;width:'+barFill+'%;background:'+statusColor+';border-radius:3px;transition:width .4s;"></div>';
   h += '</div>';
-  h += '<div style="font-family:DM Mono,monospace;font-size:9px;color:var(--muted2);">Pipeline demand: <span style="color:var(--text);">'+demand+' FTE-mo/qtr</span> &nbsp;·&nbsp; Capacity: <span style="color:var(--text);">'+m.qtrCapFteMo+' FTE-mo/qtr</span></div>';
+  h += '<div style="font-family:DM Mono,monospace;font-size:9px;color:var(--muted2);">Module pipeline demand: <span style="color:var(--text);">'+demand+' FTE-mo/qtr</span> &nbsp;·&nbsp; Capacity: <span style="color:var(--text);">'+m.qtrCapFteMo+' FTE-mo/qtr</span> &nbsp;·&nbsp; lifecycle projects use part of the rest (Lifecycle → engineering cap)</div>';
+  var _idl = _engIdle.data;
+  if (_idl && _idl.payroll > 0)
+    h += '<div style="font-family:DM Mono,monospace;font-size:9px;color:' + (_idl.idle / _idl.payroll >= 0.25 ? 'var(--gold)' : 'var(--muted2)') + ';margin-top:6px;">'
+       + _idl.q + ': €' + Math.round(_idl.idle) + 'M of €' + Math.round(_idl.payroll) + 'M payroll charged as idle engineering ('
+       + Math.round(_idl.idle / _idl.payroll * 100) + '%).</div>';
   if (covStatus==='OVERLOADED') {
     var gap = demand - m.qtrCapFteMo;
     h += '<div style="margin-top:8px;padding:7px 10px;background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.20);border-radius:4px;font-family:DM Mono,monospace;font-size:9px;color:var(--red);">▲ Module pipeline demand exceeds capacity by '+gap+' FTE-mo/qtr — R&D may be delayed.</div>';
@@ -11057,12 +11078,48 @@ async function buildEngineeringDashboard() {
 
     var todayQabs = (currentRoundYear - 2025) * 4 + (currentRoundQuarter - 1);
     _renderEngineeringDashboard(mods, vehicles, todayQabs, sessionCfg);
+    _engIdleLoad();
   } catch(e) {
     el.innerHTML='<div style="color:var(--red);font-family:DM Mono,monospace;font-size:11px;padding:20px;">Error: '+e.message+'</div>';
   }
 }
 
-function _qLabel(qabs){ return (2025+Math.floor(qabs/4))+' Q'+(qabs%4+1); }
+function _qLabel(qabs){ return 'Q'+(((qabs%4)+4)%4+1)+' '+(2025+Math.floor(qabs/4)); }
+
+// Last statement's engineering payroll and the part charged as idle (eng_idle_m: payroll not
+// absorbed by module progress or lifecycle work), for the Capacity status and the dashboard.
+var _engIdle = {key: null, data: null, busy: false};
+async function _engIdleLoad() {
+  if (!sessionId || !teamId || _engIdle.busy) return;
+  var key = sessionId + '|' + teamId + '|' + currentRoundYear + 'Q' + currentRoundQuarter;
+  if (_engIdle.key === key) return;
+  _engIdle.busy = true;
+  try {
+    var r = await fetch(API_URL + '/sessions/' + sessionId + '/financial-statements');
+    var d = r.ok ? await r.json() : null;
+    var s = d && (d.statements || []).find(function(x) { return x.team_id === teamId; });
+    _engIdle.data = s ? {idle: parseFloat(s.eng_idle_m) || 0, payroll: parseFloat(s.eng_payroll_m) || 0,
+                         q: d.round ? 'Q' + d.round.quarter + ' ' + d.round.year : 'last quarter'} : null;
+    _engIdle.key = key;
+  } catch (e) { _engIdle.data = null; }
+  _engIdle.busy = false;
+  var cap = document.getElementById('eng-capacity-view'), dash = document.getElementById('eng-dashboard-view');
+  if (cap && cap.style.display !== 'none') buildEngCapacityTab();
+  if (dash && dash.style.display !== 'none' && _engIdle.data) {
+    var b = document.getElementById('eng-idle-note');
+    if (b) b.outerHTML = _engIdleNote();
+  }
+}
+function _engIdleNote() {
+  var d = _engIdle.data;
+  if (!d || d.payroll <= 0 || d.idle / d.payroll < 0.25) return '<div id="eng-idle-note"></div>';
+  var pct = Math.round(d.idle / d.payroll * 100);
+  return '<div id="eng-idle-note" style="margin-bottom:14px;padding:9px 12px;background:var(--goldl);border:1px solid var(--gold);border-radius:4px;font-family:DM Mono,monospace;font-size:10px;color:var(--text);line-height:1.6;">'
+    + '⚠ <b>' + d.q + ': €' + Math.round(d.idle) + 'M of €' + Math.round(d.payroll) + 'M engineering payroll was charged as idle (' + pct + '%).</b> '
+    + 'Engineers cost the same whether they work or not. Put them on improvement projects '
+    + '(<a href="#" onclick="engView(\'lifecycle\');return false;" style="color:var(--gold);">Lifecycle → engineering cap</a>), start modules or a new programme, or reduce headcount on '
+    + '<a href="#" onclick="engView(\'capacity\');return false;" style="color:var(--gold);">Capacity</a>.</div>';
+}
 
 function _renderEngineeringDashboard(mods, vehicles, todayQabs, sessionCfg) {
   sessionCfg = sessionCfg || {};
@@ -11073,10 +11130,14 @@ function _renderEngineeringDashboard(mods, vehicles, todayQabs, sessionCfg) {
   var inDev  = inDevMods.length;
   var done   = mods.filter(function(m){return m.development_status==='completed';}).length;
   var totalRd= mods.reduce(function(s,m){return s+parseFloat(m.total_rd_spend_m||0);},0);
-  var readyQs= mods.filter(function(m){return m.ready_year&&m.development_status!=='cancelled';})
-                   .map(function(m){return (m.ready_year-2025)*4+(m.ready_quarter-1);});
-  var earliest= readyQs.length?_qLabel(Math.min.apply(null,readyQs)):'—';
-  var latest  = readyQs.length?_qLabel(Math.max.apply(null,readyQs)):'—';
+  // Ready dates of what is still in development; with nothing in development, when the library's
+  // last module became ready
+  var _rq = function(m){return (m.ready_year-2025)*4+(m.ready_quarter-1);};
+  var devQs  = inDevMods.filter(function(m){return m.ready_year;}).map(_rq);
+  var libQs  = mods.filter(function(m){return m.ready_year&&m.development_status!=='cancelled';}).map(_rq);
+  var earliest= devQs.length?_qLabel(Math.min.apply(null,devQs)):'—';
+  var latest  = devQs.length?_qLabel(Math.max.apply(null,devQs)):(libQs.length?_qLabel(Math.max.apply(null,libQs)):'—');
+  _engNavBadge(mods);
 
   // R&D utilization this round
   var rdBudget = sessionCfg.rd_budget_per_team_per_qtr_m;
@@ -11102,10 +11163,11 @@ function _renderEngineeringDashboard(mods, vehicles, todayQabs, sessionCfg) {
   h += kpi(inDev+' Modules','In Development','var(--gold)');
   h += kpi(done+' Modules','Completed','var(--green)');
   h += kpi('€'+Math.round(totalRd)+'M','Total R&D Committed','var(--cyan)');
-  h += kpi(earliest,'Earliest Ready','var(--purple)');
-  h += kpi(latest,  'Latest Ready',  'var(--orange)');
+  h += kpi(earliest, devQs.length?'Next Ready':'Next Ready · none in development','var(--purple)');
+  h += kpi(latest,   devQs.length?'Last Ready':'Library complete since','var(--orange)');
   if (kpiCols===6) h += kpi(rdUtilStr, rdBudget!=null?'R&D vs Budget':'R&D This Qtr', rdUtilColor);
   h += '</div>';
+  h += _engIdleNote();
 
   // ── Gantt ──
   h += '<div style="background:var(--s2);border-radius:4px;border:1px solid var(--border2);margin-bottom:14px;overflow:hidden;">';
@@ -11519,7 +11581,7 @@ function _buildVehicleModuleMatrix(mods, vehicles) {
   h+='</tr></thead><tbody>';
 
   vehicles.forEach(function(v,i){
-    var sop=v.start_year?'Y'+(v.start_year-2024)+'Q'+(v.start_quarter||1):'—';
+    var sop=v.start_year?'Q'+(v.start_quarter||1)+' '+v.start_year:'—';
     var sopQ=v.start_year?(v.start_year-2025)*4+(v.start_quarter-1):null;
     var statusColor={study:'var(--orange)',draft:'var(--muted2)',plan:'var(--gold)',approved:'var(--green)',on_sale:'var(--cyan)',cancelled:'var(--red)'}[v.status]||'var(--muted2)';
     h+='<tr style="border-top:1px solid rgba(255,255,255,.04);'+(i%2===0?'':'background:rgba(255,255,255,.015);')+'">';
