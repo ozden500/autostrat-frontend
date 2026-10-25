@@ -1766,7 +1766,7 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
       <table class="tbl" id="bench-table">
         <thead id="bench-thead"></thead>
         <tbody id="bench-tbody">
-          <tr><td colspan="8" style="color:var(--muted2);text-align:center;padding:16px;">Click Refresh to load benchmark data.</td></tr>
+          <tr><td colspan="8" style="color:var(--muted2);text-align:center;padding:16px;">Loading benchmark…</td></tr>
         </tbody>
       </table>
     </div>
@@ -9872,7 +9872,8 @@ function engView(tab) {
     t.classList.toggle('active',active);
   });
   if (tab==='dashboard')  buildEngineeringDashboard();
-  if (tab==='lab')        { loadBaseConfigs(currentModType); if(teamId) loadModuleLibrary(); }
+  if (tab==='lab')        { loadBaseConfigs(currentModType); if(teamId) loadModuleLibrary();
+                            if(teamId && sessionId && !benchData.length) loadEngineeringBenchmark(); }
   if (tab==='capacity')   buildEngCapacityTab();
   if (tab==='validation') buildValidationLabsTab();
   if (tab==='lifecycle' || tab==='materials') loadLifecycleTab();
@@ -10034,18 +10035,25 @@ function _plmPortfolioHtml(head, th, td, eur, deur, col) {
   }
   // committed projects
   if ((L.committed || []).length) {
-    h += head('PROJECTS UNDERWAY', 'engineering → tooling & supplier approval (PPAP) → change-over (50%) → live');
-    h += '<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;">';
-    h += '<tr style="border-bottom:1px solid var(--border);">' + th('Model', 'left') + th('Project', 'left') + th('Decided') + th('Phase', 'left') + th('Change-over') + th('Cost') + th('Est. B/C') + th('Est. to date') + th('Realised') + '</tr>';
-    L.committed.forEach(function(p) {
+    // projects still in engineering, tooling, change-over or a running campaign first; live and
+    // finished ones (the history since the game's start) fold underneath
+    var _done = function(p) { return p.phase === 'live' || p.phase === 'ended'; };
+    var _act = L.committed.filter(function(p) { return !_done(p); }), _old = L.committed.filter(_done);
+    var hdr = '<tr style="border-bottom:1px solid var(--border);">' + th('Model', 'left') + th('Project', 'left') + th('Decided') + th('Phase', 'left') + th('Change-over') + th('Cost') + th('Est. B/C') + th('Est. to date') + th('Realised') + '</tr>';
+    var prow = function(p) {
       var phCol = p.phase === 'live' ? 'var(--green)' : p.phase === 'ramping' ? 'var(--gold)' : 'var(--text)';
-      h += '<tr style="border-bottom:1px solid var(--border);">' + td(_esc(p.vehicle_name || ''), 'left') +
+      return '<tr style="border-bottom:1px solid var(--border);">' + td(_esc(p.vehicle_name || ''), 'left') +
         td(_esc(p.label) + (p.commodity ? ' (' + _esc(p.commodity) + ')' : '') + ' <b>' + p.level + '</b>', 'left') +
         td(_esc(p.decided)) + td('<span style="color:' + phCol + ';">' + _esc(_PLM_PHASE[p.phase] || p.phase) + '</span>', 'left') +
         td(_esc(p.changeover)) + td(m(p.capex_m + p.eng_m + (p.mkt_m || 0))) + td((p.est_bc || 0).toFixed(2)) +
         _plmRealisedCells(p.realised) + '</tr>';
-    });
-    h += '</table></div>';
+    };
+    h += head('PROJECTS UNDERWAY', 'engineering → tooling & supplier approval (PPAP) → change-over (50%) → live');
+    if (_act.length) h += '<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;">' + hdr + _act.map(prow).join('') + '</table></div>';
+    else h += '<div style="font-size:10px;color:var(--muted2);">None in progress: every committed project is live or finished.</div>';
+    if (_old.length)
+      h += '<details style="margin-top:6px;"><summary style="font-size:10px;color:var(--muted2);cursor:pointer;">' + _old.length + ' earlier project' + (_old.length === 1 ? '' : 's')
+         + ' (live or finished) · estimate vs realised</summary><div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;">' + hdr + _old.map(prow).join('') + '</table></div></details>';
   }
   // per model
   if ((L.models || []).length) {
