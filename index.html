@@ -1561,6 +1561,9 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
     <div class="eng-view-tab" data-tab="lifecycle" onclick="engView('lifecycle')"
       style="font-family:DM Mono,monospace;font-size:9px;letter-spacing:1px;padding:7px 18px;cursor:pointer;
       border-bottom:2px solid transparent;color:var(--muted2);transition:all .15s;"><span class="vis-tab-i" data-vis-icon="lifecycle"></span>LIFECYCLE</div>
+    <div class="eng-view-tab" data-tab="materials" onclick="engView('materials')"
+      style="font-family:DM Mono,monospace;font-size:9px;letter-spacing:1px;padding:7px 18px;cursor:pointer;
+      border-bottom:2px solid transparent;color:var(--muted2);transition:all .15s;"><span class="vis-tab-i" data-vis-icon="supplier"></span>MATERIALS</div>
   </div>
 
   <!-- ── DASHBOARD VIEW ── -->
@@ -1782,6 +1785,9 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
 
   <!-- ── VALIDATION LABS VIEW ── -->
   <!-- ── LIFECYCLE VIEW (docs/LIFECYCLE_SPEC.md) ── -->
+  <div id="eng-materials-view" style="display:none;">
+    <div id="materials-content"></div>
+  </div>
   <div id="eng-lifecycle-view" style="display:none;">
     <div id="lifecycle-content"></div>
   </div>
@@ -9813,6 +9819,7 @@ function engView(tab) {
   document.getElementById('eng-capacity-view').style.display   = tab==='capacity'  ?'block':'none';
   document.getElementById('eng-validation-view').style.display = tab==='validation'?'block':'none';
   document.getElementById('eng-lifecycle-view').style.display  = tab==='lifecycle' ?'block':'none';
+  document.getElementById('eng-materials-view').style.display  = tab==='materials' ?'block':'none';
   document.querySelectorAll('.eng-view-tab').forEach(function(t){
     var active = t.dataset.tab===tab;
     t.style.borderBottomColor = active?'var(--gold)':'transparent';
@@ -9823,7 +9830,7 @@ function engView(tab) {
   if (tab==='lab')        { loadBaseConfigs(currentModType); if(teamId) loadModuleLibrary(); }
   if (tab==='capacity')   buildEngCapacityTab();
   if (tab==='validation') buildValidationLabsTab();
-  if (tab==='lifecycle')  loadLifecycleTab();
+  if (tab==='lifecycle' || tab==='materials') loadLifecycleTab();
 }
 
 // ════════════════════════════════════════════════════════════════
@@ -10038,6 +10045,12 @@ async function loadLifecycleTab() {
     if (el) el.innerHTML = '<div style="text-align:center;padding:40px;color:var(--muted2);font-family:DM Mono,monospace;font-size:11px;">Select a team and session to load the lifecycle view.</div>';
     return;
   }
+  var mel = document.getElementById('materials-content');
+  // the portfolio is a dry run of this quarter's allocation and takes a few seconds
+  [el, mel].forEach(function(x) {
+    if (x && !x.innerHTML) x.innerHTML = '<div style="padding:24px 0;color:var(--muted2);font-family:DM Mono,monospace;font-size:11px;">Loading this quarter\'s projects and material prices…</div>';
+  });
+  _engIdleLoad();
   try {
     var base = API_URL + '/sessions/' + sessionId + '/teams/' + teamId;
     var rs = await Promise.all([fetch(base + '/commodities'), fetch(base + '/lifecycle')]);
@@ -10047,8 +10060,11 @@ async function loadLifecycleTab() {
     _plmTab.data = d;
     _plmTab.lc = rs[1].ok ? l : null;
     _renderLifecycleTab();
+    _renderMaterialsTab();
   } catch (e) {
-    if (el) el.innerHTML = '<div style="color:var(--red);font-family:DM Mono,monospace;font-size:11px;padding:16px 0;">Lifecycle view unavailable: ' + _esc(e.message) + '</div>';
+    [el, mel].forEach(function(x) {
+      if (x) x.innerHTML = '<div style="color:var(--red);font-family:DM Mono,monospace;font-size:11px;padding:16px 0;">Lifecycle view unavailable: ' + _esc(e.message) + '</div>';
+    });
   }
 }
 
@@ -10067,7 +10083,7 @@ async function _plmSetContract(commodity, contract) {
     toast('Supply contract change failed: ' + e.message);
   } finally {
     _plmTab.busy = false;
-    _renderLifecycleTab();
+    _renderMaterialsTab();
   }
 }
 
@@ -10093,35 +10109,93 @@ function _plmSpark(points, key) {
     hits + '</svg>';
 }
 
+// Formatters shared by the Lifecycle and Materials tabs
+function _plmFmt() {
+  return {
+    eur: function(v) { var x = Math.round(parseFloat(v) || 0); return '€' + x.toLocaleString(); },
+    deur: function(v) { var x = Math.round(parseFloat(v) || 0); return (x > 0 ? '+' : x < 0 ? '−' : '±') + '€' + Math.abs(x).toLocaleString(); },
+    col: function(v) { var x = Math.round(parseFloat(v) || 0); return x > 0 ? 'var(--red)' : x < 0 ? 'var(--green)' : 'var(--muted2)'; },
+    head: function(t, sub) {
+      return '<div style="font-family:DM Mono,monospace;font-size:8px;text-transform:uppercase;letter-spacing:1.5px;color:#a78bfa;margin:14px 0 8px;">' + t +
+        (sub ? ' <span style="color:var(--muted);letter-spacing:0;text-transform:none;">· ' + sub + '</span>' : '') + '</div>';
+    },
+    th: function(t, al) { return '<th style="text-align:' + (al || 'right') + ';padding:4px 6px;font-size:8px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;font-weight:400;">' + t + '</th>'; },
+    td: function(t, al, c) { return '<td style="text-align:' + (al || 'right') + ';padding:5px 6px;font-size:10px;vertical-align:middle;color:' + (c || 'var(--text)') + ';">' + t + '</td>'; }
+  };
+}
+
+// Decision strip and "How it works" fold, the pattern Commercial and Financial use
+function _plmStripBox(decide, status) {
+  return '<div style="background:var(--s2);border:1px solid var(--border2);border-radius:6px;padding:10px 12px;margin-bottom:10px;font-size:10px;line-height:1.7;color:var(--text);">'
+    + '<div><span style="color:var(--muted);text-transform:uppercase;letter-spacing:.5px;font-size:8px;">You decide</span> ' + decide + '</div>'
+    + '<div><span style="color:var(--muted);text-transform:uppercase;letter-spacing:.5px;font-size:8px;">Status</span> ' + status + '</div></div>';
+}
+function _plmHow(text) {
+  return '<details style="margin:0 0 10px;"><summary style="font-size:10px;color:var(--muted2);cursor:pointer;">How it works</summary>'
+    + '<div style="font-size:10px;color:var(--text);line-height:1.6;margin-top:6px;">' + text + '</div></details>';
+}
+
+function _plmLifecycleStatus(L) {
+  var m = function(v) { return '€' + Math.round(parseFloat(v) || 0).toLocaleString() + 'M'; };
+  var rej = L.rejected || [], n = function(r) { return rej.filter(function(x) { return x.reason === r; }).length; };
+  var tq = L.this_quarter || {}, bits = [];
+  bits.push('<b>' + (L.funded || []).length + ' project' + ((L.funded || []).length === 1 ? '' : 's') + ' funded for ' + m(L.spent_m) + '</b>'
+            + ' (spend this quarter: engineering ' + m(tq.eng_m) + ', tooling ' + m(tq.capex_m) + ')');
+  // the year's budget covers capex + engineering; refresh campaigns draw on the marketing budget
+  var capEng = (L.funded || []).reduce(function(s, f) { return s + (parseFloat(f.capex_m) || 0) + (parseFloat(f.eng_m) || 0); }, 0);
+  bits.push('budget left this year ' + m(Math.max(0, (L.budget_left_m || 0) - capEng)) + ' after these (' + m(L.budget_left_m) + ' before)' + (n('no_budget') ? ' · <span style="color:var(--gold);">' + n('no_budget') + ' turned away for budget</span>' : ''));
+  if (L.human && L.fte) {
+    var full = L.fte.cap_fte_mo > 0 && L.fte.reserved_fte_mo >= 0.95 * L.fte.cap_fte_mo;
+    bits.push('engineering ' + Math.round(L.fte.reserved_fte_mo).toLocaleString() + ' of ' + Math.round(L.fte.cap_fte_mo).toLocaleString() + ' FTE-months'
+              + (full || n('no_fte') ? ' · <span style="color:var(--gold);">cap ' + (full ? 'full' : 'binding') + (n('no_fte') ? ', ' + n('no_fte') + ' turned away for engineering' : '') + '</span>' : ''));
+  }
+  var idl = _engIdle.data;
+  if (idl && idl.payroll > 0 && idl.idle / idl.payroll >= 0.25)
+    bits.push('<span style="color:var(--gold);">' + idl.q + ': €' + Math.round(idl.idle) + 'M of engineering payroll was idle. Lifecycle engineering is done by your own engineers, so a higher cap puts that payroll to work.</span>');
+  return bits.join('<br>');
+}
+
 function _renderLifecycleTab() {
   var el = document.getElementById('lifecycle-content');
+  var d = _plmTab.data, L = _plmTab.lc;
+  if (!el || !d) return;
+  var F = _plmFmt();
+  var h = '<div style="font-family:DM Mono,monospace;">';
+  if (L && L.enabled)
+    h += _plmStripBox('yearly budget · refresh marketing · engineering cap · hurdle · emphasis. Each carries forward; at clearing the simulation funds the best projects your settings allow.',
+                      _plmLifecycleStatus(L));
+  h += _plmHow('Models in production keep improving: <b>cost-downs</b>, <b>quality fixes</b>, <b>material substitutions</b> and refreshes (special series, facelift), '
+     + 'funded each year from a lifecycle budget. You set the budget, the engineering you can spare and the return you demand; the simulation picks the projects by benefit ÷ cost. '
+     + 'Each project goes through engineering, then tooling and supplier approval (PPAP), then change-over (50% of the effect), then live. Nothing pays off before change-over. '
+     + 'Material prices and supply contracts are on the <a href="#" onclick="engView(\'materials\');return false;" style="color:var(--gold);">Materials</a> tab.');
+  if ((L || d).locked) h += '<div style="color:var(--gold);font-size:10px;margin-bottom:10px;">🔒 ' + _esc((L || d).label) + ' has cleared. Decide again when the next round starts.</div>';
+  h += _plmPortfolioHtml(F.head, F.th, F.td, F.eur, F.deur, F.col);
+  h += '</div>';
+  el.innerHTML = h;
+}
+
+function _renderMaterialsTab() {
+  var el = document.getElementById('materials-content');
   var d = _plmTab.data;
   if (!el || !d) return;
   var C = d.constants || {}, labels = C.labels || {}, contracts = C.contracts || {};
-  var eur = function(v) { var x = Math.round(parseFloat(v) || 0); return '€' + x.toLocaleString(); };
-  var deur = function(v) { var x = Math.round(parseFloat(v) || 0); return (x > 0 ? '+' : x < 0 ? '−' : '±') + '€' + Math.abs(x).toLocaleString(); };
-  var col = function(v) { var x = Math.round(parseFloat(v) || 0); return x > 0 ? 'var(--red)' : x < 0 ? 'var(--green)' : 'var(--muted2)'; };
-  var head = function(t, sub) {
-    return '<div style="font-family:DM Mono,monospace;font-size:8px;text-transform:uppercase;letter-spacing:1.5px;color:#a78bfa;margin:14px 0 8px;">' + t +
-      (sub ? ' <span style="color:var(--muted);letter-spacing:0;text-transform:none;">· ' + sub + '</span>' : '') + '</div>';
-  };
-  var th = function(t, al) { return '<th style="text-align:' + (al || 'right') + ';padding:4px 6px;font-size:8px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;font-weight:400;">' + t + '</th>'; };
-  var td = function(t, al, c) { return '<td style="text-align:' + (al || 'right') + ';padding:5px 6px;font-size:10px;vertical-align:middle;color:' + (c || 'var(--text)') + ';">' + t + '</td>'; };
+  var F = _plmFmt(), eur = F.eur, deur = F.deur, col = F.col, head = F.head, th = F.th, td = F.td;
   var models = d.models || [];
   var h = '<div style="font-family:DM Mono,monospace;">';
-  h += '<div style="font-size:11px;color:var(--text);margin-bottom:10px;line-height:1.6;">Models in production keep improving: <b>cost-downs</b>, <b>quality fixes</b> and <b>material substitutions</b>, '
-     + 'funded each year from a lifecycle budget. You set the budget, the engineering you can spare and the return you demand; the simulation picks the projects. '
-     + 'A model\'s <b>business case</b> priced its parts at the commodity prices '
-     + 'of the quarter it was approved, and keeps them. Once in production its parts follow the <b>commodity markets</b> '
-     + 'where they are bought — steel, aluminium, copper, battery materials, polymers, glass, chips, energy — as far as your '
-     + '<b>supply contracts</b> pass the moves on. That gap is the difference between the plan and the <b>live cost</b> you are charged.</div>';
+  var lq = d.last_quarter && d.last_quarter.cogs_commodity_m != null
+    ? 'Q' + d.last_quarter.quarter + ' ' + d.last_quarter.year + ': commodity markets ' + (d.last_quarter.cogs_commodity_m >= 0 ? 'added' : 'saved')
+      + ' <b>€' + Math.abs(parseFloat(d.last_quarter.cogs_commodity_m) || 0).toFixed(1) + 'M</b> of cost of goods sold.'
+    : 'no cleared quarter with commodity prices yet.';
+  if (d.enabled)
+    h += _plmStripBox('a supply contract per commodity: index-linked, partial (50%) or fixed price for 4 quarters. Each carries forward and applies from this quarter\'s clearing.', lq);
+  h += _plmHow('A model\'s <b>business case</b> priced its parts at the commodity prices of the quarter it was approved, and keeps them. '
+     + 'Once in production its parts follow the <b>commodity markets</b> where they are bought (steel, aluminium, copper, battery materials, polymers, glass, chips, energy) '
+     + 'as far as your <b>supply contracts</b> pass the moves on. That gap is the difference between the plan and the <b>live cost</b> you are charged. '
+     + 'Index-linked passes moves on a quarter late; partial passes half for a 0.5% premium; fixed price holds four quarters at a time for a 1.5% premium, then resets to the market.');
   if (!d.enabled) {
     h += '<div style="color:var(--muted2);font-size:10px;margin-bottom:10px;">Commodity markets are off in this session: every index stays at 100, so live cost = approved cost (plus plant and sourcing adjustments).</div>';
   }
   if (d.locked) h += '<div style="color:var(--gold);font-size:10px;margin-bottom:10px;">🔒 ' + _esc(d.label) + ' has cleared. Decide again when the next round starts.</div>';
-
-  // ── Improvement portfolio (Phase 1) ──
-  h += _plmPortfolioHtml(head, th, td, eur, deur, col);
 
   // ── Commodity markets + contracts ──
   if (d.enabled) {
@@ -10192,10 +10266,6 @@ function _renderLifecycleTab() {
     h += '</table></div>';
     h += '<div style="font-size:9px;color:var(--muted);margin-top:4px;">Business case = the cost approved in §10, with commodities at the prices of the approval quarter (index 100 for models approved before commodity markets). '
        + 'Variance = what this quarter\'s prices, passed on by your supply contracts, add or save against it.</div>';
-  }
-  if (d.last_quarter && d.last_quarter.cogs_commodity_m != null) {
-    h += '<div style="font-size:10px;color:var(--muted2);margin-top:8px;">Last quarter (Q' + d.last_quarter.quarter + ' ' + d.last_quarter.year + ') commodity markets ' +
-         (d.last_quarter.cogs_commodity_m >= 0 ? 'added' : 'saved') + ' <b>€' + Math.abs(parseFloat(d.last_quarter.cogs_commodity_m) || 0).toFixed(1) + 'M</b> of cost of goods sold.</div>';
   }
   h += '</div>';
   el.innerHTML = h;
@@ -11105,6 +11175,8 @@ async function _engIdleLoad() {
   _engIdle.busy = false;
   var cap = document.getElementById('eng-capacity-view'), dash = document.getElementById('eng-dashboard-view');
   if (cap && cap.style.display !== 'none') buildEngCapacityTab();
+  var lcv = document.getElementById('eng-lifecycle-view');
+  if (lcv && lcv.style.display !== 'none' && _plmTab.data) _renderLifecycleTab();
   if (dash && dash.style.display !== 'none' && _engIdle.data) {
     var b = document.getElementById('eng-idle-note');
     if (b) b.outerHTML = _engIdleNote();
