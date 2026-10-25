@@ -1015,54 +1015,17 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
 <div class="page active" id="page-dashboard">
   <div class="pg-title">COMMAND CENTER</div>
   <div class="pg-sub" id="dashboard-sub">Alpha Motors · Q2 2025 · All figures €M unless noted</div>
+  <!-- KPIs from the team's last statement (the same figures Financial shows), 2026-10-25 -->
   <div class="kpi-grid g5">
-    <div class="kpi kk-c"><div class="kl"><span data-vis-icon="cash"></span> Revenue (Qtr)</div><div class="kv" id="kpi-revenue" style="color:var(--cyan)">€10,585</div><div class="kd up" id="kpi-revenue-delta">▲ +8.2%</div></div>
-    <div class="kpi kk-g"><div class="kl"><span data-vis-icon="chart"></span> EBIT Margin</div><div class="kv" id="kpi-ebit" style="color:var(--gold)">7.4%</div><div class="kd up" id="kpi-ebit-delta">▲ +0.8pp</div></div>
-    <div class="kpi kk-b"><div class="kl"><span data-vis-icon="market"></span> Market Share</div><div class="kv" id="kpi-share">14.2%</div><div class="kd up" id="kpi-share-delta">▲ +0.4pp</div></div>
-    <div class="kpi kk-r"><div class="kl"><span data-vis-icon="finance"></span> Net Debt</div><div class="kv" id="kpi-debt" style="color:var(--red)">€6,240</div><div class="kd dn" id="kpi-debt-sub">1.5× EBITDA</div></div>
-    <div class="kpi kk-p"><div class="kl"><span data-vis-icon="leaderboard"></span> Score Rank</div><div class="kv" id="kpi-rank" style="color:var(--blue)">#1</div><div class="kd neu" id="kpi-rank-sub">of 12 OEMs</div></div>
+    <div class="kpi kk-c"><div class="kl"><span data-vis-icon="cash"></span> Revenue (qtr)</div><div class="kv" id="dash-k-rev">—</div><div class="kd neu" id="dash-k-rev-sub">No results yet</div></div>
+    <div class="kpi kk-g"><div class="kl"><span data-vis-icon="chart"></span> EBIT</div><div class="kv" id="dash-k-ebit">—</div><div class="kd neu" id="dash-k-ebit-sub">No results yet</div></div>
+    <div class="kpi kk-b"><div class="kl"><span data-vis-icon="market"></span> Cars sold</div><div class="kv" id="dash-k-units">—</div><div class="kd neu" id="dash-k-units-sub">No results yet</div></div>
+    <div class="kpi kk-r"><div class="kl"><span data-vis-icon="finance"></span> Net debt</div><div class="kv" id="dash-k-debt">—</div><div class="kd neu" id="dash-k-debt-sub">No results yet</div></div>
+    <div class="kpi kk-p"><div class="kl"><span data-vis-icon="leaderboard"></span> Shareholder return</div><div class="kv" id="dash-k-tsr">—</div><div class="kd neu" id="dash-k-tsr-sub">No results yet</div></div>
   </div>
   <div class="card" style="margin-bottom:10px;">
     <div class="card-title"><span class="tag tp">PORTFOLIO</span> Model Line-up</div>
     <div id="dash-lineup" class="vis-lineup"></div>
-  </div>
-  <div class="kpi-grid g2" style="margin-bottom:10px;">
-    <div class="card">
-      <div class="card-title"><span class="tag to">OPERATIONAL</span> Production & Supply</div>
-      <div class="ctrl"><div class="ctrl-lbl"><span>Production Volume (k units/yr)</span><span class="ctrl-v" id="d-vol">420k</span></div><input type="range" min="150" max="800" value="420" oninput="sv('d-vol',this.value,'k')"></div>
-      <div class="ctrl"><div class="ctrl-lbl"><span>Plant Utilization</span><span class="ctrl-v" id="d-util">82%</span></div><input type="range" min="50" max="100" value="82" oninput="sv('d-util',this.value,'%')"></div>
-      <div class="ctrl"><div class="ctrl-lbl"><span>Quality Investment (% COGS)</span><span class="ctrl-v" id="d-qual">3.2%</span></div><input type="range" min="1" max="8" step="0.1" value="3.2" oninput="svf('d-qual',this.value,'%')"></div>
-      <div class="ctrl"><label class="ctrl-lbl-top">Supplier Strategy</label><select><option>Dual sourcing</option><option>Single source</option><option>Vertical integration</option></select></div>
-    </div>
-    <div class="card">
-      <div class="card-title"><span class="tag tc">COMMERCIAL</span> Pricing & Marketing</div>
-      <div class="ctrl"><div class="ctrl-lbl"><span>Avg Vehicle Price (blended)</span><span class="ctrl-v" id="d-price">€28,500</span></div><input type="range" min="18000" max="60000" step="500" value="28500" oninput="svp('d-price',this.value)"></div>
-      <div class="ctrl"><div class="ctrl-lbl"><span>Marketing Budget (€M/qtr)</span><span class="ctrl-v" id="d-mkt">€380M</span></div><input type="range" min="50" max="800" step="10" value="380" oninput="svm('d-mkt',this.value)"></div>
-      <div class="ctrl"><label class="ctrl-lbl-top">Segment Focus</label><select><option>SUV & Crossover</option><option>Mass Market</option><option>Electric Vehicles</option><option>Premium</option><option>Commercial</option></select></div>
-      <div class="ctrl"><label class="ctrl-lbl-top">Distribution Model</label><select><option>Traditional dealers</option><option>Agency (direct)</option><option>Hybrid dealer + online</option></select></div>
-    </div>
-    <div class="card">
-      <div class="card-title"><span class="tag tf">FINANCIAL</span> Capital Allocation</div>
-      <div class="ctrl"><div class="ctrl-lbl"><span>R&D Budget (€M/qtr)</span><span class="ctrl-v" id="d-rd">€820M</span></div><input type="range" min="100" max="2000" step="50" value="820" oninput="svm('d-rd',this.value)"></div>
-      <div class="ctrl"><div class="ctrl-lbl"><span>Capex — Plant & Equipment</span><span class="ctrl-v" id="d-cx">€640M</span></div><input type="range" min="50" max="1500" step="50" value="640" oninput="svm('d-cx',this.value)"></div>
-      <div class="ctrl"><label class="ctrl-lbl-top">Leverage Strategy</label><select><option>Conservative (0–1×)</option><option>Balanced (1–2×)</option><option>Aggressive (2–3×)</option></select></div>
-      <div class="ctrl"><label class="ctrl-lbl-top">Dividend / Buyback</label><select><option>Retain earnings</option><option>Dividend €0.80/sh</option><option>Buyback €500M</option></select></div>
-    </div>
-    <div class="card">
-      <div class="card-title"><span class="tag tp">PORTFOLIO</span> Model Lines & EV Mix</div>
-      <div class="chip-wrap" id="dash-chips">
-        <div class="chip on" onclick="toggleChip(this)">Mass Sedan</div>
-        <div class="chip on" onclick="toggleChip(this)">Hatchback</div>
-        <div class="chip on" onclick="toggleChip(this)">SUV Mid</div>
-        <div class="chip on" onclick="toggleChip(this)">SUV Large</div>
-        <div class="chip" onclick="toggleChip(this)">EV Compact</div>
-        <div class="chip" onclick="toggleChip(this)">EV SUV</div>
-        <div class="chip" onclick="toggleChip(this)">Premium Sedan</div>
-        <div class="chip on" onclick="toggleChip(this)">LCV / Van</div>
-      </div>
-      <div class="ctrl"><div class="ctrl-lbl"><span>EV Mix Target (%)</span><span class="ctrl-v" id="d-ev">18%</span></div><input type="range" min="0" max="80" value="18" oninput="sv('d-ev',this.value,'%')"></div>
-      <div class="ctrl"><div class="ctrl-lbl"><span>Commercial Allocation (%)</span><span class="ctrl-v" id="d-comv">12%</span></div><input type="range" min="0" max="40" value="12" oninput="sv('d-comv',this.value,'%')"></div>
-    </div>
   </div>
 </div>
 
@@ -21701,10 +21664,6 @@ async function loadPerformanceData() {
         dEl.textContent = (dp >= 0 ? '▲ +' : '▼ ') + dp + '% vs prev Q';
         dEl.className = 'kd ' + (dp >= 0 ? 'up' : 'dn');
       }
-      // Also update Command Center KPI tiles if they're visible
-      _setText('kpi-revenue', '€' + kpis.revenue_m.toFixed(1) + 'M');
-      _setText('kpi-ebit',    (kpis.gross_margin_pct||0).toFixed(1) + '%');
-      _setText('kpi-rank',    (kpis.rank || kpis.revenue_rank) ? '#' + (kpis.rank || kpis.revenue_rank) : '#—');
     }
     function _setText(id, val) { var e=document.getElementById(id); if(e) e.textContent=val; }
 
@@ -33095,68 +33054,60 @@ async function loadTeamHistoricalSummary() {
 // team that has not been market-cleared never shows the static prototype numbers
 // that are hard-coded in the page markup (€10,585 / 7.4% / 14.2% / €6,240 / #1).
 function _resetCommandCenterKPIs() {
-  var set = function(id, val){ var e=document.getElementById(id); if(e) e.textContent=val; };
-  set('kpi-revenue', '€0');
-  set('kpi-revenue-delta', 'No results yet');
-  set('kpi-ebit', '—');
-  set('kpi-ebit-delta', 'No results yet');
-  set('kpi-share', '0.0%');
-  set('kpi-share-delta', 'No results yet');
-  set('kpi-debt', '—');
-  set('kpi-debt-sub', '');
-  set('kpi-rank', '#—');
-  set('kpi-rank-sub', 'of 12 OEMs');
-  ['kpi-revenue-delta','kpi-ebit-delta','kpi-share-delta'].forEach(function(id){
-    var e=document.getElementById(id); if(e) e.className='kd neu';
+  ['rev', 'ebit', 'units', 'debt', 'tsr'].forEach(function(k) {
+    var v = document.getElementById('dash-k-' + k), d = document.getElementById('dash-k-' + k + '-sub');
+    if (v) { v.textContent = '—'; v.style.color = ''; }
+    if (d) { d.textContent = 'No results yet'; d.className = 'kd neu'; }
   });
 }
 
-// Populate the Command Center KPI strip from this team's real market-clearing
-// results. Always starts from a clean baseline, so if no round has cleared (e.g.
-// Round 1 Decision Phase, or a disruptor starting from zero) the tiles show an
-// empty baseline rather than the prototype placeholder values.
+// The Command Center tiles read the team's latest statement (GET /financial-statements: the last
+// cleared quarter), so they agree with Financial; shares and ranks compare all teams' statements.
+// (Until 2026-10-25 they read /performance-dashboard, whose "latest round" is the open one: empty
+// during every decision phase.)
 async function loadCommandCenterKPIs() {
   if (typeof _rpRefresh === 'function') _rpRefresh();     // right panel: events and position
-  _resetCommandCenterKPIs();              // never leave prototype values on screen
+  _resetCommandCenterKPIs();
   if (!sessionId || !teamId) return;
   _dashRenderLineup();
   try {
-    var res  = await fetch(API_URL + '/sessions/' + sessionId + '/performance-dashboard?team_id=' + teamId);
-    var dash = await res.json();
-    var kpis = dash.kpis || {};
-    if (kpis.revenue_m == null) return;   // no cleared round yet → keep baseline
-    var set = function(id, val){ var e=document.getElementById(id); if(e) e.textContent=val; };
-
-    set('kpi-revenue', '€' + Math.round(kpis.revenue_m).toLocaleString());
-    var ebitMargin = kpis.revenue_m > 0 ? (kpis.ebit_m / kpis.revenue_m * 100) : 0;
-    set('kpi-ebit', ebitMargin.toFixed(1) + '%');
-    set('kpi-ebit-delta', 'EBIT margin');
-    set('kpi-rank', (kpis.rank || kpis.revenue_rank) ? '#' + (kpis.rank || kpis.revenue_rank) : '#—');
-    set('kpi-rank-sub', 'of ' + (kpis.total_teams || 12) + ' OEMs');
-
-    // Market share = sum of this team's vehicle shares in the latest round
-    var latestId = (dash.latest_round || {}).id;
-    var share = (dash.vehicle_outcomes || [])
-      .filter(function(v){ return v.team_id === teamId && v.round_id === latestId; })
-      .reduce(function(s,v){ return s + parseFloat(v.market_share_pct || 0); }, 0);
-    set('kpi-share', share.toFixed(1) + '%');
-    set('kpi-share-delta', 'Total market share');
-
-    // Revenue delta vs previous quarter (provided by the dashboard endpoint)
-    var rd = document.getElementById('kpi-revenue-delta');
-    if (rd) {
-      if (kpis.revenue_delta_pct != null) {
-        var dp = kpis.revenue_delta_pct;
-        rd.textContent = (dp >= 0 ? '▲ +' : '▼ ') + Math.abs(dp) + '% vs prev Q';
-        rd.className = 'kd ' + (dp >= 0 ? 'up' : 'dn');
-      } else {
-        rd.textContent = 'Last round result';
-        rd.className = 'kd neu';
-      }
-    }
-    // Net debt is not part of the clearing KPIs — leave it at the '—' baseline
-    // rather than showing the prototype €6,240.
-  } catch(e) { console.warn('loadCommandCenterKPIs:', e); /* baseline already shown */ }
+    var res = await fetch(API_URL + '/sessions/' + sessionId + '/financial-statements');
+    var d = await res.json();
+    // the instructor's placeholder team has a statement too (no revenue, no share price): not a competitor
+    var all = (d.statements || []).filter(function(x) { return x.tsr_index != null || x.team_id === teamId; }), s = all.find(function(x) { return x.team_id === teamId; });
+    if (!res.ok || !s || !d.round) return;
+    var q = 'Q' + d.round.quarter + ' ' + d.round.year;
+    var n = function(v) { return parseFloat(v) || 0; };
+    var m = function(v) { var x = Math.round(n(v)); return (x < 0 ? '−' : '') + '€' + Math.abs(x).toLocaleString() + 'M'; };
+    var set = function(k, val, sub, col, cls) {
+      var v = document.getElementById('dash-k-' + k), e = document.getElementById('dash-k-' + k + '-sub');
+      if (v) { v.textContent = val; v.style.color = col || ''; }
+      if (e) { e.textContent = sub; e.className = 'kd ' + (cls || 'neu'); }
+    };
+    var sub = document.getElementById('dashboard-sub');
+    if (sub) sub.textContent = (s.team_name || (currentUser && currentUser.team_name) || '') + ' · results ' + q + ' (last cleared) · decisions for '
+      + (typeof currentRoundQuarter !== 'undefined' ? 'Q' + currentRoundQuarter + ' ' + currentRoundYear : 'this quarter');
+    // revenue, vs the quarter before
+    var rev = n(s.net_revenue_m), pr = s.prev ? n(s.prev.net_revenue_m) : 0;
+    var dp = pr > 0 ? (rev / pr - 1) * 100 : null;
+    set('rev', m(rev), q + (dp != null ? ' · ' + (dp >= 0 ? '▲ +' : '▼ ') + Math.abs(dp).toFixed(1) + '% vs prev Q' : ''), 'var(--cyan)', dp == null ? 'neu' : dp >= 0 ? 'up' : 'dn');
+    // EBIT and margin; one-offs (book value written off at EOP) named, as on Financial
+    var ebit = n(s.ebit_m), wo = n(s.eop_writeoff_m);
+    set('ebit', m(ebit), (rev > 0 ? (ebit / rev * 100).toFixed(1).replace('-', '−') + '% margin' : '') + (wo > 0 ? ' · ' + m(ebit + wo) + ' excl. one-offs' : ''),
+        ebit >= 0 ? 'var(--gold)' : 'var(--red)', ebit >= 0 ? 'up' : 'dn');
+    // cars sold, share of all teams' cars
+    var u = n(s.units_sold), tu = all.reduce(function(t, x) { return t + n(x.units_sold); }, 0);
+    set('units', Math.round(u).toLocaleString(), (tu > 0 ? (u / tu * 100).toFixed(1) + '% of all OEMs\' cars' : '') + (n(s.fleet_units) > 0 ? ' · ' + Math.round(n(s.fleet_units)).toLocaleString() + ' fleet' : ''));
+    // net debt (leverage_metrics: net of the self-funded captive book) and rating
+    var nd = s.net_debt_m, r = s.nd_ebitda;
+    set('debt', nd == null ? '—' : nd < 0 ? 'net cash' : m(nd),
+        (nd != null && nd < 0 ? m(-nd) + ' · ' : r != null ? n(r).toFixed(1) + '× EBITDA · ' : '') + (s.credit_rating || ''),
+        nd != null && nd <= 0 ? 'var(--green)' : 'var(--red)');
+    // shareholder return since game start (tsr_index, 100 = start) and rank among all teams
+    var ti = n(s.tsr_index), rank = all.filter(function(x) { return n(x.tsr_index) > ti; }).length + 1;
+    set('tsr', ti > 0 ? (ti >= 100 ? '+' : '') + (ti - 100).toFixed(1) + '%' : '—',
+        '#' + rank + ' of ' + all.length + ' · share €' + n(s.share_price_eur).toFixed(2), ti >= 100 ? 'var(--green)' : 'var(--red)', 'neu');
+  } catch (e) { console.warn('loadCommandCenterKPIs:', e); }
 }
 
 // renderTeamHistoricalKPIs / histKpiCard removed 2026-10-06: they wrote a 'last actual' strip to
