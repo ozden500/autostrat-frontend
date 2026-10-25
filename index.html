@@ -1322,25 +1322,8 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
   <div class="pg-sub">Research reports · Subscribe per round · Powered by live simulation data</div>
 
   <!-- Research Budget Bar -->
-  <div class="card" style="margin-bottom:14px;padding:12px 16px;">
-    <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;">
-      <div>
-        <div style="font-family:'DM Mono',monospace;font-size:8px;text-transform:uppercase;letter-spacing:1.5px;color:var(--muted);margin-bottom:4px;">Research Budget This Round</div>
-        <div style="display:flex;align-items:baseline;gap:6px;">
-          <span style="font-family:'Orbitron',sans-serif;font-size:22px;font-weight:700;color:var(--cyan);" id="mi-budget-remaining">€13M</span>
-          <span style="font-family:'DM Mono',monospace;font-size:9px;color:var(--muted2);">remaining of</span>
-          <span style="font-family:'DM Mono',monospace;font-size:11px;color:var(--muted);" id="mi-budget-total">€13M</span>
-        </div>
-      </div>
-      <div style="flex:1;"></div>
-      <div style="font-family:'DM Mono',monospace;font-size:9px;color:var(--muted2);text-align:right;">
-        Subscribed reports auto-renew each round<br>Unsubscribe anytime before round submission
-      </div>
-    </div>
-    <div style="margin-top:10px;height:4px;background:var(--border2);border-radius:2px;overflow:hidden;">
-      <div id="mi-budget-bar" style="height:100%;width:100%;background:linear-gradient(90deg,var(--cyan),var(--blue));border-radius:2px;transition:width .4s;"></div>
-    </div>
-  </div>
+  <!-- Decision strip: research is bought per quarter and charged in the P&L (team_research_decisions) -->
+  <div class="card" id="mi-strip" style="margin-bottom:14px;padding:12px 16px;font-family:'DM Mono',monospace;font-size:10px;color:var(--muted2);">Loading research…</div>
 
   <!-- Report Cards Grid -->
   <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:16px;">
@@ -1350,8 +1333,8 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
       <div class="mi-report-icon">📊</div>
       <div class="mi-report-name">Segment Analysis</div>
       <div class="mi-report-desc">Competitor vehicles in each segment — specs, pricing, powertrain mix side-by-side</div>
-      <div class="mi-report-cost">€3M / round</div>
-      <button class="mi-subscribe-btn" id="mi-btn-segment" onclick="toggleMISubscription('segment',3)">Subscribe</button>
+      <div class="mi-report-cost">€3M / quarter</div>
+      <button class="mi-subscribe-btn" id="mi-btn-segment" onclick="toggleMISubscription('segment')">Buy</button>
     </div>
 
     <!-- Market Share -->
@@ -1359,8 +1342,8 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
       <div class="mi-report-icon">🥧</div>
       <div class="mi-report-name">Market Share by OEM</div>
       <div class="mi-report-desc">Volume and revenue market share for all OEMs across every segment this round</div>
-      <div class="mi-report-cost">€2M / round</div>
-      <button class="mi-subscribe-btn" id="mi-btn-share" onclick="toggleMISubscription('share',2)">Subscribe</button>
+      <div class="mi-report-cost">€2M / quarter</div>
+      <button class="mi-subscribe-btn" id="mi-btn-share" onclick="toggleMISubscription('share')">Buy</button>
     </div>
 
     <!-- Purchase Reasons -->
@@ -1368,8 +1351,8 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
       <div class="mi-report-icon">🧠</div>
       <div class="mi-report-name">Consumer Insights</div>
       <div class="mi-report-desc">Purchase reason weights per segment — what drives buying decisions in each market</div>
-      <div class="mi-report-cost">€2M / round</div>
-      <button class="mi-subscribe-btn" id="mi-btn-reasons" onclick="toggleMISubscription('reasons',2)">Subscribe</button>
+      <div class="mi-report-cost">€2M / quarter</div>
+      <button class="mi-subscribe-btn" id="mi-btn-reasons" onclick="toggleMISubscription('reasons')">Buy</button>
     </div>
 
     <!-- Price Elasticity -->
@@ -1377,8 +1360,8 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
       <div class="mi-report-icon">📈</div>
       <div class="mi-report-name">Price Elasticity</div>
       <div class="mi-report-desc">Demand sensitivity to price changes per segment — optimal pricing zone indicators</div>
-      <div class="mi-report-cost">€4M / round</div>
-      <button class="mi-subscribe-btn" id="mi-btn-elasticity" onclick="toggleMISubscription('elasticity',4)">Subscribe</button>
+      <div class="mi-report-cost">€4M / quarter</div>
+      <button class="mi-subscribe-btn" id="mi-btn-elasticity" onclick="toggleMISubscription('elasticity')">Buy</button>
     </div>
 
     <!-- Tech Trends -->
@@ -1386,16 +1369,16 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
       <div class="mi-report-icon">⚡</div>
       <div class="mi-report-name">Technology Trends</div>
       <div class="mi-report-desc">EV adoption rate, ADAS penetration, powertrain mix evolution across all OEMs</div>
-      <div class="mi-report-cost">€2M / round</div>
-      <button class="mi-subscribe-btn" id="mi-btn-tech" onclick="toggleMISubscription('tech',2)">Subscribe</button>
+      <div class="mi-report-cost">€2M / quarter</div>
+      <button class="mi-subscribe-btn" id="mi-btn-tech" onclick="toggleMISubscription('tech')">Buy</button>
     </div>
 
     <div class="mi-report-card" id="mi-card-footprint">
       <div class="mi-report-icon">🏭</div>
       <div class="mi-report-name">Manufacturing Footprint</div>
       <div class="mi-report-desc">Plant capacity, production volumes by region and country for all OEMs</div>
-      <div class="mi-report-cost">€2M / round</div>
-      <button class="mi-subscribe-btn" id="mi-btn-footprint" onclick="toggleMISubscription('footprint',2)">Subscribe</button>
+      <div class="mi-report-cost">€2M / quarter</div>
+      <button class="mi-subscribe-btn" id="mi-btn-footprint" onclick="toggleMISubscription('footprint')">Buy</button>
     </div>
 
   </div>
@@ -1409,7 +1392,7 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
     </div>
     <div id="mi-report-content" style="padding:16px;">
       <div style="text-align:center;padding:32px;color:var(--muted2);font-size:12px;">
-        Subscribe to a report above to view it here
+        Buy a report above to read it here
       </div>
     </div>
   </div>
@@ -14914,13 +14897,7 @@ document.addEventListener('click', function(e) {
     if (nf3 && window[nf3]) window[nf3]();
   }
   if (action === 'prop-spec-slide') { onPropSpecSlide(btn); }
-  if (action === 'mi-filter') { miFilterSeg(btn.getAttribute('data-seg'), btn); }
   if (action === 'mi-show')   { showMIReport(btn.getAttribute('data-key')); }
-  if (action === 'mi-seg-sort')   { miSegSort(btn.getAttribute('data-col')); }
-  if (action === 'mi-seg-refresh') {
-    delete _mi.data.segment;
-    showMIReport('segment');
-  }
   if (action === 'prop-com-input')        { onPropComInput(btn); }
   if (action === 'prop-com-mkt-toggle')   { onPropComMarketToggle(btn.getAttribute('data-region')); }
   if (action === 'prop-com-mkt-autobalance') { onPropComMarketAutoBalance(); }
@@ -17750,7 +17727,7 @@ async function refreshInstructorHub() {
     if (latest && latest.id) {
       const [sRes, vRes, histRes, finRes] = await Promise.all([
         fetch(`${API_URL}/sessions/${sessionId}/rounds/${latest.id}/submissions`),
-        fetch(`${API_URL}/sessions/${sessionId}/vehicles`),
+        fetch(`${API_URL}/sessions/${sessionId}/vehicles`, {headers: _cmdAdminHeaders()}),   // instructor only
         fetch(`${API_URL}/sessions/${sessionId}/market-history`).then(r=>r.json()).catch(()=>({history:[]})),
         fetch(`${API_URL}/sessions/${sessionId}/financial-history`).then(r=>r.json()).catch(()=>({history:[]})),
       ]);
@@ -18682,6 +18659,7 @@ var _FIN_LINES = {
     {l:'  ↳ severance (staffing cut, one-off)', k:'ga_severance_m', neg:true, optional:true},
     {l:'Brand marketing',        k:'marketing_m', neg:true, optional:true},
     {l:'Launch marketing',       k:'launch_marketing_m', neg:true, optional:true},
+    {l:'Market research',        k:'research_m',         neg:true, optional:true},
     {l:'Special series campaigns', k:'lifecycle_mkt_m',  neg:true, optional:true},
     {l:'Sales network',          k:'sales_network_m', neg:true, optional:true},
     {l:'Market entry / exit',    k:'market_entry_m', neg:true, optional:true},
@@ -18779,7 +18757,7 @@ function switchFinTab(tab) {
 function _finPlOther(s) {
   if (!s) return 0;
   var n = function(k){ return parseFloat(s[k]) || 0; };
-  return n('gross_profit_m') - n('rd_expense_m') - n('sga_m') - n('marketing_m') - n('launch_marketing_m') - n('lifecycle_mkt_m')
+  return n('gross_profit_m') - n('rd_expense_m') - n('sga_m') - n('marketing_m') - n('launch_marketing_m') - n('lifecycle_mkt_m') - n('research_m')
        - n('sales_network_m') - n('market_entry_m') - n('aftersales_opex_m')
        - n('co2_compliance_m') + n('co2_credit_income_m')
        - n('depreciation_total_m') - n('factoring_fee_m') - n('rf_fee_m') - n('lease_rent_m')
@@ -18841,7 +18819,7 @@ function _finStripRender() {
       'Gross profit': n(s, 'gross_profit_m'),
       'R&D': -n(s, 'rd_expense_m'),
       'SG&A': -n(s, 'sga_m'),
-      'Marketing (brand, launch, special series)': -(n(s, 'marketing_m') + n(s, 'launch_marketing_m') + n(s, 'lifecycle_mkt_m')),
+      'Marketing (brand, launch, special series, research)': -(n(s, 'marketing_m') + n(s, 'launch_marketing_m') + n(s, 'lifecycle_mkt_m') + n(s, 'research_m')),
       'Sales network & market entry': -(n(s, 'sales_network_m') + n(s, 'market_entry_m')),
       'Aftersales programmes': -n(s, 'aftersales_opex_m'),
       'CO₂ compliance & credits': n(s, 'co2_credit_income_m') - n(s, 'co2_compliance_m'),
@@ -19813,7 +19791,7 @@ async function loadTechCompare() {
   el.innerHTML = '<div style="padding:40px 0;text-align:center;color:var(--muted2)">Loading…</div>';
   try {
     var [vRes, tRes] = await Promise.all([
-      fetch(API_URL + '/sessions/' + sessionId + '/vehicles'),
+      fetch(API_URL + '/sessions/' + sessionId + '/vehicles', {headers: _cmdAdminHeaders()}),   // instructor only
       fetch(API_URL + '/sessions/' + sessionId + '/teams'),
     ]);
     if (!vRes.ok) throw new Error('HTTP ' + vRes.status);
@@ -33448,921 +33426,170 @@ var _origNavInstr = window.navInstr || null;
 // MARKET INTELLIGENCE
 // ══════════════════════════════════════════
 
-var _mi = {
-  budget_total:    13,   // €M per round (instructor can configure)
-  budget_spent:    0,
-  subscriptions:   {},   // {report_key: true}
-  costs:           {segment:3, share:2, reasons:2, elasticity:4, tech:2},
-  active_report:   null,
-  data:            {},   // cached report data
-};
+// Research is a decision (2026-10-25): GET/PUT /sessions/{sid}/teams/{tid}/research holds the
+// reports bought for the open quarter (carried forward), charged in the P&L as research_m; a
+// report is read from GET …/research/{key} (403 unless bought), built on the server from the last
+// cleared quarter. Every table comes as {columns:[{key,label,fmt}], rows}; _miTable renders it.
+var _mi = {cat: null, active_report: null, data: {}, busy: false};
 
 async function loadMarketIntel() {
-  updateMIBudget();
-  renderMICards();
-  if (_mi.active_report) showMIReport(_mi.active_report);
-  else renderMIReportArea();
-}
-
-function updateMIBudget() {
-  var spent = Object.keys(_mi.subscriptions).reduce(function(s,k){
-    return s + (_mi.costs[k]||0);
-  }, 0);
-  _mi.budget_spent = spent;
-  var remaining = _mi.budget_total - spent;
-  var remEl = document.getElementById('mi-budget-remaining');
-  var barEl = document.getElementById('mi-budget-bar');
-  if (remEl) {
-    remEl.textContent = '\u20ac' + remaining + 'M';
-    remEl.style.color = remaining < 0 ? 'var(--red)' : 'var(--cyan)';
-  }
-  if (barEl) {
-    var pct = Math.max(0, Math.min(100, (remaining/_mi.budget_total)*100));
-    barEl.style.width = pct + '%';
-    barEl.style.background = remaining < 0
-      ? 'var(--red)' : remaining < 4
-      ? 'var(--gold)' : 'linear-gradient(90deg,var(--cyan),var(--blue))';
-  }
-}
-
-function renderMICards() {
-  Object.keys(_mi.costs).forEach(function(key) {
-    var card  = document.getElementById('mi-card-' + key);
-    var btn   = document.getElementById('mi-btn-' + key);
-    var subbed = !!_mi.subscriptions[key];
-    if (card) card.classList.toggle('subscribed', subbed);
-    if (btn) {
-      btn.classList.toggle('active', subbed);
-      btn.textContent = subbed ? '\u2713 Subscribed — click to cancel' : 'Subscribe';
-    }
-  });
-  // Render tabs for subscribed reports
-  var tabsEl = document.getElementById('mi-report-tabs');
-  if (!tabsEl) return;
-  var keys   = Object.keys(_mi.subscriptions);
-  var labels = {segment:'Segment Analysis', share:'Market Share',
-    reasons:'Consumer Insights', elasticity:'Price Elasticity', tech:'Tech Trends'};
-  tabsEl.innerHTML = keys.map(function(k) {
-    var active = _mi.active_report === k ? ' active' : '';
-    return '<div class="mi-tab' + active + '" onclick="showMIReport(\'' + k + '\')">' + (labels[k]||k) + '</div>';
-  }).join('');
-}
-
-function toggleMISubscription(key, cost) {
-  if (_mi.subscriptions[key]) {
-    delete _mi.subscriptions[key];
-    if (_mi.active_report === key) _mi.active_report = Object.keys(_mi.subscriptions)[0] || null;
-  } else {
-    var spent = Object.keys(_mi.subscriptions).reduce(function(s,k){return s+(_mi.costs[k]||0);},0);
-    if (spent + cost > _mi.budget_total) {
-      toast('\u26a0 Insufficient research budget. Unsubscribe another report first.');
-      return;
-    }
-    _mi.subscriptions[key] = true;
-    _mi.active_report = key;
+  var strip = document.getElementById('mi-strip');
+  if (!sessionId || !teamId) { if (strip) strip.textContent = 'Join a session to buy research.'; return; }
+  try {
+    var res = await fetch(API_URL + '/sessions/' + sessionId + '/teams/' + teamId + '/research');
+    var d = await res.json();
+    if (!res.ok) throw new Error(d.detail || ('HTTP ' + res.status));
+    if (!_mi.cat || _mi.cat.data_quarter !== d.data_quarter) _mi.data = {};
+    _mi.cat = d;
+  } catch (e) {
+    if (strip) strip.innerHTML = '<span style="color:var(--red);">Research unavailable: ' + _esc(e.message) + '</span>';
+    return;
   }
   updateMIBudget();
   renderMICards();
   renderMIReportArea();
 }
 
-function renderMIReportArea() {
-  if (_mi.active_report && _mi.subscriptions[_mi.active_report]) {
-    showMIReport(_mi.active_report);
-  } else if (Object.keys(_mi.subscriptions).length > 0) {
-    _mi.active_report = Object.keys(_mi.subscriptions)[0];
-    showMIReport(_mi.active_report);
-  } else {
-    var el = document.getElementById('mi-report-content');
-    if (el) el.innerHTML = '<div style="text-align:center;padding:32px;color:var(--muted2);font-size:12px;">Subscribe to a report above to view it here</div>';
+// the decision strip (replaces the old browser-only "research budget")
+function updateMIBudget() {
+  var el = document.getElementById('mi-strip'), c = _mi.cat;
+  if (!el || !c) return;
+  var q = c.round ? 'Q' + c.round.quarter + ' ' + c.round.year : 'this quarter';
+  el.innerHTML = '<div style="line-height:1.7;color:var(--text);">'
+    + '<span style="color:var(--muted);text-transform:uppercase;letter-spacing:.5px;font-size:8px;">You decide</span> which reports to buy. A purchase carries forward to later quarters until you cancel it.<br>'
+    + '<span style="color:var(--muted);text-transform:uppercase;letter-spacing:.5px;font-size:8px;">Cost</span> <b style="color:var(--gold);">€' + (c.cost_m || 0).toFixed(1) + 'M</b> in ' + _esc(q)
+    + ' for ' + c.bought.length + ' report' + (c.bought.length === 1 ? '' : 's') + ', charged in the P&amp;L (Market research, inside EBIT)<br>'
+    + '<span style="color:var(--muted);text-transform:uppercase;letter-spacing:.5px;font-size:8px;">Data</span> '
+    + (c.data_quarter ? 'the last cleared quarter, ' + _esc(c.data_quarter) : 'no quarter has cleared yet')
+    + (c.locked ? ' · <span style="color:var(--gold);">🔒 ' + _esc(q) + ' has cleared; change your purchases in the next round</span>' : '') + '</div>';
+}
+
+function renderMICards() {
+  var c = _mi.cat;
+  if (!c) return;
+  c.reports.forEach(function(r) {
+    var card = document.getElementById('mi-card-' + r.key), btn = document.getElementById('mi-btn-' + r.key);
+    if (card) {
+      card.classList.toggle('subscribed', r.bought);
+      var d = card.querySelector('.mi-report-desc'), p = card.querySelector('.mi-report-cost');
+      if (d) d.textContent = r.desc;
+      if (p) p.textContent = '€' + r.price_m.toFixed(0) + 'M / quarter';
+    }
+    if (btn) {
+      btn.classList.toggle('active', r.bought);
+      btn.disabled = !!c.locked;
+      btn.textContent = r.bought ? '✓ Bought: click to cancel' : 'Buy · €' + r.price_m.toFixed(0) + 'M / quarter';
+    }
+  });
+  var tabsEl = document.getElementById('mi-report-tabs');
+  if (!tabsEl) return;
+  tabsEl.innerHTML = c.reports.filter(function(r) { return r.bought; }).map(function(r) {
+    return '<div class="mi-tab' + (_mi.active_report === r.key ? ' active' : '') + '" data-action="mi-show" data-key="' + r.key + '">' + _esc(r.label) + '</div>';
+  }).join('');
+}
+
+async function toggleMISubscription(key) {
+  var c = _mi.cat;
+  if (!c || _mi.busy || c.locked) return;
+  var on = c.bought.indexOf(key) < 0;
+  var list = on ? c.bought.concat([key]) : c.bought.filter(function(k) { return k !== key; });
+  _mi.busy = true;
+  try {
+    var res = await fetch(API_URL + '/sessions/' + sessionId + '/teams/' + teamId + '/research', {
+      method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({reports: list})
+    });
+    var d = await res.json();
+    if (!res.ok) throw new Error(d.detail || ('HTTP ' + res.status));
+    _mi.cat = d;
+    if (on) _mi.active_report = key;
+    else { delete _mi.data[key]; if (_mi.active_report === key) _mi.active_report = null; }
+    var r = d.reports.find(function(x) { return x.key === key; }) || {};
+    toast(on ? '✓ ' + r.label + ' bought: €' + (r.price_m || 0).toFixed(0) + 'M a quarter' : r.label + ' cancelled');
+  } catch (e) {
+    toast('Research change failed: ' + e.message);
+  } finally {
+    _mi.busy = false;
+    updateMIBudget();
+    renderMICards();
+    renderMIReportArea();
   }
+}
+
+function renderMIReportArea() {
+  var c = _mi.cat, bought = c ? c.bought : [];
+  if (_mi.active_report && bought.indexOf(_mi.active_report) < 0) _mi.active_report = null;
+  if (!_mi.active_report && bought.length) _mi.active_report = bought[0];
+  if (_mi.active_report) { showMIReport(_mi.active_report); return; }
+  var el = document.getElementById('mi-report-content');
+  if (el) el.innerHTML = '<div style="text-align:center;padding:32px;color:var(--muted2);font-size:12px;">Buy a report above to read it here. Each costs its price every quarter it stays bought.</div>';
 }
 
 async function showMIReport(key) {
   _mi.active_report = key;
-  // Update tab highlights
-  document.querySelectorAll('.mi-tab').forEach(function(t) {
-    t.classList.toggle('active', t.textContent.toLowerCase().indexOf(key.substr(0,4)) >= 0);
-  });
   renderMICards();
   var el = document.getElementById('mi-report-content');
   if (!el) return;
-  el.innerHTML = '<div style="color:var(--muted2);padding:24px;text-align:center;">Loading report...</div>';
-
-  // Load data if not cached
   if (!_mi.data[key]) {
-    await fetchMIData(key);
+    el.innerHTML = '<div style="color:var(--muted2);padding:24px;text-align:center;">Loading report…</div>';
+    try {
+      var res = await fetch(API_URL + '/sessions/' + sessionId + '/teams/' + teamId + '/research/' + key);
+      var d = await res.json();
+      if (!res.ok) throw new Error(d.detail || ('HTTP ' + res.status));
+      _mi.data[key] = d;
+    } catch (e) {
+      el.innerHTML = '<div style="color:var(--red);padding:24px;text-align:center;">' + _esc(e.message) + '</div>';
+      return;
+    }
   }
-  renderMIReport(key);
+  if (_mi.active_report !== key) return;
+  var d = _mi.data[key];
+  el.innerHTML = '<div style="font-family:DM Mono,monospace;">'
+    + '<div style="font-size:12px;font-weight:700;color:var(--text);">' + _esc(d.title) + (d.quarter ? ' <span style="color:var(--muted2);font-weight:400;font-size:10px;">· ' + _esc(d.quarter) + '</span>' : '') + '</div>'
+    + (d.note ? '<div style="font-size:10px;color:var(--muted2);margin:4px 0 10px;line-height:1.5;">' + _esc(d.note) + '</div>' : '')
+    + (d.tables || []).map(_miTable).join('') + '</div>';
 }
 
-async function fetchMIData(key) {
-  try {
-    if (key === 'segment') {
-      try {
-        var [vRes, voRes] = await Promise.all([
-          fetch(API_URL + '/sessions/' + sessionId + '/vehicles'),
-          fetch(API_URL + '/sessions/' + sessionId + '/vehicle-outcomes'),
-        ]);
-        if (!vRes.ok) throw new Error('Session endpoint returned ' + vRes.status);
-        var vData  = await vRes.json();
-        var voData = voRes.ok ? await voRes.json() : {outcomes:[]};
-        _mi.data.segment  = vData.vehicles || [];
-        _mi.data.seg_vols = voData.outcomes || [];
-        console.log('[MI] Loaded', _mi.data.segment.length, 'vehicles,', _mi.data.seg_vols.length, 'volume records');
-      } catch(e) {
-        // Always use session endpoint — never fall back to team-only vehicles
-        console.warn('[MI] Segment fetch failed:', e);
-        _mi.data.segment  = [];
-        _mi.data.seg_vols = [];
-      }
-    }
-    if (key === 'share') {
-      var isInstr = currentUser && currentUser.role === 'instructor';
-      var fetches = [fetch(API_URL + '/sessions/' + sessionId + '/market-share')];
-      if (isInstr) fetches.push(fetch(API_URL + '/sessions/' + sessionId + '/historical-rounds'));
-      var results = await Promise.all(fetches);
-      _mi.data.share = await results[0].json();
-      _mi.data.hist  = isInstr ? await results[1].json() : {rounds:[], outcomes:[], seg_outcomes:[]};
-    }
-    if (key === 'reasons') {
-      var res  = await fetch(API_URL + '/sessions/' + sessionId + '/purchase-weights');
-      var data = await res.json();
-      _mi.data.reasons = data.weights || [];
-    }
-    if (key === 'footprint') {
-      try {
-        var [pRes, tRes] = await Promise.all([
-          fetch(API_URL + '/sessions/' + sessionId + '/plants'),
-          fetch(API_URL + '/sessions/' + sessionId + '/teams'),
-        ]);
-        var pData = await pRes.json();
-        var tData = await tRes.json();
-        var teams = (tData.teams || []).filter(function(t){return t.name.toLowerCase()!=='instructor';});
-        var teamMap = {};
-        teams.forEach(function(t){ teamMap[t.id] = t; });
-        var plants = (pData.plants || []).map(function(p){
-          var team = teamMap[p.team_id] || {};
-          p.team_name = team.name || 'Unknown';
-          p.team_type = team.team_type || 'human';
-          return p;
-        }).filter(function(p){ return p.team_name !== 'Unknown' && p.team_name.toLowerCase() !== 'instructor'; });
-        _mi.data.footprint = plants;
-      } catch(e) {
-        console.warn('[MI] Footprint fetch failed:', e);
-        _mi.data.footprint = [];
-      }
-    }
-    if (key === 'tech') {
-      var isInstr2 = currentUser && currentUser.role === 'instructor';
-      var fetches2 = [fetch(API_URL + '/sessions/' + sessionId + '/vehicles')];
-      if (isInstr2 && !_mi.data.hist) fetches2.push(fetch(API_URL + '/sessions/' + sessionId + '/historical-rounds'));
-      var results2 = await Promise.all(fetches2);
-      var vData = await results2[0].json();
-      _mi.data.tech = vData.vehicles || [];
-      if (isInstr2 && results2[1] && !_mi.data.hist) _mi.data.hist = await results2[1].json();
-      if (!_mi.data.hist) _mi.data.hist = {rounds:[], outcomes:[], seg_outcomes:[]};
-    }
-    if (key === 'elasticity') {
-      // Elasticity is derived from demand model — synthetic data
-      _mi.data.elasticity = buildElasticityData();
-    }
-  } catch(e) {
-    console.warn('fetchMIData:', key, e);
-    _mi.data[key] = _mi.data[key] || [];
-  }
-}
-
-function renderMIReport(key) {
-  var el = document.getElementById('mi-report-content');
-  if (!el) return;
-  if (key === 'segment')    { el.innerHTML = renderSegmentAnalysis(); }
-  if (key === 'footprint')  { el.innerHTML = renderManufacturingFootprint(); }
-  else if (key === 'share') { el.innerHTML = renderMarketShare(); }
-  else if (key === 'reasons'){el.innerHTML = renderConsumerInsights(); }
-  else if (key === 'elasticity'){el.innerHTML = renderElasticity(); }
-  else if (key === 'tech')  { el.innerHTML = renderTechTrends(); }
-}
-
-// ── REPORT 1: Segment Analysis ─────────────────────────────
-var _segSortCol = 'volume_last_qtr';
-var _segSortDir = -1; // -1 = desc (highest volume first)
-var _segFilter  = 'all';
-
-function renderSegmentAnalysis() {
-  var vehicles = (_mi.data.segment || []).filter(function(v) {
-    // Show all vehicles so teams can see full competitive landscape
-    // Status shown as a column so teams know maturity level
-    return v.status !== null;
+// one server table: {title, columns:[{key,label,fmt}], rows}; click a header to sort
+var _miSort = {};
+function _miTable(t, i) {
+  var id = (_mi.active_report || '') + '-' + i, srt = _miSort[id];
+  var rows = (t.rows || []).slice();
+  if (srt) rows.sort(function(a, b) {
+    var x = a[srt.key], y = b[srt.key];
+    if (x == null) return 1;
+    if (y == null) return -1;
+    return (typeof x === 'string' ? x.localeCompare(y) : x - y) * srt.dir;
   });
-
-  if (vehicles.length === 0) {
-    return '<div style="padding:24px;color:var(--muted2);text-align:center;">' +
-      '<div style="font-size:24px;margin-bottom:8px;">🚗</div>' +
-      '<div style="font-weight:600;margin-bottom:4px;">No vehicles in market yet</div>' +
-      '<div style="font-size:11px;">AI teams will have vehicles once the instructor initialises the AI fleet. ' +
-      'Human teams need to submit vehicle proposals through the Engineering module.</div></div>';
-  }
-
-  var segOrder = ['a_segment','b_segment','c_segment','d_segment','e_segment','f_segment',
-    'mpv','pickup','sports','c_van','d_van','e_van'];
-
-  // Column definitions
-  var cols = [
-    {key:'segment',        label:'Segment',           align:'left',  fmt:'seg'},
-    {key:'team_name',      label:'OEM / Brand',       align:'left',  fmt:'txt'},
-    {key:'name',           label:'Model',             align:'left',  fmt:'bold'},
-    {key:'pwt_type',       label:'Powertrain',        align:'center',fmt:'tag'},
-    {key:'manufactured_in',label:'Made In',           align:'center',fmt:'txt'},
-    {key:'retail_price_k', label:'Retail Price (€k)', align:'right', fmt:'price'},
-    {key:'fuel_economy',   label:'Fuel Econ (L/100)',  align:'center',fmt:'num1'},
-    {key:'energy_cons',    label:'Energy (kWh/100)',   align:'center',fmt:'num1'},
-    {key:'roominess',      label:'Roominess (m³)',     align:'center',fmt:'num1'},
-    {key:'volume_last_qtr',label:'Vol Last Qtr',       align:'right', fmt:'vol'},
-    {key:'volume_last_yr', label:'Vol Last Year',      align:'right', fmt:'vol'},
-    {key:'status',         label:'Status',             align:'center',fmt:'status'},
-  ];
-
-  // Build volume lookup from vehicle_outcomes
-  var segVols = _mi.data.seg_vols || [];
-  var volMap  = {};
-  var revMap  = {};
-  segVols.forEach(function(o) {
-    volMap[o.vehicle_id] = (volMap[o.vehicle_id] || 0) + o.units_sold;
-    revMap[o.vehicle_id] = (revMap[o.vehicle_id] || 0) + parseFloat(o.revenue_m || 0);
-  });
-
-  // Enrich vehicles with derived fields
-  var enriched = vehicles.map(function(v) {
-    var rs   = v.rolled_up_specs || {};
-    var segPriceK = {a_segment:12,b_segment:18,c_segment:26,d_segment:38,e_segment:55,
-      f_segment:90,mpv:32,pickup:45,sports:55,c_van:28,d_van:40,e_van:55};
-    var priceK = rs.retail_price_k || segPriceK[v.segment_code] || 25;
-    var qVol   = volMap[v.id] || 0;
-    var qRev   = revMap[v.id] || 0;
-    return {
-      id:               v.id,
-      segment:          v.segment_code,
-      team_name:        v.team_name || 'Unknown OEM',
-      team_type:        v.team_type,
-      name:             v.name,
-      pwt_type:         rs.pwt_type || '—',
-      retail_price_k:   priceK,
-      roominess:        parseFloat(rs.roominess||0)||null,
-      volume_last_qtr:  qVol,
-      revenue_last_qtr: qRev,
-      status:           v.status,
-    };
-  });
-
-  // Apply segment filter
-  if (_segFilter !== 'all') {
-    enriched = enriched.filter(function(v){ return v.segment === _segFilter; });
-  }
-
-  // Sort
-  enriched.sort(function(a,b) {
-    var av = a[_segSortCol], bv = b[_segSortCol];
-    if (av == null) av = -Infinity;
-    if (bv == null) bv = -Infinity;
-    if (typeof av === 'string') av = av.toLowerCase();
-    if (typeof bv === 'string') bv = bv.toLowerCase();
-    return av < bv ? _segSortDir : av > bv ? -_segSortDir : 0;
-  });
-
-  // Segment filter tabs
-  var uniqueSegs = [...new Set(vehicles.map(function(v){return v.segment_code;}))];
-  // Cache bust button
-  var html = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">' +
-    '<div style="font-family:DM Mono,monospace;font-size:9px;color:var(--muted2);">' +
-    vehicles.length + ' vehicles across all OEMs in session</div>' +
-    '<button data-action="mi-seg-refresh" style="font-family:DM Mono,monospace;font-size:8px;' +
-    'padding:3px 10px;border-radius:2px;border:1px solid var(--border2);background:var(--s2);' +
-    'color:var(--muted2);cursor:pointer;">↻ Refresh Data</button></div>';
-  html += '<div style="margin-bottom:10px;display:flex;gap:4px;flex-wrap:wrap;" id="mi-seg-filter">';
-  html += '<button class="mi-tab' + (_segFilter==='all'?' active':'') + '" data-action="mi-filter" data-seg="all">All</button>';
-  segOrder.forEach(function(seg) {
-    if (uniqueSegs.indexOf(seg) < 0) return;
-    html += '<button class="mi-tab' + (_segFilter===seg?' active':'') + '" data-action="mi-filter" data-seg="' + seg + '">' + (SEG_NAMES[seg]||seg) + '</button>';
-  });
-  html += '</div>';
-
-  // Table
-  html += '<div style="overflow-x:auto;"><table class="mi-tbl" id="mi-seg-table"><thead><tr>';
-  cols.forEach(function(col) {
-    var isSorted = _segSortCol === col.key;
-    var arrow = isSorted ? (_segSortDir === 1 ? ' ↑' : ' ↓') : ' ↕';
-    var arrowCol = isSorted ? 'var(--gold)' : 'var(--border2)';
-    html += '<th class="mi-th" style="text-align:' + col.align + ';cursor:pointer;user-select:none;" ' +
-      'data-action="mi-seg-sort" data-col="' + col.key + '">' +
-      col.label + '<span style="color:' + arrowCol + ';margin-left:3px;">' + arrow + '</span></th>';
-  });
-  html += '</tr></thead><tbody>';
-
-  if (enriched.length === 0) {
-    html += '<tr><td colspan="' + cols.length + '" style="padding:20px;color:var(--muted2);text-align:center;">No vehicles match this filter.</td></tr>';
-  }
-
-  enriched.forEach(function(v) {
-    var sc   = SEG_COLORS[v.segment]  || 'var(--muted)';
-    var sn   = SEG_NAMES[v.segment]   || v.segment;
-    var isAI = v.team_type === 'ai';
-    html += '<tr class="mi-tr" data-seg="' + v.segment + '">';
-    cols.forEach(function(col) {
-      var val  = v[col.key];
-      var cell = '';
-      if (col.fmt === 'seg') {
-        cell = '<span style="color:' + sc + ';font-size:10px;">' + sn + '</span>';
-      } else if (col.fmt === 'bold') {
-        cell = '<span style="font-weight:600;color:var(--white);">' + (val||'—') + '</span>' +
-          (isAI ? '<span style="font-family:DM Mono,monospace;font-size:7px;color:var(--muted2);margin-left:5px;">AI</span>' : '');
-      } else if (col.fmt === 'txt') {
-        cell = val || '—';
-      } else if (col.fmt === 'tag') {
-        var pwtCol = {ICE:'var(--orange)',HEV:'var(--gold)',PHEV:'var(--gold)',
-          REEV:'var(--cyan)',BEV:'var(--green)',FCEV:'var(--purple)'}[val] || 'var(--muted)';
-        cell = val && val !== '—'
-          ? '<span style="font-family:DM Mono,monospace;font-size:8px;padding:2px 6px;border-radius:2px;background:' + pwtCol + '22;color:' + pwtCol + ';">' + val + '</span>'
-          : '<span style="color:var(--muted2);">—</span>';
-      } else if (col.fmt === 'price') {
-        cell = '<span style="font-family:DM Mono,monospace;color:var(--gold);">€' + (val||'—') + 'k</span>';
-      } else if (col.fmt === 'num1') {
-        cell = val > 0 ? '<span style="font-family:DM Mono,monospace;">' + parseFloat(val).toFixed(1) + '</span>' : '<span style="color:var(--muted2);">—</span>';
-      } else if (col.fmt === 'rev') {
-        cell = val > 0 ? '<span style="font-family:DM Mono,monospace;color:var(--cyan);">€'+parseFloat(val).toFixed(1)+'M</span>' : '<span style="color:var(--muted2);">—</span>';
-      } else if (col.fmt === 'status') {
-        var stMap = {approved:'var(--green)',plan:'var(--gold)',study:'#4a5568',draft:'#4a5568'};
-        var stLbl = {approved:'APPROVED',plan:'PLAN',study:'STUDY',draft:'STUDY'};
-        var stC = stMap[val] || 'var(--muted2)';
-        cell = '<span style="font-family:DM Mono,monospace;font-size:8px;padding:2px 6px;' +
-          'border-radius:2px;background:' + stC + '22;color:' + stC + ';">' + (stLbl[val]||val||'—') + '</span>';
-      } else if (col.fmt === 'vol') {
-        var volCol = val > 10000 ? 'var(--green)' : val > 5000 ? 'var(--gold)' : 'var(--text)';
-        cell = '<span style="font-family:DM Mono,monospace;color:' + volCol + ';">' + (val||0).toLocaleString() + '</span>';
-      }
-      html += '<td class="mi-td" style="text-align:' + col.align + ';">' + cell + '</td>';
-    });
-    html += '</tr>';
-  });
-
-  html += '</tbody></table></div>';
-  html += '<div style="margin-top:8px;font-family:DM Mono,monospace;font-size:8px;color:var(--muted2);">' +
-    enriched.length + ' vehicles shown · Click column headers to sort · ' +
-    '<span style="color:var(--muted2);">AI</span> = AI-controlled OEM</div>';
-  return html;
-}
-
-function miSegSort(col) {
-  if (_segSortCol === col) _segSortDir *= -1;
-  else { _segSortCol = col; _segSortDir = -1; }
-  var el = document.getElementById('mi-report-content');
-  if (el) el.innerHTML = renderSegmentAnalysis();
-}
-
-function miFilterSeg(seg, btn) {
-  _segFilter = seg;
-  document.querySelectorAll('#mi-seg-filter .mi-tab').forEach(function(t){t.classList.remove('active');});
-  if (btn) btn.classList.add('active');
-  var el = document.getElementById('mi-report-content');
-  if (el) el.innerHTML = renderSegmentAnalysis();
-}
-
-
-// ── REPORT 2: Market Share ─────────────────────────────────
-// ── REPORT 2: Market Share ─────────────────────────────────
-function renderMarketShare() {
-  var isInstr  = currentUser && currentUser.role === 'instructor';
-  var hist     = (isInstr && _mi.data.hist) ? _mi.data.hist : {rounds:[], outcomes:[], seg_outcomes:[]};
-  var rounds   = (hist.rounds   || []).sort(function(a,b){return a.round_number-b.round_number;});
-  var outcomes = hist.outcomes  || [];
-  var colors   = ['var(--cyan)','var(--gold)','var(--green)','var(--purple)','var(--orange)',
-    'var(--blue)','var(--red)','#a78bfa','#f472b6','#34d399','#fb923c','#60a5fa'];
-
-  // Get unique OEMs
-  var oems = [...new Set(outcomes.map(function(o){return o.team_name;}))].sort();
-
-  // For teams: show simple current-round share without historical trend
-  if (oems.length === 0) {
-    var currentData = _mi.data.share || {};
-    var byOEM = currentData.by_oem || [];
-    if (byOEM.length === 0) return '<div style="padding:24px;color:var(--muted2);text-align:center;">No market share data available yet. Complete a simulation round first.</div>';
-    var cols = ['var(--cyan)','var(--gold)','var(--green)','var(--purple)','var(--orange)','var(--blue)','var(--red)'];
-    var h = '<div style="font-family:DM Mono,monospace;font-size:8px;text-transform:uppercase;letter-spacing:1.5px;color:var(--muted);margin-bottom:12px;">Volume Market Share — Current Round</div>';
-    byOEM.sort(function(a,b){return b.share_pct-a.share_pct;}).forEach(function(row,i){
-      var col=cols[i%cols.length];
-      h += '<div style="margin-bottom:8px;">' +
-        '<div style="display:flex;justify-content:space-between;font-size:10px;margin-bottom:3px;">' +
-          '<span>'+row.team_name+'</span><span style="color:'+col+';">'+row.share_pct+'%</span></div>' +
-        '<div style="height:8px;background:var(--border2);border-radius:4px;overflow:hidden;">' +
-          '<div style="height:100%;width:'+row.share_pct+'%;background:'+col+';border-radius:4px;"></div></div></div>';
-    });
-    return h;
-  }
-
-  // Build volume lookup: oem → [q1,q2,...q8]
-  var roundIds = rounds.map(function(r){return r.id;});
-  var volByOEM = {};
-  var revByOEM = {};
-  oems.forEach(function(oem) {
-    volByOEM[oem] = roundIds.map(function(rid) {
-      var o = outcomes.find(function(x){return x.team_name===oem && x.round_id===rid;});
-      return o ? Math.round(o.total_units_sold/1000) : 0;
-    });
-    revByOEM[oem] = roundIds.map(function(rid) {
-      var o = outcomes.find(function(x){return x.team_name===oem && x.round_id===rid;});
-      return o ? Math.round(o.revenue_m) : 0;
-    });
-  });
-
-  // Last quarter totals for share calc
-  var lastRid  = roundIds[roundIds.length-1];
-  var lastVols = oems.map(function(oem) {
-    var o = outcomes.find(function(x){return x.team_name===oem && x.round_id===lastRid;});
-    return {oem:oem, vol: o ? o.total_units_sold : 0, rev: o ? Math.round(o.revenue_m) : 0,
-            ebit: o ? Math.round(o.ebit_m) : 0};
-  }).sort(function(a,b){return b.vol-a.vol;});
-  var totalVol = lastVols.reduce(function(s,r){return s+r.vol;},0)||1;
-
-  var html = '<div style="margin-bottom:16px;">';
-
-  // ── Header KPIs ──
-  html += '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:16px;">';
-  html += kpiCard('Total Market Volume', Math.round(totalVol/1000)+'k units', 'var(--cyan)', 'Q4 2024');
-  html += kpiCard('Market Leaders', lastVols.slice(0,2).map(function(r){return r.oem;}).join(', '), 'var(--gold)', 'top 2 OEMs');
-  html += kpiCard('Quarters of Data', rounds.length+'', 'var(--text)', 'Q1 2023 → Q4 2024');
-  html += '</div>';
-
-  // ── Trend chart (SVG sparklines) ──
-  html += '<div style="font-family:DM Mono,monospace;font-size:8px;text-transform:uppercase;letter-spacing:1.5px;color:var(--muted);margin-bottom:10px;">Volume Trend — All OEMs (units k/quarter)</div>';
-  html += '<div style="background:var(--s2);border:1px solid var(--border);border-radius:4px;padding:12px;margin-bottom:16px;">';
-
-  // SVG trend chart
-  var svgW = 700, svgH = 160, padL = 80, padR = 10, padT = 10, padB = 30;
-  var cw = svgW-padL-padR, ch = svgH-padT-padB;
-  var nQ = rounds.length;
-  var allVols = [];
-  oems.forEach(function(oem){ volByOEM[oem].forEach(function(v){allVols.push(v);}); });
-  var maxV = Math.max.apply(null, allVols) || 1;
-
-  html += '<svg viewBox="0 0 '+svgW+' '+svgH+'" style="width:100%;display:block;">';
-  // Grid lines
-  [0,0.25,0.5,0.75,1].forEach(function(f) {
-    var y = padT + ch*(1-f);
-    html += '<line x1="'+padL+'" y1="'+y+'" x2="'+(svgW-padR)+'" y2="'+y+'" stroke="rgba(255,255,255,0.05)" stroke-width="1"/>';
-    html += '<text x="'+(padL-4)+'" y="'+(y+3)+'" text-anchor="end" font-size="8" fill="#3a4860">'+Math.round(maxV*f)+'k</text>';
-  });
-  // Quarter labels
-  rounds.forEach(function(r, i) {
-    var x = padL + (nQ===1?cw/2:i*cw/(nQ-1));
-    if (i%2===0 || i===nQ-1) {
-      html += '<text x="'+x+'" y="'+(svgH-8)+'" text-anchor="middle" font-size="8" fill="#3a4860">'+(r.label||r.round_number)+'</text>';
-    }
-  });
-  // OEM lines
-  oems.forEach(function(oem, oi) {
-    var col = colors[oi%colors.length];
-    var pts = volByOEM[oem].map(function(v,i) {
-      var x = padL + (nQ===1?cw/2:i*cw/(nQ-1));
-      var y = padT + ch*(1 - v/maxV);
-      return x.toFixed(1)+','+y.toFixed(1);
-    }).join(' ');
-    html += '<polyline points="'+pts+'" fill="none" stroke="'+col+'" stroke-width="2" stroke-linejoin="round" opacity="0.85"/>';
-    // Last point dot
-    var lx = padL + cw; var lv = volByOEM[oem][nQ-1]||0;
-    var ly = padT + ch*(1-lv/maxV);
-    html += '<circle cx="'+lx.toFixed(1)+'" cy="'+ly.toFixed(1)+'" r="3" fill="'+col+'"/>';
-    html += '<text x="'+(lx+4)+'" y="'+(ly+3)+'" font-size="8" fill="'+col+'">'+oem.split(' ')[0]+'</text>';
-  });
-  html += '</svg></div>';
-
-  // ── OEM detail table ──
-  html += '<div style="font-family:DM Mono,monospace;font-size:8px;text-transform:uppercase;letter-spacing:1.5px;color:var(--muted);margin-bottom:10px;">OEM Performance — Q4 2024 (Latest Quarter)</div>';
-  html += '<div style="overflow-x:auto;"><table class="mi-tbl"><thead><tr>' +
-    '<th class="mi-th">#</th>' +
-    '<th class="mi-th">OEM</th>' +
-    '<th class="mi-th" style="text-align:right;">Q4 2024 Vol</th>' +
-    '<th class="mi-th" style="text-align:right;">Market Share</th>' +
-    '<th class="mi-th" style="text-align:right;">Revenue €M</th>' +
-    '<th class="mi-th" style="text-align:right;">EBIT €M</th>' +
-    '<th class="mi-th" style="text-align:center;min-width:120px;">8Q Volume Trend</th>' +
-    '</tr></thead><tbody>';
-
-  lastVols.forEach(function(row, i) {
-    var col      = colors[i%colors.length];
-    var sharePct = Math.round(row.vol/totalVol*100);
-    var vols     = volByOEM[row.oem] || [];
-    var maxSpark = Math.max.apply(null, vols)||1;
-    // Mini sparkline SVG
-    var spW=120, spH=28;
-    var sparkPts = vols.map(function(v,j){
-      var x = spW/(vols.length-1||1)*j;
-      var y = spH - (v/maxSpark)*(spH-4) - 2;
-      return x.toFixed(1)+','+y.toFixed(1);
-    }).join(' ');
-    var trend = vols.length>1 ? (vols[vols.length-1]-vols[0]) : 0;
-    var tCol  = trend>=0?'var(--green)':'var(--red)';
-    var spark = '<svg viewBox="0 0 '+spW+' '+spH+'" style="width:120px;height:28px;">' +
-      '<polyline points="'+sparkPts+'" fill="none" stroke="'+col+'" stroke-width="1.5" stroke-linejoin="round"/>' +
-      '</svg>';
-    html += '<tr class="mi-tr">' +
-      '<td class="mi-td" style="color:var(--muted2);">'+(i+1)+'</td>' +
-      '<td class="mi-td" style="font-weight:600;display:flex;align-items:center;gap:6px;">' +
-        '<span style="width:8px;height:8px;border-radius:50%;background:'+col+';display:inline-block;flex-shrink:0;"></span>'+row.oem+'</td>' +
-      '<td class="mi-td mono" style="text-align:right;">'+Math.round(row.vol/1000)+'k</td>' +
-      '<td class="mi-td mono" style="text-align:right;color:'+col+';">'+sharePct+'%</td>' +
-      '<td class="mi-td mono" style="text-align:right;">€'+row.rev+'M</td>' +
-      '<td class="mi-td mono" style="text-align:right;color:'+(row.ebit>=0?'var(--green)':'var(--red)')+';">€'+row.ebit+'M</td>' +
-      '<td class="mi-td" style="text-align:center;">'+spark+
-        '<span style="font-family:DM Mono,monospace;font-size:8px;color:'+tCol+';">'+(trend>=0?'+':'')+trend+'k</span></td>' +
-    '</tr>';
-  });
-  html += '</tbody></table></div></div>';
-  return html;
-}
-
-
-// ── REPORT 3: Consumer Insights ────────────────────────────
-function renderConsumerInsights() {
-  var weights = _mi.data.reasons || [];
-  if (weights.length === 0) return '<div style="padding:24px;color:var(--muted2);">Purchase reason data not available.</div>';
-
-  var reasons = ['practical_needs','convenience','comfort_lifestyle','fuel_energy_cost',
-    'safety','tech_innovation','brand_trust','price_financing','environmental','peer_social','aesthetics_design'];
-  var rLabels = {practical_needs:'Practical Needs',convenience:'Convenience',
-    comfort_lifestyle:'Comfort & Lifestyle',fuel_energy_cost:'Fuel/Energy Cost',
-    safety:'Safety',tech_innovation:'Tech & Innovation',brand_trust:'Brand Trust',
-    price_financing:'Price & Financing',environmental:'Environmental',
-    peer_social:'Peer Influence',aesthetics_design:'Aesthetics & Design'};
-  var segs = ['a_segment','b_segment','c_segment','d_segment','e_segment','f_segment',
-    'mpv','pickup','sports','c_van','d_van','e_van'];
-  var segShort = {a_segment:'A',b_segment:'B',c_segment:'C',d_segment:'D',
-    e_segment:'E',f_segment:'F',mpv:'MPV',pickup:'Pickup',sports:'Sports',
-    c_van:'C-Van',d_van:'D-Van',e_van:'E-Van'};
-
-  // Build lookup
-  var wMap = {};
-  weights.forEach(function(w){ wMap[w.segment_code+'|'+w.reason_code] = w.weight_pct; });
-
-  var html = '<div style="overflow-x:auto;"><table class="mi-tbl">';
-  html += '<thead><tr><th class="mi-th" style="min-width:140px;">Purchase Reason</th>';
-  segs.forEach(function(s){ html += '<th class="mi-th" style="text-align:center;min-width:55px;">' + (segShort[s]||s) + '</th>'; });
-  html += '</tr></thead><tbody>';
-
-  reasons.forEach(function(r) {
-    html += '<tr class="mi-tr"><td class="mi-td" style="font-size:10px;">' + (rLabels[r]||r) + '</td>';
-    segs.forEach(function(s) {
-      var val = parseFloat(wMap[s+'|'+r]||0);
-      var bg = val>=20?'rgba(56,212,134,.25)':val>=15?'rgba(200,164,60,.2)':
-               val>=8?'rgba(68,128,224,.15)':val>=4?'rgba(68,128,224,.06)':'transparent';
-      var col= val>=20?'var(--green)':val>=12?'var(--gold)':val>=5?'var(--text)':'var(--muted2)';
-      html += '<td class="hm-cell" style="background:' + bg + ';color:' + col + ';">' +
-        (val>0?Math.round(val)+'%':'·') + '</td>';
-    });
-    html += '</tr>';
-  });
-
-  html += '</tbody></table></div>';
-  html += '<div style="margin-top:8px;font-family:DM Mono,monospace;font-size:8px;color:var(--muted2);">' +
-    '<span style="color:var(--green);">■</span> ≥20% &nbsp;<span style="color:var(--gold);">■</span> 12–19% &nbsp;' +
-    '<span style="color:var(--text);">■</span> 5–11% &nbsp;<span style="color:var(--muted2);">·</span> &lt;5%</div>';
-  return html;
-}
-
-// ── REPORT 4: Price Elasticity ─────────────────────────────
-function buildElasticityData() {
-  // Synthetic elasticity coefficients per segment
-  // Elasticity = % change in demand / % change in price
-  return {
-    a_segment:{name:'A',elasticity:-2.1,optimal_k:11,range:[9,15]},
-    b_segment:{name:'B',elasticity:-1.8,optimal_k:17,range:[13,22]},
-    c_segment:{name:'C',elasticity:-1.5,optimal_k:25,range:[20,32]},
-    d_segment:{name:'D',elasticity:-1.2,optimal_k:37,range:[28,48]},
-    e_segment:{name:'E',elasticity:-0.9,optimal_k:53,range:[40,70]},
-    f_segment:{name:'F',elasticity:-0.6,optimal_k:88,range:[60,120]},
-    mpv:      {name:'MPV',elasticity:-1.6,optimal_k:30,range:[24,40]},
-    pickup:   {name:'Pickup',elasticity:-1.3,optimal_k:43,range:[33,55]},
-    sports:   {name:'Sports',elasticity:-0.8,optimal_k:52,range:[38,70]},
-    c_van:    {name:'C-Van',elasticity:-1.4,optimal_k:27,range:[20,35]},
-    d_van:    {name:'D-Van',elasticity:-1.2,optimal_k:38,range:[28,50]},
-    e_van:    {name:'E-Van',elasticity:-1.0,optimal_k:52,range:[38,68]},
+  var f = function(v, fmt, key) {
+    if (v == null || v === '') return '<span style="color:var(--muted2);">—</span>';
+    if (key === 'segment') return _esc(SEG_NAMES[v] || v);
+    if (fmt === 'int') return Math.round(v).toLocaleString();
+    if (fmt === 'num1') return (Math.round(v * 10) / 10).toFixed(1);
+    if (fmt === 'pct') return (Math.round(v * 10) / 10).toFixed(1) + '%';
+    if (fmt === 'eur_m') return '€' + Math.round(v).toLocaleString() + 'M';
+    if (fmt === 'eur_k') return '€' + (Math.round(v * 10) / 10).toFixed(1) + 'k';
+    return _esc(String(v));
   };
+  var h = '<div style="font-size:8px;text-transform:uppercase;letter-spacing:1.5px;color:#a78bfa;margin:12px 0 6px;">' + _esc(t.title || '') + '</div>'
+    + '<div style="overflow-x:auto;"><table class="mi-tbl"><thead><tr>';
+  (t.columns || []).forEach(function(c) {
+    var on = srt && srt.key === c.key;
+    h += '<th class="mi-th" style="text-align:' + (c.fmt === 'txt' ? 'left' : 'right') + ';cursor:pointer;" onclick="_miSortBy(\'' + id + '\',\'' + c.key + '\')">'
+      + _esc(c.label) + (on ? (srt.dir > 0 ? ' ↑' : ' ↓') : '') + '</th>';
+  });
+  h += '</tr></thead><tbody>';
+  rows.forEach(function(r) {
+    h += '<tr class="mi-tr">' + (t.columns || []).map(function(c) {
+      return '<td class="mi-td" style="text-align:' + (c.fmt === 'txt' ? 'left' : 'right') + ';">' + f(r[c.key], c.fmt, c.key) + '</td>';
+    }).join('') + '</tr>';
+  });
+  if (!rows.length) h += '<tr><td class="mi-td" colspan="' + (t.columns || []).length + '" style="color:var(--muted2);text-align:center;">No data.</td></tr>';
+  return h + '</tbody></table></div>';
 }
-
-function renderElasticity() {
-  var data = _mi.data.elasticity || buildElasticityData();
-  var segs = Object.keys(data);
-  var html = '<div style="overflow-x:auto;"><table class="mi-tbl"><thead><tr>' +
-    '<th class="mi-th">Segment</th>' +
-    '<th class="mi-th" style="text-align:center;">Price Elasticity</th>' +
-    '<th class="mi-th" style="text-align:center;">Optimal Price</th>' +
-    '<th class="mi-th" style="text-align:center;">Competitive Range</th>' +
-    '<th class="mi-th" style="text-align:left;min-width:180px;">Sensitivity</th>' +
-    '</tr></thead><tbody>';
-
-  segs.forEach(function(seg) {
-    var d   = data[seg];
-    var el  = Math.abs(d.elasticity);
-    var col = el>1.8?'var(--red)':el>1.2?'var(--gold)':'var(--green)';
-    var label = el>1.8?'High':el>1.2?'Medium':'Low';
-    var barW = Math.round(el/2.2*100);
-
-    html += '<tr class="mi-tr">' +
-      '<td class="mi-td" style="font-weight:600;">' + (SEG_NAMES[seg]||d.name) + '</td>' +
-      '<td class="mi-td mono" style="text-align:center;color:'+col+';">' + d.elasticity.toFixed(1) + '</td>' +
-      '<td class="mi-td mono" style="text-align:center;color:var(--gold);">\u20ac' + d.optimal_k + 'k</td>' +
-      '<td class="mi-td mono" style="text-align:center;color:var(--muted2);">\u20ac' + d.range[0] + 'k \u2013 \u20ac' + d.range[1] + 'k</td>' +
-      '<td class="mi-td">' +
-        '<div style="display:flex;align-items:center;gap:6px;">' +
-          '<div style="flex:1;height:6px;background:var(--border2);border-radius:3px;overflow:hidden;">' +
-            '<div style="height:100%;width:'+barW+'%;background:'+col+';border-radius:3px;"></div>' +
-          '</div>' +
-          '<span style="font-family:DM Mono,monospace;font-size:8px;color:'+col+';min-width:42px;">' + label + '</span>' +
-        '</div>' +
-      '</td></tr>';
-  });
-
-  html += '</tbody></table></div>';
-  html += '<div style="margin-top:10px;font-family:DM Mono,monospace;font-size:9px;color:var(--muted2);">' +
-    'Elasticity coefficient: -1.0 = 1% price increase \u2192 1% volume decrease \u00b7 ' +
-    '<span style="color:var(--green);">Low</span> = premium segment, less price sensitive \u00b7 ' +
-    '<span style="color:var(--red);">High</span> = mass market, very price sensitive</div>';
-  return html;
-}
-
-// ── REPORT 5: Tech Trends ──────────────────────────────────
-function renderTechTrends() {
-  var hist     = _mi.data.hist || {};
-  var rounds   = (hist.rounds   || []).sort(function(a,b){return a.round_number-b.round_number;});
-  var seg_outs = hist.seg_outcomes || [];
-  var vehicles = _mi.data.tech || [];
-
-  // Current vehicle portfolio analysis
-  var total  = vehicles.length || 1;
-  var pwtCounts = {};
-  var adasSum = 0, adasCount = 0, bevCount = 0;
-  vehicles.forEach(function(v) {
-    var rs  = v.rolled_up_specs || {};
-    var pwt = rs.pwt_type || 'Unknown';
-    pwtCounts[pwt] = (pwtCounts[pwt]||0)+1;
-    if (['BEV','FCEV'].indexOf(pwt)>=0) bevCount++;
-    if (rs.adas_level!=null){adasSum+=parseFloat(rs.adas_level);adasCount++;}
-  });
-  var evPct   = Math.round(bevCount/total*100);
-  var avgAdas = adasCount>0?(adasSum/adasCount).toFixed(1):'—';
-  var colors  = ['var(--cyan)','var(--gold)','var(--green)','var(--purple)','var(--orange)','var(--blue)','var(--red)'];
-  var pwtKeys = Object.keys(pwtCounts).sort(function(a,b){return pwtCounts[b]-pwtCounts[a];});
-
-  var html = '';
-
-  // ── Historical revenue trend by segment (instructor only) ──
-  var isInstr3 = currentUser && currentUser.role === 'instructor';
-  if (isInstr3 && rounds.length > 0 && seg_outs.length > 0) {
-    html += '<div style="font-family:DM Mono,monospace;font-size:8px;text-transform:uppercase;letter-spacing:1.5px;color:var(--muted);margin-bottom:10px;">Revenue by Segment — 8 Quarter Trend (€M total market)</div>';
-    html += '<div style="background:var(--s2);border:1px solid var(--border);border-radius:4px;padding:12px;margin-bottom:16px;">';
-
-    // Aggregate revenue per segment per quarter
-    var segs = [...new Set(seg_outs.map(function(s){return s.segment_code;}))];
-    var segCols = {a_segment:'var(--cyan)',b_segment:'var(--gold)',c_segment:'var(--green)',
-      d_segment:'var(--purple)',e_segment:'var(--orange)',f_segment:'var(--blue)',
-      mpv:'#f472b6',pickup:'#34d399',sports:'#fb923c',c_van:'#60a5fa',d_van:'#a78bfa',e_van:'#fbbf24'};
-    var segRevByQtr = {};
-    segs.forEach(function(seg) {
-      segRevByQtr[seg] = rounds.map(function(r) {
-        return seg_outs.filter(function(s){return s.segment_code===seg&&s.round_id===r.id;})
-          .reduce(function(sum,s){return sum+(parseFloat(s.revenue_m)||0);},0);
-      });
-    });
-
-    var svgW=700,svgH=140,padL=50,padR=10,padT=8,padB=24;
-    var cw=svgW-padL-padR, ch=svgH-padT-padB, nQ=rounds.length;
-    var allRevs=[];
-    segs.forEach(function(seg){segRevByQtr[seg].forEach(function(v){allRevs.push(v);});});
-    var maxR=Math.max.apply(null,allRevs)||1;
-
-    html += '<svg viewBox="0 0 '+svgW+' '+svgH+'" style="width:100%;display:block;">';
-    [0,0.5,1].forEach(function(f){
-      var y=padT+ch*(1-f);
-      html+='<line x1="'+padL+'" y1="'+y+'" x2="'+(svgW-padR)+'" y2="'+y+'" stroke="rgba(255,255,255,0.05)" stroke-width="1"/>';
-      html+='<text x="'+(padL-3)+'" y="'+(y+3)+'" text-anchor="end" font-size="8" fill="#3a4860">€'+Math.round(maxR*f)+'M</text>';
-    });
-    rounds.forEach(function(r,i){
-      if(i%2===0||i===nQ-1){
-        var x=padL+(nQ===1?cw/2:i*cw/(nQ-1));
-        html+='<text x="'+x+'" y="'+(svgH-6)+'" text-anchor="middle" font-size="8" fill="#3a4860">'+(r.label||r.round_number)+'</text>';
-      }
-    });
-    segs.slice(0,6).forEach(function(seg,si) {
-      var col=segCols[seg]||colors[si%colors.length];
-      var pts=segRevByQtr[seg].map(function(v,i){
-        var x=padL+(nQ===1?cw/2:i*cw/(nQ-1));
-        var y=padT+ch*(1-v/maxR);
-        return x.toFixed(1)+','+y.toFixed(1);
-      }).join(' ');
-      html+='<polyline points="'+pts+'" fill="none" stroke="'+col+'" stroke-width="1.5" opacity="0.8"/>';
-    });
-    html+='</svg>';
-
-    // Segment legend
-    html+='<div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:6px;">';
-    segs.slice(0,6).forEach(function(seg,si){
-      var col=segCols[seg]||colors[si%colors.length];
-      html+='<span style="font-family:DM Mono,monospace;font-size:8px;display:flex;align-items:center;gap:4px;color:var(--muted2);">' +
-        '<span style="width:12px;height:2px;background:'+col+';display:inline-block;"></span>'+(SEG_NAMES&&SEG_NAMES[seg]?SEG_NAMES[seg]:seg)+'</span>';
-    });
-    html+='</div></div>';
-  }
-
-  // ── Current portfolio KPIs ──
-  html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">';
-
-  // Left: PWT mix
-  html += '<div><div style="font-family:DM Mono,monospace;font-size:8px;text-transform:uppercase;letter-spacing:1.5px;color:var(--muted);margin-bottom:10px;">Current Powertrain Mix</div>';
-  html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px;">';
-  html += kpiCard('EV Penetration', evPct+'%', 'var(--cyan)', 'BEV+FCEV in portfolio');
-  html += kpiCard('Avg ADAS Level', avgAdas+'/5', 'var(--green)', 'across all vehicles');
-  html += '</div>';
-  pwtKeys.forEach(function(pwt,i){
-    var cnt=pwtCounts[pwt]; var pct=Math.round(cnt/total*100);
-    var col=colors[i%colors.length];
-    html+='<div style="margin-bottom:7px;">' +
-      '<div style="display:flex;justify-content:space-between;font-size:10px;margin-bottom:3px;">' +
-        '<span style="color:var(--text);">'+pwt+'</span>' +
-        '<span style="font-family:DM Mono,monospace;color:'+col+';">'+pct+'% ('+cnt+')</span>' +
-      '</div>' +
-      '<div style="height:6px;background:var(--border2);border-radius:3px;overflow:hidden;">' +
-        '<div style="height:100%;width:'+pct+'%;background:'+col+';border-radius:3px;"></div>' +
-      '</div></div>';
-  });
-  html += '</div>';
-
-  // Right: ADAS levels
-  html += '<div><div style="font-family:DM Mono,monospace;font-size:8px;text-transform:uppercase;letter-spacing:1.5px;color:var(--muted);margin-bottom:10px;">ADAS Level Distribution</div>';
-  var adasLabels=['0: No Assist','1: Basic Assist','2: Partial Auto','3: Conditional Auto','4: High Auto','5: Full Auto'];
-  for(var lvl=0;lvl<=5;lvl++){
-    var cnt=vehicles.filter(function(v){return parseFloat((v.rolled_up_specs||{}).adas_level||0)===lvl;}).length;
-    var pct=Math.round(cnt/total*100);
-    var col=lvl===0?'var(--muted2)':lvl<=2?'var(--gold)':lvl<=3?'var(--cyan)':'var(--green)';
-    html+='<div style="margin-bottom:8px;">' +
-      '<div style="display:flex;justify-content:space-between;font-size:9px;margin-bottom:3px;">' +
-        '<span style="color:var(--text);">'+adasLabels[lvl]+'</span>' +
-        '<span style="font-family:DM Mono,monospace;color:'+col+';">'+pct+'%</span>' +
-      '</div>' +
-      '<div style="height:5px;background:var(--border2);border-radius:3px;overflow:hidden;">' +
-        '<div style="height:100%;width:'+pct+'%;background:'+col+';border-radius:3px;"></div>' +
-      '</div></div>';
-  }
-  html += '</div></div>';
-  return html;
-}
-
-
-// ── REPORT: Manufacturing Footprint ──────────────────────────
-function renderManufacturingFootprint() {
-  var plants = _mi.data.footprint || [];
-  var colors = ['var(--cyan)','var(--gold)','var(--green)','var(--purple)',
-    'var(--orange)','var(--blue)','var(--red)','#a78bfa','#f472b6','#34d399'];
-
-  if (plants.length === 0) {
-    return '<div style="padding:32px;text-align:center;color:var(--muted2);">' +
-      '<div style="font-size:32px;margin-bottom:8px;">🏭</div>' +
-      '<div style="font-weight:600;margin-bottom:4px;">No plant data available</div>' +
-      '<div style="font-size:11px;">Plants need to be initialised by the instructor via the Footprint Manager.</div></div>';
-  }
-
-  // Aggregate by team
-  var teamMap = {};
-  plants.forEach(function(p) {
-    if (!teamMap[p.team_name]) {
-      teamMap[p.team_name] = {
-        team_name: p.team_name,
-        team_type: p.team_type,
-        plants: [],
-        total_capacity_k: 0,
-        regions: {},
-        countries: {},
-      };
-    }
-    var t = teamMap[p.team_name];
-    t.plants.push(p);
-    var cap = parseInt(p.capacity_k) || 0;
-    t.total_capacity_k += cap;
-    var region = p.region || 'Unknown';
-    var country = p.country_name || p.country_code || 'Unknown';
-    t.regions[region]  = (t.regions[region]  || 0) + cap;
-    t.countries[country] = (t.countries[country] || 0) + cap;
-  });
-
-  var teams = Object.values(teamMap).sort(function(a,b){
-    return b.total_capacity_k - a.total_capacity_k;
-  });
-
-  // Global totals
-  var totalCap = plants.reduce(function(s,p){return s+(parseInt(p.capacity_k)||0);}, 0);
-  var allRegions = {};
-  var allCountries = {};
-  plants.forEach(function(p){
-    var r = p.region || 'Unknown';
-    var c = p.country_name || p.country_code || 'Unknown';
-    var cap = parseInt(p.capacity_k) || 0;
-    allRegions[r]   = (allRegions[r]   || 0) + cap;
-    allCountries[c] = (allCountries[c] || 0) + cap;
-  });
-
-  var html = '';
-
-  // ── Header KPIs ──
-  html += '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:16px;">';
-  html += kpiCard('Total Industry Capacity', totalCap.toLocaleString() + 'k units', 'var(--cyan)', 'all OEMs combined');
-  html += kpiCard('Plants in Operation', plants.filter(function(p){return p.status==='active';}).length + ' active', 'var(--green)', plants.length + ' total');
-  html += kpiCard('Manufacturing Regions', Object.keys(allRegions).length + ' regions', 'var(--gold)', Object.keys(allCountries).length + ' countries');
-  html += '</div>';
-
-  // ── Regional breakdown chart ──
-  html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:16px;">';
-
-  // Left: by region
-  html += '<div style="background:var(--s2);border:1px solid var(--border);border-radius:4px;padding:12px;">';
-  html += '<div style="font-family:DM Mono,monospace;font-size:8px;text-transform:uppercase;letter-spacing:1.5px;color:var(--muted);margin-bottom:10px;">Capacity by Region (k units)</div>';
-  var regionEntries = Object.entries(allRegions).sort(function(a,b){return b[1]-a[1];});
-  var regColors = ['var(--cyan)','var(--gold)','var(--green)','var(--purple)','var(--orange)'];
-  regionEntries.forEach(function(entry, i) {
-    var pct = Math.round(entry[1]/totalCap*100);
-    var col = regColors[i%regColors.length];
-    html += '<div style="margin-bottom:8px;">' +
-      '<div style="display:flex;justify-content:space-between;font-size:10px;margin-bottom:3px;">' +
-        '<span style="color:var(--text);">' + entry[0] + '</span>' +
-        '<span style="font-family:DM Mono,monospace;color:' + col + ';">' + entry[1].toLocaleString() + 'k (' + pct + '%)</span>' +
-      '</div>' +
-      '<div style="height:6px;background:var(--border2);border-radius:3px;overflow:hidden;">' +
-        '<div style="height:100%;width:' + pct + '%;background:' + col + ';border-radius:3px;"></div>' +
-      '</div></div>';
-  });
-  html += '</div>';
-
-  // Right: by country
-  html += '<div style="background:var(--s2);border:1px solid var(--border);border-radius:4px;padding:12px;">';
-  html += '<div style="font-family:DM Mono,monospace;font-size:8px;text-transform:uppercase;letter-spacing:1.5px;color:var(--muted);margin-bottom:10px;">Capacity by Country (k units)</div>';
-  var countryEntries = Object.entries(allCountries).sort(function(a,b){return b[1]-a[1];}).slice(0,8);
-  countryEntries.forEach(function(entry, i) {
-    var pct = Math.round(entry[1]/totalCap*100);
-    var col = colors[i%colors.length];
-    html += '<div style="margin-bottom:7px;">' +
-      '<div style="display:flex;justify-content:space-between;font-size:10px;margin-bottom:2px;">' +
-        '<span style="color:var(--text);">' + entry[0] + '</span>' +
-        '<span style="font-family:DM Mono,monospace;color:' + col + ';">' + entry[1].toLocaleString() + 'k</span>' +
-      '</div>' +
-      '<div style="height:5px;background:var(--border2);border-radius:3px;overflow:hidden;">' +
-        '<div style="height:100%;width:' + pct + '%;background:' + col + ';border-radius:3px;"></div>' +
-      '</div></div>';
-  });
-  html += '</div></div>';
-
-  // ── OEM Detail Table ──
-  html += '<div style="font-family:DM Mono,monospace;font-size:8px;text-transform:uppercase;letter-spacing:1.5px;color:var(--muted);margin-bottom:10px;">OEM Manufacturing Footprint</div>';
-  html += '<div style="overflow-x:auto;"><table class="mi-tbl"><thead><tr>' +
-    '<th class="mi-th">#</th>' +
-    '<th class="mi-th">OEM</th>' +
-    '<th class="mi-th">Type</th>' +
-    '<th class="mi-th" style="text-align:right;">Plants</th>' +
-    '<th class="mi-th" style="text-align:right;">Total Capacity</th>' +
-    '<th class="mi-th" style="text-align:right;">Capacity Share</th>' +
-    '<th class="mi-th">Primary Region</th>' +
-    '<th class="mi-th">Plant Details</th>' +
-    '</tr></thead><tbody>';
-
-  teams.forEach(function(team, i) {
-    var col = colors[i%colors.length];
-    var sharePct = totalCap > 0 ? Math.round(team.total_capacity_k/totalCap*100) : 0;
-    var primaryRegion = Object.entries(team.regions).sort(function(a,b){return b[1]-a[1];})[0];
-    var plantList = team.plants.slice(0,3).map(function(p){
-      return '<span style="font-family:DM Mono,monospace;font-size:8px;padding:1px 5px;border-radius:2px;' +
-        'background:rgba(255,255,255,0.05);margin-right:3px;">' +
-        (p.name||'Plant') + ' ' + (p.capacity_k||0) + 'k</span>';
-    }).join('');
-    if (team.plants.length > 3) plantList += '<span style="font-size:9px;color:var(--muted2);">+' + (team.plants.length-3) + ' more</span>';
-
-    html += '<tr class="mi-tr">' +
-      '<td class="mi-td" style="color:var(--muted2);">' + (i+1) + '</td>' +
-      '<td class="mi-td" style="font-weight:600;display:flex;align-items:center;gap:6px;">' +
-        '<span style="width:8px;height:8px;border-radius:50%;background:' + col + ';display:inline-block;flex-shrink:0;"></span>' +
-        team.team_name + '</td>' +
-      '<td class="mi-td" style="font-family:DM Mono,monospace;font-size:9px;color:var(--muted2);">' +
-        (team.team_type === 'ai' ? 'AI' : 'Human') + '</td>' +
-      '<td class="mi-td mono" style="text-align:right;">' + team.plants.length + '</td>' +
-      '<td class="mi-td mono" style="text-align:right;color:' + col + ';">' + team.total_capacity_k.toLocaleString() + 'k</td>' +
-      '<td class="mi-td" style="text-align:right;">' +
-        '<div style="display:flex;align-items:center;gap:6px;justify-content:flex-end;">' +
-          '<div style="width:60px;height:6px;background:var(--border2);border-radius:3px;overflow:hidden;">' +
-            '<div style="height:100%;width:' + sharePct + '%;background:' + col + ';border-radius:3px;"></div></div>' +
-          '<span style="font-family:DM Mono,monospace;font-size:10px;color:' + col + ';">' + sharePct + '%</span>' +
-        '</div></td>' +
-      '<td class="mi-td" style="font-size:10px;">' + (primaryRegion ? primaryRegion[0] + ' (' + primaryRegion[1] + 'k)' : '—') + '</td>' +
-      '<td class="mi-td">' + (plantList || '<span style="color:var(--muted2);font-size:10px;">No plants</span>') + '</td>' +
-    '</tr>';
-  });
-
-  html += '</tbody></table></div>';
-  return html;
+function _miSortBy(id, key) {
+  var s = _miSort[id];
+  _miSort[id] = {key: key, dir: s && s.key === key ? -s.dir : -1};
+  if (_mi.active_report) showMIReport(_mi.active_report);
 }
 
 
