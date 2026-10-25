@@ -2054,20 +2054,16 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
     <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid var(--border);cursor:pointer;"
          onclick="toggleMktResults()">
       <div style="display:flex;align-items:center;gap:10px;">
-        <div class="card-title" style="margin:0;">Market Simulation Results</div>
+        <div class="card-title" style="margin:0;">Market Results</div>
         <span id="mkt-results-round-badge" style="font-family:'DM Mono',monospace;font-size:8px;color:var(--muted2);"></span>
       </div>
       <div style="display:flex;align-items:center;gap:8px;">
-        <button id="mkt-run-btn" onclick="event.stopPropagation();runMarketClearing()"
-          style="font-family:'DM Mono',monospace;font-size:8px;padding:4px 12px;
-          border-radius:2px;border:1px solid rgba(74,222,128,.4);background:rgba(74,222,128,.08);
-          color:var(--green);cursor:pointer;">▶ Run Simulation</button>
         <span id="mkt-results-toggle" style="font-family:'DM Mono',monospace;font-size:10px;color:var(--muted);">▲</span>
       </div>
     </div>
     <div id="mkt-results-body" style="padding:14px;">
       <div style="color:var(--muted2);font-family:'DM Mono',monospace;font-size:11px;padding:8px 0;">
-        Click ▶ Run Simulation to compute market share and revenue for the current round.
+        No cleared quarter yet. Results appear here once the instructor clears a round.
       </div>
     </div>
   </div>
@@ -13179,10 +13175,14 @@ function buildVehicleTable() {
     var bcBtn = (v._normStatus === 'plan' || v._normStatus === 'approved')
       ? '<button class="plan-act-bc" data-vid="'+vid+'" data-action="bc">BC →</button>'
       : '';
-    var statusBtn = v._normStatus === 'approved'
-      ? '<button class="plan-act-revise" data-vid="'+vid+'" data-action="revise">← Revise</button>'
+    // A model past its SOP is in production: it can only be ended through EOP (notice, supplier
+    // cancellation, write-off), never sent back to plan or deleted (the server refuses both too)
+    var _curQ = (currentRoundYear - 2025) * 4 + currentRoundQuarter - 1;
+    var inProd = v._normStatus === 'approved' && v.start_year && ((v.start_year - 2025) * 4 + (v.start_quarter || 1) - 1) <= _curQ;
+    var statusBtn = v._normStatus === 'approved' && !inProd
+      ? '<button class="plan-act-revise" data-vid="'+vid+'" data-action="revise" title="Back to plan: re-open the business case before SOP">← Revise</button>'
       : '';  // Approval only via Business Case modal
-    var delBtn = '<button class="plan-act-del" data-vid="'+vid+'" data-action="delete">✕</button>';
+    var delBtn = inProd ? '' : '<button class="plan-act-del" data-vid="'+vid+'" data-action="delete">✕</button>';
     var eopBtn = v._normStatus === 'approved'
       ? '<button class="plan-act-eop" data-vid="'+vid+'" data-action="eop" title="Extend or bring forward the end of production">EOP</button>'
       : '';
@@ -14885,7 +14885,7 @@ document.addEventListener('click', function(e) {
   if (!vid && ['bc','approve','revise','delete','study-submit','eop'].indexOf(action) >= 0) return;
   if (action === 'bc')           { openBCModal(vid); }
   if (action === 'approve')      { promoteVehicle(vid, 'approved'); }
-  if (action === 'revise')       { promoteVehicle(vid, 'plan'); }
+  if (action === 'revise')       { if (confirm('Send this model back to PLAN?\n\nIts approval is withdrawn: it will not go on sale until its business case is approved again.')) promoteVehicle(vid, 'plan'); }
   if (action === 'delete')       { deleteVehicle(vid); }
   if (action === 'eop')          { openEopModal(vid); }
   if (action === 'study-submit')       { submitStudyProposal(vid); }
@@ -18260,7 +18260,8 @@ function mcRenderTimeline() {
 // onTick(elapsed_s) is called on every poll. Resolves with the status (summary inside).
 async function _clearRoundAndWait(rid, onTick) {
   var base = API_URL + '/sessions/' + sessionId + '/rounds/' + rid;
-  var res  = await fetch(base + '/market-clear', { method: 'POST' });
+  // instructor only on the server (X-Instructor-Pin, 2026-10-25)
+  var res  = await fetch(base + '/market-clear', { method: 'POST', headers: _cmdAdminHeaders() });
   if (res.status !== 202 && res.status !== 409) {
     var err = {}; try { err = await res.json(); } catch(e) {}
     throw new Error(err.detail || ('Clearing could not start (HTTP ' + res.status + ')'));
@@ -31316,44 +31317,20 @@ function toggleMktResults() {
   if (tog)  tog.textContent    = _mktResultsOpen ? '▲' : '▼';
 }
 
-async function runMarketClearing() {
-  var btn = document.getElementById('mkt-run-btn');
-  if (btn) { btn.disabled = true; btn.textContent = '⏳ Running…'; }
-
-  // Get current round id
-  try {
-    var rRes  = await fetch(API_URL + '/sessions/' + sessionId + '/rounds');
-    var rData = await rRes.json();
-    var rounds = (rData.rounds || []).filter(function(r){ return !r.is_historical; });
-    if (!rounds.length) { toast('⚠ No rounds found — advance the round first'); return; }
-    var latestRound = rounds.reduce(function(a,b){ return a.round_number > b.round_number ? a : b; });
-
-    var badge = document.getElementById('mkt-results-round-badge');
-    if (badge) badge.textContent = 'Y' + (latestRound.year - 2024) + 'Q' + latestRound.quarter;
-
-    var st   = await _clearRoundAndWait(latestRound.id, function(sec) {
-      if (btn) btn.textContent = '⏳ Clearing… ' + Math.floor(sec / 60) + ':' + ('0' + (sec % 60)).slice(-2);
-    });
-    var data = st.summary || {};
-    await loadMarketResults();
-    toast('✓ Market cleared — ' + (data.vehicles_processed||0) + ' vehicles, ' + (data.segments_cleared||[]).length + ' segments');
-  } catch(e) {
-    toast('⚠ ' + e.message);
-  } finally {
-    if (btn) { btn.disabled = false; btn.textContent = '▶ Run Simulation'; }
-  }
-}
+// (runMarketClearing, the team page's "Run Simulation", was removed 2026-10-25: it cleared the
+// open round for every team. Clearing is the instructor's: mcRunClearing.)
 
 async function loadMarketResults() {
   try {
     var rRes  = await fetch(API_URL + '/sessions/' + sessionId + '/rounds');
     var rData = await rRes.json();
-    var rounds = (rData.rounds || []).filter(function(r){ return !r.is_historical; });
+    // the last quarter that has cleared (the open round has no results until the instructor clears it)
+    var rounds = (rData.rounds || []).filter(function(r){ return r.clearing_finished_at || r.phase === 'results'; });
     if (!rounds.length) return;
     var latest = rounds.reduce(function(a,b){ return a.round_number > b.round_number ? a : b; });
 
     var badge = document.getElementById('mkt-results-round-badge');
-    if (badge) badge.textContent = 'Y' + (latest.year - 2024) + 'Q' + latest.quarter;
+    if (badge) badge.textContent = 'Q' + latest.quarter + ' ' + latest.year + ' · last cleared';
 
     var res  = await fetch(API_URL + '/sessions/' + sessionId + '/rounds/' + latest.id + '/market-results');
     var data = await res.json();
