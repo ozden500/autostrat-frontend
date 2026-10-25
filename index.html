@@ -1086,6 +1086,7 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
 
   <!-- DECISIONS TAB -->
   <div class="ops-panel" id="ops-decisions">
+    <div id="shp-decisions" style="display:none"></div>
     <div class="mfg-decision-form">
       <div class="mfg-form-row">
         <div class="mfg-field">
@@ -1158,6 +1159,7 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
 
   <!-- PIPELINE TAB -->
   <div class="ops-panel" id="ops-pipeline">
+    <div id="shp-pipeline" style="display:none"></div>
     <div id="pipeline-empty" style="color:var(--muted2);font-size:13px;padding:24px 0">No plant decisions in progress.</div>
     <div id="pipeline-list"></div>
   </div>
@@ -18634,6 +18636,8 @@ var _FIN_LINES = {
     {l:'Aftersales programmes & parts logistics', k:'aftersales_opex_m', neg:true, optional:true},
     {l:'CO\u2082 compliance (provision, penalties, credits bought)', k:'co2_compliance_m', neg:true, optional:true},
     {l:'CO\u2082 credits sold to other OEMs (expected, settled in the period\'s last Q4)', k:'co2_credit_income_m', optional:true},
+    {l:'Plant fixed cost (capacity not used)', k:'plant_fixed_m', neg:true, optional:true},
+    {l:'Plant decisions (compaction, mothball, severance)', k:'plant_event_cost_m', neg:true, optional:true},
     {l:'Depreciation',           k:'depreciation_total_m', neg:true},
     {l:'  ↳ incl. book value written off at end of production (one-off)', k:'eop_writeoff_m', neg:true, optional:true},
     {l:'Factoring & reverse-factoring fees', k:'_wc_fin', neg:true, optional:true},
@@ -18729,7 +18733,7 @@ function _finPlOther(s) {
        - n('sales_network_m') - n('market_entry_m') - n('aftersales_opex_m')
        - n('co2_compliance_m') + n('co2_credit_income_m')
        - n('depreciation_total_m') - n('factoring_fee_m') - n('rf_fee_m') - n('lease_rent_m')
-       + n('fs_ebit_m') - n('ebit_m');
+       + n('fs_ebit_m') - n('plant_fixed_m') - n('plant_event_cost_m') - n('ebit_m');
 }
 
 // Financial page sections: every element with data-fin-sec (a space-separated list) shows only
@@ -18790,6 +18794,7 @@ function _finStripRender() {
       'Marketing (brand, launch, special series, research)': -(n(s, 'marketing_m') + n(s, 'launch_marketing_m') + n(s, 'lifecycle_mkt_m') + n(s, 'research_m')),
       'Sales network & market entry': -(n(s, 'sales_network_m') + n(s, 'market_entry_m')),
       'Aftersales programmes': -n(s, 'aftersales_opex_m'),
+      'Plants (unused capacity, decisions)': -(n(s, 'plant_fixed_m') + n(s, 'plant_event_cost_m')),
       'CO₂ compliance & credits': n(s, 'co2_credit_income_m') - n(s, 'co2_compliance_m'),
       'Depreciation (ongoing)': -(n(s, 'depreciation_total_m') - wo),
       'Written off at end of production': -wo,
@@ -20681,6 +20686,251 @@ function updateFpCountryDropdown() {
   ).join('');
 }
 
+// ── Shared plants (docs/PLANT_CAPACITY_SPEC.md): Industrial Ops Footprint / Decisions / Pipeline ──
+// A session with plant_model 'shared' runs on team plants: a hall per site, module lines inside it,
+// each model's reservation on its lines from SOP to EOP. GET …/plants is the one source; decisions go
+// through POST …/plant-events (dry = preview). Per-vehicle sessions keep the legacy views below.
+var _SHP = { shared: false, data: null, preview: null };
+var _SHP_TYPE = { platform: 'Platform', tophat: 'Top hat', ice_pwt: 'Engine', epwt: 'E-drive', battery: 'Battery' };
+var _SHP_KIND = {
+  build: 'Build a plant', expand_hall: 'Expand a hall', mothball: 'Mothball a plant', reopen: 'Reopen a plant',
+  close: 'Close a plant', sell: 'Sell a plant', reservation_decrease: 'Lower a reservation (keep the line)',
+  line_compact: 'Compact a line', reservation_increase: 'Raise a reservation'
+};
+
+async function _shpLoad() {
+  if (!teamId || !sessionId) return false;
+  try {
+    var r = await fetch(API_URL + '/sessions/' + sessionId + '/teams/' + teamId + '/plants');
+    if (!r.ok) { _shpSetMode(false); return false; }
+    var d = await r.json();
+    if (d.plant_model !== 'shared') { _shpSetMode(false); return false; }
+    _SHP.data = d;
+    _shpSetMode(true);
+    _shpRenderFootprint();
+    _shpRenderDecisions();
+    _shpRenderPipeline();
+    _shpKpis();
+    return true;
+  } catch (e) { console.warn('[plants] load failed', e); _shpSetMode(false); return false; }
+}
+
+function _shpSetMode(on) {
+  _SHP.shared = on;
+  var show = function (id, v) { var el = document.getElementById(id); if (el) el.style.display = v ? '' : 'none'; };
+  show('shp-decisions', on); show('shp-pipeline', on);
+  document.querySelectorAll('#ops-decisions > .mfg-decision-form, #pipeline-empty, #pipeline-list')
+    .forEach(function (el) { el.style.display = on ? 'none' : ''; });
+}
+
+function _shpKpis() {
+  var ps = (_SHP.data.plants || []).filter(function (p) { return p.status === 'active'; });
+  var el = function (id) { return document.getElementById(id); };
+  var cars = ps.filter(function (p) { return p.ptype === 'vehicle'; }).reduce(function (s, p) { return s + p.hall_k; }, 0);
+  if (el('ops-capacity')) el('ops-capacity').textContent = Math.round(cars) + 'k';
+  if (el('ops-veh-plants')) el('ops-veh-plants').textContent = ps.filter(function (p) { return p.ptype === 'vehicle'; }).length;
+  if (el('ops-pt-plants')) el('ops-pt-plants').textContent = ps.filter(function (p) { return p.ptype === 'powertrain'; }).length;
+}
+
+function _shpGauge(used, hall, label) {
+  var pct = hall > 0 ? Math.min(100, used / hall * 100) : 0;
+  var col = pct > 95 ? 'var(--red)' : pct > 80 ? 'var(--gold)' : 'var(--cyan)';
+  return '<div style="margin:4px 0;"><div style="display:flex;justify-content:space-between;font-family:\'DM Mono\',monospace;font-size:10px;color:var(--muted2);">'
+    + '<span>' + label + '</span><span>' + Math.round(used) + 'k of ' + Math.round(hall) + 'k · ' + Math.round(Math.max(0, hall - used)) + 'k free</span></div>'
+    + '<div style="height:7px;background:var(--s3,var(--s2));border-radius:4px;overflow:hidden;border:1px solid var(--border);">'
+    + '<div style="height:100%;width:' + pct.toFixed(1) + '%;background:' + col + ';"></div></div></div>';
+}
+
+// a line's reservations as bars over 16 quarters from the open one; a model ending within 4 quarters is a run-out
+function _shpTimeline(line, q0) {
+  var N = 16, cap = Math.max(line.capacity_k || 0, 1);
+  var head = '<div style="display:grid;grid-template-columns:120px repeat(' + N + ',1fr);gap:1px;font-family:\'DM Mono\',monospace;font-size:8px;color:var(--muted);">'
+    + '<div></div>';
+  for (var i = 0; i < N; i++) head += '<div style="text-align:center;">' + ((i % 4 === 0) ? _qLabel(q0 + i).replace(' ', '<br>') : '') + '</div>';
+  head += '</div>';
+  var rows = (line.reservations || []).filter(function (r) { return r.to_qabs >= q0; }).map(function (r) {
+    var runout = r.to_qabs < q0 + 4;
+    var cells = '';
+    for (var i = 0; i < N; i++) {
+      var q = q0 + i, on = q >= r.from_qabs && q <= r.to_qabs;
+      cells += '<div title="' + _esc(r.vehicle_name || '') + ' ' + r.capacity_k + 'k in ' + _qLabel(q) + '" style="height:10px;border-radius:2px;background:'
+        + (on ? (runout ? 'var(--gold)' : 'var(--cyan)') : 'var(--s2)') + ';opacity:' + (on ? (0.35 + 0.65 * Math.min(1, r.capacity_k / cap)).toFixed(2) : 1) + ';"></div>';
+    }
+    return '<div style="display:grid;grid-template-columns:120px repeat(' + N + ',1fr);gap:1px;align-items:center;margin-top:2px;">'
+      + '<div style="font-size:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="' + _esc(r.vehicle_name || '') + ' · ' + r.from + ' – ' + r.to + '">'
+      + _esc(r.vehicle_name || r.vehicle_id.slice(0, 6)) + ' <span style="color:var(--muted2);font-family:\'DM Mono\',monospace;">' + Math.round(r.capacity_k) + 'k</span></div>' + cells + '</div>';
+  }).join('');
+  return head + (rows || '<div style="font-size:10px;color:var(--muted2);padding:4px 0;">No model reserves this line from now on: its room can go to a new model.</div>');
+}
+
+function _shpRenderFootprint() {
+  var d = _SHP.data, el = document.getElementById('fp-content');
+  if (!el) return;
+  var plants = d.plants || [];
+  var fixedQ = plants.reduce(function (s, p) { return s + (p.fixed_cost_q_at_reserved_m || 0); }, 0);
+  var h = '<div style="font-size:11px;color:var(--muted2);margin-bottom:12px;line-height:1.5;">'
+    + 'Your plants in ' + _qLabel(d.qabs) + '. A <b>hall</b> is the room a plant has (cars or powertrain units a year). '
+    + 'Inside it sit <b>lines</b>, one per module family: a car needs a slot on its platform line and on its top hat line, '
+    + 'its powertrain comes from a powertrain plant. Each model <b>reserves</b> line capacity from SOP to EOP; a new model '
+    + 'fits only in free room, so plan plant decisions (Decisions tab) before you submit it. '
+    + 'Unused hall capacity costs <b>€' + fixedQ.toFixed(1) + 'M</b> this quarter at reserved volumes.</div>';
+  if (!plants.length) {
+    h += '<div class="card" style="padding:16px;font-size:12px;">You have no plants yet. Build one on the Decisions tab: it takes '
+      + d.lead_times.build_q + ' quarters, so a model can only use it from then.</div>';
+    el.innerHTML = h; return;
+  }
+  plants.forEach(function (p) {
+    var types = p.ptype === 'vehicle' ? ['platform', 'tophat'] : ['ice_pwt', 'epwt', 'battery'];
+    var badge = { active: 'var(--green)', building: 'var(--gold)', mothballed: 'var(--muted2)', closed: 'var(--red)', sold: 'var(--red)' }[p.status] || 'var(--muted2)';
+    h += '<div class="card" style="padding:14px 16px;margin-bottom:12px;">'
+      + '<div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px;flex-wrap:wrap;">'
+      + '<div><span style="font-weight:700;font-size:13px;">' + _esc(p.name || (p.country_code + ' plant')) + '</span> '
+      + '<span style="font-family:\'DM Mono\',monospace;font-size:10px;color:var(--muted2);">' + (p.ptype === 'vehicle' ? 'vehicle plant' : 'powertrain plant') + ' · ' + p.country_code + '</span> '
+      + '<span style="font-family:\'DM Mono\',monospace;font-size:9px;color:' + badge + ';border:1px solid ' + badge + ';border-radius:3px;padding:0 5px;margin-left:4px;">' + p.status + (p.status === 'building' ? ' · ready ' + p.ready : '') + '</span></div>'
+      + '<div style="font-family:\'DM Mono\',monospace;font-size:10px;color:var(--muted2);">hall ' + Math.round(p.hall_k) + 'k'
+      + (p.hall_committed_k > p.hall_k + 0.5 ? ' → ' + Math.round(p.hall_committed_k) + 'k decided' : '')
+      + ' · fixed cost €' + (p.fixed_cost_q_at_reserved_m || 0).toFixed(1) + 'M/q of €' + (p.fixed_cost_q_full_m || 0).toFixed(1) + 'M if idle</div></div>';
+    if (p.ptype === 'vehicle') {
+      types.forEach(function (t) { h += _shpGauge(p.hall_k - (p.hall_free_k[t] || 0), p.hall_k, _SHP_TYPE[t] + ' lines in the hall'); });
+    } else {
+      h += _shpGauge(p.hall_k - (p.hall_free_k[types[0]] || 0), p.hall_k, 'Powertrain lines in the hall');
+    }
+    (p.lines || []).forEach(function (l) {
+      h += '<div style="border-top:1px solid var(--border);margin-top:10px;padding-top:8px;">'
+        + '<div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:4px;flex-wrap:wrap;gap:6px;">'
+        + '<span><b>' + (_SHP_TYPE[l.module_type] || l.module_type) + ' line</b> · ' + _esc(l.family_name || 'family ' + String(l.family_root_id || '').slice(0, 6)) + '</span>'
+        + '<span style="font-family:\'DM Mono\',monospace;font-size:10px;color:var(--muted2);">' + Math.round(l.capacity_k) + 'k line · '
+        + Math.round(l.reserved_k) + 'k reserved now · <span style="color:' + (l.free_k > 0.5 ? 'var(--green)' : 'var(--muted2)') + ';">' + Math.round(l.free_k) + 'k free</span></span></div>'
+        + _shpTimeline(l, d.qabs) + '</div>';
+    });
+    if (!(p.lines || []).length) h += '<div style="font-size:10px;color:var(--muted2);margin-top:8px;">No lines yet: the whole hall is free for a new model.</div>';
+    h += '</div>';
+  });
+  h += '<div style="font-family:\'DM Mono\',monospace;font-size:9px;color:var(--muted);margin-top:4px;">'
+    + '<span style="color:var(--cyan);">■</span> reserved · <span style="color:var(--gold);">■</span> run-out (ends within 4 quarters: lower or compact it to free room)</div>';
+  el.innerHTML = h;
+}
+
+function _shpOpts(list, val, lab) {
+  return list.map(function (x) { return '<option value="' + _esc(val(x)) + '">' + _esc(lab(x)) + '</option>'; }).join('');
+}
+
+function _shpRenderDecisions() {
+  var el = document.getElementById('shp-decisions');
+  if (!el) return;
+  var kind = (document.getElementById('shp-kind') || {}).value || 'build';
+  var d = _SHP.data, plants = d.plants || [];
+  var lines = [];
+  plants.forEach(function (p) { (p.lines || []).forEach(function (l) { lines.push({ p: p, l: l }); }); });
+  var lab = 'font-family:\'DM Mono\',monospace;font-size:9px;letter-spacing:1px;text-transform:uppercase;color:var(--muted2);display:block;margin-bottom:3px;';
+  var inp = 'background:var(--s2);border:1px solid var(--border2);color:var(--text);border-radius:4px;padding:5px 8px;font-size:12px;min-width:160px;';
+  var f = function (label, html) { return '<div style="display:flex;flex-direction:column;"><label style="' + lab + '">' + label + '</label>' + html + '</div>'; };
+  var h = '<div style="font-size:11px;color:var(--muted2);margin-bottom:12px;line-height:1.5;">Plant decisions buy or release room. '
+    + 'A new plant is ready in ' + d.lead_times.build_q + ' quarters, a hall expansion in ' + d.lead_times.expand_q
+    + '. Line changes apply from the quarter you choose (next quarter at the earliest). Preview first: nothing is written until you confirm.</div>'
+    + '<div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;">'
+    + f('Decision', '<select id="shp-kind" style="' + inp + '" onchange="_shpRenderDecisions()">'
+      + Object.keys(_SHP_KIND).map(function (k) { return '<option value="' + k + '"' + (k === kind ? ' selected' : '') + '>' + _SHP_KIND[k] + '</option>'; }).join('') + '</select>');
+  if (kind === 'build') {
+    var cs = [];
+    Object.keys(mfgCountries || {}).forEach(function (r) { (mfgCountries[r] || []).forEach(function (c) { cs.push(c); }); });
+    h += f('Plant type', '<select id="shp-ptype" style="' + inp + '"><option value="vehicle">Vehicle plant</option><option value="powertrain">Powertrain plant</option></select>')
+      + f('Country', '<select id="shp-cc" style="' + inp + '">' + _shpOpts(cs, function (c) { return c.country_code; }, function (c) { return c.country_name + ' (' + c.country_code + ')'; }) + '</select>')
+      + f('Hall (k / yr)', '<input id="shp-hall" type="number" min="20" step="10" value="250" style="' + inp + 'min-width:90px;width:100px;">');
+  } else if (['expand_hall', 'mothball', 'reopen', 'close', 'sell'].indexOf(kind) >= 0) {
+    h += f('Plant', '<select id="shp-plant" style="' + inp + '">' + _shpOpts(plants, function (p) { return p.id; },
+      function (p) { return (p.name || p.country_code) + ' · ' + p.ptype + ' · ' + p.status + ' · hall ' + Math.round(p.hall_k) + 'k'; }) + '</select>');
+    if (kind === 'expand_hall') h += f('Add (k / yr)', '<input id="shp-hall" type="number" min="10" step="10" value="50" style="' + inp + 'min-width:90px;width:100px;">');
+  } else {
+    var opts = [];
+    lines.forEach(function (x) {
+      (x.l.reservations || []).filter(function (r) { return r.to_qabs > d.qabs; }).forEach(function (r) {
+        opts.push({ v: x.l.id + '|' + r.vehicle_id, t: (r.vehicle_name || r.vehicle_id.slice(0, 6)) + ' · ' + (_SHP_TYPE[x.l.module_type] || x.l.module_type)
+          + ' line, ' + (x.p.name || x.p.country_code) + ' · ' + Math.round(r.capacity_k) + 'k to ' + r.to });
+      });
+    });
+    var qs = [];
+    for (var i = 1; i <= 12; i++) qs.push(d.qabs + i);
+    h += f('Model on a line', '<select id="shp-res" style="' + inp + 'min-width:280px;">' + _shpOpts(opts, function (o) { return o.v; }, function (o) { return o.t; }) + '</select>')
+      + f('New reservation (k / yr)', '<input id="shp-newk" type="number" min="0" step="5" value="50" style="' + inp + 'min-width:90px;width:100px;">')
+      + f('From', '<select id="shp-from" style="' + inp + 'min-width:100px;">' + _shpOpts(qs, function (q) { return q; }, function (q) { return _qLabel(q); }) + '</select>');
+  }
+  h += '<button onclick="_shpSubmit(true)" style="background:var(--s2);color:var(--text);border:1px solid var(--border2);border-radius:4px;padding:6px 14px;font-size:11px;font-weight:700;cursor:pointer;">Preview</button>'
+    + '<button id="shp-confirm" onclick="_shpSubmit(false)" disabled style="background:var(--gold);color:#000;border:none;border-radius:4px;padding:6px 14px;font-size:11px;font-weight:700;cursor:pointer;opacity:.45;">Confirm</button>'
+    + '</div><div id="shp-msg" style="font-size:12px;margin-top:10px;line-height:1.5;"></div>';
+  var help = {
+    reservation_decrease: 'The model builds less from that quarter; the line keeps its size, so the room goes to another model of the same family at no cost.',
+    line_compact: 'The model builds less and the line shrinks by the same amount: hall room comes free for another family, at a compaction cost.',
+    reservation_increase: 'The model may build more. Free line capacity is used first; the rest needs a line expansion (capex) and free hall room.',
+    close: 'Only a plant no model reserves can close: severance is paid and the hall is written off.',
+    mothball: 'A mothballed plant builds nothing and keeps a fifth of its fixed cost.'
+  }[kind];
+  if (help) h += '<div style="font-size:10px;color:var(--muted2);margin-top:6px;">' + help + '</div>';
+  el.innerHTML = h;
+  _SHP.preview = null;
+}
+
+function _shpBody(dry) {
+  var v = function (id) { var e = document.getElementById(id); return e ? e.value : null; };
+  var b = { kind: v('shp-kind'), dry: dry };
+  if (b.kind === 'build') { b.ptype = v('shp-ptype'); b.country_code = v('shp-cc'); b.hall_k = parseFloat(v('shp-hall')); }
+  else if (['expand_hall', 'mothball', 'reopen', 'close', 'sell'].indexOf(b.kind) >= 0) {
+    b.plant_id = v('shp-plant'); if (b.kind === 'expand_hall') b.hall_k = parseFloat(v('shp-hall'));
+  } else {
+    var lr = (v('shp-res') || '|').split('|');
+    b.line_id = lr[0]; b.vehicle_id = lr[1]; b.new_k = parseFloat(v('shp-newk')); b.from_qabs = parseInt(v('shp-from'), 10);
+  }
+  return b;
+}
+
+async function _shpSubmit(dry) {
+  var msg = document.getElementById('shp-msg'), body = _shpBody(dry);
+  if (!dry && (!_SHP.preview || JSON.stringify(_SHP.preview) !== JSON.stringify(_shpBody(true)))) {
+    msg.innerHTML = '<span style="color:var(--gold);">Preview this decision first.</span>'; return;
+  }
+  msg.innerHTML = '<span style="color:var(--muted2);">' + (dry ? 'Pricing…' : 'Saving…') + '</span>';
+  try {
+    var r = await fetch(API_URL + '/sessions/' + sessionId + '/teams/' + teamId + '/plant-events',
+      { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    var d = await r.json();
+    if (!r.ok) { msg.innerHTML = '<span style="color:var(--red);">' + _esc(d.detail || ('Refused (' + r.status + ')')) + '</span>'; return; }
+    if (dry) {
+      var e = d.event || {};
+      var parts = [];
+      if (e.capex_m) parts.push('capex <b>€' + (+e.capex_m).toFixed(1) + 'M</b> (an asset, depreciated)');
+      if (e.cost_m) parts.push('cost <b>€' + (+e.cost_m).toFixed(1) + 'M</b> (expensed this quarter)');
+      if (e.delta_k) parts.push((e.delta_k > 0 ? '+' : '') + Math.round(e.delta_k) + 'k ' + (body.kind === 'build' || body.kind === 'expand_hall' ? 'hall' : 'line'));
+      msg.innerHTML = _SHP_KIND[body.kind] + ': ' + (parts.join(' · ') || 'no cost') + ' · effective <b>' + _esc(d.effective || '') + '</b>.';
+      _SHP.preview = body;
+      var c = document.getElementById('shp-confirm'); if (c) { c.disabled = false; c.style.opacity = 1; }
+    } else {
+      _SHP.data = d;
+      _shpRenderFootprint(); _shpRenderPipeline(); _shpKpis(); _shpRenderDecisions();
+      document.getElementById('shp-msg').innerHTML = '<span style="color:var(--green);">Saved: ' + _SHP_KIND[body.kind] + '.</span>';
+    }
+  } catch (err) { msg.innerHTML = '<span style="color:var(--red);">Could not reach the server.</span>'; }
+}
+
+function _shpRenderPipeline() {
+  var el = document.getElementById('shp-pipeline');
+  if (!el) return;
+  var d = _SHP.data, ev = d.pipeline || [];
+  var pname = {};
+  (d.plants || []).forEach(function (p) { pname[p.id] = p.name || p.country_code; });
+  if (!ev.length) { el.innerHTML = '<div style="color:var(--muted2);font-size:13px;padding:24px 0">No plant decisions still taking effect.</div>'; return; }
+  var label = { build: 'New plant', expand_hall: 'Hall expansion', mothball: 'Mothball', reopen: 'Reopen', close: 'Close', sell: 'Sale',
+    line_expand: 'Line expansion', line_compact: 'Line compaction', reservation_decrease: 'Reservation lowered', reservation_increase: 'Reservation raised' };
+  el.innerHTML = '<table style="width:100%;border-collapse:collapse;font-size:11px;"><tr style="font-family:\'DM Mono\',monospace;font-size:9px;color:var(--muted2);text-transform:uppercase;letter-spacing:1px;">'
+    + '<td style="padding:4px 6px;">Decision</td><td>Plant</td><td style="text-align:right;">Change</td><td style="text-align:right;">Capex</td><td style="text-align:right;">Cost</td><td style="text-align:right;padding-right:6px;">Effective</td></tr>'
+    + ev.sort(function (a, b) { return a.effective_qabs - b.effective_qabs; }).map(function (e) {
+      return '<tr style="border-top:1px solid var(--border);"><td style="padding:5px 6px;">' + (label[e.kind] || e.kind) + '</td><td>' + _esc(pname[e.plant_id] || '') + '</td>'
+        + '<td style="text-align:right;font-family:\'DM Mono\',monospace;">' + (e.delta_k ? (e.delta_k > 0 ? '+' : '') + Math.round(e.delta_k) + 'k' : '—') + '</td>'
+        + '<td style="text-align:right;font-family:\'DM Mono\',monospace;">' + (e.capex_m ? '€' + e.capex_m.toFixed(1) + 'M' : '—') + '</td>'
+        + '<td style="text-align:right;font-family:\'DM Mono\',monospace;">' + (e.cost_m ? '€' + e.cost_m.toFixed(1) + 'M' : '—') + '</td>'
+        + '<td style="text-align:right;padding-right:6px;font-family:\'DM Mono\',monospace;">' + e.effective + '</td></tr>';
+    }).join('') + '</table>';
+}
+
 function opsTab(tab, el) {
   document.querySelectorAll('.ops-tab').forEach(t => t.classList.remove('active'));
   document.querySelectorAll('.ops-panel').forEach(p => p.classList.remove('active'));
@@ -20706,6 +20956,7 @@ function opsTab(tab, el) {
 
 async function loadMfgFootprint(forceRefresh = false) {
   await loadMfgCountries();
+  if (await _shpLoad()) return;   // shared-plant session: team plants, lines, reservations
   if (!teamId || !sessionId) {
     // No session yet — show empty regions
     mfgPlants = [];
@@ -20976,6 +21227,7 @@ function _fpBuildDataModel() {
 
 // ── FOOTPRINT TAB: RENDER ──────────────────────────────────────────────────────
 function renderFootprint() {
+  if (_SHP.shared && _SHP.data) { _shpRenderFootprint(); return; }
   var el = document.getElementById('fp-content');
   if (!el) return;
 
@@ -21340,6 +21592,7 @@ function _fpDiscardAllocations() {
 }
 
 function updateMfgKPIs() {
+  if (_SHP.shared && _SHP.data) { _shpKpis(); return; }
   const activePlants = mfgPlants.filter(p => p.status === 'active');
   const totalCap  = activePlants.reduce((s,p) => s+p.capacity_k, 0);
   const vehCount  = activePlants.filter(p => p.type==='vehicle').length;
@@ -21516,6 +21769,7 @@ async function submitPlantDecision() {
 }
 
 function renderPipeline() {
+  if (_SHP.shared && _SHP.data) { _shpRenderPipeline(); return; }
   const emptyEl = document.getElementById('pipeline-empty');
   const listEl  = document.getElementById('pipeline-list');
   if (!listEl) return;
@@ -28931,6 +29185,180 @@ function _renderFootprintMatrix(){
   return h;
 }
 
+// ── §7 in a shared-plant session: place the model in the team's plants (docs/PLANT_CAPACITY_SPEC.md §4) ──
+// The tables below still size each plant entry (country, k / yr, automation, shift: they set the cost per
+// car). This panel maps each confirmed entry onto one of the team's plants and checks, from SOP to EOP,
+// that its platform and top hat (vehicle plant) and powertrain (powertrain plant) fit: reuse a line, share
+// the family line (a derivative pays its retool), expand it, or install a new line in free hall room.
+// POST …/plant-fit prices it; approval reserves it (the server re-checks, 409 if the room went).
+var _SHP_PROP = { data: null, fit: null };
+
+function _shpPropSlots() {
+  var out = [];
+  var add = function (mt, s) {
+    if (!s) return;
+    var m = s.module || {}, par = s.parent || null;
+    out.push({ module_type: mt,
+      module_id: s.mode === 'reuse' && m.id ? m.id : null,
+      parent_module_id: s.mode === 'derivative' && par && par.id ? par.id : null,
+      retool_f: s.mode === 'derivative' && s.deriv ? (s.deriv.retool_f || 0) : null,
+      config_key: m.config_key || (s.specs || {}).config_key || null, specs: s.specs || m.specs || {} });
+  };
+  add('platform', _prop.platform);
+  add('tophat', _prop.tophat);
+  if (_prop.pwt) add(_prop.pwt.type === 'epwt' ? 'epwt' : 'ice_pwt', _prop.pwt);
+  if (_prop.epwt && (!_prop.pwt || _prop.pwt.type !== 'epwt')) add('epwt', _prop.epwt);
+  return out;
+}
+
+function _shpPropSopEop() {
+  var v = _prop.study || {};
+  if (!v.start_year) return null;
+  var s = (v.start_year - 2025) * 4 + (v.start_quarter || 1) - 1;
+  var e = v.end_year ? (v.end_year - 2025) * 4 + (v.end_quarter || 4) - 1 : s + 27;
+  return [s, e];
+}
+
+function _shpConfirmed(list) {
+  var all = list || [], c = all.filter(function (f) { return f.vehicle_capacity_yr > 0; });
+  return c.length ? c : [];
+}
+
+async function _shpPropPanel() {
+  var host = document.getElementById('prop-operations-content');
+  if (!host || !teamId || !sessionId) return;
+  var se = _shpPropSopEop();
+  var url = API_URL + '/sessions/' + sessionId + '/teams/' + teamId + '/plants' + (se ? '?from_qabs=' + se[0] + '&to_qabs=' + se[1] : '');
+  try {
+    var r = await fetch(url);
+    if (!r.ok) return;
+    var d = await r.json();
+    if (d.plant_model !== 'shared') { if (_prop.operations) delete _prop.operations._plantFit; return; }
+    _SHP_PROP.data = d;
+  } catch (e) { return; }
+  var box = document.getElementById('prop-shp-area');
+  if (!box) {
+    box = document.createElement('div');
+    box.id = 'prop-shp-area';
+    host.insertBefore(box, host.firstChild);
+  }
+  _shpPropRender();
+}
+
+function _shpPropRender() {
+  var box = document.getElementById('prop-shp-area'), d = _SHP_PROP.data;
+  if (!box || !d) return;
+  var ops = _prop.operations || {}, se = _shpPropSopEop();
+  var vps = _shpConfirmed(ops.vehicle_plants), pps = _shpConfirmed(ops.powertrain_plants);
+  var mine = function (t) { return (d.plants || []).filter(function (p) { return p.ptype === t && p.status !== 'closed' && p.status !== 'sold'; }); };
+  var sel = 'background:var(--s2);border:1px solid var(--border2);color:var(--text);border-radius:3px;padding:3px 6px;font-size:10px;';
+  var plantSel = function (e, t, key) {
+    var list = mine(t);
+    if (!e.plant_ref) {
+      var same = list.filter(function (p) { return p.country_code === e.country_code; })[0];
+      if (same) e.plant_ref = same.id;
+    }
+    return '<select style="' + sel + '" onchange="_shpPropPick(\'' + key + '\',\'' + _esc(e.id) + '\',this.value)">'
+      + '<option value="">— choose a plant —</option>'
+      + list.map(function (p) {
+        var free = (p.hall_free_window_k || {})[t === 'vehicle' ? 'tophat' : 'ice_pwt'];
+        return '<option value="' + p.id + '"' + (p.id === e.plant_ref ? ' selected' : '') + '>' + _esc(p.name || p.country_code) + ' · '
+          + p.status + (p.status === 'building' ? ' (ready ' + p.ready + ')' : '') + ' · ' + Math.round(free || 0) + 'k free hall over the life</option>';
+      }).join('') + '</select>';
+  };
+  var h = '<div class="card" style="padding:12px 14px;margin-bottom:14px;border:1px solid var(--gold);">'
+    + '<div style="font-family:Orbitron,sans-serif;font-size:11px;color:var(--gold);margin-bottom:6px;">PLACE THE MODEL IN YOUR PLANTS</div>'
+    + '<div style="font-size:11px;color:var(--muted2);line-height:1.5;margin-bottom:8px;">This game runs on shared plants. '
+    + 'Size each plant below as usual, then pick which of your plants builds it. From '
+    + (se ? '<b>' + _qLabel(se[0]) + '</b> to <b>' + _qLabel(se[1]) + '</b>' : 'SOP to EOP')
+    + ' the model reserves room on your platform and top hat lines (vehicle plant) and on a powertrain line. '
+    + 'No room? Lower or compact a run-out model, or expand / build a plant on Industrial Ops → Decisions.</div>';
+  if (!(d.plants || []).length) {
+    h += '<div style="font-size:11px;color:var(--red);">You have no plants. Build one on Industrial Ops → Decisions first.</div></div>';
+    box.innerHTML = h; return;
+  }
+  if (!vps.length) {
+    h += '<div style="font-size:11px;color:var(--muted2);font-style:italic;">Confirm a vehicle plant allocation below, then place it here.</div></div>';
+    box.innerHTML = h; return;
+  }
+  h += '<table style="width:100%;border-collapse:collapse;font-size:10px;"><tr style="font-family:DM Mono,monospace;font-size:8px;color:var(--muted);text-transform:uppercase;">'
+    + '<td>Allocation</td><td style="text-align:right;">k / yr</td><td>Builds in</td></tr>';
+  vps.forEach(function (e) {
+    h += '<tr><td style="padding:3px 0;">Vehicle · ' + _esc(e.country_name || e.country_code || '') + '</td><td style="text-align:right;font-family:DM Mono,monospace;">'
+      + Math.round(e.target_capacity_k || e.vehicle_capacity_yr / 1000 || 0) + '</td><td style="padding-left:10px;">' + plantSel(e, 'vehicle', 'vehicle_plants') + '</td></tr>';
+  });
+  pps.slice(0, 1).forEach(function (e) {
+    h += '<tr><td style="padding:3px 0;">Powertrain · ' + _esc(e.country_name || e.country_code || '') + '</td><td style="text-align:right;font-family:DM Mono,monospace;">'
+      + Math.round(e.target_capacity_k || e.vehicle_capacity_yr / 1000 || 0) + '</td><td style="padding-left:10px;">' + plantSel(e, 'powertrain', 'powertrain_plants') + '</td></tr>';
+  });
+  h += '</table><div style="margin-top:8px;display:flex;gap:10px;align-items:center;">'
+    + '<button onclick="_shpPropCheck()" style="font-family:DM Mono,monospace;font-size:10px;padding:5px 14px;border-radius:3px;border:1px solid rgba(200,164,60,.4);background:var(--goldl);color:var(--gold);cursor:pointer;">Check fit</button>'
+    + '<span id="prop-shp-msg" style="font-size:10px;"></span></div><div id="prop-shp-res"></div></div>';
+  box.innerHTML = h;
+  if (ops._plantFit) _shpPropShow(ops._plantFit);
+}
+
+function _shpPropPick(key, id, plantId) {
+  var e = ((_prop.operations || {})[key] || []).filter(function (x) { return x.id === id; })[0];
+  if (e) e.plant_ref = plantId || null;
+  if (_prop.operations) delete _prop.operations._plantFit;   // the old check no longer holds
+  var r = document.getElementById('prop-shp-res'); if (r) r.innerHTML = '';
+}
+
+async function _shpPropCheck() {
+  _shpPropRender();   // allocations may have changed since the panel was drawn
+  var ops = _prop.operations || {}, se = _shpPropSopEop(), msg = document.getElementById('prop-shp-msg');
+  if (!msg) return;
+  if (!se) { msg.innerHTML = '<span style="color:var(--red);">Set the launch quarter (SOP) first.</span>'; return; }
+  var vps = _shpConfirmed(ops.vehicle_plants), pps = _shpConfirmed(ops.powertrain_plants);
+  var slots = _shpPropSlots(), pl = [];
+  var miss = vps.concat(pps.slice(0, 1)).filter(function (e) { return !e.plant_ref; });
+  if (miss.length) { msg.innerHTML = '<span style="color:var(--red);">Choose a plant for every allocation.</span>'; return; }
+  vps.forEach(function (e) {
+    var k = e.target_capacity_k || e.vehicle_capacity_yr / 1000 || 0;
+    slots.filter(function (s) { return s.module_type === 'platform' || s.module_type === 'tophat'; })
+      .forEach(function (s) { pl.push(Object.assign({ plant_id: e.plant_ref, capacity_k: k }, s)); });
+  });
+  if (pps.length) {
+    var kp = pps[0].target_capacity_k || pps[0].vehicle_capacity_yr / 1000
+      || vps.reduce(function (a, e) { return a + (e.target_capacity_k || 0); }, 0);
+    slots.filter(function (s) { return s.module_type === 'ice_pwt' || s.module_type === 'epwt'; })
+      .forEach(function (s) { pl.push(Object.assign({ plant_id: pps[0].plant_ref, capacity_k: kp }, s)); });
+  }
+  msg.innerHTML = '<span style="color:var(--muted2);">Checking…</span>';
+  try {
+    var r = await fetch(API_URL + '/sessions/' + sessionId + '/teams/' + teamId + '/plant-fit', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sop_qabs: se[0], eop_qabs: se[1], vehicle_id: (_prop.study || {}).id || null,
+        segment_code: (_prop.study || {}).segment_code, platform_size: _getPlatformSize(), body_type: _getBodyType(),
+        pwt_type: _pwtToManufKey(((_prop.study || {}).rolled_up_specs || {}).pwt_type || ''),
+        automation_level: vps[0].automation_level || 2, shift_structure: vps[0].shift_structure || 'CONTINENTAL', placements: pl }) });
+    var d = await r.json();
+    if (!r.ok) { msg.innerHTML = '<span style="color:var(--red);">' + _esc(d.detail || ('Refused (' + r.status + ')')) + '</span>'; return; }
+    ops._plantFit = { ok: d.ok, capex_m: d.capex_m, errors: d.errors, placements: d.placements, qabs: _SHP_PROP.data.qabs };
+    msg.innerHTML = '';
+    _shpPropShow(ops._plantFit);
+  } catch (e) { msg.innerHTML = '<span style="color:var(--red);">Could not reach the server.</span>'; }
+}
+
+function _shpPropShow(f) {
+  var el = document.getElementById('prop-shp-res');
+  if (!el) return;
+  var act = { reuse: 'reuses the line', share: 'shares the family line', expand: 'expands the family line', new_line: 'installs a new line' };
+  var names = {};
+  ((_SHP_PROP.data || {}).plants || []).forEach(function (p) { names[p.id] = p.name || p.country_code; });
+  el.innerHTML = '<div style="margin-top:8px;font-size:11px;color:' + (f.ok ? 'var(--green)' : 'var(--red)') + ';">'
+    + (f.ok ? '✓ Fits. Plant capex for this model: <b>€' + (+f.capex_m).toFixed(1) + 'M</b> (lines, expansions, retool; halls are on the plants). §10 uses this figure.'
+      : '✗ Does not fit: ' + _esc((f.errors || []).join('; '))) + '</div>'
+    + '<table style="width:100%;border-collapse:collapse;font-size:10px;margin-top:4px;">'
+    + (f.placements || []).map(function (p) {
+      return '<tr style="border-top:1px solid var(--border);"><td style="padding:3px 0;">' + (_SHP_TYPE[p.module_type] || p.module_type) + '</td><td>' + _esc(names[p.plant_id] || '') + '</td>'
+        + '<td>' + (act[p.action] || p.action || '') + (p.error ? ' · <span style="color:var(--red);">' + _esc(p.error) + '</span>' : '') + '</td>'
+        + '<td style="text-align:right;font-family:DM Mono,monospace;">' + (p.spare_k ? Math.round(p.spare_k) + 'k spare' : '') + (p.expand_k ? ' +' + Math.round(p.expand_k) + 'k' : '') + '</td>'
+        + '<td style="text-align:right;font-family:DM Mono,monospace;">€' + (+(p.capex_m || 0)).toFixed(1) + 'M</td></tr>';
+    }).join('') + '</table>';
+}
+
 async function buildMfgPlantSection() {
   var el = document.getElementById('prop-operations-content');
   if (!el) return;
@@ -29046,6 +29474,7 @@ async function buildMfgPlantSection() {
   html+='<div style="margin-top:14px;display:flex;justify-content:flex-end;"><button onclick="advanceToComponentsSourcing()" style="font-family:DM Mono,monospace;font-size:10px;padding:8px 18px;border-radius:3px;border:1px solid rgba(200,164,60,.4);background:var(--goldl);color:var(--gold);cursor:pointer;">Continue → Components Sourcing</button></div>';
   el.innerHTML = html;
   _buildPlantFromDecision();
+  _shpPropPanel();   // shared-plant session: place the model in the team's plants
 }
 
 // Legacy backward-compat shims
@@ -30661,6 +31090,8 @@ function calcPropBizCase() {
     (_conf.length?_conf:_all).forEach(function(f){toolingM+=f._computed?f._computed.total_inv_m||0:0;});
   });
   if(toolingM===0&&_m)toolingM=(_m.grand_total_inv_m||_m.total_investment_m||0);
+  // shared plants: the model pays its lines / expansions / retool (§7 fit); halls are the plants' own capex
+  if(_ops._plantFit&&_ops._plantFit.ok)toolingM=+_ops._plantFit.capex_m||0;
   if(_ops._sourcingCapexM)toolingM+=_ops._sourcingCapexM;
   var totalInvM=rdM+toolingM+_newMkt.entryM;
 
@@ -31242,6 +31673,12 @@ async function confirmProposal(acceptedSop) {
     // re-derives the enrichment from operations_plan either way.
     var _tpcOut = _enrichedTpc > 0 ? _enrichedTpc : _baseTpc;
     if (_tpcOut > 0) patch.total_unit_tpc_eur = Math.round(_tpcOut);
+    // shared plants: the §7 placement (plant_ref per allocation) travels with the submission;
+    // approval reserves it and refuses a model that no longer fits
+    if (_prop.operations && _prop.operations._plantFit) {
+      patch.operations_plan = _prop.operations;
+      if (!_prop.operations._plantFit.ok) toast('⚠ This model does not fit your plants yet (§7): it cannot be approved until it does');
+    }
 
     // \u2500\u2500 SOP readiness check \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
     var sopYear    = _prop.study.start_year    || null;
