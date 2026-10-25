@@ -26991,6 +26991,49 @@ var _MODINV_E = (function() {
           V_REF:V_REF, AUTO_INV:AUTO_INV, AUTO_LAB:AUTO_LAB, MULTI_ENERGY_STEP:MULTI_ENERGY_STEP};
 })();
 
+// ── SHARED PLANTS: hall and line capex, fixed running cost (2026-10-25) ───────────────────────
+// docs/PLANT_CAPACITY_SPEC.md §7. A plant's hall is bought once by a plant decision; models install
+// module lines in it. Hall + lines of a medium D SUV plant at 280k in DE = today's greenfield figure.
+// Mirrors financial_engine hall_capex_m / line_capex_m / plant_fixed_cost_m (parity-checked).
+var _PLANT_E = (function() {
+  var HALL_SHARE = {platform:0.45, tophat:0.45, marriage:0.45, pwt:0.35, epwt:0.35, battery:0.35};
+  var HALL_EUR_K = {vehicle:1.40, powertrain:0.37};     // €M per k of hall at 280k in DE
+  var HALL_REF_K = 280, HALL_EXP = 0.85;
+  var INDIRECT_HRS = {vehicle:3.0, powertrain:1.5};    // indirect staff hours per unit of capacity / yr
+  var MAINT_PA = 0.05, MOTHBALL_F = 0.20, LABOUR_REF = 52;
+  // labour €/h by country: a verbatim copy of financial_engine._COUNTRY_RATES (labour column)
+  var LABOUR = {US:38, MX:5, CA:34, DE:52, FR:47, IT:40, ES:28, PL:14, CZ:15, SK:13, RO:10, TR:8,
+                GB:44, ZA:7, MA:3, BR:9, AR:6, CN:9, JP:35, KR:24, IN:4};
+  function labour(cc) { var v = LABOUR[String(cc || '').toUpperCase()]; return v != null ? v : LABOUR_REF; }
+  function buildF(cc) { return 0.55 + 0.45 * labour(cc) / LABOUR_REF; }
+  function hallCapexM(type, hallK, cc) {
+    var hk = Math.max(0, parseFloat(hallK) || 0);
+    if (hk <= 0) return 0;
+    var base = (HALL_EUR_K[type] || HALL_EUR_K.vehicle) * HALL_REF_K;
+    return Math.round(base * Math.pow(hk / HALL_REF_K, HALL_EXP) * buildF(cc) * 10) / 10;
+  }
+  function lineCapexM(mod, ctx) {
+    var sh = HALL_SHARE[mod] != null ? HALL_SHARE[mod] : 0.45;
+    return Math.round((1 - sh) * _MODINV_E.investment(mod, ctx) * 10) / 10;
+  }
+  function fixedPerUnit(type, cc, grossCapexM, hallK) {
+    var hk = Math.max(1, parseFloat(hallK) || 0);
+    return (INDIRECT_HRS[type] != null ? INDIRECT_HRS[type] : 3.0) * labour(cc)
+         + MAINT_PA * (parseFloat(grossCapexM) || 0) * 1e6 / (hk * 1000);
+  }
+  function fixedCostM(type, cc, grossCapexM, hallK, unitsQ, status) {
+    status = status || 'active';
+    var hk = parseFloat(hallK) || 0;
+    if (status === 'building' || status === 'closed' || status === 'sold' || hk <= 0) return 0;
+    var fq = fixedPerUnit(type, cc, grossCapexM, hk) * hk * 1000 / 4 / 1e6;
+    if (status === 'mothballed') return Math.round(fq * MOTHBALL_F * 1e4) / 1e4;
+    var util = Math.max(0, parseFloat(unitsQ) || 0) * 4 / (hk * 1000);
+    return Math.round(fq * Math.max(0, 1 - util) * 1e4) / 1e4;
+  }
+  return {HALL_SHARE:HALL_SHARE, hallCapexM:hallCapexM, lineCapexM:lineCapexM,
+          fixedPerUnit:fixedPerUnit, fixedCostM:fixedCostM, buildF:buildF};
+})();
+
 // ── CAPACITY / SHIFT MANUFACTURING MODEL (JPH · takt · stations retired 2026-07-14) ──────────
 // A plant line is sized by TARGET ANNUAL CAPACITY + SHIFT STRUCTURE + AUTOMATION, not line speed:
 //   • eff_capacity_yr = target_capacity_k×1000 — the volume the line delivers (the team's allocation).
