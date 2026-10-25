@@ -2056,10 +2056,10 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
     <div id="perf-kpi-strip" style="display:grid;grid-template-columns:repeat(7,1fr);gap:8px;margin-bottom:14px;">
       <div class="kpi kk-c"><div class="kl">Revenue / Quarter</div><div class="kv" id="pk-rev" style="color:var(--cyan)">—</div><div class="kd neu" id="pk-rev-d">latest round</div></div>
       <div class="kpi kk-g"><div class="kl">Gross Margin</div><div class="kv" id="pk-gm" style="color:var(--gold)">—</div><div class="kd neu">this quarter</div></div>
-      <div class="kpi kk-b"><div class="kl">EBIT</div><div class="kv" id="pk-ebit" style="color:var(--blue)">—</div><div class="kd neu">this quarter</div></div>
-      <div class="kpi"><div class="kl">Units Sold</div><div class="kv" id="pk-units">—</div><div class="kd neu">this quarter</div></div>
-      <div class="kpi kk-g"><div class="kl">Revenue Rank</div><div class="kv" id="pk-rank" style="color:var(--green)">—</div><div class="kd neu" id="pk-rank-sub">of — teams</div></div>
-      <div class="kpi kk-p"><div class="kl">Avg Utility Score</div><div class="kv" id="pk-util" style="color:var(--purple)">—</div><div class="kd neu">portfolio avg</div></div>
+      <div class="kpi kk-b"><div class="kl">EBIT</div><div class="kv" id="pk-ebit" style="color:var(--blue)">—</div><div class="kd neu" id="pk-ebit-d">this quarter</div></div>
+      <div class="kpi"><div class="kl">Cars Sold</div><div class="kv" id="pk-units">—</div><div class="kd neu" id="pk-units-d">this quarter</div></div>
+      <div class="kpi kk-g"><div class="kl">Rank</div><div class="kv" id="pk-rank" style="color:var(--green)">—</div><div class="kd neu" id="pk-rank-sub">of — teams</div></div>
+      <div class="kpi kk-p"><div class="kl">Avg Utility Score</div><div class="kv" id="pk-util" style="color:var(--purple)">—</div><div class="kd neu" title="The product score buyers compare models on (50 = the outside benchmark car of the segment)">product score · 50 = benchmark</div></div>
       <div class="kpi kk-b"><div class="kl">Brand Equity</div><div class="kv" id="pk-bei" style="color:var(--cyan)">—</div><div class="kd neu" id="pk-bei-sub">BEI score</div></div>
     </div>
 
@@ -2076,7 +2076,7 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
         <div class="perf-legend" id="legend-ebit"></div>
       </div>
       <div class="perf-card">
-        <div class="perf-card-title">Market Share % — Vehicle Clearing Results</div>
+        <div class="perf-card-title">Share of all teams' cars sold %</div>
         <div class="perf-chart" id="chart-share"><div class="perf-no-data">No data yet</div></div>
         <div class="perf-legend" id="legend-share"></div>
       </div>
@@ -18129,7 +18129,7 @@ function mcRenderTimeline() {
     var bdrCol    = isCurrent ? '#2dd4bf' : (isHist ? 'rgba(167,139,250,.3)' : 'var(--border2)');
     var phC       = rnd.phase==='results'?'#4ade80':rnd.phase==='decision'?'#fbbf24':'#475569';
     var phT       = rnd.phase==='results'?'✓ Results':'⚡ Decision';
-    var label     = isHist ? ('Q'+rnd.quarter+' '+rnd.year) : ('Y'+(rnd.year-2024)+'Q'+rnd.quarter);
+    var label     = 'Q'+rnd.quarter+' '+rnd.year;
     var topLabel  = isHist ? 'HIST' : ('ROUND '+rnd.round_number);
     var topC      = isHist ? '#a78bfa' : 'var(--muted)';
     var isSel     = rnd.id === _tlSel;
@@ -18179,7 +18179,7 @@ function mcRenderTimeline() {
       var rank = ro.revenue_rank || ro.rank || '—';
       var rC   = rank===1?'#fbbf24':rank===2?'#b0c0d0':rank===3?'#c8a060':'var(--muted2)';
       var isH  = ro.is_historical;
-      var perLabel = ro.round_label || (isH ? ('Q'+ro.quarter+' '+ro.year) : ('Y'+(ro.year-2024)+'Q'+ro.quarter));
+      var perLabel = ro.round_label || ('Q'+ro.quarter+' '+ro.year);
       h += '<tr style="border-bottom:1px solid rgba(255,255,255,.04);">';
       h += '<td style="padding:4px 10px;color:'+(isH?'#a78bfa':'#2dd4bf')+';font-weight:600;white-space:nowrap;">'+perLabel+'</td>';
       h += '<td style="padding:4px 10px;color:var(--text);font-weight:600;">'+_esc(ro.team_name||'?')+'</td>';
@@ -18499,7 +18499,7 @@ async function renderBalanceSheet(data) {
               : '~' + (parseFloat(a.dep_per_unit_m||0)*1000).toFixed(1)+'k/ku';
             h += '<td style="padding:4px 8px;text-align:right;color:var(--red)">'+qtrDep+'</td>';
             h += '<td style="padding:4px 8px;text-align:right">' + life_rem + 'q</td>';
-            var eopLbl = a.eop_year ? 'Y'+(a.eop_year-2024)+'Q'+(a.eop_quarter||4) : '—';
+            var eopLbl = a.eop_year ? 'Q'+(a.eop_quarter||4)+' '+a.eop_year : '—';
             h += '<td style="padding:4px 8px;color:var(--muted2)">' + eopLbl + '</td>';
             h += '<td style="padding:4px 8px;color:'+impCol+';font-weight:700">' + impLbl + '</td>';
             h += '</tr>';
@@ -20154,7 +20154,7 @@ function _tcPwtLabel(pwt) {
 
 function _tcTimingLabel(year, quarter) {
   if (!year || !quarter) return '—';
-  return 'Y' + (year - 2024) + 'Q' + quarter;
+  return 'Q' + quarter + ' ' + year;
 }
 
 function switchAnalystTab(tab) {
@@ -21587,8 +21587,9 @@ async function loadPerformanceData() {
     // ── 1. Fetch dashboard data + financial history + BEI in parallel ─
     var dashUrl = API_URL + '/sessions/' + sessionId + '/performance-dashboard'
                 + (teamId ? '?team_id=' + teamId : '');
-    var finHistUrl = API_URL + '/sessions/' + sessionId + '/financial-history'
-                + (teamId ? '?team_id=' + teamId : '');
+    // every team's statements, pre-game quarters included: tiles and charts read the statement,
+    // the one P&L (round_outcomes are clearing's quick figures: EBIT = gross profit x 0.70)
+    var finHistUrl = API_URL + '/sessions/' + sessionId + '/financial-history?include_history=true';
     var [dashRes, oldRoundsRes, teamsRes, finHistRes] = await Promise.all([
       fetch(dashUrl),
       fetch(API_URL + '/sessions/' + sessionId + '/rounds'),
@@ -21622,7 +21623,7 @@ async function loadPerformanceData() {
     var sub = document.getElementById('perf-sub');
     if (sub && dash.latest_round) {
       var lr = dash.latest_round;
-      var lrLabel = lr.round_label || (lr.is_historical ? ('Q'+lr.quarter+' '+lr.year+' (Historical)') : ('Y'+(lr.year-2024)+'Q'+lr.quarter+' · Round '+lr.round_number));
+      var lrLabel = lr.round_label || ('Q'+lr.quarter+' '+lr.year);
       sub.textContent = 'Latest: ' + lrLabel + ' · ' + allTeams.length + ' teams';
     }
 
@@ -21652,24 +21653,38 @@ async function loadPerformanceData() {
       } catch(e) { /* BEI fetch non-fatal */ }
     }
 
-    // ── 2. Update KPI strip from market-clearing data ────────
+    // ── 2. KPI strip from the team's statement for the last cleared quarter ──
     var kpis = dash.kpis || {};
-    if (kpis.revenue_m != null) {
-      _setText('pk-rev',   '€' + kpis.revenue_m.toFixed(1) + 'M');
-      _setText('pk-gm',    (kpis.gross_margin_pct || 0).toFixed(1) + '%');
-      _setText('pk-ebit',  '€' + (kpis.ebit_m||0).toFixed(1) + 'M');
-      _setText('pk-units', (kpis.total_units||0).toLocaleString());
-      _setText('pk-rank',  (kpis.rank || kpis.revenue_rank) ? '#' + (kpis.rank || kpis.revenue_rank) : '—');
-      _setText('pk-rank-sub', 'of ' + (kpis.total_teams||'—') + ' teams');
-      _setText('pk-util',  kpis.avg_utility != null ? kpis.avg_utility : '—');
-      // BEI tile (updated below after beiData fetch)
+    var lrid = (dash.latest_round || {}).id;
+    var myS = (finHist[teamId] || {})[lrid] || null;
+    if (myS) {
+      var _n = function(v) { return parseFloat(v) || 0; };
+      var _m = function(v) { var x = Math.round(_n(v)); return (x < 0 ? '−' : '') + '€' + Math.abs(x).toLocaleString() + 'M'; };
+      var sRev = _n(myS.net_revenue_m), sE = _n(myS.ebit_m), sWo = _n(myS.eop_writeoff_m);
+      _setText('pk-rev',   _m(sRev));
+      _setText('pk-gm',    sRev > 0 ? (_n(myS.gross_profit_m) / sRev * 100).toFixed(1) + '%' : '—');
+      _setText('pk-ebit',  _m(sE));
+      _setText('pk-ebit-d', (sRev > 0 ? (sE / sRev * 100).toFixed(1).replace('-', '−') + '% margin' : '') + (sWo > 0 ? ' · ' + _m(sE + sWo) + ' excl. one-offs' : ''));
+      _setText('pk-units', Math.round(_n(myS.units_sold)).toLocaleString());
+      _setText('pk-units-d', _n(myS.fleet_units) > 0 ? Math.round(_n(myS.fleet_units)).toLocaleString() + ' to fleets' : 'this quarter');
+      var prevS = null;
+      Object.values(finHist[teamId] || {}).forEach(function(r) {
+        var qa = (r.year - 2025) * 4 + r.quarter - 1, ql = (myS.year - 2025) * 4 + myS.quarter - 1;
+        if (qa === ql - 1) prevS = r;
+      });
       var dEl = document.getElementById('pk-rev-d');
-      if (dEl && kpis.revenue_delta_pct != null) {
-        var dp = kpis.revenue_delta_pct;
-        dEl.textContent = (dp >= 0 ? '▲ +' : '▼ ') + dp + '% vs prev Q';
+      if (dEl && prevS && _n(prevS.net_revenue_m) > 0) {
+        var dp = (sRev / _n(prevS.net_revenue_m) - 1) * 100;
+        dEl.textContent = (dp >= 0 ? '▲ +' : '▼ ') + Math.abs(dp).toFixed(1) + '% vs prev Q';
         dEl.className = 'kd ' + (dp >= 0 ? 'up' : 'dn');
       }
     }
+    if (kpis.rank || kpis.revenue_rank) {
+      var _basis = {scorecard: 'scorecard: 50% shareholder return, 25% revenue, 25% EBIT margin', tsr: 'shareholder return', revenue: 'revenue'}[kpis.ranking_basis] || 'revenue';
+      _setText('pk-rank', '#' + (kpis.rank || kpis.revenue_rank));
+      _setText('pk-rank-sub', 'of ' + (kpis.total_teams || '—') + ' · ' + _basis);
+    }
+    _setText('pk-util', kpis.avg_utility != null ? kpis.avg_utility : '—');
     function _setText(id, val) { var e=document.getElementById(id); if(e) e.textContent=val; }
 
     // ── 3. Market-clearing line charts (revenue, share, units) using new data ──
@@ -21677,8 +21692,10 @@ async function loadPerformanceData() {
     var allVos    = dash.vehicle_outcomes || [];
     var dashRounds = dash.rounds || rounds;
 
+    // quarters with statements only: the open quarter has none until it clears
+    dashRounds = dashRounds.filter(function(r) { return Object.keys(finHist).some(function(t) { return finHist[t][r.id]; }); });
     if (allRos.length > 0 && dashRounds.length > 0) {
-      var rndLabels = dashRounds.map(function(r) { return r.round_label || (r.is_historical ? ('Q'+r.quarter+' '+r.year) : ('Y'+(r.year-2024)+'Q'+r.quarter)); });
+      var rndLabels = dashRounds.map(function(r) { return 'Q' + r.quarter + ' ' + r.year; });
       var mktSeries = {}; // teamId -> { revenue, ebit, share, units }
       allTeams.forEach(function(t) { mktSeries[t.id] = { revenue:[], ebit:[], share:[], units:[], score:[] }; });
       // Collect any teams seen in round outcomes but not in allTeams
@@ -21690,11 +21707,9 @@ async function loadPerformanceData() {
         var ros_for_round = allRos.filter(function(ro){ return ro.round_id === rnd.id; });
         var vos_for_round = allVos.filter(function(vo){ return vo.round_id === rnd.id; });
         Object.keys(mktSeries).forEach(function(tid) {
-          var ro = ros_for_round.find(function(r){ return r.team_id === tid; });
-          var fh = (finHist[tid] || {})[rnd.id] || null;  // real financial statement
-          // Use null for rounds where a team has no outcome (new entrant / disrupter); avoids
-          // plotting a misleading flat-zero line during the pre-entry historical period.
-          if (!ro) {
+          var fh = (finHist[tid] || {})[rnd.id] || null;  // the team's statement for that quarter
+          // null where a team has no statement (new entrant / disrupter): no misleading flat zero
+          if (!fh) {
             mktSeries[tid].revenue.push(null);
             mktSeries[tid].ebit.push(null);
             mktSeries[tid].share.push(null);
@@ -21702,15 +21717,13 @@ async function loadPerformanceData() {
             mktSeries[tid].score.push(null);
             return;
           }
-          var rev  = parseFloat(ro.revenue_m || 0);
-          var cogs = parseFloat(ro.cogs_m || 0);
-          var gp   = parseFloat(ro.gross_profit_m || rev - cogs);
-          // Use real accrual EBIT from financial engine; fall back to clearing proxy
-          var ebit = fh ? parseFloat(fh.ebit_m || 0) : parseFloat(ro.ebit_m || gp * 0.7);
-          var units = parseInt(ro.total_units_sold || 0);
+          var rev  = parseFloat(fh.net_revenue_m || 0);
+          var ebit = parseFloat(fh.ebit_m || 0);
+          var units = parseInt(fh.units_sold || 0);
           var ebitPct = rev > 0 ? ebit / rev * 100 : 0;
-          var myVos = vos_for_round.filter(function(v){ return v.team_id === tid; });
-          var totalSharePct = myVos.reduce(function(s,v){ return s + parseFloat(v.market_share_pct||0); }, 0);
+          // share of all teams' cars sold that quarter (summing per-segment shares measured nothing)
+          var allUnits = Object.keys(finHist).reduce(function(t, k) { var x = finHist[k][rnd.id]; return t + (x ? parseInt(x.units_sold || 0) : 0); }, 0);
+          var totalSharePct = allUnits > 0 ? units / allUnits * 100 : 0;
           mktSeries[tid].revenue.push(rev);
           mktSeries[tid].ebit.push(Math.round(ebitPct * 10) / 10);
           mktSeries[tid].share.push(Math.round(totalSharePct * 10) / 10);
@@ -21927,10 +21940,11 @@ function renderVehicleCards(vos) {
     var utilCol  = util >= 65 ? '#38d486' : util >= 45 ? '#c8a43c' : '#e03a52';
     var share    = vo.market_share_pct != null ? parseFloat(vo.market_share_pct).toFixed(1)+'%' : '—';
     var shareCol = parseFloat(vo.market_share_pct||0) > 20 ? 'var(--green)' : parseFloat(vo.market_share_pct||0) > 10 ? 'var(--gold)' : 'var(--text)';
-    var rev      = vo.revenue_m != null ? '€'+parseFloat(vo.revenue_m).toFixed(2)+'M' : '—';
+    var rev      = vo.revenue_m != null ? '€'+Math.round(parseFloat(vo.revenue_m)).toLocaleString()+'M' : '—';
     var priceK   = vo.avg_price_eur ? '€'+(vo.avg_price_eur/1000).toFixed(1)+'k' : '—';
     var units    = (vo.units_sold||0).toLocaleString();
-    var ebit     = vo.ebit_m != null ? '€'+parseFloat(vo.ebit_m).toFixed(2)+'M' : '—';
+    // gross margin per model (the team's own rows carry it); clearing's per-model EBIT was gross profit x 0.70
+    var gmPct    = vo.gross_margin_pct != null ? parseFloat(vo.gross_margin_pct).toFixed(1).replace('-', '−')+'%' : '—';
     var segN     = SEG_NL[vo.segment_code] || vo.segment_code || '—';
     return '<div class="pvc">'
       + '<div style="margin:-2px 0 6px;">'+_visPerfCar(vo, 120)+'</div>'
@@ -21940,7 +21954,7 @@ function renderVehicleCards(vos) {
       + '<div class="pvc-stat"><span>Units / Q</span><span>'+units+'</span></div>'
       + '<div class="pvc-stat"><span>Revenue</span><span style="color:var(--cyan)">'+rev+'</span></div>'
       + '<div class="pvc-stat"><span>Avg Price</span><span>'+priceK+'</span></div>'
-      + '<div class="pvc-stat"><span>EBIT</span><span style="color:var(--orange)">'+ebit+'</span></div>'
+      + '<div class="pvc-stat"><span>Gross margin</span><span style="color:var(--orange)">'+gmPct+'</span></div>'
       + '<div style="display:flex;justify-content:space-between;align-items:center;margin-top:7px;">'
         + '<span style="font-family:DM Mono,monospace;font-size:7px;color:var(--muted2);">UTILITY SCORE</span>'
         + '<span style="font-family:Orbitron,sans-serif;font-size:11px;font-weight:700;color:'+utilCol+';">'+util+'</span>'
@@ -22001,7 +22015,10 @@ function renderRankings(rankings, myTeamId) {
     h += '<div class="rk-row" style="'+(isMe?'background:rgba(50,204,192,.06);border-radius:3px;':'')+'">'
       + '<span style="font-family:Orbitron,monospace;font-size:11px;font-weight:700;color:'+rankCol+';">'+(ro.rank||i+1)+'</span>'
       + '<span style="font-size:11px;color:'+(isMe?'var(--cyan)':'var(--text)')+';font-weight:'+(isMe?'700':'400')+';">'
-        +(ro.team_name||'?')+(isMe?' ★':'')+'</span>'
+        +(ro.team_name||'?')+(isMe?' ★':'')
+        // why this place: the three part ranks and the weighted score (lowest wins)
+        +(basis==='scorecard' && ro.rank_tsr ? '<div style="font-family:DM Mono,monospace;font-size:8px;color:var(--muted2);font-weight:400;">TSR #'+ro.rank_tsr+' · revenue #'+ro.rank_revenue+' · margin #'+ro.rank_margin+' → score '+(Math.round((ro.score||0)*100)/100)+'</div>' : '')
+        +'</span>'
       + '<span style="text-align:right;font-family:DM Mono,monospace;font-size:9px;color:var(--cyan);">€'+(rev/1000).toFixed(1)+'B</span>'
       + '<span style="text-align:right;font-family:DM Mono,monospace;font-size:9px;color:'+emCol+';">'+(em==null?'—':em.toFixed(1)+'%')+'</span>'
       + '<span style="text-align:right;font-family:DM Mono,monospace;font-size:9px;color:'+tsrCol+';">'+(tsr==null?'—':(tsr>=0?'+':'')+tsr.toFixed(1)+'%')+'</span>'
@@ -22059,7 +22076,7 @@ function renderHistoryTable(myRos, allVos, myTeamId, finHistByRound) {
     var gmCol= parseFloat(gm) > 20 ? 'var(--green)' : parseFloat(gm) > 10 ? 'var(--gold)' : 'var(--red)';
     var units= parseInt(ro.total_units_sold || 0);
     var rank = ro.revenue_rank != null ? '#' + ro.revenue_rank : '—';
-    var rndLabel = ro.round_label || (ro.year ? 'Y'+(ro.year-2024)+'Q'+ro.quarter : 'R'+ro.round_number);
+    var rndLabel = ro.round_label || (ro.year ? 'Q'+ro.quarter+' '+ro.year : 'R'+ro.round_number);
 
     // Vehicle list for this round
     var roundVos = allVos.filter(function(v){ return v.team_id === myTeamId && v.round_id === ro.round_id; });
@@ -24792,7 +24809,7 @@ function buildReviewSection() {
   // ── Readiness banner: show ready dates for reuse/modify modules ──
   var sopYear = _prop.study&&_prop.study.start_year;
   var sopQ    = _prop.study&&_prop.study.start_quarter;
-  var sopLabel= sopYear ? 'Y'+(sopYear-2024)+'Q'+(sopQ||1) : '—';
+  var sopLabel= sopYear ? 'Q'+(sopQ||1)+' '+sopYear : '—';
   var reuseSlots=[{k:'platform',m:_prop.platform},{k:'pwt',m:_prop.pwt},{k:'tophat',m:_prop.tophat},{k:'eands',m:_prop.eands}];
   var readinessBanner='';
   var anyConflict=false;
@@ -24807,7 +24824,7 @@ function buildReviewSection() {
     var sopConflict=sopQnum!==null&&readyQnum>sopQnum;
     if (sopConflict) anyConflict=true;
     var color=sopConflict?'var(--red)':ok?'var(--green)':'var(--gold)';
-    var readyStr='Y'+(ry-2024)+'Q'+rq;
+    var readyStr='Q'+rq+' '+ry;
     readinessBanner+='<div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid rgba(255,255,255,.04);">'+
       '<span style="font-family:DM Mono,monospace;font-size:9px;color:var(--muted2);">'+s.k.toUpperCase()+'</span>'+
       '<span style="font-family:DM Mono,monospace;font-size:9px;color:'+color+';">'+(ok?'READY':readyStr)+(sopConflict?' ⚠ conflicts SOP '+sopLabel:'')+'</span></div>';
