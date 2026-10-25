@@ -1023,6 +1023,11 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
     <div class="kpi kk-r"><div class="kl"><span data-vis-icon="finance"></span> Net debt</div><div class="kv" id="dash-k-debt">—</div><div class="kd neu" id="dash-k-debt-sub">No results yet</div></div>
     <div class="kpi kk-p"><div class="kl"><span data-vis-icon="leaderboard"></span> Shareholder return</div><div class="kv" id="dash-k-tsr">—</div><div class="kd neu" id="dash-k-tsr-sub">No results yet</div></div>
   </div>
+  <!-- This quarter: the Round Checklist's open items with their GO TO links -->
+  <div class="card" style="margin-bottom:10px;">
+    <div class="card-title"><span class="tag tc">THIS QUARTER</span> What needs a look before you submit</div>
+    <div id="dash-todo"><div style="font-family:DM Mono,monospace;font-size:10px;color:var(--muted2);">Running the round checklist…</div></div>
+  </div>
   <div class="card" style="margin-bottom:10px;">
     <div class="card-title"><span class="tag tp">PORTFOLIO</span> Model Line-up</div>
     <div id="dash-lineup" class="vis-lineup"></div>
@@ -21838,26 +21843,62 @@ async function _loadLegacyCharts(rounds, teams, teamMap) {
 }
 
 // Dashboard model line-up: one silhouette card per live model (display only)
+// The Round Checklist's red and amber items on the dashboard (the checks run on the server with the
+// readers clearing uses; GO TO opens the page that fixes each). Sign-off stays on the checklist page.
+async function _dashRenderTodo() {
+  var el = document.getElementById('dash-todo');
+  if (!el || !teamId || (currentUser && currentUser.role === 'instructor')) return;
+  try {
+    var d = await fetchRoundChecklist();
+    var open = _clSorted(d.checks || []).filter(function(c) { return c.status === 'red' || c.status === 'amber'; });
+    var s = d.summary || {};
+    var foot = '<div style="font-family:DM Mono,monospace;font-size:9px;color:var(--muted2);margin-top:6px;">'
+      + (s.green || 0) + ' checks OK · <a href="#" onclick="nav(\'checklist\',document.getElementById(\'nav-checklist\'));return false;" style="color:var(--gold);">open the Round Checklist to sign off</a></div>';
+    el.innerHTML = open.length
+      ? open.map(function(c) { return _clRow(c, false); }).join('') + foot
+      : '<div style="font-family:DM Mono,monospace;font-size:10px;color:var(--green);">✓ Nothing open: every check is green or information only.</div>' + foot;
+  } catch (e) {
+    el.innerHTML = '<div style="font-family:DM Mono,monospace;font-size:10px;color:var(--muted2);">Round checklist unavailable: ' + _esc(e.message) + '</div>';
+  }
+}
+
 async function _dashRenderLineup() {
   var el = document.getElementById('dash-lineup');
   if (!el || !teamId) return;
   try {
     var res = await fetch(API_URL + '/teams/' + teamId + '/vehicles');
-    var vs = ((await res.json()).vehicles || []).filter(function(v) { return v.status !== 'ended'; });
+    var vs = ((await res.json()).vehicles || []).filter(function(v) { return v.status !== 'ended' && v.status !== 'cancelled'; });
     if (!vs.length) {
       el.innerHTML = _VIS.empty('car', 'No models yet', 'Create a Product Study in Product Plan, then turn it into a Vehicle Proposal.');
       return;
     }
-    var ORD = {on_sale:0, approved:1, plan:2, planned:2, study:3, draft:3};
-    function o(s) { return s in ORD ? ORD[s] : 9; }
-    vs.sort(function(a, b) { return o(a.status) - o(b.status) || (a.start_year || 9999) - (b.start_year || 9999); });
+    // Where each model is, from SOP / EOP against the open quarter (an approved model is stored as
+    // 'approved' before, during and after production): on sale, run-out (EOP within 4 quarters),
+    // coming, or ended (folded into one line)
+    var cur = (currentRoundYear - 2025) * 4 + currentRoundQuarter - 1;
+    var qOf = function(y, q) { return y ? (y - 2025) * 4 + (q || 1) - 1 : null; };
+    var lbl = function(y, q) { return 'Q' + (q || 4) + ' ' + y; };
+    var stage = function(v) {
+      if (v.status !== 'approved' && v.status !== 'on_sale') return {k: 3, badge: statusBadge(v.status)};
+      var s = qOf(v.start_year, v.start_quarter), e = qOf(v.end_year, v.end_quarter || 4);
+      var b = function(t, c) { return '<span style="font-family:DM Mono,monospace;font-size:8px;padding:2px 6px;border-radius:2px;border:1px solid ' + c + ';color:' + c + ';">' + t + '</span>'; };
+      if (e != null && e < cur) return {k: 9};
+      if (s != null && s > cur) return {k: 2, badge: b('COMING ' + lbl(v.start_year, v.start_quarter), 'var(--cyan)')};
+      if (e != null && e - cur < 4) return {k: 1, badge: b('RUN-OUT · EOP ' + lbl(v.end_year, v.end_quarter), 'var(--gold)')};
+      return {k: 0, badge: b('ON SALE', 'var(--green)')};
+    };
+    vs.forEach(function(v) { v._stage = stage(v); });
+    var ended = vs.filter(function(v) { return v._stage.k === 9; });
+    vs = vs.filter(function(v) { return v._stage.k !== 9; });
+    vs.sort(function(a, b) { return a._stage.k - b._stage.k || (a.start_year || 9999) - (b.start_year || 9999); });
     el.innerHTML = vs.map(function(v) {
       var sop = v.start_year ? 'SOP Q' + v.start_quarter + ' ' + v.start_year : 'SOP —';
       return '<div class="vis-lu">' + _VIS.vehicle(v, 112) +
         '<div class="vis-lu-n">' + v.name + '</div>' +
         '<div class="vis-lu-m">' + (SEG_NAMES[v.segment_code] || v.segment_code || '—') + ' · ' + sop + '</div>' +
-        statusBadge(v.status) + '</div>';
-    }).join('');
+        v._stage.badge + '</div>';
+    }).join('') + (ended.length ? '<div style="width:100%;font-family:DM Mono,monospace;font-size:9px;color:var(--muted2);margin-top:6px;">Production ended: '
+      + ended.map(function(v) { return _esc(v.name) + ' (EOP ' + lbl(v.end_year, v.end_quarter) + ')'; }).join(', ') + '</div>' : '');
   } catch (e) { console.warn('dash line-up', e); }
 }
 
@@ -33070,6 +33111,7 @@ async function loadCommandCenterKPIs() {
   _resetCommandCenterKPIs();
   if (!sessionId || !teamId) return;
   _dashRenderLineup();
+  _dashRenderTodo();
   try {
     var res = await fetch(API_URL + '/sessions/' + sessionId + '/financial-statements');
     var d = await res.json();
