@@ -28148,6 +28148,11 @@ function renderOpsAggregateSummary(){
   var _cf=function(l){return (l||[]).some(function(f){return f.vehicle_capacity_yr>0;});};
   var _est=' · estimate until confirmed';
   _s('prop-ops-agg-vp','€'+Math.round(tVP)+'M'+(_cf(ops.vehicle_plants)?'':_est));_s('prop-ops-agg-pwt','€'+Math.round(tPWT)+'M'+(_cf(ops.powertrain_plants)||!tPWT?'':_est));_s('prop-ops-agg-sp','€'+_spTotalSupplierInvestmentM().toFixed(1)+'M');_s('prop-ops-agg-cost','€'+totals.totalLanded);
+  if(_shpShared()){   // shared plants: the plant capex is the fit check's (new lines, expansions, retool), the one §10 uses
+    var _pf=ops._plantFit,_pfSum=function(ts){return ((_pf&&_pf.placements)||[]).filter(function(x){return ts.indexOf(x.module_type)>=0;}).reduce(function(a,x){return a+(x.capex_m||0);},0);};
+    _s('prop-ops-agg-vp',_pf?'€'+_pfSum(['platform','tophat']).toFixed(1)+'M':'after Check fit');
+    _s('prop-ops-agg-pwt',_pf?'€'+_pfSum(['ice_pwt','epwt','battery']).toFixed(1)+'M':'after Check fit');
+  }
   // Re-render the §7 transformation cost impact panel as plant allocations are confirmed/removed
   var impEl=document.getElementById('prop-ops-impact-area');
   if(impEl)impEl.innerHTML=_renderPlantTransformationImpact();
@@ -28220,6 +28225,8 @@ function _renderSimplifiedFootprint(){
   }
   // Rows: all active/building vehicle plants
   var rows=(mfgPlants||[]).filter(function(p){return p.type==='vehicle'&&p.country_code&&(p.status==='active'||p.status==='building');});
+  var _shp=_shpSharedPlants('vehicle');
+  if(_shp)rows=_shp.map(function(sp){return {type:'vehicle',region:sp.region,country_code:sp.country_code,status:sp.status,_shp:sp};});
   var _ops=_prop.operations||{};
   var _selMode=_ops.allocation_mode||'new',_selKey=_ops.selected_plant_key||null;
   var TH_S='font-family:DM Mono,monospace;font-size:8px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);display:block;';
@@ -28227,7 +28234,9 @@ function _renderSimplifiedFootprint(){
   // Header row with "Build New Plant" button
   h+='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">';
   h+='<div style="'+TH_S+'">🌐 EXISTING VEHICLE PLANTS <span style="color:var(--muted2);font-size:7px;letter-spacing:0.5px;">— click to allocate</span></div>';
-  h+='<button onclick="onPropOpsAllocationMode(\'new\')" style="font-family:DM Mono,monospace;font-size:8px;padding:4px 10px;border-radius:3px;border:1px solid var(--border2);background:var(--s2);color:var(--muted2);cursor:pointer;white-space:nowrap;">＋ Build New Plant</button>';
+  h+=_shpShared()   // shared plants are built as a plant decision, with its lead time
+    ?'<button onclick="_clGoTo(\'operations\',\'decisions\')" style="font-family:DM Mono,monospace;font-size:8px;padding:4px 10px;border-radius:3px;border:1px solid var(--border2);background:var(--s2);color:var(--muted2);cursor:pointer;white-space:nowrap;">＋ Build a plant → Industrial Ops</button>'
+    :'<button onclick="onPropOpsAllocationMode(\'new\')" style="font-family:DM Mono,monospace;font-size:8px;padding:4px 10px;border-radius:3px;border:1px solid var(--border2);background:var(--s2);color:var(--muted2);cursor:pointer;white-space:nowrap;">＋ Build New Plant</button>';
   h+='</div>';
   if(!rows.length){
     h+='<div style="border:1px solid var(--border2);border-radius:4px;padding:12px 14px;font-family:DM Mono,monospace;font-size:9px;color:var(--muted2);font-style:italic;">No vehicle plants on record.</div>';
@@ -28238,9 +28247,9 @@ function _renderSimplifiedFootprint(){
   var HD='padding:5px 10px;font-family:DM Mono,monospace;font-size:8px;color:var(--muted2);font-weight:700;';
   h+='<div style="display:grid;grid-template-columns:'+COLS+';background:var(--s2);border-bottom:1px solid var(--border2);">';
   h+='<div style="'+HD+'">Location</div>';
-  h+='<div style="'+HD+'text-align:right;">Total Cap</div>';
-  h+='<div style="'+HD+'text-align:right;">Reserved</div>';
-  h+='<div style="'+HD+'text-align:right;">Last Rnd</div>';
+  h+='<div style="'+HD+'text-align:right;">'+(_shp?'Hall':'Total Cap')+'</div>';
+  h+='<div style="'+HD+'text-align:right;">'+(_shp?'Used now':'Reserved')+'</div>';
+  h+='<div style="'+HD+'text-align:right;" title="'+(_shp?'Smallest free hall room from SOP to EOP. A model of a family already here can also use its line\'s spare: Check fit shows it':'')+'">'+(_shp?'Free hall':'Last Rnd')+'</div>';
   h+='<div style="'+HD+'text-align:center;">Load%</div>';
   h+='<div style="'+HD+'text-align:center;">Platform</div>';
   h+='<div style="'+HD+'text-align:center;">TopHat</div>';
@@ -28255,10 +28264,17 @@ function _renderSimplifiedFootprint(){
     var totalCapK=_linesByLoc[lk]>0?Math.round(_linesByLoc[lk]/1000):(p.capacity_k||0);
     var reservedK=Math.round((_reservedByLoc[lk]||0)/1000);
     var lastRnd=_propVoByPlant[lk];
+    var sp=p._shp,freeLifeK=null;
+    if(sp){   // platform and top hat lines each fill the hall: the fuller of the two is what is used
+      var hf=sp.hall_free_k||{},hw=sp.hall_free_window_k||{};
+      totalCapK=Math.round(sp.hall_k||0);
+      reservedK=Math.round(Math.max(totalCapK-(hf.platform||0),totalCapK-(hf.tophat||0)));
+      freeLifeK=Math.round(Math.max(0,Math.min(hw.platform||0,hw.tophat||0)));
+    }
     var loadPct=totalCapK>0?Math.round(reservedK/totalCapK*100):null;
     var loadColor=loadPct===null?'var(--muted2)':loadPct>85?'var(--red)':loadPct>60?'var(--orange)':'var(--green)';
-    var hasPl=_hasModule(lk,'platform',_propPlatKey);
-    var hasTh=_hasModule(lk,'tophat',_propTopKey);
+    var hasPl=sp?_shpHasFamilyLine(sp,'platform'):_hasModule(lk,'platform',_propPlatKey);
+    var hasTh=sp?_shpHasFamilyLine(sp,'tophat'):_hasModule(lk,'tophat',_propTopKey);
     var isSelected=_selMode==='existing'&&_selKey===lk;
     var _vpAlloc=((_ops.vehicle_plants)||[]).find(function(p){return p.id==='vp_'+lk&&p.vehicle_capacity_yr;});
     var isConfirmed=!!_vpAlloc;
@@ -28270,7 +28286,8 @@ function _renderSimplifiedFootprint(){
     h+='<div style="'+CD+'color:'+(isSelected?'var(--gold)':'var(--text)')+';">'+locLabel+'</div>';
     h+='<div style="'+CD+'text-align:right;color:var(--gold);">'+(isBuilding?'—':totalCapK+'k/yr')+'</div>';
     h+='<div style="'+CD+'text-align:right;color:var(--cyan);">'+(reservedK>0?reservedK+'k/yr':'—')+'</div>';
-    h+='<div style="'+CD+'text-align:right;color:var(--text);">'+(lastRnd!=null?Math.round(lastRnd/100)/10+'k':'—')+'</div>';
+    h+=sp?'<div style="'+CD+'text-align:right;color:'+(freeLifeK>0?'var(--green)':'var(--muted2)')+';">'+freeLifeK+'k</div>'
+      :'<div style="'+CD+'text-align:right;color:var(--text);">'+(lastRnd!=null?Math.round(lastRnd/100)/10+'k':'—')+'</div>';
     h+='<div style="'+CD+'text-align:center;color:'+loadColor+';">'+(loadPct!==null&&!isBuilding?loadPct+'%':'—')+'</div>';
     h+='<div style="'+CD+'text-align:center;color:'+(hasPl?'var(--green)':'var(--muted2)')+';">'+(hasPl?'✓':'—')+'</div>';
     h+='<div style="'+CD+'text-align:center;color:'+(hasTh?'var(--green)':'var(--muted2)')+';">'+(hasTh?'✓':'—')+'</div>';
@@ -28328,10 +28345,14 @@ function _renderPlantAllocationPanel(lk){
   var newVehName=(_prop.study&&_prop.study.name)||'New Vehicle';
   var sugK=_suggestedVolK();
   var VH='font-size:8px;font-weight:700;color:var(--muted2);padding:5px 10px;';
-  h+='<div style="'+MN+'font-size:8px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:8px;">Vehicle Allocations</div>';
+  // shared plants: the other models' room is on Industrial Ops → Footprint and in the fit check, not here
+  if(_shpShared())vehRows=[];
+  h+='<div style="'+MN+'font-size:8px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:8px;">'+(_shpShared()?'This model':'Vehicle Allocations')+'</div>';
   h+='<div style="border:1px solid var(--border2);border-radius:4px;overflow:hidden;margin-bottom:14px;">';
+  if(!_shpShared()){
   h+='<div style="display:grid;grid-template-columns:1fr 90px 80px;background:var(--s2);border-bottom:1px solid var(--border2);">';
   h+='<div style="'+MN+VH+'">Vehicle</div><div style="'+MN+VH+'text-align:right;">Reserved</div><div style="'+MN+VH+'text-align:right;">Last Rnd</div></div>';
+  }
   vehRows.forEach(function(v,i){
     var bdr=i<vehRows.length-1||true?'border-bottom:1px solid var(--border2);':'';
     h+='<div style="display:grid;grid-template-columns:1fr 90px 80px;background:var(--s3);'+bdr+'">';
@@ -28655,6 +28676,8 @@ function onPropOpsRemovePlantAllocation(pid){
 function _renderPwtFootprint(){
   var ops=_prop.operations||{};
   var pwtRows=(mfgPlants||[]).filter(function(p){return p.type==='powertrain'&&p.country_code&&(p.status==='active'||p.status==='building');});
+  var _shp=_shpSharedPlants('powertrain'),SHP_MT={pwt:'ice_pwt',epwt:'epwt',battery:'battery'};
+  if(_shp)pwtRows=_shp.map(function(sp){return {type:'powertrain',region:sp.region,country_code:sp.country_code,status:sp.status,_shp:sp};});
   var pwtDefs=_getModuleDefsForType('powertrain_plants');
   var _selPwtLk=ops.selected_pwt_plant_key||null;
   var MN='font-family:DM Mono,monospace;';
@@ -28667,11 +28690,11 @@ function _renderPwtFootprint(){
     h+='<div style="border:1px solid var(--border2);border-radius:4px;padding:12px 14px;'+MN+'font-size:9px;color:var(--muted2);font-style:italic;">No powertrain plants on record.</div></div>';
     return h;
   }
-  var COLS='1fr 70px'+pwtDefs.map(function(){return ' 60px';}).join('')+' 90px';
+  var COLS='1fr '+(_shp?'120px':'70px')+pwtDefs.map(function(){return ' 60px';}).join('')+' 90px';
   var HD='padding:5px 10px;'+MN+'font-size:8px;color:var(--muted2);font-weight:700;';
   h+='<div style="border:1px solid var(--border2);border-radius:4px;overflow:hidden;">';
   h+='<div style="display:grid;grid-template-columns:'+COLS+';background:var(--s2);border-bottom:1px solid var(--border2);">';
-  h+='<div style="'+HD+'">Location</div><div style="'+HD+'text-align:right;">Capacity</div>';
+  h+='<div style="'+HD+'">Location</div><div style="'+HD+'text-align:right;" title="'+(_shp?'Hall · smallest free hall room from SOP to EOP':'')+'">'+(_shp?'Hall · free':'Capacity')+'</div>';
   pwtDefs.forEach(function(d){h+='<div style="'+HD+'text-align:center;">'+(MOD_NAMES[d.key]||d.label)+'</div>';});
   h+='<div style="'+HD+'text-align:center;">Allocated</div>';
   h+='</div>';
@@ -28689,9 +28712,12 @@ function _renderPwtFootprint(){
     var locLabel=(isBuilding?'🚧 ':'⚙ ')+p.region+(ccName?' · '+ccName:'');
     h+='<div onclick="onPropOpsPwtSelectPlant(\''+lk+'\')" style="cursor:pointer;display:grid;grid-template-columns:'+COLS+';background:'+bg+';'+bdr+';border-left:'+leftBorder+';">';
     h+='<div style="'+CD+'color:'+(isSelected?'var(--cyan)':'var(--text)')+';">'+locLabel+'</div>';
-    h+='<div style="'+CD+'text-align:right;color:var(--gold);">'+(isBuilding?'—':(p.capacity_k||0)+'k/yr')+'</div>';
+    var sp=p._shp;
+    h+='<div style="'+CD+'text-align:right;color:var(--gold);">'+(isBuilding?'—':sp
+      ?Math.round(sp.hall_k||0)+'k · <span style="color:var(--green);">'+Math.round(Math.max(0,(sp.hall_free_window_k||{}).ice_pwt||0))+'k</span>'
+      :(p.capacity_k||0)+'k/yr')+'</div>';
     var dm=((_deployedModules||{}).powertrain_plants||{})[lk]||{};
-    pwtDefs.forEach(function(d){var has=(dm[d.key]&&dm[d.key].length)>0;h+='<div style="'+CD+'text-align:center;color:'+(has?'var(--green)':'var(--muted2)')+';">'+(has?'✓':'—')+'</div>';});
+    pwtDefs.forEach(function(d){var has=sp?_shpHasFamilyLine(sp,SHP_MT[d.key]||d.key):(dm[d.key]&&dm[d.key].length)>0;h+='<div style="'+CD+'text-align:center;color:'+(has?'var(--green)':'var(--muted2)')+';">'+(has?'✓':'—')+'</div>';});
     h+='<div style="'+CD+'text-align:center;" onclick="event.stopPropagation();">';
     if(isConfirmed)h+='<span style="'+MN+'font-size:9px;color:var(--cyan);">✓ '+_pwtAlloc.vehicle_capacity_yr+'k</span> <button onclick="onPropOpsRemovePwtAllocation(\'pwt_'+lk+'\')" style="'+MN+'font-size:8px;padding:2px 5px;border-radius:2px;border:1px solid rgba(220,60,60,.3);background:transparent;color:var(--red);cursor:pointer;margin-left:3px;">✕</button>';
     else if(isSelected)h+='<span style="'+MN+'font-size:8px;color:var(--cyan);opacity:0.6;">editing…</span>';
@@ -28716,7 +28742,9 @@ function _renderPwtAllocationPanel(lk){
   var pid='pwt_'+lk;
   var h='<div style="margin-bottom:18px;">';
   h+='<div style="'+MN+'font-size:9px;font-weight:700;color:var(--cyan);margin-bottom:12px;padding-bottom:6px;border-bottom:1px solid var(--border2);">⚙ PWT ALLOCATION — '+reg+(ccName?' · '+ccName:'')+'</div>';
-  // Module tooling — compact matrix
+  // Module tooling — compact matrix (per-model lines: hidden on shared plants, where the fit check prices the lines;
+  // still drawn, as renderFacilityCostSummary fills its cells by id)
+  if(_shpShared())h+='<div style="display:none;">';
   h+='<div style="'+MN+'font-size:8px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:8px;">PWT Module Tooling</div>';
   var PWT_CFG={pwt:(_prop.pwt&&_prop.pwt.module)?_prop.pwt.module.config_key:null,
                epwt:(_prop.epwt&&_prop.epwt.module)?_prop.epwt.module.config_key:null,
@@ -28778,6 +28806,7 @@ function _renderPwtAllocationPanel(lk){
   if(_pwtBrownfield)h+='<div style="'+MN+'font-size:7px;color:var(--muted2);padding:4px 8px;background:var(--s2);">⚑ Brownfield rate (0.65×) applied to expansion · Labor at 3 shifts (est.)</div>';
   else h+='<div style="'+MN+'font-size:7px;color:var(--muted2);padding:3px 8px;background:var(--s2);">Labor shown at 3-shift equivalent (est.)</div>';
   h+='</div>';
+  if(_shpShared())h+='</div>';
   // Volume + Automation
   h+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px;">';
   h+='<div><div style="'+MN+'font-size:8px;color:var(--muted2);margin-bottom:4px;">Production Volume (k/yr)</div>';
@@ -29312,6 +29341,23 @@ function _shpPropSopEop() {
   return [s, e];
 }
 
+// shared-plant session: §7's plant tables show the team's real plants (halls, lines, room over the
+// model's life) instead of the per-model lines they read in a per-vehicle session
+function _shpShared() { return !!(_SHP_PROP.data && _SHP_PROP.data.plant_model === 'shared'); }
+function _shpSharedPlants(ptype) {
+  if (!_shpShared()) return null;
+  return (_SHP_PROP.data.plants || []).filter(function (p) { return p.ptype === ptype && (p.status === 'active' || p.status === 'building'); });
+}
+// does this plant already have a line of the proposal's module family (the module, or the parent it derives from)
+function _shpHasFamilyLine(sp, mtype) {
+  var s;
+  try { s = _shpPropSlots().filter(function (x) { return x.module_type === mtype; })[0]; } catch (e) { s = null; }
+  if (!s) return false;
+  return (sp.lines || []).some(function (l) {
+    return l.module_type === mtype && (l.family_root_id === s.module_id || (s.parent_module_id && l.family_root_id === s.parent_module_id));
+  });
+}
+
 // §7 allocations stored by the plant panels; their vehicle_capacity_yr is k / yr, like target_capacity_k
 function _shpConfirmed(list) {
   var all = list || [], c = all.filter(function (f) { return f.vehicle_capacity_yr > 0; });
@@ -29327,9 +29373,12 @@ async function _shpPropPanel() {
     var r = await fetch(url);
     if (!r.ok) return;
     var d = await r.json();
-    if (d.plant_model !== 'shared') { if (_prop.operations) delete _prop.operations._plantFit; return; }
+    if (d.plant_model !== 'shared') { _SHP_PROP.data = null; if (_prop.operations) delete _prop.operations._plantFit; return; }
     _SHP_PROP.data = d;
   } catch (e) { return; }
+  // the plant tables were drawn before the plants arrived: redraw them from the shared plants
+  var fa = document.getElementById('prop-ops-footprint-area'); if (fa) fa.innerHTML = _renderSimplifiedFootprint();
+  var pa = document.getElementById('prop-ops-pwt-footprint-area'); if (pa) pa.innerHTML = _renderPwtFootprint();
   var box = document.getElementById('prop-shp-area');
   if (!box) {
     box = document.createElement('div');
@@ -29438,6 +29487,7 @@ async function _shpPropCheck() {
     ops._plantFit = { ok: d.ok, capex_m: d.capex_m, errors: d.errors, placements: d.placements, qabs: _SHP_PROP.data.qabs };
     msg.innerHTML = '';
     _shpPropShow(ops._plantFit);
+    renderOpsAggregateSummary();   // the plant capex boxes read the fit
   } catch (e) { msg.innerHTML = '<span style="color:var(--red);">Could not reach the server.</span>'; }
 }
 
