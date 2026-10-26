@@ -937,6 +937,8 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
     <div class="timer-box"><div class="tl">Ends in</div><div class="tv" id="timer">14:00</div></div>
     <div class="divider"></div>
     <div style="font-family:'DM Mono',monospace;font-size:9px;color:var(--muted2);">Teams submitted: <span style="color:var(--cyan)">6/12</span></div>
+    <div class="divider"></div>
+    <button onclick="switchSession()" title="Back to the PIN screen to join another session or team" style="background:none;border:1px solid var(--border2);border-radius:3px;color:var(--muted2);font-family:'DM Mono',monospace;font-size:9px;padding:3px 8px;cursor:pointer;">⇄ Switch session</button>
   </div>
 </div>
 
@@ -16145,6 +16147,12 @@ async function handleLogin() {
   }
 }
 
+// forget the session this tab is in (login goes straight back to it otherwise) and return to the PIN screen
+function switchSession() {
+  ['as_sessionId', 'as_teamId', 'as_roundId', 'as_role', 'as_tname', 'as_color'].forEach(function (k) { try { sessionStorage.removeItem(k); } catch (e) {} });
+  location.reload();
+}
+
 document.addEventListener('DOMContentLoaded', () => {
   const input = document.getElementById('pin-input');
   if (input) input.addEventListener('keydown', e => { if (e.key === 'Enter') handleLogin(); });
@@ -20741,24 +20749,37 @@ function _shpGauge(used, hall, label) {
     + '<div style="height:100%;width:' + pct.toFixed(1) + '%;background:' + col + ';"></div></div></div>';
 }
 
-// a line's reservations as bars over 16 quarters from the open one; a model ending within 4 quarters is a run-out
+// a line's reservations over 16 quarters from the open one, one row per model (its run-out and launch
+// ramp rows joined); a model whose last reservation on the line ends within 4 quarters is a run-out
 function _shpTimeline(line, q0) {
   var N = 16, cap = Math.max(line.capacity_k || 0, 1);
   var head = '<div style="display:grid;grid-template-columns:120px repeat(' + N + ',1fr);gap:1px;font-family:\'DM Mono\',monospace;font-size:8px;color:var(--muted);">'
     + '<div></div>';
   for (var i = 0; i < N; i++) head += '<div style="text-align:center;">' + ((i % 4 === 0) ? _qLabel(q0 + i).replace(' ', '<br>') : '') + '</div>';
   head += '</div>';
-  var rows = (line.reservations || []).filter(function (r) { return r.to_qabs >= q0; }).map(function (r) {
-    var runout = r.to_qabs < q0 + 4;
+  var models = {}, order = [];
+  (line.reservations || []).filter(function (r) { return r.to_qabs >= q0; }).forEach(function (r) {
+    if (!models[r.vehicle_id]) { models[r.vehicle_id] = { name: r.vehicle_name || r.vehicle_id.slice(0, 6), rows: [] }; order.push(r.vehicle_id); }
+    models[r.vehicle_id].rows.push(r);
+  });
+  var kAt = function (m, q) {
+    return m.rows.reduce(function (s, r) { return s + (q >= r.from_qabs && q <= r.to_qabs ? r.capacity_k : 0); }, 0);
+  };
+  var rows = order.map(function (vid) {
+    var m = models[vid];
+    var from = Math.min.apply(null, m.rows.map(function (r) { return r.from_qabs; }));
+    var to = Math.max.apply(null, m.rows.map(function (r) { return r.to_qabs; }));
+    var runout = to < q0 + 4;
     var cells = '';
     for (var i = 0; i < N; i++) {
-      var q = q0 + i, on = q >= r.from_qabs && q <= r.to_qabs;
-      cells += '<div title="' + _esc(r.vehicle_name || '') + ' ' + r.capacity_k + 'k in ' + _qLabel(q) + '" style="height:10px;border-radius:2px;background:'
-        + (on ? (runout ? 'var(--gold)' : 'var(--cyan)') : 'var(--s2)') + ';opacity:' + (on ? (0.35 + 0.65 * Math.min(1, r.capacity_k / cap)).toFixed(2) : 1) + ';"></div>';
+      var q = q0 + i, k = kAt(m, q);
+      cells += '<div title="' + _esc(m.name) + ' ' + Math.round(k) + 'k in ' + _qLabel(q) + '" style="height:10px;border-radius:2px;background:'
+        + (k > 0 ? (runout ? 'var(--gold)' : 'var(--cyan)') : 'var(--s2)') + ';opacity:' + (k > 0 ? (0.35 + 0.65 * Math.min(1, k / cap)).toFixed(2) : 1) + ';"></div>';
     }
+    var now = kAt(m, Math.max(q0, from));
     return '<div style="display:grid;grid-template-columns:120px repeat(' + N + ',1fr);gap:1px;align-items:center;margin-top:2px;">'
-      + '<div style="font-size:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="' + _esc(r.vehicle_name || '') + ' · ' + r.from + ' – ' + r.to + '">'
-      + _esc(r.vehicle_name || r.vehicle_id.slice(0, 6)) + ' <span style="color:var(--muted2);font-family:\'DM Mono\',monospace;">' + Math.round(r.capacity_k) + 'k</span></div>' + cells + '</div>';
+      + '<div style="font-size:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="' + _esc(m.name) + ' · ' + _qLabel(from) + ' – ' + _qLabel(to) + '">'
+      + _esc(m.name) + ' <span style="color:var(--muted2);font-family:\'DM Mono\',monospace;">' + Math.round(now) + 'k</span></div>' + cells + '</div>';
   }).join('');
   return head + (rows || '<div style="font-size:10px;color:var(--muted2);padding:4px 0;">No model reserves this line from now on: its room can go to a new model.</div>');
 }
@@ -21047,8 +21068,12 @@ function _shpRenderPipeline() {
   el.innerHTML = '<table style="width:100%;border-collapse:collapse;font-size:11px;"><tr style="font-family:\'DM Mono\',monospace;font-size:9px;color:var(--muted2);text-transform:uppercase;letter-spacing:1px;">'
     + '<td style="padding:4px 6px;">Decision</td><td>Plant</td><td style="text-align:right;">Change</td><td style="text-align:right;">Capex</td><td style="text-align:right;">Cost</td><td style="text-align:right;padding-right:6px;">Effective</td></tr>'
     + ev.sort(function (a, b) { return a.effective_qabs - b.effective_qabs; }).map(function (e) {
-      return '<tr style="border-top:1px solid var(--border);"><td style="padding:5px 6px;">' + (label[e.kind] || e.kind) + '</td><td>' + _esc(pname[e.plant_id] || '') + '</td>'
-        + '<td style="text-align:right;font-family:\'DM Mono\',monospace;">' + (e.delta_k ? (e.delta_k > 0 ? '+' : '') + Math.round(e.delta_k) + 'k' : '—') + '</td>'
+      var change = e.reservation_to_k != null
+        ? (e.reservation_from_k != null ? Math.round(e.reservation_from_k) + 'k ' : '') + '→ ' + Math.round(e.reservation_to_k) + 'k'
+        : (e.delta_k ? (e.delta_k > 0 ? '+' : '') + Math.round(e.delta_k) + 'k' : '—');
+      return '<tr style="border-top:1px solid var(--border);"><td style="padding:5px 6px;">' + (label[e.kind] || e.kind)
+        + (e.vehicle_name ? ' <span style="color:var(--muted2);">· ' + _esc(e.vehicle_name) + '</span>' : '') + '</td><td>' + _esc(pname[e.plant_id] || '') + '</td>'
+        + '<td style="text-align:right;font-family:\'DM Mono\',monospace;">' + change + '</td>'
         + '<td style="text-align:right;font-family:\'DM Mono\',monospace;">' + (e.capex_m ? '€' + e.capex_m.toFixed(1) + 'M' : '—') + '</td>'
         + '<td style="text-align:right;font-family:\'DM Mono\',monospace;">' + (e.cost_m ? '€' + e.cost_m.toFixed(1) + 'M' : '—') + '</td>'
         + '<td style="text-align:right;padding-right:6px;font-family:\'DM Mono\',monospace;">' + e.effective + '</td></tr>';
