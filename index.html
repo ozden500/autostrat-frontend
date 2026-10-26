@@ -20748,7 +20748,7 @@ function _shpModelColors(plants, names) {
   var first = {};
   plants.forEach(function (p) {
     (p.series || []).forEach(function (s) {
-      Object.keys(s.models_k).forEach(function (vid) { if (first[vid] === undefined) first[vid] = s.qabs; });
+      Object.keys(s.models_k || {}).forEach(function (vid) { if (first[vid] === undefined) first[vid] = s.qabs; });
     });
   });
   var vids = Object.keys(first).sort(function (a, b) {
@@ -20759,22 +20759,35 @@ function _shpModelColors(plants, names) {
   return col;
 }
 
-// a plant's reserved room by model, quarter by quarter (cars a year, or powertrain units a year), against its hall (red line)
+// a plant's reserved room quarter by quarter against its hall (red line): a vehicle plant's cars a year by
+// model, a powertrain plant's units a year by module line (engine / e-drive / battery, one colour per line)
 function _shpPlantChart(p, names, colors) {
   var ser = p.series || [];
   if (!ser.length) return '';
-  var N = ser.length;
+  var N = ser.length, pwt = p.ptype !== 'vehicle';
+  var part = function (s) { return (pwt ? s.lines_k : s.models_k) || {}; };
+  if (pwt) {
+    var used = {};
+    ser.forEach(function (s) { Object.keys(part(s)).forEach(function (lid) { used[lid] = true; }); });
+    names = {}; colors = {};
+    (p.lines || []).filter(function (l) { return used[l.id]; }).sort(function (a, b) {
+      return String(a.module_type).localeCompare(String(b.module_type)) || String(a.family_name || '').localeCompare(String(b.family_name || ''));
+    }).forEach(function (l, i) {
+      names[l.id] = (_SHP_TYPE[l.module_type] || l.module_type) + ' · ' + (l.family_name || String(l.family_root_id || l.id).slice(0, 6));
+      colors[l.id] = i < _SHP_COLORS.length ? _SHP_COLORS[i] : null;
+    });
+  }
   var keyOf = function (vid) { return colors[vid] ? vid : '_other'; };
   var cols = ser.map(function (s) {
-    var segs = {};
-    Object.keys(s.models_k).forEach(function (vid) { var k = keyOf(vid); segs[k] = (segs[k] || 0) + s.models_k[vid]; });
+    var segs = {}, ps = part(s);
+    Object.keys(ps).forEach(function (vid) { var k = keyOf(vid); segs[k] = (segs[k] || 0) + ps[vid]; });
     return { q: s.qabs, hall: s.hall_k, segs: segs, total: Object.keys(segs).reduce(function (a, k) { return a + segs[k]; }, 0) };
   });
   var keys = [];
   Object.keys(colors).forEach(function (vid) { if (colors[vid] && cols.some(function (c) { return c.segs[vid]; })) keys.push(vid); });
   if (cols.some(function (c) { return c.segs._other; })) keys.push('_other');
   if (!keys.length) return '';
-  var label = function (k) { return k === '_other' ? 'Other models' : (names[k] || k.slice(0, 6)); };
+  var label = function (k) { return k === '_other' ? (pwt ? 'Other lines' : 'Other models') : (names[k] || k.slice(0, 6)); };
   var color = function (k) { return k === '_other' ? 'var(--muted2)' : colors[k]; };
   var top = Math.max.apply(null, cols.map(function (c) { return Math.max(c.hall, c.total); })) || 1;
   var step = Math.pow(10, Math.floor(Math.log10(top / 3)));
@@ -20786,8 +20799,8 @@ function _shpPlantChart(p, names, colors) {
   var mono = "font-family:'DM Mono',monospace;";
   var h = '<div style="margin:10px 0 6px;">'
     + '<div style="display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:6px;">'
-    + '<span style="font-size:11px;font-weight:700;">' + (p.ptype === 'vehicle' ? 'Reserved cars a year by model' : 'Reserved powertrain units a year by model') + '</span>'
-    + '<span style="' + mono + 'font-size:9px;color:var(--muted2);">' + (p.ptype === 'vehicle' ? 'min(platform, top hat) per model' : 'engine + e-drive + battery lines, which share the hall') + ' · k / yr</span></div>'
+    + '<span style="font-size:11px;font-weight:700;">' + (pwt ? 'Reserved powertrain units a year by module line' : 'Reserved cars a year by model') + '</span>'
+    + '<span style="' + mono + 'font-size:9px;color:var(--muted2);">' + (pwt ? 'engine, e-drive and battery lines share the hall' : 'min(platform, top hat) per model') + ' · k / yr</span></div>'
     + '<div style="display:flex;flex-wrap:wrap;gap:4px 12px;margin:6px 0 8px;font-size:10px;color:var(--text);">'
     + keys.map(function (k) {
       return '<span style="display:inline-flex;align-items:center;gap:5px;"><span style="width:10px;height:10px;border-radius:2px;background:' + color(k) + ';"></span>' + _esc(label(k)) + '</span>';
