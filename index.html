@@ -28628,6 +28628,7 @@ function onPropOpsConfirmAllocation(lk){
   ops.selected_plant_key=null;ops.platform_auto_level=null;ops.tophat_auto_level=null;ops._panelPreloaded=false;
   var ftEl=document.getElementById('prop-ops-footprint-area');if(ftEl)ftEl.innerHTML=_renderSimplifiedFootprint();
   var aEl=document.getElementById('prop-ops-alloc-area');if(aEl)aEl.innerHTML='<div style="font-family:DM Mono,monospace;font-size:9px;color:var(--muted2);padding:8px 0;font-style:italic;">← Select a plant row above to configure allocation.</div>';
+  _shpPropAllocChanged();
   renderOpsAggregateSummary();
 }
 function onPropOpsCancelAllocation(){
@@ -28647,6 +28648,7 @@ function onPropOpsRemovePlantAllocation(pid){
   ops.vehicle_plants=ops.vehicle_plants.filter(function(p){return p.id!==pid;});
   var ftEl=document.getElementById('prop-ops-footprint-area');if(ftEl)ftEl.innerHTML=_renderSimplifiedFootprint();
   var aEl=document.getElementById('prop-ops-alloc-area');if(aEl)aEl.innerHTML='<div style="font-family:DM Mono,monospace;font-size:9px;color:var(--muted2);padding:8px 0;font-style:italic;">← Select a plant row above to configure allocation.</div>';
+  _shpPropAllocChanged();
   renderOpsAggregateSummary();
 }
 // ── PWT plant panel system ─────────────────────────────────────────────────
@@ -28860,6 +28862,7 @@ function onPropOpsConfirmPwtAllocation(lk){
   ops.selected_pwt_plant_key=null;ops._existing_pwt_auto=null;ops.pwt_capacity_yr=null;
   var ftEl=document.getElementById('prop-ops-pwt-footprint-area');if(ftEl)ftEl.innerHTML=_renderPwtFootprint();
   var aEl=document.getElementById('prop-ops-pwt-alloc-area');if(aEl)aEl.innerHTML='<div style="font-family:DM Mono,monospace;font-size:9px;color:var(--muted2);padding:8px 0;font-style:italic;">← Select a PWT plant row above to configure allocation.</div>';
+  _shpPropAllocChanged();
   renderOpsAggregateSummary();
 }
 function onPropOpsCancelPwtAllocation(){
@@ -28879,6 +28882,7 @@ function onPropOpsRemovePwtAllocation(pid){
   ops.powertrain_plants=ops.powertrain_plants.filter(function(p){return p.id!==pid;});
   var ftEl=document.getElementById('prop-ops-pwt-footprint-area');if(ftEl)ftEl.innerHTML=_renderPwtFootprint();
   var aEl=document.getElementById('prop-ops-pwt-alloc-area');if(aEl)aEl.innerHTML='<div style="font-family:DM Mono,monospace;font-size:9px;color:var(--muted2);padding:8px 0;font-style:italic;">← Select a PWT plant row above to configure allocation.</div>';
+  _shpPropAllocChanged();
   renderOpsAggregateSummary();
 }
 function closeModCapModal(){var m=document.getElementById('modCapModal');if(m)m.remove();}
@@ -29308,6 +29312,7 @@ function _shpPropSopEop() {
   return [s, e];
 }
 
+// §7 allocations stored by the plant panels; their vehicle_capacity_yr is k / yr, like target_capacity_k
 function _shpConfirmed(list) {
   var all = list || [], c = all.filter(function (f) { return f.vehicle_capacity_yr > 0; });
   return c.length ? c : [];
@@ -29374,17 +29379,23 @@ function _shpPropRender() {
     + '<td>Allocation</td><td style="text-align:right;">k / yr</td><td>Builds in</td></tr>';
   vps.forEach(function (e) {
     h += '<tr><td style="padding:3px 0;">Vehicle · ' + _esc(e.country_name || e.country_code || '') + '</td><td style="text-align:right;font-family:DM Mono,monospace;">'
-      + Math.round(e.target_capacity_k || e.vehicle_capacity_yr / 1000 || 0) + '</td><td style="padding-left:10px;">' + plantSel(e, 'vehicle', 'vehicle_plants') + '</td></tr>';
+      + Math.round(e.target_capacity_k || e.vehicle_capacity_yr || 0) + '</td><td style="padding-left:10px;">' + plantSel(e, 'vehicle', 'vehicle_plants') + '</td></tr>';
   });
   pps.slice(0, 1).forEach(function (e) {
     h += '<tr><td style="padding:3px 0;">Powertrain · ' + _esc(e.country_name || e.country_code || '') + '</td><td style="text-align:right;font-family:DM Mono,monospace;">'
-      + Math.round(e.target_capacity_k || e.vehicle_capacity_yr / 1000 || 0) + '</td><td style="padding-left:10px;">' + plantSel(e, 'powertrain', 'powertrain_plants') + '</td></tr>';
+      + Math.round(e.target_capacity_k || e.vehicle_capacity_yr || 0) + '</td><td style="padding-left:10px;">' + plantSel(e, 'powertrain', 'powertrain_plants') + '</td></tr>';
   });
   h += '</table><div style="margin-top:8px;display:flex;gap:10px;align-items:center;">'
     + '<button onclick="_shpPropCheck()" style="font-family:DM Mono,monospace;font-size:10px;padding:5px 14px;border-radius:3px;border:1px solid rgba(200,164,60,.4);background:var(--goldl);color:var(--gold);cursor:pointer;">Check fit</button>'
     + '<span id="prop-shp-msg" style="font-size:10px;"></span></div><div id="prop-shp-res"></div></div>';
   box.innerHTML = h;
   if (ops._plantFit) _shpPropShow(ops._plantFit);
+}
+
+// a §7 allocation was confirmed or removed: an earlier fit check no longer holds, redraw the placement panel
+function _shpPropAllocChanged() {
+  if (_prop.operations) delete _prop.operations._plantFit;
+  _shpPropRender();
 }
 
 function _shpPropPick(key, id, plantId) {
@@ -29404,12 +29415,12 @@ async function _shpPropCheck() {
   var miss = vps.concat(pps.slice(0, 1)).filter(function (e) { return !e.plant_ref; });
   if (miss.length) { msg.innerHTML = '<span style="color:var(--red);">Choose a plant for every allocation.</span>'; return; }
   vps.forEach(function (e) {
-    var k = e.target_capacity_k || e.vehicle_capacity_yr / 1000 || 0;
+    var k = e.target_capacity_k || e.vehicle_capacity_yr || 0;
     slots.filter(function (s) { return s.module_type === 'platform' || s.module_type === 'tophat'; })
       .forEach(function (s) { pl.push(Object.assign({ plant_id: e.plant_ref, capacity_k: k }, s)); });
   });
   if (pps.length) {
-    var kp = pps[0].target_capacity_k || pps[0].vehicle_capacity_yr / 1000
+    var kp = pps[0].target_capacity_k || pps[0].vehicle_capacity_yr
       || vps.reduce(function (a, e) { return a + (e.target_capacity_k || 0); }, 0);
     slots.filter(function (s) { return s.module_type === 'ice_pwt' || s.module_type === 'epwt'; })
       .forEach(function (s) { pl.push(Object.assign({ plant_id: pps[0].plant_ref, capacity_k: kp }, s)); });
