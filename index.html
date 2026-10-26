@@ -20740,50 +20740,6 @@ function _shpKpis() {
   if (el('ops-pt-plants')) el('ops-pt-plants').textContent = ps.filter(function (p) { return p.ptype === 'powertrain'; }).length;
 }
 
-function _shpGauge(used, hall, label) {
-  var pct = hall > 0 ? Math.min(100, used / hall * 100) : 0;
-  var col = pct > 95 ? 'var(--red)' : pct > 80 ? 'var(--gold)' : 'var(--cyan)';
-  return '<div style="margin:4px 0;"><div style="display:flex;justify-content:space-between;font-family:\'DM Mono\',monospace;font-size:10px;color:var(--muted2);">'
-    + '<span>' + label + '</span><span>' + Math.round(used) + 'k of ' + Math.round(hall) + 'k · ' + Math.round(Math.max(0, hall - used)) + 'k free</span></div>'
-    + '<div style="height:7px;background:var(--s3,var(--s2));border-radius:4px;overflow:hidden;border:1px solid var(--border);">'
-    + '<div style="height:100%;width:' + pct.toFixed(1) + '%;background:' + col + ';"></div></div></div>';
-}
-
-// a line's reservations over 16 quarters from the open one, one row per model (its run-out and launch
-// ramp rows joined); a model whose last reservation on the line ends within 4 quarters is a run-out
-function _shpTimeline(line, q0) {
-  var N = 16, cap = Math.max(line.capacity_k || 0, 1);
-  var head = '<div style="display:grid;grid-template-columns:120px repeat(' + N + ',1fr);gap:1px;font-family:\'DM Mono\',monospace;font-size:8px;color:var(--muted);">'
-    + '<div></div>';
-  for (var i = 0; i < N; i++) head += '<div style="text-align:center;">' + ((i % 4 === 0) ? _qLabel(q0 + i).replace(' ', '<br>') : '') + '</div>';
-  head += '</div>';
-  var models = {}, order = [];
-  (line.reservations || []).filter(function (r) { return r.to_qabs >= q0; }).forEach(function (r) {
-    if (!models[r.vehicle_id]) { models[r.vehicle_id] = { name: r.vehicle_name || r.vehicle_id.slice(0, 6), rows: [] }; order.push(r.vehicle_id); }
-    models[r.vehicle_id].rows.push(r);
-  });
-  var kAt = function (m, q) {
-    return m.rows.reduce(function (s, r) { return s + (q >= r.from_qabs && q <= r.to_qabs ? r.capacity_k : 0); }, 0);
-  };
-  var rows = order.map(function (vid) {
-    var m = models[vid];
-    var from = Math.min.apply(null, m.rows.map(function (r) { return r.from_qabs; }));
-    var to = Math.max.apply(null, m.rows.map(function (r) { return r.to_qabs; }));
-    var runout = to < q0 + 4;
-    var cells = '';
-    for (var i = 0; i < N; i++) {
-      var q = q0 + i, k = kAt(m, q);
-      cells += '<div title="' + _esc(m.name) + ' ' + Math.round(k) + 'k in ' + _qLabel(q) + '" style="height:10px;border-radius:2px;background:'
-        + (k > 0 ? (runout ? 'var(--gold)' : 'var(--cyan)') : 'var(--s2)') + ';opacity:' + (k > 0 ? (0.35 + 0.65 * Math.min(1, k / cap)).toFixed(2) : 1) + ';"></div>';
-    }
-    var now = kAt(m, Math.max(q0, from));
-    return '<div style="display:grid;grid-template-columns:120px repeat(' + N + ',1fr);gap:1px;align-items:center;margin-top:2px;">'
-      + '<div style="font-size:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="' + _esc(m.name) + ' · ' + _qLabel(from) + ' – ' + _qLabel(to) + '">'
-      + _esc(m.name) + ' <span style="color:var(--muted2);font-family:\'DM Mono\',monospace;">' + Math.round(now) + 'k</span></div>' + cells + '</div>';
-  }).join('');
-  return head + (rows || '<div style="font-size:10px;color:var(--muted2);padding:4px 0;">No model reserves this line from now on: its room can go to a new model.</div>');
-}
-
 // categorical slots (dark steps, validated on --s1); red stays for the hall line, an 8th model on is "Other"
 var _SHP_COLORS = ['#3987e5', '#d95926', '#199e70', '#c98500', '#d55181', '#008300', '#9085e9'];
 
@@ -20803,7 +20759,7 @@ function _shpModelColors(plants, names) {
   return col;
 }
 
-// a vehicle plant's reserved cars a year by model, quarter by quarter, against its hall (red line)
+// a plant's reserved room by model, quarter by quarter (cars a year, or powertrain units a year), against its hall (red line)
 function _shpPlantChart(p, names, colors) {
   var ser = p.series || [];
   if (!ser.length) return '';
@@ -20830,8 +20786,8 @@ function _shpPlantChart(p, names, colors) {
   var mono = "font-family:'DM Mono',monospace;";
   var h = '<div style="margin:10px 0 6px;">'
     + '<div style="display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:6px;">'
-    + '<span style="font-size:11px;font-weight:700;">Reserved cars a year by model</span>'
-    + '<span style="' + mono + 'font-size:9px;color:var(--muted2);">min(platform, top hat) per model · k / yr</span></div>'
+    + '<span style="font-size:11px;font-weight:700;">' + (p.ptype === 'vehicle' ? 'Reserved cars a year by model' : 'Reserved powertrain units a year by model') + '</span>'
+    + '<span style="' + mono + 'font-size:9px;color:var(--muted2);">' + (p.ptype === 'vehicle' ? 'min(platform, top hat) per model' : 'engine + e-drive + battery lines, which share the hall') + ' · k / yr</span></div>'
     + '<div style="display:flex;flex-wrap:wrap;gap:4px 12px;margin:6px 0 8px;font-size:10px;color:var(--text);">'
     + keys.map(function (k) {
       return '<span style="display:inline-flex;align-items:center;gap:5px;"><span style="width:10px;height:10px;border-radius:2px;background:' + color(k) + ';"></span>' + _esc(label(k)) + '</span>';
@@ -20923,7 +20879,6 @@ function _shpRenderFootprint() {
     el.innerHTML = h; return;
   }
   plants.forEach(function (p) {
-    var types = p.ptype === 'vehicle' ? ['platform', 'tophat'] : ['ice_pwt', 'epwt', 'battery'];
     var badge = { active: 'var(--green)', building: 'var(--gold)', mothballed: 'var(--muted2)', closed: 'var(--red)', sold: 'var(--red)' }[p.status] || 'var(--muted2)';
     h += '<div class="card" style="padding:14px 16px;margin-bottom:12px;">'
       + '<div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px;flex-wrap:wrap;">'
@@ -20933,25 +20888,10 @@ function _shpRenderFootprint() {
       + '<div style="font-family:\'DM Mono\',monospace;font-size:10px;color:var(--muted2);">hall ' + Math.round(p.hall_k) + 'k'
       + (p.hall_committed_k > p.hall_k + 0.5 ? ' → ' + Math.round(p.hall_committed_k) + 'k decided' : '')
       + ' · fixed cost €' + (p.fixed_cost_q_at_reserved_m || 0).toFixed(1) + 'M/q of €' + (p.fixed_cost_q_full_m || 0).toFixed(1) + 'M if idle</div></div>';
-    if (p.ptype === 'vehicle') {
-      types.forEach(function (t) { h += _shpGauge(p.hall_k - (p.hall_free_k[t] || 0), p.hall_k, _SHP_TYPE[t] + ' lines in the hall'); });
-      h += _shpPlantChart(p, vnames, vcolors);
-    } else {
-      h += _shpGauge(p.hall_k - (p.hall_free_k[types[0]] || 0), p.hall_k, 'Powertrain lines in the hall');
-    }
-    (p.lines || []).forEach(function (l) {
-      h += '<div style="border-top:1px solid var(--border);margin-top:10px;padding-top:8px;">'
-        + '<div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:4px;flex-wrap:wrap;gap:6px;">'
-        + '<span><b>' + (_SHP_TYPE[l.module_type] || l.module_type) + ' line</b> · ' + _esc(l.family_name || 'family ' + String(l.family_root_id || '').slice(0, 6)) + '</span>'
-        + '<span style="font-family:\'DM Mono\',monospace;font-size:10px;color:var(--muted2);">' + Math.round(l.capacity_k) + 'k line · '
-        + Math.round(l.reserved_k) + 'k reserved now · <span style="color:' + (l.free_k > 0.5 ? 'var(--green)' : 'var(--muted2)') + ';">' + Math.round(l.free_k) + 'k free</span></span></div>'
-        + _shpTimeline(l, d.qabs) + '</div>';
-    });
-    if (!(p.lines || []).length) h += '<div style="font-size:10px;color:var(--muted2);margin-top:8px;">No lines yet: the whole hall is free for a new model.</div>';
+    h += _shpPlantChart(p, vnames, vcolors)
+      || '<div style="font-size:10px;color:var(--muted2);margin-top:8px;">No model reserves room here: the whole hall is free for a new model.</div>';
     h += '</div>';
   });
-  h += '<div style="font-family:\'DM Mono\',monospace;font-size:9px;color:var(--muted);margin-top:4px;">'
-    + '<span style="color:var(--cyan);">■</span> reserved · <span style="color:var(--gold);">■</span> run-out (ends within 4 quarters: lower or compact it to free room)</div>';
   el.innerHTML = h;
 }
 
