@@ -20781,15 +20781,21 @@ function _shpPlantChart(p, names, colors) {
   var cols = ser.map(function (s) {
     var segs = {}, ps = part(s);
     Object.keys(ps).forEach(function (vid) { var k = keyOf(vid); segs[k] = (segs[k] || 0) + ps[vid]; });
-    return { q: s.qabs, hall: s.hall_k, segs: segs, total: Object.keys(segs).reduce(function (a, k) { return a + segs[k]; }, 0) };
+    var total = Object.keys(segs).reduce(function (a, k) { return a + segs[k]; }, 0);
+    // line capacity above the reserved room (idle lines, spare on part-used ones) takes hall room too
+    var idle = Math.max(0, (s.lines_cap_k || 0) - total);
+    return { q: s.qabs, hall: s.hall_k, segs: segs, total: total, idle: idle };
   });
   var keys = [];
   Object.keys(colors).forEach(function (vid) { if (colors[vid] && cols.some(function (c) { return c.segs[vid]; })) keys.push(vid); });
   if (cols.some(function (c) { return c.segs._other; })) keys.push('_other');
   if (!keys.length) return '';
-  var label = function (k) { return k === '_other' ? (pwt ? 'Other lines' : 'Other models') : (names[k] || k.slice(0, 6)); };
-  var color = function (k) { return k === '_other' ? 'var(--muted2)' : colors[k]; };
-  var top = Math.max.apply(null, cols.map(function (c) { return Math.max(c.hall, c.total); })) || 1;
+  var label = function (k) { return k === '_other' ? (pwt ? 'Other lines' : 'Other models') : k === '_idle' ? 'Line capacity not reserved' : (names[k] || k.slice(0, 6)); };
+  var color = function (k) {
+    return k === '_other' ? 'var(--muted2)' : k === '_idle' ? 'repeating-linear-gradient(45deg,#566070 0 2px,#1a2030 2px 6px)' : colors[k];
+  };
+  var anyIdle = cols.some(function (c) { return c.idle > 0.5; });
+  var top = Math.max.apply(null, cols.map(function (c) { return Math.max(c.hall, c.total + c.idle); })) || 1;
   var step = Math.pow(10, Math.floor(Math.log10(top / 3)));
   step = [1, 2, 5, 10].map(function (m) { return m * step; }).filter(function (s) { return top / s <= 6; })[0] || step * 10;
   var ymax = Math.ceil(top * 1.05 / step) * step;
@@ -20802,7 +20808,7 @@ function _shpPlantChart(p, names, colors) {
     + '<span style="font-size:11px;font-weight:700;">' + (pwt ? 'Reserved powertrain units a year by module line' : 'Reserved cars a year by model') + '</span>'
     + '<span style="' + mono + 'font-size:9px;color:var(--muted2);">' + (pwt ? 'engine, e-drive and battery lines share the hall' : 'min(platform, top hat) per model') + ' · k / yr</span></div>'
     + '<div style="display:flex;flex-wrap:wrap;gap:4px 12px;margin:6px 0 8px;font-size:10px;color:var(--text);">'
-    + keys.map(function (k) {
+    + keys.concat(anyIdle ? ['_idle'] : []).map(function (k) {
       return '<span style="display:inline-flex;align-items:center;gap:5px;"><span style="width:10px;height:10px;border-radius:2px;background:' + color(k) + ';"></span>' + _esc(label(k)) + '</span>';
     }).join('')
     + '<span style="display:inline-flex;align-items:center;gap:5px;"><span style="width:14px;height:2px;background:var(--red);"></span>Hall capacity</span></div>'
@@ -20817,11 +20823,11 @@ function _shpPlantChart(p, names, colors) {
     h += '<div style="position:absolute;left:0;right:0;bottom:' + pct(g) + ';border-top:1px solid var(--border);"></div>';
   }
   cols.forEach(function (c, i) {
-    var stack = keys.filter(function (k) { return c.segs[k] > 0; });
+    var stack = keys.filter(function (k) { return c.segs[k] > 0; }).concat(c.idle > 0.5 ? ['_idle'] : []);
     h += '<div style="position:absolute;bottom:0;top:0;left:' + (i / N * 100) + '%;width:' + (100 / N) + '%;display:flex;flex-direction:column-reverse;padding:0 2px;box-sizing:border-box;cursor:default;"'
       + ' onmousemove="_shpChartTip(event,\'' + p.id + '\',' + i + ')">';
     stack.forEach(function (k, j) {
-      h += '<div style="height:' + pct(c.segs[k]) + ';background:' + color(k) + ';box-sizing:border-box;'
+      h += '<div style="height:' + pct(k === '_idle' ? c.idle : c.segs[k]) + ';background:' + color(k) + ';box-sizing:border-box;'
         + (j > 0 ? 'border-bottom:2px solid var(--s1);' : '') + (j === stack.length - 1 ? 'border-radius:4px 4px 0 0;' : '') + '"></div>';
     });
     h += '</div>';
@@ -20847,6 +20853,8 @@ function _shpPlantChart(p, names, colors) {
         + cols.map(function (c) { return '<td style="padding:2px 4px;text-align:right;">' + (c.segs[k] ? Math.round(c.segs[k]) : '–') + '</td>'; }).join('') + '</tr>';
     }).join('')
     + '<tr><td style="padding:2px 6px;border-top:1px solid var(--border);">Reserved</td>' + cols.map(function (c) { return '<td style="padding:2px 4px;text-align:right;border-top:1px solid var(--border);">' + Math.round(c.total) + '</td>'; }).join('') + '</tr>'
+    + '<tr><td style="padding:2px 6px;white-space:nowrap;">Line capacity not reserved</td>' + cols.map(function (c) { return '<td style="padding:2px 4px;text-align:right;">' + Math.round(c.idle) + '</td>'; }).join('') + '</tr>'
+    + '<tr><td style="padding:2px 6px;">Free hall</td>' + cols.map(function (c) { return '<td style="padding:2px 4px;text-align:right;">' + Math.round(Math.max(0, c.hall - c.total - c.idle)) + '</td>'; }).join('') + '</tr>'
     + '<tr><td style="padding:2px 6px;">Hall</td>' + cols.map(function (c) { return '<td style="padding:2px 4px;text-align:right;">' + Math.round(c.hall) + '</td>'; }).join('') + '</tr>'
     + '</table></div></details></div>';
   return h;
@@ -20864,8 +20872,9 @@ function _shpChartTip(ev, pid, i) {
         + _esc(ch.label(k)) + '</span><span>' + Math.round(c.segs[k]) + 'k</span></div>';
     }).join('')
     + '<div style="border-top:1px solid var(--border2);margin-top:3px;padding-top:3px;display:flex;justify-content:space-between;gap:14px;"><span>Reserved</span><span>' + Math.round(c.total) + 'k</span></div>'
+    + (c.idle > 0.5 ? '<div style="display:flex;justify-content:space-between;gap:14px;"><span><span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:' + ch.color('_idle') + ';margin-right:5px;"></span>Line capacity not reserved</span><span>' + Math.round(c.idle) + 'k</span></div>' : '')
     + '<div style="display:flex;justify-content:space-between;gap:14px;"><span>Hall</span><span>' + Math.round(c.hall) + 'k</span></div>'
-    + '<div style="display:flex;justify-content:space-between;gap:14px;color:' + (c.hall - c.total > 0.5 ? 'var(--green)' : 'var(--muted2)') + ';"><span>Free</span><span>' + Math.round(Math.max(0, c.hall - c.total)) + 'k</span></div>';
+    + '<div style="display:flex;justify-content:space-between;gap:14px;color:' + (c.hall - c.total - c.idle > 0.5 ? 'var(--green)' : 'var(--muted2)') + ';"><span>Free hall</span><span>' + Math.round(Math.max(0, c.hall - c.total - c.idle)) + 'k</span></div>';
   tip.style.display = 'block';
   var r = box.getBoundingClientRect(), x = ev.clientX - r.left, w = tip.offsetWidth;
   tip.style.left = Math.max(0, Math.min(r.width - w, x + 12 + w > r.width ? x - w - 12 : x + 12)) + 'px';
