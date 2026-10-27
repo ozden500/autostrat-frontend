@@ -31714,16 +31714,17 @@ function calcPropBizCase() {
     var _bcAsmTable=_propBcAsmTable({v:_propBcView, cmdEur:_cmd.enabled&&_cmd.index?_cmd.eur:null, cmdSens:_cmdSens,
       lcPlan:_lcPlan, launchM:_lcStd, entryM:_newMkt.entryM, runQ:_newMkt.runQ, nEntry:_newMkt.countries.length,
       asTail:_asmTail, co2On:!!(_co2.preset&&_co2.preset!=='off'), wtyYears:_wty.years});
-    var _bcAsm=(_capLim
-          ? '<div style="font-family:DM Mono,monospace;font-size:10px;color:var(--orange);margin-top:10px;line-height:1.5;">'
+    // Shown above the folds, not inside them: it changes what the board approves.
+    var _bcCapLim=(_capLim
+          ? '<div style="font-family:DM Mono,monospace;font-size:10px;color:var(--orange);margin:10px 0;line-height:1.5;">'
             + '⚠ Capacity-limited case: the family lines this model shares carry more business case plans than they will have installed in '
             + _capLim.years[0] + (_capLim.years.length > 1 ? '–' + _capLim.years[_capLim.years.length - 1] : '')
             + '. The models on a line share it pro rata where they ask for more, so this model builds as little as '
             + Math.round(_capLim.worst * 100) + '% of its plan: ~' + Math.round(_capLim.units / 1000) + 'k fewer cars over its life, NPV '
             + (_capLim.npv >= 0 ? '€' : '−€') + Math.abs(Math.round(_capLim.npv)) + 'M instead of ' + (npv >= 0 ? '€' : '−€') + Math.abs(Math.round(npv)) + 'M'
             + (_capLim.irr != null ? ' (IRR ' + _capLim.irr.toFixed(1) + '%)' : '') + '. You may still approve it; add to the family line in §7 to close the gap.</div>'
-          : '')
-      + (_newMkt.countries.length
+          : '');
+    var _bcAsm=(_newMkt.countries.length
           ? '<div style="font-family:DM Mono,monospace;font-size:10px;color:var(--gold);margin-top:10px;">'
             + 'Includes market entry for ' + _newMkt.countries.length + ' countries your team is not in yet ('
             + _newMkt.countries.slice(0, 8).join(', ') + (_newMkt.countries.length > 8 ? '…' : '') + '): €'
@@ -31806,7 +31807,7 @@ function calcPropBizCase() {
         + 'Launch campaign (planning assumption): standard budget €' + Math.round(_lcStd) + 'M = '
         + (_LAUNCH_E.STD_PCT * 100) + '% of first-year revenue, in the first two quarters. The actual budget is '
         + 'decided each round on Commercial → 🚀 Launches; with none, an average brand\'s new model starts ~30% less attractive.</div>';
-    _bcEl.innerHTML=_bcTop+_bcAsmTable+_propFold('bc-asm','How each assumption is worked out',_bcAsm);
+    _bcEl.innerHTML=_bcTop+_bcCapLim+_bcAsmTable+_propFold('bc-asm','How each assumption is worked out',_bcAsm);
   }
 
 
