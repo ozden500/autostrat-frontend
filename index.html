@@ -16721,7 +16721,7 @@ function _clGoTo(page, tab) {
     if (page === 'engineering' && typeof engView === 'function') engView(tab);
     else if (page === 'commercial' && typeof switchComTab === 'function') switchComTab(tab);
     else if (page === 'operations') {
-      var toDec = tab === 'decisions' && typeof _SHP !== 'undefined' && _SHP.shared;
+      var toDec = (tab === 'decisions' || tab === 'pipeline') && typeof _SHP !== 'undefined' && _SHP.shared;
       var t = document.querySelector('.ops-tab[onclick*="opsTab(\''+(toDec ? 'footprint' : tab)+'\'"]');
       if (t) t.click();
       if (toDec) setTimeout(function(){ var dc = document.getElementById('shp-dec'); if (dc) dc.scrollIntoView({behavior:'smooth', block:'center'}); }, 900);
@@ -20736,8 +20736,10 @@ function _shpSetMode(on) {
   _SHP.shared = on;
   var show = function (id, v) { var el = document.getElementById(id); if (el) el.style.display = v ? '' : 'none'; };
   show('shp-decisions', on); show('shp-pipeline', on);
-  var dt = document.querySelector('.ops-tab[onclick*="opsTab(\'decisions\'"]');
-  if (dt) dt.style.display = on ? 'none' : '';
+  ['decisions', 'pipeline'].forEach(function (k) {   // both live on the Footprint tab in shared sessions
+    var t = document.querySelector('.ops-tab[onclick*="opsTab(\'' + k + '\'"]');
+    if (t) t.style.display = on ? 'none' : '';
+  });
   document.querySelectorAll('#ops-decisions > .mfg-decision-form, #pipeline-empty, #pipeline-list')
     .forEach(function (el) { el.style.display = on ? 'none' : ''; });
 }
@@ -21235,7 +21237,17 @@ function _shpRenderFootprint() {
       + (rl ? 'plants now · shipments in ' + rl + ' (last cleared quarter)' : 'plants now · no cleared quarter yet') + '</span></div>'
       + '<div id="shp-map" style="position:relative;"></div><div id="shp-map-legend"></div></div>';
   }
-  h += _shpCarousel() + '<div id="shp-card"></div>';
+  h += _shpCarousel();
+  var ev = d.pipeline || [];
+  if (ev.length) {   // every plant's decisions still taking effect (the Pipeline tab before 2026-10-28)
+    var pn = {};
+    plants.forEach(function (p) { pn[p.id] = p.name || p.country_code; });
+    h += '<details class="card" style="padding:8px 14px;margin:0 0 12px;"><summary style="cursor:pointer;font-size:11px;font-weight:700;">'
+      + 'Decisions in progress <span style="font-family:\'DM Mono\',monospace;font-size:9px;color:var(--gold);border:1px solid var(--gold);border-radius:3px;padding:0 5px;margin-left:4px;">' + ev.length + '</span>'
+      + ' <span style="font-family:\'DM Mono\',monospace;font-size:9px;font-weight:400;color:var(--muted2);">all plants · decided, not yet in effect · click a row to select its plant</span></summary>'
+      + '<div style="margin-top:6px;">' + _shpPipeTable(ev, pn, true) + '</div></details>';
+  }
+  h += '<div id="shp-card"></div>';
   el.innerHTML = h;
   if (plants.length) _shpDrawMap();
   _shpRenderCard();
@@ -21398,11 +21410,13 @@ function _shpCarouselStrip() {
     var u = p.hall_k > 0 ? _shpUsedK(p) / p.hall_k : 0, a = _shpLastActual(p), key = _shpSizeKey(p);
     var acc = p.ptype === 'vehicle' ? 'var(--cyan)' : _SHP_PWT_C, lvl = _SHP_SIZE_KEYS.indexOf(key) + 1;
     var sc = { active: 'var(--green)', building: 'var(--gold)', mothballed: 'var(--muted2)', closed: 'var(--red)', sold: 'var(--red)' }[p.status] || 'var(--muted2)';
+    var nPend = (d.pipeline || []).filter(function (e) { return e.plant_id === p.id; }).length;
     h += tile(p.id, p.id === sel, acc,
       '<div style="display:flex;align-items:center;gap:6px;">' + _shpFlag(p.country_code, 21)
       + '<span style="' + mono + 'font-size:9px;letter-spacing:1px;text-transform:uppercase;color:var(--muted2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1;">' + _esc(_shpCountryName(p.country_code)) + '</span>'
       + '<span style="display:inline-flex;align-items:center;gap:4px;' + mono + 'font-size:9px;color:' + sc + ';"><span style="width:6px;height:6px;border-radius:50%;background:' + sc + ';box-shadow:0 0 6px ' + sc + ';"></span>' + p.status + '</span></div>'
-      + '<div style="font-size:12px;font-weight:700;margin:6px 0 2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + _esc(p.name || p.country_code) + '</div>'
+      + '<div style="display:flex;align-items:center;gap:6px;margin:6px 0 2px;"><span style="font-size:12px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1;">' + _esc(p.name || p.country_code) + '</span>'
+      + (nPend ? '<span title="decisions decided, not yet in effect" style="' + mono + 'font-size:8.5px;color:var(--gold);border:1px solid var(--gold);border-radius:8px;padding:0 6px;white-space:nowrap;">⏳ ' + nPend + ' pending</span>' : '') + '</div>'
       + '<div style="display:flex;align-items:flex-end;justify-content:space-between;gap:6px;">' + _shpPlantArt(key, p.ptype, acc)
       + '<div style="text-align:right;"><div style="font-size:19px;font-weight:700;line-height:1;">' + Math.round(p.hall_k).toLocaleString() + '<span style="font-size:11px;color:var(--muted2);">k</span></div>'
       + '<div style="' + mono + 'font-size:8.5px;color:var(--muted2);margin-top:2px;">' + (p.ptype === 'vehicle' ? 'cars' : 'units') + ' / yr</div></div></div>'
@@ -21458,7 +21472,7 @@ function _shpKindsFor(p, d) {
   return k;
 }
 
-function _shpPipeTable(ev, pname) {
+function _shpPipeTable(ev, pname, pick) {
   var label = { build: 'New plant', expand_hall: 'Plant expansion', mothball: 'Mothball', reopen: 'Reopen', close: 'Close', sell: 'Sale',
     line_expand: 'Line expansion', line_compact: 'Line compaction', line_remove: 'Line removed', reservation_decrease: 'Plan lowered (AI run-out)', reservation_increase: 'Reservation raised' };
   return '<table style="width:100%;border-collapse:collapse;font-size:11px;"><tr style="font-family:\'DM Mono\',monospace;font-size:9px;color:var(--muted2);text-transform:uppercase;letter-spacing:1px;">'
@@ -21468,7 +21482,7 @@ function _shpPipeTable(ev, pname) {
         ? (e.reservation_from_k != null ? Math.round(e.reservation_from_k) + 'k ' : '') + '→ ' + Math.round(e.reservation_to_k) + 'k'
         : e.line_to_k != null ? Math.round(e.line_from_k || 0) + 'k → ' + Math.round(e.line_to_k) + 'k'
         : (e.delta_k ? (e.delta_k > 0 ? '+' : '') + Math.round(e.delta_k) + 'k' : '—');
-      return '<tr style="border-top:1px solid var(--border);"><td style="padding:5px 6px;">' + (label[e.kind] || e.kind)
+      return '<tr style="border-top:1px solid var(--border);' + (pick && e.plant_id ? 'cursor:pointer;" onclick="_shpSelect(\'' + e.plant_id + '\', true)' : '') + '"><td style="padding:5px 6px;">' + (label[e.kind] || e.kind)
         + (e.vehicle_name ? ' <span style="color:var(--muted2);">· ' + _esc(e.vehicle_name) + '</span>' : '') + '</td>' + (pname ? '<td>' + _esc(pname[e.plant_id] || '') + '</td>' : '')
         + '<td style="text-align:right;font-family:\'DM Mono\',monospace;">' + change + '</td>'
         + '<td style="text-align:right;font-family:\'DM Mono\',monospace;">' + (e.capex_m ? '€' + e.capex_m.toFixed(1) + 'M' : '—') + '</td>'
