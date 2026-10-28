@@ -21101,6 +21101,7 @@ function _shpDrawMap() {
       ? (routes.vehicle || []).filter(function (x) { return x.plant_id === p.id; }).map(function (x) { return x.region + ' ' + k1(x.units); })
       : (routes.powertrain || []).filter(function (x) { return x.plant_id === p.id; }).map(function (x) { return (byId[x.to_plant_id] || {}).country_code + ' ' + k1(x.units); });
     var html = '<b>' + _esc(pname(p)) + '</b> · ' + p.status + (p.status === 'building' ? ' (ready ' + p.ready + ')' : '')
+      + (p.size ? '<br>' + _esc(p.size.name) + ' (' + Math.round(p.size.min_k) + '–' + Math.round(p.size.max_k) + 'k)' : '')
       + '<br>Plant capacity ' + Math.round(p.hall_k) + 'k · used now ' + Math.round(used) + 'k (' + Math.round(u * 100) + '%)'
       + '<br>Fixed cost €' + (p.fixed_cost_q_at_reserved_m || 0).toFixed(1) + 'M a quarter'
       + (what.length ? '<br>' + (p.ptype === 'vehicle' ? 'Builds: ' : 'Lines: ') + _esc(what.slice(0, 5).join(', ')) + (what.length > 5 ? ' +' + (what.length - 5) : '') : '')
@@ -21149,10 +21150,11 @@ function _shpRenderFootprint() {
     h += '<div class="card" id="shp-card-' + p.id + '" style="padding:14px 16px;margin-bottom:12px;">'
       + '<div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px;flex-wrap:wrap;">'
       + '<div><span style="font-weight:700;font-size:13px;">' + _esc(p.name || (p.country_code + ' plant')) + '</span> '
-      + '<span style="font-family:\'DM Mono\',monospace;font-size:10px;color:var(--muted2);">' + (p.ptype === 'vehicle' ? 'vehicle plant' : 'powertrain plant') + ' · ' + p.country_code + '</span> '
+      + '<span style="font-family:\'DM Mono\',monospace;font-size:10px;color:var(--muted2);">' + (p.size ? _esc(p.size.name) + ' · ' : '') + (p.ptype === 'vehicle' ? 'vehicle plant' : 'powertrain plant') + ' · ' + p.country_code + '</span> '
       + '<span style="font-family:\'DM Mono\',monospace;font-size:9px;color:' + badge + ';border:1px solid ' + badge + ';border-radius:3px;padding:0 5px;margin-left:4px;">' + p.status + (p.status === 'building' ? ' · ready ' + p.ready : '') + '</span></div>'
       + '<div style="font-family:\'DM Mono\',monospace;font-size:10px;color:var(--muted2);">plant capacity ' + Math.round(p.hall_k) + 'k'
       + (p.hall_committed_k > p.hall_k + 0.5 ? ' → ' + Math.round(p.hall_committed_k) + 'k decided' : '')
+      + (p.size ? ' · can grow to ' + Math.round(p.size.max_k) + 'k' : '')
       + ' · fixed cost €' + (p.fixed_cost_q_at_reserved_m || 0).toFixed(1) + 'M/q of €' + (p.fixed_cost_q_full_m || 0).toFixed(1) + 'M if idle</div></div>';
     h += _shpPlantChart(p, vnames, vcolors)
       || '<div style="font-size:10px;color:var(--muted2);margin-top:8px;">No lines and no plans here: the whole plant capacity is free for a new model.</div>';
@@ -21185,12 +21187,14 @@ function _shpRenderDecisions() {
   if (kind === 'build') {
     var cs = [];
     Object.keys(mfgCountries || {}).forEach(function (r) { (mfgCountries[r] || []).forEach(function (c) { cs.push(c); }); });
-    h += f('Plant type', '<select id="shp-ptype" style="' + inp + '"><option value="vehicle">Vehicle plant</option><option value="powertrain">Powertrain plant</option></select>')
+    h += f('Plant type', '<select id="shp-ptype" style="' + inp + '"' + (d.plant_sizes ? ' onchange="_shpSizeSync(true)"' : '') + '><option value="vehicle">Vehicle plant</option><option value="powertrain">Powertrain plant</option></select>')
       + f('Country', '<select id="shp-cc" style="' + inp + '">' + _shpOpts(cs, function (c) { return c.country_code; }, function (c) { return c.country_name + ' (' + c.country_code + ')'; }) + '</select>')
+      + (d.plant_sizes ? f('Size', '<select id="shp-size" style="' + inp + 'min-width:230px;" onchange="_shpSizeSync(false)"></select>') : '')
       + f('Plant capacity (k / yr)', '<input id="shp-hall" type="number" min="20" step="10" value="250" style="' + inp + 'min-width:90px;width:100px;">');
   } else if (['expand_hall', 'mothball', 'reopen', 'close', 'sell'].indexOf(kind) >= 0) {
     h += f('Plant', '<select id="shp-plant" style="' + inp + '">' + _shpOpts(plants, function (p) { return p.id; },
-      function (p) { return (p.name || p.country_code) + ' · ' + p.ptype + ' · ' + p.status + ' · capacity ' + Math.round(p.hall_k) + 'k'; }) + '</select>');
+      function (p) { return (p.name || p.country_code) + ' · ' + (p.size ? p.size.name : p.ptype) + ' · ' + p.status + ' · capacity ' + Math.round(p.hall_k) + 'k'
+        + (kind === 'expand_hall' && p.size ? ' · room to grow ' + Math.round(p.room_to_max_k) + 'k' : ''); }) + '</select>');
     if (kind === 'expand_hall') h += f('Add (k / yr)', '<input id="shp-hall" type="number" min="10" step="10" value="50" style="' + inp + 'min-width:90px;width:100px;">');
   } else if (kind === 'line_remove') {
     // lines no model reserves from next quarter on, still standing and not already decided to go
@@ -21240,17 +21244,40 @@ function _shpRenderDecisions() {
     line_remove: 'Sweeps out a line no model plans on any more: its plant capacity comes free from that quarter, at no cost. Keep it instead if a later model of its family may use it.',
     close: 'Only a plant no model reserves can close: severance is paid and the plant is written off.',
     sell: 'As a close, but the buyer pays 40% of the plant’s book value; the rest is written off.',
-    mothball: 'A mothballed plant builds nothing and keeps a fifth of its fixed cost.'
+    mothball: 'A mothballed plant builds nothing and keeps a fifth of its fixed cost.',
+    expand_hall: d.plant_sizes ? 'A plant grows only up to the maximum of its size; beyond that, build another plant.' : null,
+    build: d.plant_sizes ? 'A new plant is one of four sizes; choose its capacity inside that size’s range. It can later grow up to the size’s maximum, never beyond.' : null
   }[kind];
   if (help) h += '<div style="font-size:10px;color:var(--muted2);margin-top:6px;">' + help + '</div>';
   el.innerHTML = h;
   _SHP.preview = null;
+  if (kind === 'build' && d.plant_sizes) _shpSizeSync(true);
+}
+
+// Build form, sized sessions: the size list for the plant type, and the capacity kept inside the
+// chosen size's range (GET …/plants `sizes`, from financial_engine.PLANT_SIZES).
+function _shpSizeSync(typeChanged) {
+  var sizes = ((_SHP.data || {}).sizes || {})[(document.getElementById('shp-ptype') || {}).value || 'vehicle'] || [];
+  var sel = document.getElementById('shp-size'), inp = document.getElementById('shp-hall');
+  if (!sel || !inp || !sizes.length) return;
+  if (typeChanged) {
+    var keep = sel.value || 'regional';
+    sel.innerHTML = sizes.map(function (z) {
+      return '<option value="' + z.key + '"' + (z.key === keep ? ' selected' : '') + '>' + _esc(z.name) + ' · ' + Math.round(z.min_k) + '–' + Math.round(z.max_k) + 'k / yr</option>';
+    }).join('');
+  }
+  var z = sizes.find(function (x) { return x.key === sel.value; }) || sizes[0];
+  inp.min = z.min_k; inp.max = z.max_k; inp.step = z.max_k > 1000 ? 50 : z.max_k > 300 ? 25 : 5;
+  var v = parseFloat(inp.value);
+  if (!(v >= z.min_k && v <= z.max_k)) inp.value = Math.round((z.min_k + z.max_k) / 2 / 5) * 5;
+  _SHP.preview = null;
+  var c = document.getElementById('shp-confirm'); if (c) { c.disabled = true; c.style.opacity = .45; }
 }
 
 function _shpBody(dry) {
   var v = function (id) { var e = document.getElementById(id); return e ? e.value : null; };
   var b = { kind: v('shp-kind'), dry: dry };
-  if (b.kind === 'build') { b.ptype = v('shp-ptype'); b.country_code = v('shp-cc'); b.hall_k = parseFloat(v('shp-hall')); }
+  if (b.kind === 'build') { b.ptype = v('shp-ptype'); b.country_code = v('shp-cc'); b.hall_k = parseFloat(v('shp-hall')); if (v('shp-size')) b.size_class = v('shp-size'); }
   else if (['expand_hall', 'mothball', 'reopen', 'close', 'sell'].indexOf(b.kind) >= 0) {
     b.plant_id = v('shp-plant'); if (b.kind === 'expand_hall') b.hall_k = parseFloat(v('shp-hall'));
   } else if (b.kind === 'line_remove') {
