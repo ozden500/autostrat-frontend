@@ -16711,8 +16711,10 @@ function _clGoTo(page, tab) {
     if (page === 'engineering' && typeof engView === 'function') engView(tab);
     else if (page === 'commercial' && typeof switchComTab === 'function') switchComTab(tab);
     else if (page === 'operations') {
-      var t = document.querySelector('.ops-tab[onclick*="opsTab(\''+tab+'\'"]');
+      var toDec = tab === 'decisions' && typeof _SHP !== 'undefined' && _SHP.shared;
+      var t = document.querySelector('.ops-tab[onclick*="opsTab(\''+(toDec ? 'footprint' : tab)+'\'"]');
       if (t) t.click();
+      if (toDec) setTimeout(function(){ var dc = document.getElementById('shp-dec'); if (dc) dc.scrollIntoView({behavior:'smooth', block:'center'}); }, 900);
     }
   }, 60);
 }
@@ -20696,6 +20698,12 @@ var _SHP_KIND = {
   close: 'Close a plant', sell: 'Sell a plant', line_expand: 'Expand a line', line_compact: 'Compact a line',
   line_remove: 'Remove an empty line'
 };
+// the same decisions on a plant's own card
+var _SHP_KIND_HERE = {
+  expand_hall: 'Expand this plant', mothball: 'Mothball it', reopen: 'Reopen it', close: 'Close it', sell: 'Sell it',
+  line_expand: 'Expand a line', line_compact: 'Compact a line', line_remove: 'Remove an empty line'
+};
+var _shpQs = function (n) { return n + ' quarter' + (n === 1 ? '' : 's'); };
 
 async function _shpLoad() {
   if (!teamId || !sessionId) return false;
@@ -20718,6 +20726,8 @@ function _shpSetMode(on) {
   _SHP.shared = on;
   var show = function (id, v) { var el = document.getElementById(id); if (el) el.style.display = v ? '' : 'none'; };
   show('shp-decisions', on); show('shp-pipeline', on);
+  var dt = document.querySelector('.ops-tab[onclick*="opsTab(\'decisions\'"]');
+  if (dt) dt.style.display = on ? 'none' : '';
   document.querySelectorAll('#ops-decisions > .mfg-decision-form, #pipeline-empty, #pipeline-list')
     .forEach(function (el) { el.style.display = on ? 'none' : ''; });
 }
@@ -20754,7 +20764,7 @@ function _shpModelColors(plants, names) {
 function _shpSetView(v) {
   _SHP.view = v;
   try { localStorage.setItem('shp_fp_view', v); } catch (e) {}
-  _shpRenderFootprint();
+  _shpRenderCard();
 }
 
 function _shpViewToggle() {
@@ -21175,13 +21185,17 @@ function _shpDrawMap() {
       + '<br>Fixed cost €' + (p.fixed_cost_q_at_reserved_m || 0).toFixed(1) + 'M a quarter'
       + (what.length ? '<br>' + (p.ptype === 'vehicle' ? 'Builds: ' : 'Lines: ') + _esc(what.slice(0, 5).join(', ')) + (what.length > 5 ? ' +' + (what.length - 5) : '') : '')
       + (out.length ? '<br>' + (p.ptype === 'vehicle' ? 'Shipped ' : 'Supplied ') + routes.label + ': ' + out.join(' · ') : '')
-      + '<br><span style="color:var(--muted2);">click: its chart below</span>';
+      + '<br><span style="color:var(--muted2);">click: select it below</span>';
     g.on('mousemove', function (ev) { show(ev, html); }).on('mouseleave', hide)
-      .on('click', function () { var c = document.getElementById('shp-card-' + p.id); if (c) c.scrollIntoView({ behavior: 'smooth', block: 'start' }); });
+      .on('click', function () { hide(); _shpSelect(p.id, true); });
   });
   var lg = document.getElementById('shp-map-legend'); if (lg) lg.innerHTML = _shpMapLegend(view, maxReg);
 }
 
+// Footprint (shared sessions; carousel since 2026-10-28): the map, a carousel of the team's plants
+// (＋ New plant last) and one card for the plant selected (_SHP.sel, remembered in localStorage
+// shp_fp_sel): its key figures, chart, lines, decisions in progress and the decisions that apply to
+// it. Shared sessions hide the Decisions tab; per-vehicle sessions keep their legacy form there.
 function _shpRenderFootprint() {
   var d = _SHP.data, el = document.getElementById('fp-content');
   if (!el) return;
@@ -21189,7 +21203,7 @@ function _shpRenderFootprint() {
   var vnames = {};
   plants.forEach(function (p) { (p.lines || []).forEach(function (l) { (l.reservations || []).forEach(function (r) { vnames[r.vehicle_id] = r.vehicle_name; }); }); });
   _SHP.vnames = vnames;
-  var vcolors = _shpModelColors(plants, vnames);
+  _SHP.vcolors = _shpModelColors(plants, vnames);
   if (!_SHP.view) { try { _SHP.view = localStorage.getItem('shp_fp_view'); } catch (e) {} }
   if (_SHP.view !== 'plans') _SHP.view = 'installed';
   var fixedQ = plants.reduce(function (s, p) { return s + (p.fixed_cost_q_at_reserved_m || 0); }, 0);
@@ -21199,114 +21213,289 @@ function _shpRenderFootprint() {
     + 'its powertrain comes from a powertrain plant. What a line has <b>installed</b> is the cap: the models on a family line '
     + 'share it, as you split production on the Manufacturing tab (pro rata to demand where they ask for more). Each approved '
     + 'model also carries its <b>business case plan</b>, its §9 volumes year by year; the plans on a line may add up to more '
-    + 'than is installed. Expand, compact or remove lines and plant capacity on the Decisions tab. '
+    + 'than is installed. Pick a plant below to see it and decide on it (expand, compact or remove lines and plant capacity), '
+    + 'or ＋ New plant to build one. '
     + 'Unused plant capacity costs <b>€' + fixedQ.toFixed(1) + 'M</b> this quarter at the plans\' volumes.</div>';
-  if (!plants.length) {
-    h += '<div class="card" style="padding:16px;font-size:12px;">You have no plants yet. Build one on the Decisions tab: it takes '
-      + d.lead_times.build_q + ' quarters, so a model can only use it from then.</div>';
-    el.innerHTML = h; return;
+  if (plants.length) {
+    var rl = (d.routes || {}).label;
+    h += '<div class="card" id="shp-map-box" style="padding:10px 12px;margin-bottom:12px;">'
+      + '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;margin-bottom:6px;">'
+      + '<span id="shp-map-views" style="display:inline-flex;gap:4px;"></span>'
+      + '<span style="font-family:\'DM Mono\',monospace;font-size:9px;color:var(--muted2);">'
+      + (rl ? 'plants now · shipments in ' + rl + ' (last cleared quarter)' : 'plants now · no cleared quarter yet') + '</span></div>'
+      + '<div id="shp-map" style="position:relative;"></div><div id="shp-map-legend"></div></div>';
   }
-  var rl = (d.routes || {}).label;
-  h += '<div class="card" id="shp-map-box" style="padding:10px 12px;margin-bottom:12px;">'
-    + '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;margin-bottom:6px;">'
-    + '<span id="shp-map-views" style="display:inline-flex;gap:4px;"></span>'
-    + '<span style="font-family:\'DM Mono\',monospace;font-size:9px;color:var(--muted2);">'
-    + (rl ? 'plants now · shipments in ' + rl + ' (last cleared quarter)' : 'plants now · no cleared quarter yet') + '</span></div>'
-    + '<div id="shp-map" style="position:relative;"></div><div id="shp-map-legend"></div></div>'
-    + _shpViewToggle();
-  plants.forEach(function (p) {
-    var badge = { active: 'var(--green)', building: 'var(--gold)', mothballed: 'var(--muted2)', closed: 'var(--red)', sold: 'var(--red)' }[p.status] || 'var(--muted2)';
-    h += '<div class="card" id="shp-card-' + p.id + '" style="padding:14px 16px;margin-bottom:12px;">'
-      + '<div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px;flex-wrap:wrap;">'
-      + '<div><span style="font-weight:700;font-size:13px;">' + _esc(p.name || (p.country_code + ' plant')) + '</span> '
-      + '<span style="font-family:\'DM Mono\',monospace;font-size:10px;color:var(--muted2);">' + (p.size ? _esc(p.size.name) + ' · ' : '') + (p.ptype === 'vehicle' ? 'vehicle plant' : 'powertrain plant') + ' · ' + p.country_code + '</span> '
-      + '<span style="font-family:\'DM Mono\',monospace;font-size:9px;color:' + badge + ';border:1px solid ' + badge + ';border-radius:3px;padding:0 5px;margin-left:4px;">' + p.status + (p.status === 'building' ? ' · ready ' + p.ready : '') + '</span></div>'
-      + '<div style="font-family:\'DM Mono\',monospace;font-size:10px;color:var(--muted2);">plant capacity ' + Math.round(p.hall_k) + 'k'
-      + (p.hall_committed_k > p.hall_k + 0.5 ? ' → ' + Math.round(p.hall_committed_k) + 'k decided' : '')
-      + (p.size ? ' · can grow to ' + Math.round(p.size.max_k) + 'k' : '')
-      + (function (a) {   // the last cleared quarter: built against plant capacity
-        if (!a || !(a.hall_k > 0)) return '';
-        var b = Object.keys(a.built_k || {}).reduce(function (t, k) { return t + a.built_k[k]; }, 0), u = b / a.hall_k;
-        return ' · ' + _qLabel(a.qabs) + ' built ' + Math.round(b) + 'k/yr = <span style="color:' + (u < 0.6 ? 'var(--orange)' : 'var(--text)') + ';">' + Math.round(u * 100) + '% used</span>';
-      })((p.actuals || [])[(p.actuals || []).length - 1])
-      + ' · fixed cost €' + (p.fixed_cost_q_at_reserved_m || 0).toFixed(1) + 'M/q of €' + (p.fixed_cost_q_full_m || 0).toFixed(1) + 'M if idle</div></div>';
-    h += _shpPlantChart(p, vnames, vcolors)
-      || '<div style="font-size:10px;color:var(--muted2);margin-top:8px;">No lines and no plans here: the whole plant capacity is free for a new model.</div>';
-    h += '</div>';
-  });
+  h += _shpCarousel() + '<div id="shp-card"></div>';
   el.innerHTML = h;
-  _shpDrawMap();
+  if (plants.length) _shpDrawMap();
+  _shpRenderCard();
+}
+
+function _shpSelId() {
+  var plants = ((_SHP.data || {}).plants) || [];
+  if (!_SHP.sel) { try { _SHP.sel = localStorage.getItem('shp_fp_sel'); } catch (e) {} }
+  if (_SHP.sel !== 'new' && !plants.some(function (p) { return p.id === _SHP.sel; })) _SHP.sel = plants.length ? plants[0].id : 'new';
+  return _SHP.sel;
+}
+
+function _shpSelect(id, toCard) {
+  _SHP.sel = id; _SHP.kind = null; _SHP.preview = null;
+  try { localStorage.setItem('shp_fp_sel', id); } catch (e) {}
+  var car = document.getElementById('shp-car');
+  if (car) car.outerHTML = _shpCarouselStrip();
+  _shpRenderCard();
+  var t = document.getElementById('shp-tile-' + id), c = document.getElementById('shp-car');
+  if (t && c) c.scrollTo({ left: Math.max(0, t.offsetLeft - c.offsetLeft - 8), behavior: 'smooth' });
+  if (toCard) { var cd = document.getElementById('shp-card'); if (cd) cd.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
+}
+
+function _shpBadge(p) {
+  var c = { active: 'var(--green)', building: 'var(--gold)', mothballed: 'var(--muted2)', closed: 'var(--red)', sold: 'var(--red)' }[p.status] || 'var(--muted2)';
+  return '<span style="font-family:\'DM Mono\',monospace;font-size:9px;color:' + c + ';border:1px solid ' + c + ';border-radius:3px;padding:0 5px;white-space:nowrap;">'
+    + p.status + (p.status === 'building' ? ' · ready ' + p.ready : '') + '</span>';
+}
+
+function _shpLastActual(p) {   // the last cleared quarter: built (k / yr) against plant capacity
+  var a = (p.actuals || []).filter(function (x) { return x.hall_k > 0; }).pop();
+  if (!a) return null;
+  var b = Object.keys(a.built_k || {}).reduce(function (t, k) { return t + a.built_k[k]; }, 0);
+  return { qabs: a.qabs, built: b, u: b / a.hall_k };
+}
+
+function _shpCarousel() {
+  var btn = function (dir, l, t) {
+    return '<button onclick="_shpCarScroll(' + dir + ')" title="' + t + '" aria-label="' + t + '" style="flex:0 0 26px;background:var(--s2);border:1px solid var(--border2);color:var(--muted2);border-radius:4px;cursor:pointer;font-size:12px;padding:0;">' + l + '</button>';
+  };
+  return '<div style="display:flex;gap:6px;align-items:stretch;margin:0 0 12px;">' + btn(-1, '◂', 'Previous plants') + _shpCarouselStrip() + btn(1, '▸', 'Next plants') + '</div>';
+}
+
+function _shpCarScroll(dir) { var c = document.getElementById('shp-car'); if (c) c.scrollBy({ left: dir * c.clientWidth * 0.8, behavior: 'smooth' }); }
+
+function _shpCarouselStrip() {
+  var d = _SHP.data, sel = _shpSelId(), mono = "font-family:'DM Mono',monospace;";
+  var tile = function (id, on, inner) {
+    return '<div id="shp-tile-' + id + '" role="button" tabindex="0" onclick="_shpSelect(\'' + id + '\')" onkeydown="if(event.key===\'Enter\')_shpSelect(\'' + id + '\')"'
+      + ' style="flex:0 0 180px;scroll-snap-align:start;cursor:pointer;box-sizing:border-box;padding:8px 10px;border-radius:6px;background:'
+      + (on ? 'var(--s2)' : 'var(--s1)') + ';border:1px solid ' + (on ? 'var(--gold)' : 'var(--border2)') + ';">' + inner + '</div>';
+  };
+  var h = '<div id="shp-car" style="flex:1;min-width:0;display:flex;gap:8px;overflow-x:auto;scroll-snap-type:x proximity;padding-bottom:4px;">';
+  (d.plants || []).forEach(function (p) {
+    var u = p.hall_k > 0 ? _shpUsedK(p) / p.hall_k : 0, a = _shpLastActual(p);
+    h += tile(p.id, p.id === sel,
+      '<div style="display:flex;justify-content:space-between;gap:6px;align-items:center;">'
+      + '<span style="font-size:11px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + (p.ptype === 'vehicle' ? '■ ' : '● ') + _esc(p.name || p.country_code) + '</span>'
+      + _shpBadge(p) + '</div>'
+      + '<div style="' + mono + 'font-size:9px;color:var(--muted2);margin:3px 0 6px;">' + (p.size ? _esc(p.size.name) + ' · ' : '') + Math.round(p.hall_k) + 'k / yr</div>'
+      + '<div style="height:4px;background:var(--border);border-radius:2px;overflow:hidden;"><div style="height:100%;width:' + Math.min(100, u * 100).toFixed(1) + '%;background:' + _shpLoadColor(u) + ';"></div></div>'
+      + '<div style="' + mono + 'font-size:9px;color:var(--muted2);margin-top:4px;">lines fill ' + Math.round(u * 100) + '%'
+      + (a ? ' · built <span style="color:' + (a.u < 0.6 ? 'var(--orange)' : 'var(--text)') + ';">' + Math.round(a.u * 100) + '%</span>' : '') + '</div>');
+  });
+  h += tile('new', sel === 'new', '<div style="font-size:11px;font-weight:700;color:var(--gold);">＋ New plant</div>'
+    + '<div style="' + mono + 'font-size:9px;color:var(--muted2);margin-top:4px;line-height:1.4;">a vehicle or powertrain plant, ready in ' + _shpQs(d.lead_times.build_q) + '</div>');
+  return h + '</div>';
+}
+
+// a line's name: its type and family (a top hat family after its donor model, else its first model)
+function _shpLineName(l) {
+  var donor = null;
+  if (l.module_type === 'tophat') {
+    var r = (l.reservations || []).slice().sort(function (a, b) { return a.from_qabs - b.from_qabs; })[0];
+    donor = l.family_donor || (r && r.vehicle_name);
+  }
+  return (_SHP_TYPE[l.module_type] || l.module_type) + ' · ' + (donor ? donor + ' family' : (l.family_name || 'family ' + String(l.family_root_id || l.id).slice(0, 6)));
+}
+
+// a plant's lines a decision may act on: standing (expand / compact) and empty (remove)
+function _shpPlantLines(p, d) {
+  var going = {};
+  (d.pipeline || []).forEach(function (e) { if (e.kind === 'line_remove') going[e.line_id] = true; });
+  var ls = (p.lines || []).slice().sort(function (x, y) {
+    return String(x.module_type).localeCompare(String(y.module_type)) || _shpLineName(x).localeCompare(_shpLineName(y));
+  });
+  return {
+    standing: ls.filter(function (l) { return !going[l.id] && (l.capacity_k > 0 || l.ready_qabs > d.qabs); }),
+    idle: ls.filter(function (l) { return l.capacity_k > 0 && !going[l.id] && !(l.reservations || []).some(function (r) { return r.to_qabs > d.qabs; }); })
+  };
+}
+
+function _shpKindsFor(p, d) {
+  if (!p) return ['build'];
+  var pl = _shpPlantLines(p, d), k = [];
+  var live = (p.lines || []).some(function (l) { return (l.reservations || []).some(function (r) { return r.to_qabs >= d.qabs; }); });
+  if ((p.status === 'active' || p.status === 'building') && (!p.size || p.room_to_max_k > 0.5)) k.push('expand_hall');
+  if (pl.standing.length) k.push('line_expand', 'line_compact');
+  if (pl.idle.length) k.push('line_remove');
+  if (p.status === 'active') k.push('mothball');
+  if (p.status === 'mothballed') k.push('reopen');
+  if (!live && p.status !== 'closed' && p.status !== 'sold') k.push('close', 'sell');
+  return k;
+}
+
+function _shpPipeTable(ev, pname) {
+  var label = { build: 'New plant', expand_hall: 'Plant expansion', mothball: 'Mothball', reopen: 'Reopen', close: 'Close', sell: 'Sale',
+    line_expand: 'Line expansion', line_compact: 'Line compaction', line_remove: 'Line removed', reservation_decrease: 'Plan lowered (AI run-out)', reservation_increase: 'Reservation raised' };
+  return '<table style="width:100%;border-collapse:collapse;font-size:11px;"><tr style="font-family:\'DM Mono\',monospace;font-size:9px;color:var(--muted2);text-transform:uppercase;letter-spacing:1px;">'
+    + '<td style="padding:4px 6px;">Decision</td>' + (pname ? '<td>Plant</td>' : '') + '<td style="text-align:right;">Change</td><td style="text-align:right;">Capex</td><td style="text-align:right;">Cost</td><td style="text-align:right;padding-right:6px;">Effective</td></tr>'
+    + ev.slice().sort(function (a, b) { return a.effective_qabs - b.effective_qabs; }).map(function (e) {
+      var change = e.reservation_to_k != null
+        ? (e.reservation_from_k != null ? Math.round(e.reservation_from_k) + 'k ' : '') + '→ ' + Math.round(e.reservation_to_k) + 'k'
+        : e.line_to_k != null ? Math.round(e.line_from_k || 0) + 'k → ' + Math.round(e.line_to_k) + 'k'
+        : (e.delta_k ? (e.delta_k > 0 ? '+' : '') + Math.round(e.delta_k) + 'k' : '—');
+      return '<tr style="border-top:1px solid var(--border);"><td style="padding:5px 6px;">' + (label[e.kind] || e.kind)
+        + (e.vehicle_name ? ' <span style="color:var(--muted2);">· ' + _esc(e.vehicle_name) + '</span>' : '') + '</td>' + (pname ? '<td>' + _esc(pname[e.plant_id] || '') + '</td>' : '')
+        + '<td style="text-align:right;font-family:\'DM Mono\',monospace;">' + change + '</td>'
+        + '<td style="text-align:right;font-family:\'DM Mono\',monospace;">' + (e.capex_m ? '€' + e.capex_m.toFixed(1) + 'M' : '—') + '</td>'
+        + '<td style="text-align:right;font-family:\'DM Mono\',monospace;">' + (e.cost_m ? '€' + e.cost_m.toFixed(1) + 'M' : '—') + '</td>'
+        + '<td style="text-align:right;padding-right:6px;font-family:\'DM Mono\',monospace;">' + e.effective + '</td></tr>';
+    }).join('') + '</table>';
+}
+
+function _shpSizeTable() {
+  var sz = (_SHP.data || {}).sizes || {}, v = sz.vehicle || [], pt = sz.powertrain || [];
+  if (!v.length) return '';
+  var td = 'padding:3px 10px 3px 0;';
+  return '<table style="border-collapse:collapse;font-family:\'DM Mono\',monospace;font-size:10px;color:var(--text);margin-bottom:10px;">'
+    + '<tr style="color:var(--muted2);font-size:9px;text-transform:uppercase;letter-spacing:1px;"><td style="' + td + '">Size</td><td style="' + td + '">Vehicle plant</td><td style="' + td + '">Powertrain plant</td></tr>'
+    + v.map(function (z, i) {
+      var q = pt[i] || {};
+      return '<tr style="border-top:1px solid var(--border);"><td style="' + td + '">' + _esc(z.name) + '</td><td style="' + td + '">' + Math.round(z.min_k) + '–' + Math.round(z.max_k) + 'k cars / yr</td>'
+        + '<td style="' + td + '">' + (q.max_k ? Math.round(q.min_k) + '–' + Math.round(q.max_k) + 'k units / yr' : '–') + '</td></tr>';
+    }).join('') + '</table>';
+}
+
+function _shpRenderCard() {
+  var el = document.getElementById('shp-card');
+  if (!el) return;
+  var d = _SHP.data, sel = _shpSelId(), mono = "font-family:'DM Mono',monospace;";
+  var p = (d.plants || []).find(function (x) { return x.id === sel; });
+  var sec = function (t, sub) {
+    return '<div style="display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:6px;margin:16px 0 6px;border-top:1px solid var(--border);padding-top:12px;">'
+      + '<span style="font-size:11px;font-weight:700;">' + t + '</span>' + (sub ? '<span style="' + mono + 'font-size:9px;color:var(--muted2);">' + sub + '</span>' : '') + '</div>';
+  };
+  if (!p) {
+    el.innerHTML = '<div class="card" style="padding:14px 16px;margin-bottom:12px;">'
+      + '<div style="font-weight:700;font-size:13px;margin-bottom:8px;">Build a new plant</div>'
+      + (d.plant_sizes ? _shpSizeTable() : '') + '<div id="shp-dec"></div></div>';
+    _shpRenderDecisions();
+    return;
+  }
+  var used = _shpUsedK(p), u = p.hall_k > 0 ? used / p.hall_k : 0, a = _shpLastActual(p);
+  var kpi = function (lab, val, sub, col) {
+    return '<div style="background:var(--s2);border:1px solid var(--border);border-radius:6px;padding:8px 10px;min-width:0;">'
+      + '<div style="' + mono + 'font-size:9px;letter-spacing:1px;text-transform:uppercase;color:var(--muted2);">' + lab + '</div>'
+      + '<div style="font-size:16px;font-weight:700;margin:2px 0;' + (col ? 'color:' + col + ';' : '') + '">' + val + '</div>'
+      + '<div style="' + mono + 'font-size:9px;color:var(--muted2);">' + (sub || '&nbsp;') + '</div></div>';
+  };
+  var models = {};
+  (p.lines || []).forEach(function (l) { (l.reservations || []).forEach(function (r) { if (r.to_qabs >= d.qabs) models[r.vehicle_id] = true; }); });
+  var h = '<div class="card" id="shp-card-' + p.id + '" style="padding:14px 16px;margin-bottom:12px;">'
+    + '<div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px;flex-wrap:wrap;">'
+    + '<div><span style="font-weight:700;font-size:14px;">' + _esc(p.name || (p.country_code + ' plant')) + '</span> '
+    + '<span style="' + mono + 'font-size:10px;color:var(--muted2);">' + (p.size ? _esc(p.size.name) + ' · ' : '') + (p.ptype === 'vehicle' ? 'vehicle plant' : 'powertrain plant') + ' · ' + p.country_code + '</span> '
+    + _shpBadge(p) + '</div></div>'
+    + '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px;margin:12px 0 4px;">'
+    + kpi('Plant capacity', Math.round(p.hall_k) + 'k', (p.hall_committed_k > p.hall_k + 0.5 ? '→ ' + Math.round(p.hall_committed_k) + 'k decided' : (p.ptype === 'vehicle' ? 'cars' : 'units') + ' / yr'))
+    + (p.size ? kpi('Can grow to', Math.round(p.size.max_k) + 'k', Math.round(p.room_to_max_k || 0) + 'k room left') : '')
+    + kpi('Lines fill', Math.round(u * 100) + '%', Math.round(used) + 'k of the capacity now', _shpLoadColor(u))
+    + (a ? kpi('Built ' + _qLabel(a.qabs), Math.round(a.u * 100) + '%', Math.round(a.built) + 'k / yr of plant capacity', a.u < 0.6 ? 'var(--orange)' : null) : '')
+    + kpi('Fixed cost', '€' + (p.fixed_cost_q_at_reserved_m || 0).toFixed(1) + 'M', 'a quarter · €' + (p.fixed_cost_q_full_m || 0).toFixed(1) + 'M if idle')
+    + kpi('Lines', (p.lines || []).length, Object.keys(models).length + ' model' + (Object.keys(models).length === 1 ? '' : 's') + ' on them')
+    + (p.hall_capex_m ? kpi('Plant capex', '€' + p.hall_capex_m.toFixed(0) + 'M', 'building and plant capacity') : '')
+    + '</div>';
+  h += _shpViewToggle().replace('margin:0 0 10px;', 'margin:12px 0 0;')
+    + (_shpPlantChart(p, _SHP.vnames || {}, _SHP.vcolors || {})
+      || '<div style="font-size:10px;color:var(--muted2);margin-top:8px;">No lines and no plans here: the whole plant capacity is free for a new model.</div>');
+  var lines = (p.lines || []).slice().sort(function (x, y) {
+    return String(x.module_type).localeCompare(String(y.module_type)) || _shpLineName(x).localeCompare(_shpLineName(y));
+  });
+  if (lines.length) {
+    var th = 'padding:4px 8px;text-align:right;font-weight:400;';
+    h += sec('Lines', 'k / yr now · models planning on them from now on')
+      + '<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:11px;">'
+      + '<tr style="' + mono + 'font-size:9px;color:var(--muted2);text-transform:uppercase;letter-spacing:1px;"><td style="padding:4px 6px;">Line</td>'
+      + '<td style="' + th + '">Installed</td><td style="' + th + '">Reserved</td><td style="' + th + '">Free</td><td style="padding:4px 8px;">Models (plan · SOP–EOP)</td><td style="' + th + '">Ready</td></tr>'
+      + lines.map(function (l) {
+        var live = (l.reservations || []).filter(function (r) { return r.to_qabs >= d.qabs; });
+        return '<tr style="border-top:1px solid var(--border);vertical-align:top;"><td style="padding:5px 6px;white-space:nowrap;">' + _esc(_shpLineName(l))
+          + (l.module_type === 'tophat' && l.family_name ? ' <span style="' + mono + 'font-size:9px;color:var(--muted2);">' + _esc(l.family_name) + '</span>' : '') + '</td>'
+          + '<td style="padding:5px 8px;text-align:right;' + mono + '">' + Math.round(l.capacity_k) + 'k</td>'
+          + '<td style="padding:5px 8px;text-align:right;' + mono + '">' + Math.round(l.reserved_k || 0) + 'k</td>'
+          + '<td style="padding:5px 8px;text-align:right;' + mono + 'color:' + (l.free_k > 0.5 ? 'var(--green)' : 'var(--muted2)') + ';">' + Math.round(l.free_k || 0) + 'k</td>'
+          + '<td style="padding:5px 8px;font-size:10px;">' + (live.length ? live.map(function (r) {
+            return _esc(r.vehicle_name || r.vehicle_id.slice(0, 6)) + ' <span style="' + mono + 'font-size:9px;color:var(--muted2);">' + Math.round(r.capacity_k) + 'k · ' + r.from + '–' + r.to + '</span>';
+          }).join('<br>') : '<span style="color:var(--muted2);">idle</span>') + '</td>'
+          + '<td style="padding:5px 8px;text-align:right;' + mono + '">' + (l.ready_qabs > d.qabs ? _qLabel(l.ready_qabs) : '–') + '</td></tr>';
+      }).join('') + '</table></div>';
+  }
+  var ev = (d.pipeline || []).filter(function (e) { return e.plant_id === p.id; });
+  if (ev.length) h += sec('In progress', 'decided, not yet in effect') + _shpPipeTable(ev, null);
+  h += sec('Decide on this plant', 'preview first: nothing is written until you confirm') + '<div id="shp-dec"></div></div>';
+  el.innerHTML = h;
+  _shpRenderDecisions();
 }
 
 function _shpOpts(list, val, lab) {
   return list.map(function (x) { return '<option value="' + _esc(val(x)) + '">' + _esc(lab(x)) + '</option>'; }).join('');
 }
 
+function _shpSetKind(k) { _SHP.kind = k; _shpRenderDecisions(); }
+
+// the decisions for the plant selected (or the build form for ＋ New plant), inside its card
 function _shpRenderDecisions() {
-  var el = document.getElementById('shp-decisions');
+  var el = document.getElementById('shp-dec');
   if (!el) return;
-  var kind = (document.getElementById('shp-kind') || {}).value || 'build';
-  var d = _SHP.data, plants = d.plants || [];
-  var lines = [];
-  plants.forEach(function (p) { (p.lines || []).forEach(function (l) { lines.push({ p: p, l: l }); }); });
+  var d = _SHP.data, sel = _shpSelId();
+  var p = (d.plants || []).find(function (x) { return x.id === sel; });
+  var kinds = _shpKindsFor(p, d);
+  _SHP.preview = null;
+  if (!kinds.length) { el.innerHTML = '<div style="font-size:11px;color:var(--muted2);">No plant decision applies to this plant now.</div>'; return; }
+  var kind = kinds.indexOf(_SHP.kind) >= 0 ? _SHP.kind : kinds[0];
+  _SHP.kind = kind;
+  var pl = p ? _shpPlantLines(p, d) : null;
   var lab = 'font-family:\'DM Mono\',monospace;font-size:9px;letter-spacing:1px;text-transform:uppercase;color:var(--muted2);display:block;margin-bottom:3px;';
   var inp = 'background:var(--s2);border:1px solid var(--border2);color:var(--text);border-radius:4px;padding:5px 8px;font-size:12px;min-width:160px;';
   var f = function (label, html) { return '<div style="display:flex;flex-direction:column;"><label style="' + lab + '">' + label + '</label>' + html + '</div>'; };
-  var h = '<div style="font-size:11px;color:var(--muted2);margin-bottom:12px;line-height:1.5;">Plant decisions buy or release room. '
-    + 'A new plant is ready in ' + d.lead_times.build_q + ' quarters, a plant capacity expansion in ' + d.lead_times.expand_q
-    + '. Line changes apply from the quarter you choose (next quarter at the earliest). Preview first: nothing is written until you confirm.</div>'
-    + '<div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;">'
-    + f('Decision', '<select id="shp-kind" style="' + inp + '" onchange="_shpRenderDecisions()">'
-      + Object.keys(_SHP_KIND).map(function (k) { return '<option value="' + k + '"' + (k === kind ? ' selected' : '') + '>' + _SHP_KIND[k] + '</option>'; }).join('') + '</select>');
+  var qs = [];
+  for (var i = 1; i <= 12; i++) qs.push(d.qabs + i);
+  var h = '<div style="font-size:11px;color:var(--muted2);margin-bottom:10px;line-height:1.5;">'
+    + 'A new plant is ready in ' + _shpQs(d.lead_times.build_q) + ', a plant capacity expansion in ' + _shpQs(d.lead_times.expand_q)
+    + '. Line changes apply from the quarter you choose (next quarter at the earliest).</div>';
+  if (p) h += '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px;">' + kinds.map(function (k) {
+    var on = k === kind;
+    return '<button onclick="_shpSetKind(\'' + k + '\')" style="font-family:DM Mono,monospace;font-size:10px;padding:4px 10px;border-radius:3px;cursor:pointer;'
+      + 'border:1px solid ' + (on ? 'var(--gold)' : 'var(--border2)') + ';background:' + (on ? 'var(--s3)' : 'var(--s2)') + ';color:' + (on ? 'var(--gold)' : 'var(--muted2)') + ';">' + (_SHP_KIND_HERE[k] || _SHP_KIND[k]) + '</button>';
+  }).join('') + '</div>';
+  h += '<input type="hidden" id="shp-kind" value="' + kind + '">' + (p ? '<input type="hidden" id="shp-plant" value="' + p.id + '">' : '')
+    + '<div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;">';
   if (kind === 'build') {
+    if (!Object.keys(mfgCountries || {}).length) { loadMfgCountries().then(_shpRenderDecisions); return; }
     var cs = [];
     Object.keys(mfgCountries || {}).forEach(function (r) { (mfgCountries[r] || []).forEach(function (c) { cs.push(c); }); });
     h += f('Plant type', '<select id="shp-ptype" style="' + inp + '"' + (d.plant_sizes ? ' onchange="_shpSizeSync(true)"' : '') + '><option value="vehicle">Vehicle plant</option><option value="powertrain">Powertrain plant</option></select>')
       + f('Country', '<select id="shp-cc" style="' + inp + '">' + _shpOpts(cs, function (c) { return c.country_code; }, function (c) { return c.country_name + ' (' + c.country_code + ')'; }) + '</select>')
       + (d.plant_sizes ? f('Size', '<select id="shp-size" style="' + inp + 'min-width:230px;" onchange="_shpSizeSync(false)"></select>') : '')
       + f('Plant capacity (k / yr)', '<input id="shp-hall" type="number" min="20" step="10" value="250" style="' + inp + 'min-width:90px;width:100px;">');
-  } else if (['expand_hall', 'mothball', 'reopen', 'close', 'sell'].indexOf(kind) >= 0) {
-    h += f('Plant', '<select id="shp-plant" style="' + inp + '">' + _shpOpts(plants, function (p) { return p.id; },
-      function (p) { return (p.name || p.country_code) + ' · ' + (p.size ? p.size.name : p.ptype) + ' · ' + p.status + ' · capacity ' + Math.round(p.hall_k) + 'k'
-        + (kind === 'expand_hall' && p.size ? ' · room to grow ' + Math.round(p.room_to_max_k) + 'k' : ''); }) + '</select>');
-    if (kind === 'expand_hall') h += f('Add (k / yr)', '<input id="shp-hall" type="number" min="10" step="10" value="50" style="' + inp + 'min-width:90px;width:100px;">');
+  } else if (kind === 'expand_hall') {
+    h += f('Add (k / yr)' + (p.size ? ' · up to ' + Math.round(p.room_to_max_k) + 'k' : ''), '<input id="shp-hall" type="number" min="10" step="10" value="'
+      + Math.max(10, Math.min(50, Math.round((p.size ? p.room_to_max_k : 50) / 10) * 10)) + '"' + (p.size ? ' max="' + Math.round(p.room_to_max_k) + '"' : '') + ' style="' + inp + 'min-width:90px;width:110px;">');
   } else if (kind === 'line_remove') {
-    // lines no model reserves from next quarter on, still standing and not already decided to go
-    var going = {};
-    (d.pipeline || []).forEach(function (e) { if (e.kind === 'line_remove') going[e.line_id] = true; });
-    var idle = lines.filter(function (x) {
-      return x.l.capacity_k > 0 && !going[x.l.id] && !(x.l.reservations || []).some(function (r) { return r.to_qabs > d.qabs; });
-    });
-    var rq = [];
-    for (var j = 1; j <= 12; j++) rq.push(d.qabs + j);
-    h += f('Empty line', idle.length
-      ? '<select id="shp-line" style="' + inp + 'min-width:280px;">' + _shpOpts(idle, function (x) { return x.l.id; }, function (x) {
-          var last = (x.l.reservations || []).reduce(function (a, r) { return r.to_qabs > a ? r.to_qabs : a; }, -1e9);
-          return (_SHP_TYPE[x.l.module_type] || x.l.module_type) + ' line · ' + (x.l.family_name || 'family ' + String(x.l.family_root_id || '').slice(0, 6))
-            + ' · ' + (x.p.name || x.p.country_code) + ' · ' + Math.round(x.l.capacity_k) + 'k · ' + (last > -1e9 ? 'idle since ' + _qLabel(last + 1) : 'never used');
-        }) + '</select>'
-      : '<div style="font-size:11px;color:var(--muted2);padding:6px 0;">Every line has a model reserving it.</div>')
-      + f('From', '<select id="shp-from" style="' + inp + 'min-width:100px;">' + _shpOpts(rq, function (q) { return q; }, function (q) { return _qLabel(q); }) + '</select>');
-  } else {
-    // line_expand / line_compact: a standing family line and its capacity from the chosen quarter (the
-    // models on it share it; their business case plans stay as approved)
-    var going2 = {};
-    (d.pipeline || []).forEach(function (e) { if (e.kind === 'line_remove') going2[e.line_id] = true; });
-    var standing = lines.filter(function (x) { return !going2[x.l.id] && (x.l.capacity_k > 0 || x.l.ready_qabs > d.qabs); });
-    var qs = [];
-    for (var i = 1; i <= 12; i++) qs.push(d.qabs + i);
-    h += f('Line', standing.length
-      ? '<select id="shp-line" style="' + inp + 'min-width:300px;">' + _shpOpts(standing, function (x) { return x.l.id; }, function (x) {
-          var on = {};
-          (x.l.reservations || []).filter(function (r) { return r.to_qabs > d.qabs; }).forEach(function (r) { on[r.vehicle_name || r.vehicle_id.slice(0, 6)] = true; });
-          var who = Object.keys(on);
-          return (_SHP_TYPE[x.l.module_type] || x.l.module_type) + ' line · ' + (x.l.family_name || 'family ' + String(x.l.family_root_id || '').slice(0, 6))
-            + ' · ' + (x.p.name || x.p.country_code) + ' · ' + Math.round(x.l.capacity_k) + 'k installed'
-            + (who.length ? ' · ' + who.slice(0, 3).join(', ') + (who.length > 3 ? ' +' + (who.length - 3) : '') : ' · idle');
-        }) + '</select>'
-      : '<div style="font-size:11px;color:var(--muted2);padding:6px 0;">No lines yet.</div>')
+    h += f('Empty line', '<select id="shp-line" style="' + inp + 'min-width:280px;">' + _shpOpts(pl.idle, function (l) { return l.id; }, function (l) {
+        var last = (l.reservations || []).reduce(function (a, r) { return r.to_qabs > a ? r.to_qabs : a; }, -1e9);
+        return _shpLineName(l) + ' · ' + Math.round(l.capacity_k) + 'k · ' + (last > -1e9 ? 'idle since ' + _qLabel(last + 1) : 'never used');
+      }) + '</select>')
+      + f('From', '<select id="shp-from" style="' + inp + 'min-width:100px;">' + _shpOpts(qs, function (q) { return q; }, function (q) { return _qLabel(q); }) + '</select>');
+  } else if (kind === 'line_expand' || kind === 'line_compact') {
+    // a standing family line and its capacity from the chosen quarter (the models on it share it;
+    // their business case plans stay as approved)
+    h += f('Line', '<select id="shp-line" style="' + inp + 'min-width:300px;" onchange="_shpLineSync()">' + _shpOpts(pl.standing, function (l) { return l.id; }, function (l) {
+        var on = {};
+        (l.reservations || []).filter(function (r) { return r.to_qabs > d.qabs; }).forEach(function (r) { on[r.vehicle_name || r.vehicle_id.slice(0, 6)] = true; });
+        var who = Object.keys(on);
+        return _shpLineName(l) + ' · ' + Math.round(l.capacity_k) + 'k installed'
+          + (who.length ? ' · ' + who.slice(0, 3).join(', ') + (who.length > 3 ? ' +' + (who.length - 3) : '') : ' · idle');
+      }) + '</select>')
       + f('Line capacity from then (k / yr)', '<input id="shp-newk" type="number" min="0" step="5" value="'
-        + (standing.length ? Math.round(standing[0].l.capacity_k + (kind === 'line_expand' ? 20 : -20)) : 50) + '" style="' + inp + 'min-width:90px;width:110px;">')
+        + Math.max(0, Math.round(pl.standing[0].capacity_k + (kind === 'line_expand' ? 20 : -20))) + '" style="' + inp + 'min-width:90px;width:110px;">')
       + f('From', '<select id="shp-from" style="' + inp + 'min-width:100px;">' + _shpOpts(qs, function (q) { return q; }, function (q) { return _qLabel(q); }) + '</select>');
   }
   h += '<button onclick="_shpSubmit(true)" style="background:var(--s2);color:var(--text);border:1px solid var(--border2);border-radius:4px;padding:6px 14px;font-size:11px;font-weight:700;cursor:pointer;">Preview</button>'
@@ -21319,13 +21508,23 @@ function _shpRenderDecisions() {
     close: 'Only a plant no model reserves can close: severance is paid and the plant is written off.',
     sell: 'As a close, but the buyer pays 40% of the plant’s book value; the rest is written off.',
     mothball: 'A mothballed plant builds nothing and keeps a fifth of its fixed cost.',
+    reopen: 'The plant builds again and carries its full fixed cost.',
     expand_hall: d.plant_sizes ? 'A plant grows only up to the maximum of its size; beyond that, build another plant.' : null,
     build: d.plant_sizes ? 'A new plant is one of four sizes; choose its capacity inside that size’s range. It can later grow up to the size’s maximum, never beyond.' : null
   }[kind];
   if (help) h += '<div style="font-size:10px;color:var(--muted2);margin-top:6px;">' + help + '</div>';
   el.innerHTML = h;
-  _SHP.preview = null;
   if (kind === 'build' && d.plant_sizes) _shpSizeSync(true);
+}
+
+// line expand / compact: the capacity field starts from the line chosen
+function _shpLineSync() {
+  var d = _SHP.data, lid = (document.getElementById('shp-line') || {}).value, inp = document.getElementById('shp-newk');
+  var l = null;
+  (d.plants || []).forEach(function (p) { (p.lines || []).forEach(function (x) { if (x.id === lid) l = x; }); });
+  if (l && inp) inp.value = Math.max(0, Math.round(l.capacity_k + (_SHP.kind === 'line_expand' ? 20 : -20)));
+  _SHP.preview = null;
+  var c = document.getElementById('shp-confirm'); if (c) { c.disabled = true; c.style.opacity = .45; }
 }
 
 // Build form, sized sessions: the size list for the plant type, and the capacity kept inside the
@@ -21364,6 +21563,7 @@ function _shpBody(dry) {
 
 async function _shpSubmit(dry) {
   var msg = document.getElementById('shp-msg'), body = _shpBody(dry);
+  var before = ((_SHP.data || {}).plants || []).map(function (p) { return p.id; });
   if (!dry && (!_SHP.preview || JSON.stringify(_SHP.preview) !== JSON.stringify(_shpBody(true)))) {
     msg.innerHTML = '<span style="color:var(--gold);">Preview this decision first.</span>'; return;
   }
@@ -21384,7 +21584,9 @@ async function _shpSubmit(dry) {
       var c = document.getElementById('shp-confirm'); if (c) { c.disabled = false; c.style.opacity = 1; }
     } else {
       _SHP.data = d;
-      _shpRenderFootprint(); _shpRenderPipeline(); _shpKpis(); _shpRenderDecisions();
+      var nw = (d.plants || []).find(function (p) { return before.indexOf(p.id) < 0; });
+      if (nw) { _SHP.sel = nw.id; try { localStorage.setItem('shp_fp_sel', nw.id); } catch (e) {} }
+      _shpRenderFootprint(); _shpRenderPipeline(); _shpKpis();
       document.getElementById('shp-msg').innerHTML = '<span style="color:var(--green);">Saved: ' + _SHP_KIND[body.kind] + '.</span>';
     }
   } catch (err) { msg.innerHTML = '<span style="color:var(--red);">Could not reach the server.</span>'; }
@@ -21397,22 +21599,7 @@ function _shpRenderPipeline() {
   var pname = {};
   (d.plants || []).forEach(function (p) { pname[p.id] = p.name || p.country_code; });
   if (!ev.length) { el.innerHTML = '<div style="color:var(--muted2);font-size:13px;padding:24px 0">No plant decisions still taking effect.</div>'; return; }
-  var label = { build: 'New plant', expand_hall: 'Plant expansion', mothball: 'Mothball', reopen: 'Reopen', close: 'Close', sell: 'Sale',
-    line_expand: 'Line expansion', line_compact: 'Line compaction', line_remove: 'Line removed', reservation_decrease: 'Plan lowered (AI run-out)', reservation_increase: 'Reservation raised' };
-  el.innerHTML = '<table style="width:100%;border-collapse:collapse;font-size:11px;"><tr style="font-family:\'DM Mono\',monospace;font-size:9px;color:var(--muted2);text-transform:uppercase;letter-spacing:1px;">'
-    + '<td style="padding:4px 6px;">Decision</td><td>Plant</td><td style="text-align:right;">Change</td><td style="text-align:right;">Capex</td><td style="text-align:right;">Cost</td><td style="text-align:right;padding-right:6px;">Effective</td></tr>'
-    + ev.sort(function (a, b) { return a.effective_qabs - b.effective_qabs; }).map(function (e) {
-      var change = e.reservation_to_k != null
-        ? (e.reservation_from_k != null ? Math.round(e.reservation_from_k) + 'k ' : '') + '→ ' + Math.round(e.reservation_to_k) + 'k'
-        : e.line_to_k != null ? Math.round(e.line_from_k || 0) + 'k → ' + Math.round(e.line_to_k) + 'k'
-        : (e.delta_k ? (e.delta_k > 0 ? '+' : '') + Math.round(e.delta_k) + 'k' : '—');
-      return '<tr style="border-top:1px solid var(--border);"><td style="padding:5px 6px;">' + (label[e.kind] || e.kind)
-        + (e.vehicle_name ? ' <span style="color:var(--muted2);">· ' + _esc(e.vehicle_name) + '</span>' : '') + '</td><td>' + _esc(pname[e.plant_id] || '') + '</td>'
-        + '<td style="text-align:right;font-family:\'DM Mono\',monospace;">' + change + '</td>'
-        + '<td style="text-align:right;font-family:\'DM Mono\',monospace;">' + (e.capex_m ? '€' + e.capex_m.toFixed(1) + 'M' : '—') + '</td>'
-        + '<td style="text-align:right;font-family:\'DM Mono\',monospace;">' + (e.cost_m ? '€' + e.cost_m.toFixed(1) + 'M' : '—') + '</td>'
-        + '<td style="text-align:right;padding-right:6px;font-family:\'DM Mono\',monospace;">' + e.effective + '</td></tr>';
-    }).join('') + '</table>';
+  el.innerHTML = _shpPipeTable(ev, pname);
 }
 
 function opsTab(tab, el) {
