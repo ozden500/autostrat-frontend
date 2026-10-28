@@ -20771,7 +20771,8 @@ function _shpViewToggle() {
 }
 
 // a plant quarter by quarter in the Footprint view chosen (_SHP.view). 'installed': the line capacity
-// the models on each family line share (a vehicle plant's platform lines, a powertrain plant's lines),
+// the models on each family line share (a vehicle plant's top hat lines, one per top hat family named
+// after its donor model, since 2026-10-28; a powertrain plant's lines),
 // the business case plans' total as a dashed line. 'plans': the business case plans (a vehicle plant's
 // by model, a powertrain plant's by line), what is installed as a solid line. The hall is the red line.
 // Cleared quarters come first (p.actuals, since 2026-10-28): bars = what was installed, stacked by the
@@ -20786,24 +20787,32 @@ function _shpPlantChart(p, names, colors) {
   if (!ser.length) return '';
   var N = ser.length, nPast = act.length, pwt = p.ptype !== 'vehicle', view = _SHP.view || 'installed';
   var sum = function (o) { return Object.keys(o || {}).reduce(function (a, k) { return a + o[k]; }, 0); };
+  // a vehicle plant's installed view stacks its top hat lines (platform lines where the API has none)
+  var th = !pwt && ser.some(function (s) { return s.tophat_installed_k; });
+  var stackLines = function (s) { return (th ? s.tophat_installed_k : s.installed_k) || {}; };
+  var firstRes = function (l) {
+    var r = (l.reservations || []).slice().sort(function (a, b) { return a.from_qabs - b.from_qabs; })[0];
+    return r && r.vehicle_name;
+  };
   // this plant's lines (a stack by line: both powertrain views, a vehicle plant's installed view)
   if (view === 'installed' || pwt) {
     var used = {};
     ser.forEach(function (s) {
-      Object.keys(s.installed_k || {}).concat(pwt ? Object.keys(s.plans_k || {}).concat(Object.keys(s.built_k || {})) : []).forEach(function (lid) { used[lid] = true; });
+      Object.keys(stackLines(s)).concat(pwt ? Object.keys(s.plans_k || {}).concat(Object.keys(s.built_k || {})) : []).forEach(function (lid) { used[lid] = true; });
     });
     names = {}; colors = {};
     (p.lines || []).filter(function (l) { return used[l.id]; }).sort(function (a, b) {
       return String(a.module_type).localeCompare(String(b.module_type)) || String(a.family_name || '').localeCompare(String(b.family_name || ''));
     }).forEach(function (l, i) {
-      names[l.id] = (_SHP_TYPE[l.module_type] || l.module_type) + ' · ' + (l.family_name || String(l.family_root_id || l.id).slice(0, 6));
+      var donor = l.module_type === 'tophat' ? (l.family_donor || firstRes(l)) : null;
+      names[l.id] = donor ? donor + ' family' : (_SHP_TYPE[l.module_type] || l.module_type) + ' · ' + (l.family_name || String(l.family_root_id || l.id).slice(0, 6));
       colors[l.id] = i < _SHP_COLORS.length ? _SHP_COLORS[i] : null;
     });
   }
-  // a past quarter's cars, keyed like the view: a vehicle plant's installed view by the model's platform line here
+  // a past quarter's cars, keyed like the view: a vehicle plant's installed view by the model's stacked line here
   var platOf = {};
   if (!pwt) (p.lines || []).forEach(function (l) {
-    if (l.module_type === 'platform') (l.reservations || []).forEach(function (r) { platOf[r.vehicle_id] = l.id; });
+    if (l.module_type === (th ? 'tophat' : 'platform')) (l.reservations || []).forEach(function (r) { platOf[r.vehicle_id] = l.id; });
   });
   var builtPart = function (s) {
     if (pwt || view !== 'installed') return s.built_k || {};
@@ -20812,18 +20821,18 @@ function _shpPlantChart(p, names, colors) {
     return o;
   };
   var instPart = function (s) {   // a past quarter's installed capacity, keyed like the view
-    if (pwt || view === 'installed') return s.installed_k || {};
-    var pl = {}, th = {}, o = {};
+    if (pwt || view === 'installed') return stackLines(s);
+    var pl = {}, tl = {}, o = {};
     (p.lines || []).forEach(function (l) {
-      var t = l.module_type === 'platform' ? pl : l.module_type === 'tophat' ? th : null;
+      var t = l.module_type === 'platform' ? pl : l.module_type === 'tophat' ? tl : null;
       if (t) (l.reservations || []).forEach(function (r) {
         if (r.from_qabs <= s.qabs && s.qabs <= r.to_qabs) t[r.vehicle_id] = (t[r.vehicle_id] || 0) + r.capacity_k;
       });
     });
-    Object.keys(pl).forEach(function (vid) { var v = Math.min(pl[vid], th[vid] || 0); if (v > 0) o[vid] = v; });
+    Object.keys(pl).forEach(function (vid) { var v = Math.min(pl[vid], tl[vid] || 0); if (v > 0) o[vid] = v; });
     return o;
   };
-  var part = function (s) { return s.built_k ? instPart(s) : ((view === 'installed' ? s.installed_k : s.plans_k) || {}); };
+  var part = function (s) { return s.built_k ? instPart(s) : ((view === 'installed' ? stackLines(s) : s.plans_k) || {}); };
   var keyOf = function (k) { return colors[k] ? k : '_other'; };
   var cols = ser.map(function (s) {
     var segs = {}, acts = {}, ps = part(s), bs = s.built_k ? builtPart(s) : {};
@@ -20851,10 +20860,10 @@ function _shpPlantChart(p, names, colors) {
   _SHP.charts[p.id] = { cols: cols, keys: keys, label: label, color: color, view: view, pwt: pwt, nPast: nPast };
   var mono = "font-family:'DM Mono',monospace;";
   var title = view === 'installed'
-    ? (pwt ? 'Installed powertrain capacity by module line' : 'Installed car capacity by platform line')
+    ? (pwt ? 'Installed powertrain capacity by module line' : 'Installed car capacity by ' + (th ? 'top hat family' : 'platform line'))
     : (pwt ? 'Business case plans by module line' : 'Business case plans by model');
   var sub = view === 'installed'
-    ? (pwt ? 'engine, e-drive and battery lines share the plant capacity' : 'each car also needs its top hat line (in the tooltip)')
+    ? (pwt ? 'engine, e-drive and battery lines share the plant capacity' : 'a family = a top hat and its derivatives, named after its donor model; each car also needs its platform line (in the tooltip)')
     : (pwt ? 'powertrain units the approved plans need' : 'min(platform, top hat) plan per model');
   var refSw = '<span style="width:14px;height:0;border-top:2px ' + (refKey === 'plans' ? 'dashed' : 'solid') + ' var(--text);"></span>';
   var h = '<div style="margin:10px 0 6px;">'
