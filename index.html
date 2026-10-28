@@ -20774,9 +20774,11 @@ function _shpViewToggle() {
 // the models on each family line share (a vehicle plant's platform lines, a powertrain plant's lines),
 // the business case plans' total as a dashed line. 'plans': the business case plans (a vehicle plant's
 // by model, a powertrain plant's by line), what is installed as a solid line. The hall is the red line.
-// Cleared quarters come first (p.actuals, since 2026-10-28): bars = what the plant built (annual rate),
-// stacked by the same keys as the view, a dashed outline = what its lines had installed, the share of
-// plant capacity used above each bar (orange under 60%, where checklist PL3 calls a plant idle).
+// Cleared quarters come first (p.actuals, since 2026-10-28): bars = what was installed, stacked by the
+// same keys as the view (a vehicle plant's plans view: each model's min(platform, top hat) reservations
+// there); inside each segment the part built (annual rate) is hatched, the solid part above it is
+// installed but unused. The share of plant capacity used sits above each bar (orange under 60%, where
+// checklist PL3 calls a plant idle).
 function _shpPlantChart(p, names, colors) {
   var act = (p.actuals || []).filter(function (a) { return a.hall_k > 0 || Object.keys(a.built_k || {}).length; });
   var lastAct = act.length ? act[act.length - 1].qabs : -1e9;
@@ -20809,12 +20811,26 @@ function _shpPlantChart(p, names, colors) {
     Object.keys(s.built_k || {}).forEach(function (vid) { var k = platOf[vid] || vid; o[k] = (o[k] || 0) + s.built_k[vid]; });
     return o;
   };
-  var part = function (s) { return s.built_k ? builtPart(s) : ((view === 'installed' ? s.installed_k : s.plans_k) || {}); };
+  var instPart = function (s) {   // a past quarter's installed capacity, keyed like the view
+    if (pwt || view === 'installed') return s.installed_k || {};
+    var pl = {}, th = {}, o = {};
+    (p.lines || []).forEach(function (l) {
+      var t = l.module_type === 'platform' ? pl : l.module_type === 'tophat' ? th : null;
+      if (t) (l.reservations || []).forEach(function (r) {
+        if (r.from_qabs <= s.qabs && s.qabs <= r.to_qabs) t[r.vehicle_id] = (t[r.vehicle_id] || 0) + r.capacity_k;
+      });
+    });
+    Object.keys(pl).forEach(function (vid) { var v = Math.min(pl[vid], th[vid] || 0); if (v > 0) o[vid] = v; });
+    return o;
+  };
+  var part = function (s) { return s.built_k ? instPart(s) : ((view === 'installed' ? s.installed_k : s.plans_k) || {}); };
   var keyOf = function (k) { return colors[k] ? k : '_other'; };
   var cols = ser.map(function (s) {
-    var segs = {}, ps = part(s);
+    var segs = {}, acts = {}, ps = part(s), bs = s.built_k ? builtPart(s) : {};
     Object.keys(ps).forEach(function (k) { var kk = keyOf(k); segs[kk] = (segs[kk] || 0) + ps[k]; });
-    return { q: s.qabs, hall: s.hall_k, linesCap: s.lines_cap_k || 0, segs: segs, total: sum(ps),
+    Object.keys(bs).forEach(function (k) { var kk = keyOf(k); acts[kk] = (acts[kk] || 0) + bs[k]; });
+    Object.keys(acts).forEach(function (k) { segs[k] = Math.max(segs[k] || 0, acts[k]); });   // never draw built above its segment
+    return { q: s.qabs, hall: s.hall_k, linesCap: s.lines_cap_k || 0, segs: segs, acts: acts, total: sum(segs),
              installed: sum(s.installed_k), plans: sum(s.plans_k), tophat: s.tophat_k,
              past: !!s.built_k, built: s.built_k ? sum(s.built_k) : null };
   });
@@ -20844,13 +20860,13 @@ function _shpPlantChart(p, names, colors) {
   var h = '<div style="margin:10px 0 6px;">'
     + '<div style="display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:6px;">'
     + '<span style="font-size:11px;font-weight:700;">' + title + '</span>'
-    + '<span style="' + mono + 'font-size:9px;color:var(--muted2);">' + sub + (nPast ? ' · left of now: built (actual), at annual rate' : '') + ' · k / yr</span></div>'
+    + '<span style="' + mono + 'font-size:9px;color:var(--muted2);">' + sub + (nPast ? ' · left of now: installed, hatched = built (actual)' : '') + ' · k / yr</span></div>'
     + '<div style="display:flex;flex-wrap:wrap;gap:4px 12px;margin:6px 0 8px;font-size:10px;color:var(--text);">'
     + keys.map(function (k) {
       return '<span style="display:inline-flex;align-items:center;gap:5px;"><span style="width:10px;height:10px;border-radius:2px;background:' + color(k) + ';"></span>' + _esc(label(k)) + '</span>';
     }).join('')
     + '<span style="display:inline-flex;align-items:center;gap:5px;">' + refSw + refLab + '</span>'
-    + (nPast ? '<span style="display:inline-flex;align-items:center;gap:5px;"><span style="width:10px;height:10px;border:1px dashed var(--border3);border-bottom:none;box-sizing:border-box;"></span>Installed (past quarters)</span>' : '')
+    + (nPast ? '<span style="display:inline-flex;align-items:center;gap:5px;"><span style="width:10px;height:10px;border-radius:2px;background:var(--muted2);position:relative;overflow:hidden;"><span style="position:absolute;left:0;right:0;bottom:0;height:60%;background:repeating-linear-gradient(135deg,rgba(0,0,0,.55) 0 2px,transparent 2px 5px);"></span></span>Built (actual) · solid above = installed, unused</span>' : '')
     + '<span style="display:inline-flex;align-items:center;gap:5px;"><span style="width:14px;height:2px;background:var(--red);"></span>Plant capacity</span></div>'
     + '<div style="display:flex;gap:6px;">'
     + '<div style="position:relative;width:34px;height:150px;' + (nPast ? 'margin-top:14px;' : '') + mono + 'font-size:9px;color:var(--muted2);">';
@@ -20869,20 +20885,18 @@ function _shpPlantChart(p, names, colors) {
       + '<div style="position:absolute;top:-13px;left:calc(' + (nPast / N * 100) + '% + 4px);' + mono + 'font-size:8px;color:var(--muted2);pointer-events:none;">now · planned ▸</div>';
   }
   cols.forEach(function (c, i) {
-    if (!c.past) return;   // what the lines had installed: a dashed outline behind the bar
-    h += '<div style="position:absolute;bottom:0;left:calc(' + (i / N * 100) + '% + 1px);width:calc(' + (100 / N) + '% - 2px);height:' + pct(c.installed)
-      + ';border:1px dashed var(--border3);border-bottom:none;border-radius:4px 4px 0 0;box-sizing:border-box;pointer-events:none;"></div>';
-  });
-  cols.forEach(function (c, i) {
     var stack = keys.filter(function (k) { return c.segs[k] > 0; });
     h += '<div style="position:absolute;bottom:0;top:0;left:' + (i / N * 100) + '%;width:' + (100 / N) + '%;display:flex;flex-direction:column-reverse;padding:0 2px;box-sizing:border-box;cursor:default;"'
       + ' onmousemove="_shpChartTip(event,\'' + p.id + '\',' + i + ')">';
     stack.forEach(function (k, j) {
-      h += '<div style="height:' + pct(c.segs[k]) + ';background:' + color(k) + ';box-sizing:border-box;'
-        + (j > 0 ? 'border-bottom:2px solid var(--s1);' : '') + (j === stack.length - 1 ? 'border-radius:4px 4px 0 0;' : '') + '"></div>';
+      var a = c.past ? Math.min(c.acts[k] || 0, c.segs[k]) : 0;   // the built part, hatched at the segment's foot
+      h += '<div style="position:relative;overflow:hidden;height:' + pct(c.segs[k]) + ';background:' + color(k) + ';box-sizing:border-box;'
+        + (j > 0 ? 'border-bottom:2px solid var(--s1);' : '') + (j === stack.length - 1 ? 'border-radius:4px 4px 0 0;' : '') + '">'
+        + (a > 0 ? '<div style="position:absolute;left:0;right:0;bottom:0;height:' + (a / c.segs[k] * 100).toFixed(2) + '%;background:repeating-linear-gradient(135deg,rgba(0,0,0,.55) 0 2px,transparent 2px 5px);"></div>' : '')
+        + '</div>';
     });
     h += '</div>';
-    if (c.past && c.hall > 0) {   // share of plant capacity used, above the taller of bar and outline
+    if (c.past && c.hall > 0) {   // share of plant capacity used, above the bar
       var u = c.built / c.hall;
       h += '<div style="position:absolute;pointer-events:none;left:' + (i / N * 100) + '%;width:' + (100 / N) + '%;bottom:calc(' + pct(c.total) + ' + 2px);text-align:center;'
         + mono + 'font-size:8px;color:' + (u < 0.6 ? 'var(--orange)' : 'var(--text)') + ';">' + Math.round(u * 100) + '%</div>';
@@ -20937,9 +20951,11 @@ function _shpChartTip(ev, pid, i) {
     return '<div style="display:flex;justify-content:space-between;gap:14px;' + (col ? 'color:' + col + ';' : '') + '"><span>' + l + '</span><span>' + v + '</span></div>';
   };
   var over = c.plans - c.installed;
-  if (c.past) tip.innerHTML = '<div style="color:var(--white);font-weight:700;margin-bottom:3px;">' + _qLabel(c.q) + ' · built (actual)</div>'
+  if (c.past) tip.innerHTML = '<div style="color:var(--white);font-weight:700;margin-bottom:3px;">' + _qLabel(c.q) + ' · built of installed (actual)</div>'
     + ch.keys.filter(function (k) { return c.segs[k] > 0; }).reverse().map(function (k) {
-      return line('<span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:' + ch.color(k) + ';margin-right:5px;"></span>' + _esc(ch.label(k)), Math.round(c.segs[k]) + 'k');
+      var a = c.acts[k] || 0;
+      return line('<span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:' + ch.color(k) + ';margin-right:5px;"></span>' + _esc(ch.label(k)),
+        Math.round(a) + 'k of ' + Math.round(c.segs[k]) + 'k · ' + Math.round(a / c.segs[k] * 100) + '%');
     }).join('')
     + '<div style="border-top:1px solid var(--border2);margin-top:3px;padding-top:3px;"></div>'
     + line('Built', Math.round(c.built) + 'k / yr (' + Math.round(c.built * 250).toLocaleString() + ' ' + (ch.pwt ? 'units' : 'cars') + ' that quarter)')
