@@ -747,6 +747,16 @@ body.on-checklist .submit-bar{display:none;}
 .ops-tab { padding:6px 16px; border-radius:6px 6px 0 0; font-size:12px; font-weight:600; cursor:pointer; color:var(--muted2); border:1px solid transparent; border-bottom:none; transition:all .15s; }
 .ops-tab:hover { color:var(--text); background:var(--s2); }
 .ops-tab.active { color:var(--gold); background:var(--s2); border-color:var(--border2); }
+/* Footprint plant carousel (_shpCarouselStrip) */
+.shp-tile { transition:transform .15s ease, box-shadow .15s ease, border-color .15s ease; }
+.shp-tile:hover { transform:translateY(-2px); box-shadow:0 8px 20px rgba(0,0,0,.35); }
+.shp-tile.on { box-shadow:0 0 0 1px var(--gold), 0 8px 24px rgba(200,164,60,.16); }
+.shp-tile:focus-visible { outline:2px solid var(--gold); outline-offset:2px; }
+#shp-car { scrollbar-width:thin; scrollbar-color:var(--border3) transparent; }
+#shp-car::-webkit-scrollbar { height:6px; }
+#shp-car::-webkit-scrollbar-thumb { background:var(--border3); border-radius:3px; }
+.shp-car-btn { flex:0 0 30px; height:30px; border-radius:50%; background:var(--s2); border:1px solid var(--border2); color:var(--muted2); cursor:pointer; font-size:12px; padding:0; transition:color .15s, border-color .15s; }
+.shp-car-btn:hover { color:var(--gold); border-color:var(--gold); }
 .ops-panel { display:none; }
 .ops-panel.active { display:block; }
 .mfg-regions { display:grid; grid-template-columns:repeat(5,1fr); gap:10px; }
@@ -21264,34 +21274,151 @@ function _shpLastActual(p) {   // the last cleared quarter: built (k / yr) again
 
 function _shpCarousel() {
   var btn = function (dir, l, t) {
-    return '<button onclick="_shpCarScroll(' + dir + ')" title="' + t + '" aria-label="' + t + '" style="flex:0 0 26px;background:var(--s2);border:1px solid var(--border2);color:var(--muted2);border-radius:4px;cursor:pointer;font-size:12px;padding:0;">' + l + '</button>';
+    return '<button class="shp-car-btn" onclick="_shpCarScroll(' + dir + ')" title="' + t + '" aria-label="' + t + '">' + l + '</button>';
   };
-  return '<div style="display:flex;gap:6px;align-items:stretch;margin:0 0 12px;">' + btn(-1, '◂', 'Previous plants') + _shpCarouselStrip() + btn(1, '▸', 'Next plants') + '</div>';
+  return '<div style="display:flex;gap:8px;align-items:center;margin:0 0 12px;">' + btn(-1, '◂', 'Previous plants') + _shpCarouselStrip() + btn(1, '▸', 'Next plants') + '</div>';
 }
 
 function _shpCarScroll(dir) { var c = document.getElementById('shp-car'); if (c) c.scrollBy({ left: dir * c.clientWidth * 0.8, behavior: 'smooth' }); }
 
+// Carousel art (2026-10-28), drawn in code: a flag per manufacturing country (simplified, 30×20) and a
+// factory that grows with the plant's size class, a car (vehicle plant) or gear (powertrain) in front.
+var _SHP_FLAG = (function () {
+  var W = 30, Ht = 20;
+  var H = function () { var c = arguments, h = Ht / c.length, s = ''; for (var i = 0; i < c.length; i++) s += '<rect y="' + (i * h) + '" width="30" height="' + (h + 0.05) + '" fill="' + c[i] + '"/>'; return s; };
+  var V = function () { var c = arguments, w = W / c.length, s = ''; for (var i = 0; i < c.length; i++) s += '<rect x="' + (i * w) + '" width="' + (w + 0.05) + '" height="20" fill="' + c[i] + '"/>'; return s; };
+  var bg = function (c) { return '<rect width="30" height="20" fill="' + c + '"/>'; };
+  var dot = function (x, y, r, c) { return '<circle cx="' + x + '" cy="' + y + '" r="' + r + '" fill="' + c + '"/>'; };
+  var star = function (x, y, r, c, open) {
+    var pts = [];
+    for (var i = 0; i < 10; i++) {
+      var a = -Math.PI / 2 + i * Math.PI / 5, rr = i % 2 ? r * 0.42 : r;
+      pts.push((x + rr * Math.cos(a)).toFixed(2) + ',' + (y + rr * Math.sin(a)).toFixed(2));
+    }
+    return '<polygon points="' + pts.join(' ') + '" ' + (open ? 'fill="none" stroke="' + c + '" stroke-width=".9"' : 'fill="' + c + '"') + '/>';
+  };
+  var us = '';
+  for (var i = 0; i < 13; i++) us += '<rect y="' + (i * 20 / 13) + '" width="30" height="' + (20 / 13 + 0.05) + '" fill="' + (i % 2 ? '#fff' : '#b22234') + '"/>';
+  us += '<rect width="12" height="10.77" fill="#3c3b6e"/>';
+  for (var r = 0; r < 4; r++) for (var c = 0; c < 5; c++) us += dot(1.4 + c * 2.3, 1.4 + r * 2.6, 0.45, '#fff');
+  return {
+    DE: H('#000', '#dd0000', '#ffce00'), FR: V('#0055a4', '#fff', '#ef4135'), IT: V('#009246', '#fff', '#ce2b37'),
+    PL: H('#fff', '#dc143c'), ID: H('#ce1126', '#fff'), RO: V('#002b7f', '#fcd116', '#ce1126'), NG: V('#008751', '#fff', '#008751'),
+    ES: bg('#aa151b') + '<rect y="5" width="30" height="10" fill="#f1bf00"/>',
+    CO: bg('#fcd116') + '<rect y="10" width="30" height="5" fill="#003893"/><rect y="15" width="30" height="5" fill="#ce1126"/>',
+    TH: H('#a51931', '#f4f5f8', '#2d2a4a', '#2d2a4a', '#f4f5f8', '#a51931'),
+    AR: H('#74acdf', '#fff', '#74acdf') + dot(15, 10, 2.2, '#f6b40e'),
+    EG: H('#ce1126', '#fff', '#000') + dot(15, 10, 1.8, '#c09300'),
+    SK: H('#fff', '#0b4ea2', '#ee1c25') + '<path d="M7 4.5h7v5.5c0 3-3.5 5-3.5 5S7 13 7 10z" fill="#ee1c25" stroke="#fff" stroke-width=".8"/>',
+    CZ: bg('#fff') + '<rect y="10" width="30" height="10" fill="#d7141a"/><path d="M0 0L15 10L0 20z" fill="#11457e"/>',
+    JP: bg('#fff') + dot(15, 10, 6, '#bc002d'),
+    CN: bg('#de2910') + star(6, 6, 3.6, '#ffde00') + star(11, 2.6, 1.2, '#ffde00') + star(13, 5, 1.2, '#ffde00') + star(13, 8.4, 1.2, '#ffde00') + star(11, 10.8, 1.2, '#ffde00'),
+    KR: bg('#fff') + '<path d="M10 10a5 5 0 0 1 10 0z" fill="#cd2e3a"/><path d="M10 10a5 5 0 0 0 10 0z" fill="#0047a0"/>'
+      + '<g stroke="#000" stroke-width=".9"><path d="M3.5 4.5l3-3.2M4.6 5.5l3-3.2M23.4 1.3l3 3.2M22.3 2.3l3 3.2M3.5 15.5l3 3.2M4.6 14.5l3 3.2M23.4 18.7l3-3.2M22.3 17.7l3-3.2"/></g>',
+    TR: bg('#e30a17') + dot(12, 10, 5, '#fff') + dot(13.3, 10, 4, '#e30a17') + star(18.6, 10, 2.3, '#fff'),
+    MA: bg('#c1272d') + star(15, 10, 5, '#006233', true),
+    SA_: bg('#006c35') + '<rect x="7" y="6.5" width="16" height="2.2" rx="1" fill="#fff" opacity=".9"/><rect x="8" y="12.2" width="14" height="1" fill="#fff"/>',
+    CA: bg('#fff') + '<rect width="7.5" height="20" fill="#d80621"/><rect x="22.5" width="7.5" height="20" fill="#d80621"/>' + star(15, 9.6, 4.6, '#d80621'),
+    MX: V('#006847', '#fff', '#ce1126') + dot(15, 10, 2.2, '#8c5a2b'),
+    BR: bg('#009c3b') + '<path d="M15 2.5L27 10L15 17.5L3 10z" fill="#ffdf00"/>' + dot(15, 10, 4.2, '#002776'),
+    US: us,
+    GB: bg('#012169') + '<path d="M0 0L30 20M30 0L0 20" stroke="#fff" stroke-width="4"/><path d="M0 0L30 20M30 0L0 20" stroke="#c8102e" stroke-width="1.4"/>'
+      + '<path d="M15 0V20M0 10H30" stroke="#fff" stroke-width="6"/><path d="M15 0V20M0 10H30" stroke="#c8102e" stroke-width="3.4"/>',
+    IN: H('#ff9933', '#fff', '#138808') + '<circle cx="15" cy="10" r="2.4" fill="none" stroke="#000080" stroke-width=".7"/>',
+    ZA: bg('#e03c31') + '<rect y="10" width="30" height="10" fill="#001489"/><rect x="10" y="6" width="20" height="8" fill="#fff"/><path d="M0 0L14 10L0 20z" fill="#fff"/>'
+      + '<rect x="11" y="7.5" width="19" height="5" fill="#007749"/><path d="M0 2.2L11 10L0 17.8z" fill="#007749"/><path d="M0 4.5L7.8 10L0 15.5z" fill="#ffb612"/><path d="M0 6L5.6 10L0 14z" fill="#000"/>'
+  };
+})();
+
+function _shpFlag(cc, w) {
+  var f = _SHP_FLAG[cc];
+  var st = 'width:' + w + 'px;height:' + (w * 2 / 3) + 'px;border-radius:2px;box-shadow:0 0 0 1px rgba(255,255,255,.18);flex:0 0 auto;display:block;';
+  return f ? '<svg viewBox="0 0 30 20" style="' + st + '" aria-hidden="true">' + f + '</svg>'
+    : '<span style="' + st + 'background:var(--s3);"></span>';
+}
+
+function _shpCountryName(cc) {
+  var n = null;
+  Object.keys(typeof mfgCountries !== 'undefined' ? mfgCountries : {}).forEach(function (r) {
+    (mfgCountries[r] || []).forEach(function (c) { if (c.country_code === cc) n = c.country_name; });
+  });
+  return n || String(cc || '').replace('_', '');
+}
+
+var _SHP_SIZE_KEYS = ['satellite', 'regional', 'mother', 'giga'];
+
+function _shpSizeKey(p) {   // the plant's size class (from the API; unsized sessions by capacity)
+  if (p.size && p.size.key) return p.size.key;
+  var t = p.ptype === 'vehicle' ? [100, 300, 800] : [200, 500, 1200], k = p.hall_committed_k || p.hall_k || 0;
+  return k <= t[0] ? 'satellite' : k <= t[1] ? 'regional' : k <= t[2] ? 'mother' : 'giga';
+}
+
+// a factory drawn to the size class: more and larger halls from Satellite to Gigafactory
+function _shpPlantArt(key, ptype, acc, ghost) {
+  var g = 44, s = '';
+  var op = ghost ? 0 : 0.2;
+  var shed = function (x, w, h, n) {
+    var top = g - h, tw = w / n, roof = '';
+    for (var i = 0; i < n; i++) roof += (x + i * tw) + ',' + top + ' ' + (x + i * tw) + ',' + (top - 4) + ' ' + (x + (i + 1) * tw) + ',' + top + ' ';
+    var win = '';
+    if (!ghost) for (var wx = x + 3; wx + 3 < x + w - 2; wx += 6) win += '<rect x="' + wx + '" y="' + (top + h * 0.3).toFixed(1) + '" width="3" height="2.6" rx=".4" fill="' + acc + '" opacity=".75"/>';
+    return '<polygon points="' + roof + '" fill="' + acc + '" fill-opacity="' + (op + 0.15) + '" stroke="' + acc + '" stroke-width=".9" stroke-linejoin="round"' + (ghost ? ' stroke-dasharray="2 1.5"' : '') + '/>'
+      + '<rect x="' + x + '" y="' + top + '" width="' + w + '" height="' + h + '" fill="' + acc + '" fill-opacity="' + op + '" stroke="' + acc + '" stroke-width=".9"' + (ghost ? ' stroke-dasharray="2 1.5"' : '') + '/>' + win
+      + (ghost ? '' : '<rect x="' + (x + w / 2 - 2.5) + '" y="' + (g - 6) + '" width="5" height="6" fill="' + acc + '" opacity=".45"/>');
+  };
+  var stack = function (x, h) {
+    return '<rect x="' + x + '" y="' + (g - h) + '" width="3.4" height="' + h + '" fill="' + acc + '" fill-opacity=".35" stroke="' + acc + '" stroke-width=".8"/>'
+      + '<circle cx="' + (x + 3) + '" cy="' + (g - h - 3.5) + '" r="2.4" fill="var(--muted2)" opacity=".28"/><circle cx="' + (x + 6.5) + '" cy="' + (g - h - 7.5) + '" r="3.2" fill="var(--muted2)" opacity=".18"/>';
+  };
+  var tank = function (x) { return '<ellipse cx="' + x + '" cy="' + (g - 6) + '" rx="4.5" ry="6" fill="' + acc + '" fill-opacity=".25" stroke="' + acc + '" stroke-width=".8"/>'; };
+  if (ghost) s += shed(28, 40, 16, 4) + '<path d="M48 19v12M42 25h12" stroke="var(--gold)" stroke-width="2" stroke-linecap="round"/>';
+  else if (key === 'satellite') s += shed(30, 28, 13, 3);
+  else if (key === 'regional') s += shed(12, 32, 16, 4) + shed(47, 21, 11, 2);
+  else if (key === 'mother') s += stack(3, 30) + shed(8, 36, 19, 5) + shed(46, 20, 14, 3) + tank(71);
+  else s += shed(4, 92, 23, 11) + '<rect x="30" y="' + (g - 33) + '" width="36" height="6" fill="' + acc + '" fill-opacity=".3" stroke="' + acc + '" stroke-width=".8"/>'
+    + '<g stroke="' + acc + '" stroke-width=".5" opacity=".6">' + [34, 40, 46, 52, 58].map(function (x) { return '<path d="M' + x + ' ' + (g - 33) + 'v6"/>'; }).join('') + '</g>';
+  if (!ghost) s += ptype === 'vehicle'
+    ? '<g transform="translate(77,40)"><path d="M0 4.5h22v-2.5l-4-3h-10l-4 3h-4z" fill="var(--text)" opacity=".85"/><circle cx="5" cy="5" r="2" fill="var(--s1)" stroke="var(--text)" stroke-width="1"/><circle cx="17" cy="5" r="2" fill="var(--s1)" stroke="var(--text)" stroke-width="1"/></g>'
+    : '<g transform="translate(89,40)"><circle r="4.2" fill="none" stroke="var(--text)" stroke-width="2.4" stroke-dasharray="2.2 1.1" opacity=".85"/><circle r="1.6" fill="var(--text)" opacity=".85"/></g>';
+  return '<svg viewBox="0 0 100 50" style="width:104px;height:52px;display:block;flex:0 0 auto;" aria-hidden="true">'
+    + '<path d="M0 ' + (g + 0.5) + 'H100" stroke="var(--border3)" stroke-width="1"/>' + s + '</svg>';
+}
+
 function _shpCarouselStrip() {
   var d = _SHP.data, sel = _shpSelId(), mono = "font-family:'DM Mono',monospace;";
-  var tile = function (id, on, inner) {
-    return '<div id="shp-tile-' + id + '" role="button" tabindex="0" onclick="_shpSelect(\'' + id + '\')" onkeydown="if(event.key===\'Enter\')_shpSelect(\'' + id + '\')"'
-      + ' style="flex:0 0 180px;scroll-snap-align:start;cursor:pointer;box-sizing:border-box;padding:8px 10px;border-radius:6px;background:'
-      + (on ? 'var(--s2)' : 'var(--s1)') + ';border:1px solid ' + (on ? 'var(--gold)' : 'var(--border2)') + ';">' + inner + '</div>';
+  var tile = function (id, on, acc, inner, dashed) {
+    return '<div id="shp-tile-' + id + '" class="shp-tile' + (on ? ' on' : '') + '" role="button" tabindex="0" aria-pressed="' + on + '" onclick="_shpSelect(\'' + id + '\')" onkeydown="if(event.key===\'Enter\')_shpSelect(\'' + id + '\')"'
+      + ' style="flex:0 0 236px;scroll-snap-align:start;cursor:pointer;box-sizing:border-box;padding:10px 12px 9px;border-radius:10px;position:relative;overflow:hidden;'
+      + 'background:linear-gradient(160deg,color-mix(in srgb,' + acc + ' ' + (on ? 20 : 11) + '%,var(--s1)) 0%,var(--s1) 70%);'
+      + 'border:1px ' + (dashed ? 'dashed' : 'solid') + ' ' + (on ? 'var(--gold)' : 'var(--border2)') + ';">'
+      + '<div style="position:absolute;left:0;top:0;bottom:0;width:3px;background:' + acc + ';opacity:' + (on ? 1 : .55) + ';"></div>' + inner + '</div>';
   };
-  var h = '<div id="shp-car" style="flex:1;min-width:0;display:flex;gap:8px;overflow-x:auto;scroll-snap-type:x proximity;padding-bottom:4px;">';
+  var h = '<div id="shp-car" style="flex:1;min-width:0;display:flex;gap:10px;overflow-x:auto;scroll-snap-type:x proximity;padding:4px 2px 8px;">';
   (d.plants || []).forEach(function (p) {
-    var u = p.hall_k > 0 ? _shpUsedK(p) / p.hall_k : 0, a = _shpLastActual(p);
-    h += tile(p.id, p.id === sel,
-      '<div style="display:flex;justify-content:space-between;gap:6px;align-items:center;">'
-      + '<span style="font-size:11px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + (p.ptype === 'vehicle' ? '■ ' : '● ') + _esc(p.name || p.country_code) + '</span>'
-      + _shpBadge(p) + '</div>'
-      + '<div style="' + mono + 'font-size:9px;color:var(--muted2);margin:3px 0 6px;">' + (p.size ? _esc(p.size.name) + ' · ' : '') + Math.round(p.hall_k) + 'k / yr</div>'
-      + '<div style="height:4px;background:var(--border);border-radius:2px;overflow:hidden;"><div style="height:100%;width:' + Math.min(100, u * 100).toFixed(1) + '%;background:' + _shpLoadColor(u) + ';"></div></div>'
-      + '<div style="' + mono + 'font-size:9px;color:var(--muted2);margin-top:4px;">lines fill ' + Math.round(u * 100) + '%'
-      + (a ? ' · built <span style="color:' + (a.u < 0.6 ? 'var(--orange)' : 'var(--text)') + ';">' + Math.round(a.u * 100) + '%</span>' : '') + '</div>');
+    var u = p.hall_k > 0 ? _shpUsedK(p) / p.hall_k : 0, a = _shpLastActual(p), key = _shpSizeKey(p);
+    var acc = p.ptype === 'vehicle' ? 'var(--cyan)' : _SHP_PWT_C, lvl = _SHP_SIZE_KEYS.indexOf(key) + 1;
+    var sc = { active: 'var(--green)', building: 'var(--gold)', mothballed: 'var(--muted2)', closed: 'var(--red)', sold: 'var(--red)' }[p.status] || 'var(--muted2)';
+    h += tile(p.id, p.id === sel, acc,
+      '<div style="display:flex;align-items:center;gap:6px;">' + _shpFlag(p.country_code, 21)
+      + '<span style="' + mono + 'font-size:9px;letter-spacing:1px;text-transform:uppercase;color:var(--muted2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1;">' + _esc(_shpCountryName(p.country_code)) + '</span>'
+      + '<span style="display:inline-flex;align-items:center;gap:4px;' + mono + 'font-size:9px;color:' + sc + ';"><span style="width:6px;height:6px;border-radius:50%;background:' + sc + ';box-shadow:0 0 6px ' + sc + ';"></span>' + p.status + '</span></div>'
+      + '<div style="font-size:12px;font-weight:700;margin:6px 0 2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + _esc(p.name || p.country_code) + '</div>'
+      + '<div style="display:flex;align-items:flex-end;justify-content:space-between;gap:6px;">' + _shpPlantArt(key, p.ptype, acc)
+      + '<div style="text-align:right;"><div style="font-size:19px;font-weight:700;line-height:1;">' + Math.round(p.hall_k).toLocaleString() + '<span style="font-size:11px;color:var(--muted2);">k</span></div>'
+      + '<div style="' + mono + 'font-size:8.5px;color:var(--muted2);margin-top:2px;">' + (p.ptype === 'vehicle' ? 'cars' : 'units') + ' / yr</div></div></div>'
+      + '<div style="display:flex;align-items:center;justify-content:space-between;margin:6px 0 5px;">'
+      + '<span style="' + mono + 'font-size:9px;color:var(--text);">' + _esc(p.size ? p.size.name : { satellite: 'Satellite', regional: 'Regional', mother: 'Mother', giga: 'Giga' }[key]) + '</span>'
+      + '<span style="display:inline-flex;gap:3px;" title="size ' + lvl + ' of 4">' + [1, 2, 3, 4].map(function (i) {
+        return '<span style="width:12px;height:4px;border-radius:2px;background:' + (i <= lvl ? acc : 'var(--border2)') + ';"></span>';
+      }).join('') + '</span></div>'
+      + '<div style="height:4px;background:var(--border);border-radius:2px;overflow:hidden;"><div style="height:100%;width:' + Math.min(100, u * 100).toFixed(1) + '%;background:' + _shpLoadColor(u) + ';border-radius:2px;"></div></div>'
+      + '<div style="display:flex;justify-content:space-between;' + mono + 'font-size:9px;color:var(--muted2);margin-top:4px;"><span>lines fill ' + Math.round(u * 100) + '%</span>'
+      + (a ? '<span>built <span style="color:' + (a.u < 0.6 ? 'var(--orange)' : 'var(--text)') + ';">' + Math.round(a.u * 100) + '%</span> ' + _qLabel(a.qabs) + '</span>' : '') + '</div>');
   });
-  h += tile('new', sel === 'new', '<div style="font-size:11px;font-weight:700;color:var(--gold);">＋ New plant</div>'
-    + '<div style="' + mono + 'font-size:9px;color:var(--muted2);margin-top:4px;line-height:1.4;">a vehicle or powertrain plant, ready in ' + _shpQs(d.lead_times.build_q) + '</div>');
+  h += tile('new', sel === 'new', 'var(--gold)',
+    '<div style="font-size:12px;font-weight:700;color:var(--gold);margin-bottom:4px;">＋ New plant</div>'
+    + '<div style="display:flex;justify-content:center;margin:4px 0;">' + _shpPlantArt('regional', 'vehicle', 'var(--gold)', true) + '</div>'
+    + '<div style="' + mono + 'font-size:9px;color:var(--muted2);line-height:1.45;">a vehicle or powertrain plant in one of four sizes, ready in ' + _shpQs(d.lead_times.build_q) + '</div>', true);
   return h + '</div>';
 }
 
