@@ -33397,7 +33397,13 @@ async function loadMfgPlanTab() {
     var res  = await fetch(API_URL + '/sessions/' + sessionId + '/rounds/' + roundId + '/manufacturing-plans?team_id=' + teamId);
     var data = await res.json();
     _mfgPlanState.plants = data.plants || [];
-    _mfgPlanState.pools = data.pools || [];   // shared plants: the family lines the rows share
+    // shared plants: the family lines the rows share, grouped by plant
+    var _mtOrd = {platform: 0, tophat: 1, ice_pwt: 2, epwt: 3, battery: 4};
+    _mfgPlanState.pools = (data.pools || []).slice().sort(function(a, b) {
+      return (a.plant_name || '').localeCompare(b.plant_name || '')
+        || ((_mtOrd[a.module_type] ?? 9) - (_mtOrd[b.module_type] ?? 9))
+        || (a.family_name || '').localeCompare(b.family_name || '');
+    });
     if (!_mfgPlanState.plants.length) {
       el.innerHTML = '<div style="color:var(--muted2);font-family:DM Mono,monospace;font-size:11px;padding:16px 0;">No manufacturing plans yet. Go to Commercial → Sales Plan and freeze your sales plan first.</div>';
       return;
@@ -33422,8 +33428,17 @@ function _renderMfgPlanView() {
   var poolUse = pools.map(function(pl) { return pl.rows.reduce(function(s, k) { return s + (allocOf[k] || 0); }, 0); });
   var anyPoolOver = pools.some(function(pl, i) { return poolUse[i] > pl.cap_q; });
   if (shared) {
-    var _vn = {};
-    _mfgPlanState.plants.forEach(function(p) { (p.vehicles || []).forEach(function(v) { _vn[p.plant_id + '|' + v.vehicle_id] = v.vehicle_name || 'Vehicle'; }); });
+    var _vn = {}, _vcc = {};
+    _mfgPlanState.plants.forEach(function(p) { (p.vehicles || []).forEach(function(v) {
+      _vn[p.plant_id + '|' + v.vehicle_id] = v.vehicle_name || 'Vehicle';
+      _vcc[p.plant_id + '|' + v.vehicle_id] = p.plant_country_code || p.plant_region || '';
+    }); });
+    // a powertrain line feeds a model's rows at several vehicle plants: name it once, with those plants
+    var _poolNames = function(pl) {
+      var order = [], cc = {};
+      pl.rows.forEach(function(k) { var n = _vn[k] || ''; if (!(n in cc)) { order.push(n); cc[n] = []; } cc[n].push(_vcc[k]); });
+      return order.map(function(n) { return _esc(n) + (cc[n].length > 1 ? ' <span style="color:var(--muted);">(' + _esc(cc[n].join(', ')) + ')</span>' : ''); }).join(', ');
+    };
     h += '<div style="border:1px solid var(--border2);border-radius:3px;margin-bottom:14px;padding:8px 12px;">'
       + '<div style="font-family:DM Mono,monospace;font-size:9px;font-weight:700;color:var(--white);margin-bottom:4px;">FAMILY LINES THIS QUARTER</div>'
       + '<div style="font-family:DM Mono,monospace;font-size:8px;color:var(--muted2);margin-bottom:6px;line-height:1.5;">The models on a line share what it has installed. '
@@ -33434,7 +33449,7 @@ function _renderMfgPlanView() {
       var colr = over ? 'var(--red)' : pc >= 90 ? 'var(--gold)' : 'var(--green)';
       h += '<tr style="border-top:1px solid rgba(255,255,255,.04);"><td style="padding:4px 6px;color:var(--white);">' + (_SHP_TYPE[pl.module_type] || pl.module_type) + ' · '
         + _esc(pl.family_name || '') + ' <span style="color:var(--muted2);">· ' + _esc(pl.plant_name || '') + '</span></td>'
-        + '<td style="padding:4px 6px;color:var(--muted2);">' + pl.rows.map(function(k) { return _esc(_vn[k] || ''); }).join(', ') + '</td>'
+        + '<td style="padding:4px 6px;color:var(--muted2);">' + _poolNames(pl) + '</td>'
         + '<td style="padding:4px 6px;text-align:right;color:' + colr + ';font-weight:700;">' + u.toLocaleString() + ' / ' + c.toLocaleString() + '</td>'
         + '<td style="padding:4px 6px;width:90px;"><div style="height:6px;background:var(--s2);border-radius:3px;overflow:hidden;"><div style="height:100%;width:' + Math.min(100, pc) + '%;background:' + colr + ';"></div></div></td></tr>';
     });
