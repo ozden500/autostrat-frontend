@@ -1041,7 +1041,7 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
     <div class="kpi kk-g"><div class="kl">Total Capacity</div><div class="kv" id="ops-capacity">—</div><div class="kd neu">units/yr</div></div>
     <div class="kpi kk-c"><div class="kl">Vehicle Plants</div><div class="kv" id="ops-veh-plants">—</div><div class="kd neu">active</div></div>
     <div class="kpi kk-b"><div class="kl">Powertrain Plants</div><div class="kv" id="ops-pt-plants">—</div><div class="kd neu">active</div></div>
-    <div class="kpi kk-r"><div class="kl">COGS/unit</div><div class="kv" id="ops-cogs-unit">—</div><div class="kd dn">est.</div></div>
+    <div class="kpi kk-r"><div class="kl">COGS/unit</div><div class="kv" id="ops-cogs-unit">—</div><div class="kd neu" id="ops-cogs-unit-sub">last cleared quarter</div></div>
   </div>
 
   <!-- Sub-tabs -->
@@ -16845,7 +16845,6 @@ function updateAllKPIsSync(outcome, score, segs, data, tid) {
   if(el('kpi-rank-sub'))      el('kpi-rank-sub').textContent      = score ? 'Score: '+fmt(score.composite_score,1) : '—';
 
   // Operations
-  if(el('ops-cogs-unit'))     el('ops-cogs-unit').textContent     = units > 0 ? '€'+fmt(cogs*1000000/units/1000,1)+'k' : '—';
 
   // Commercial
   if(el('com-share'))         el('com-share').textContent         = share.toFixed(1)+'%';
@@ -16910,7 +16909,6 @@ async function updateAllKPIs(data, myTeamId) {
 
   // ── Operations KPIs ──
   if(el('ops-utilization'))   el('ops-utilization').textContent   = units > 0 ? Math.min(Math.round(units/5000),'100')+'%' : '—';
-  if(el('ops-cogs-unit'))     el('ops-cogs-unit').textContent     = units > 0 ? '€'+fmt(cogs*1000000/units/1000,1)+'k' : '—';
 
   // ── Commercial KPIs ──
   if(el('com-share'))         el('com-share').textContent         = share.toFixed(1)+'%';
@@ -21340,6 +21338,7 @@ function opsTab(tab, el) {
 }
 
 async function loadMfgFootprint(forceRefresh = false) {
+  _opsCogsTile();
   await loadMfgCountries();
   if (await _shpLoad()) return;   // shared-plant session: team plants, lines, reservations
   if (!teamId || !sessionId) {
@@ -21730,6 +21729,24 @@ function _fpToggleReg(r)   { _fpState.expanded.reg[r]   = !_fpState.expanded.reg
 function _fpTogglePlant(k) { _fpState.expanded.plant[k] = !_fpState.expanded.plant[k]; renderFootprint(); }
 function _fpToggleVeh(k)   { _fpState.expanded.veh[k]   = !_fpState.expanded.veh[k];   renderFootprint(); }
 
+
+// COGS per car from the team's last statement (GET /financial-statements: the last cleared quarter):
+// cost of goods less aftersales parts, over cars sold. Until 2026-10-28 it read the round's outcome,
+// which exists only while the open round shows its results, so it was "—" in every decision phase.
+async function _opsCogsTile() {
+  var v = document.getElementById('ops-cogs-unit'), sub = document.getElementById('ops-cogs-unit-sub');
+  if (!v || !sessionId || !teamId) return;
+  try {
+    var res = await fetch(API_URL + '/sessions/' + sessionId + '/financial-statements');
+    var d = await res.json();
+    var st = (d.statements || []).find(function (x) { return x.team_id === teamId; });
+    var u = st ? parseFloat(st.units_sold) || 0 : 0;
+    if (!res.ok || !st || u <= 0 || !d.round) { v.textContent = '—'; if (sub) sub.textContent = 'no cars sold yet'; return; }
+    var eur = ((parseFloat(st.cogs_m) || 0) - (parseFloat(st.aftersales_cogs_m) || 0)) * 1e6 / u;
+    v.textContent = '€' + (eur / 1000).toFixed(1) + 'k';
+    if (sub) sub.textContent = 'Q' + d.round.quarter + ' ' + d.round.year + ' · ' + Math.round(u).toLocaleString() + ' cars';
+  } catch (e) { console.warn('_opsCogsTile:', e); }
+}
 
 function updateMfgKPIs() {
   if (_SHP.shared && _SHP.data) { _shpKpis(); return; }
