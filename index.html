@@ -20774,16 +20774,21 @@ function _shpViewToggle() {
 // the models on each family line share (a vehicle plant's platform lines, a powertrain plant's lines),
 // the business case plans' total as a dashed line. 'plans': the business case plans (a vehicle plant's
 // by model, a powertrain plant's by line), what is installed as a solid line. The hall is the red line.
+// Cleared quarters come first (p.actuals, since 2026-10-28): bars = what the plant built (annual rate),
+// stacked by the same keys as the view, a dashed outline = what its lines had installed, the share of
+// plant capacity used above each bar (orange under 60%, where checklist PL3 calls a plant idle).
 function _shpPlantChart(p, names, colors) {
-  var ser = p.series || [];
+  var act = (p.actuals || []).filter(function (a) { return a.hall_k > 0 || Object.keys(a.built_k || {}).length; });
+  var lastAct = act.length ? act[act.length - 1].qabs : -1e9;
+  var ser = act.concat((p.series || []).filter(function (s) { return s.qabs > lastAct; }));
   if (!ser.length) return '';
-  var N = ser.length, pwt = p.ptype !== 'vehicle', view = _SHP.view || 'installed';
+  var N = ser.length, nPast = act.length, pwt = p.ptype !== 'vehicle', view = _SHP.view || 'installed';
   var sum = function (o) { return Object.keys(o || {}).reduce(function (a, k) { return a + o[k]; }, 0); };
   // this plant's lines (a stack by line: both powertrain views, a vehicle plant's installed view)
   if (view === 'installed' || pwt) {
     var used = {};
     ser.forEach(function (s) {
-      Object.keys(s.installed_k || {}).concat(pwt ? Object.keys(s.plans_k || {}) : []).forEach(function (lid) { used[lid] = true; });
+      Object.keys(s.installed_k || {}).concat(pwt ? Object.keys(s.plans_k || {}).concat(Object.keys(s.built_k || {})) : []).forEach(function (lid) { used[lid] = true; });
     });
     names = {}; colors = {};
     (p.lines || []).filter(function (l) { return used[l.id]; }).sort(function (a, b) {
@@ -20793,13 +20798,25 @@ function _shpPlantChart(p, names, colors) {
       colors[l.id] = i < _SHP_COLORS.length ? _SHP_COLORS[i] : null;
     });
   }
-  var part = function (s) { return (view === 'installed' ? s.installed_k : s.plans_k) || {}; };
+  // a past quarter's cars, keyed like the view: a vehicle plant's installed view by the model's platform line here
+  var platOf = {};
+  if (!pwt) (p.lines || []).forEach(function (l) {
+    if (l.module_type === 'platform') (l.reservations || []).forEach(function (r) { platOf[r.vehicle_id] = l.id; });
+  });
+  var builtPart = function (s) {
+    if (pwt || view !== 'installed') return s.built_k || {};
+    var o = {};
+    Object.keys(s.built_k || {}).forEach(function (vid) { var k = platOf[vid] || vid; o[k] = (o[k] || 0) + s.built_k[vid]; });
+    return o;
+  };
+  var part = function (s) { return s.built_k ? builtPart(s) : ((view === 'installed' ? s.installed_k : s.plans_k) || {}); };
   var keyOf = function (k) { return colors[k] ? k : '_other'; };
   var cols = ser.map(function (s) {
     var segs = {}, ps = part(s);
     Object.keys(ps).forEach(function (k) { var kk = keyOf(k); segs[kk] = (segs[kk] || 0) + ps[k]; });
     return { q: s.qabs, hall: s.hall_k, linesCap: s.lines_cap_k || 0, segs: segs, total: sum(ps),
-             installed: sum(s.installed_k), plans: sum(s.plans_k), tophat: s.tophat_k };
+             installed: sum(s.installed_k), plans: sum(s.plans_k), tophat: s.tophat_k,
+             past: !!s.built_k, built: s.built_k ? sum(s.built_k) : null };
   });
   var keys = [];
   Object.keys(colors).forEach(function (k) { if (colors[k] && cols.some(function (c) { return c.segs[k]; })) keys.push(k); });
@@ -20809,13 +20826,13 @@ function _shpPlantChart(p, names, colors) {
   var refLab = view === 'installed' ? 'Business case plans (total)' : 'Installed capacity';
   var label = function (k) { return k === '_other' ? (pwt || view === 'installed' ? 'Other lines' : 'Other models') : (names[k] || k.slice(0, 6)); };
   var color = function (k) { return k === '_other' ? 'var(--muted2)' : colors[k]; };
-  var top = Math.max.apply(null, cols.map(function (c) { return Math.max(c.hall, c.total, c[refKey]); })) || 1;
+  var top = Math.max.apply(null, cols.map(function (c) { return Math.max(c.hall, c.total, c[refKey], c.past ? c.installed : 0); })) || 1;
   var step = Math.pow(10, Math.floor(Math.log10(top / 3)));
   step = [1, 2, 5, 10].map(function (m) { return m * step; }).filter(function (s) { return top / s <= 6; })[0] || step * 10;
   var ymax = Math.ceil(top * 1.05 / step) * step;
   var pct = function (v) { return (v / ymax * 100).toFixed(2) + '%'; };
   _SHP.charts = _SHP.charts || {};
-  _SHP.charts[p.id] = { cols: cols, keys: keys, label: label, color: color, view: view, pwt: pwt };
+  _SHP.charts[p.id] = { cols: cols, keys: keys, label: label, color: color, view: view, pwt: pwt, nPast: nPast };
   var mono = "font-family:'DM Mono',monospace;";
   var title = view === 'installed'
     ? (pwt ? 'Installed powertrain capacity by module line' : 'Installed car capacity by platform line')
@@ -20827,23 +20844,35 @@ function _shpPlantChart(p, names, colors) {
   var h = '<div style="margin:10px 0 6px;">'
     + '<div style="display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:6px;">'
     + '<span style="font-size:11px;font-weight:700;">' + title + '</span>'
-    + '<span style="' + mono + 'font-size:9px;color:var(--muted2);">' + sub + ' · k / yr</span></div>'
+    + '<span style="' + mono + 'font-size:9px;color:var(--muted2);">' + sub + (nPast ? ' · left of now: built (actual), at annual rate' : '') + ' · k / yr</span></div>'
     + '<div style="display:flex;flex-wrap:wrap;gap:4px 12px;margin:6px 0 8px;font-size:10px;color:var(--text);">'
     + keys.map(function (k) {
       return '<span style="display:inline-flex;align-items:center;gap:5px;"><span style="width:10px;height:10px;border-radius:2px;background:' + color(k) + ';"></span>' + _esc(label(k)) + '</span>';
     }).join('')
     + '<span style="display:inline-flex;align-items:center;gap:5px;">' + refSw + refLab + '</span>'
+    + (nPast ? '<span style="display:inline-flex;align-items:center;gap:5px;"><span style="width:10px;height:10px;border:1px dashed var(--border3);border-bottom:none;box-sizing:border-box;"></span>Installed (past quarters)</span>' : '')
     + '<span style="display:inline-flex;align-items:center;gap:5px;"><span style="width:14px;height:2px;background:var(--red);"></span>Plant capacity</span></div>'
     + '<div style="display:flex;gap:6px;">'
-    + '<div style="position:relative;width:34px;height:150px;' + mono + 'font-size:9px;color:var(--muted2);">';
+    + '<div style="position:relative;width:34px;height:150px;' + (nPast ? 'margin-top:14px;' : '') + mono + 'font-size:9px;color:var(--muted2);">';
   for (var t = 0; t <= ymax + 1e-9; t += step) {
     h += '<div style="position:absolute;right:0;bottom:' + pct(t) + ';transform:translateY(50%);">' + Math.round(t) + 'k</div>';
   }
   h += '</div><div style="flex:1;min-width:0;">'
-    + '<div id="shp-chart-' + p.id + '" style="position:relative;height:150px;border-bottom:1px solid var(--border2);" onmouseleave="_shpChartTip(null)">';
+    + '<div id="shp-chart-' + p.id + '" style="position:relative;height:150px;border-bottom:1px solid var(--border2);' + (nPast ? 'margin-top:14px;' : '') + '" onmouseleave="_shpChartTip(null)">';
   for (var g = step; g <= ymax + 1e-9; g += step) {
     h += '<div style="position:absolute;left:0;right:0;bottom:' + pct(g) + ';border-top:1px solid var(--border);"></div>';
   }
+  if (nPast) {   // the cleared quarters: a faint band, "now" where the planned quarters begin
+    h += '<div style="position:absolute;top:0;bottom:0;left:0;width:' + (nPast / N * 100) + '%;background:var(--s2);opacity:.55;pointer-events:none;"></div>'
+      + '<div style="position:absolute;top:-12px;bottom:0;left:' + (nPast / N * 100) + '%;border-left:1px solid var(--muted2);pointer-events:none;"></div>'
+      + '<div style="position:absolute;top:-13px;left:0;width:calc(' + (nPast / N * 100) + '% - 4px);text-align:right;' + mono + 'font-size:8px;color:var(--muted2);pointer-events:none;">◂ actual</div>'
+      + '<div style="position:absolute;top:-13px;left:calc(' + (nPast / N * 100) + '% + 4px);' + mono + 'font-size:8px;color:var(--muted2);pointer-events:none;">now · planned ▸</div>';
+  }
+  cols.forEach(function (c, i) {
+    if (!c.past) return;   // what the lines had installed: a dashed outline behind the bar
+    h += '<div style="position:absolute;bottom:0;left:calc(' + (i / N * 100) + '% + 1px);width:calc(' + (100 / N) + '% - 2px);height:' + pct(c.installed)
+      + ';border:1px dashed var(--border3);border-bottom:none;border-radius:4px 4px 0 0;box-sizing:border-box;pointer-events:none;"></div>';
+  });
   cols.forEach(function (c, i) {
     var stack = keys.filter(function (k) { return c.segs[k] > 0; });
     h += '<div style="position:absolute;bottom:0;top:0;left:' + (i / N * 100) + '%;width:' + (100 / N) + '%;display:flex;flex-direction:column-reverse;padding:0 2px;box-sizing:border-box;cursor:default;"'
@@ -20853,6 +20882,11 @@ function _shpPlantChart(p, names, colors) {
         + (j > 0 ? 'border-bottom:2px solid var(--s1);' : '') + (j === stack.length - 1 ? 'border-radius:4px 4px 0 0;' : '') + '"></div>';
     });
     h += '</div>';
+    if (c.past && c.hall > 0) {   // share of plant capacity used, above the taller of bar and outline
+      var u = c.built / c.hall;
+      h += '<div style="position:absolute;pointer-events:none;left:' + (i / N * 100) + '%;width:' + (100 / N) + '%;bottom:calc(' + pct(c.total) + ' + 2px);text-align:center;'
+        + mono + 'font-size:8px;color:' + (u < 0.6 ? 'var(--orange)' : 'var(--text)') + ';">' + Math.round(u * 100) + '%</div>';
+    }
   });
   // step lines, joined where they change: the other view's total, then the hall on top
   var stepLine = function (val, css, w) {
@@ -20869,7 +20903,7 @@ function _shpPlantChart(p, names, colors) {
   h += '<div id="shp-tip-' + p.id + '" style="display:none;position:absolute;z-index:5;pointer-events:none;background:var(--s3);border:1px solid var(--border3);border-radius:4px;padding:6px 8px;font-size:10px;color:var(--text);white-space:nowrap;"></div>'
     + '</div><div style="position:relative;height:14px;' + mono + 'font-size:9px;color:var(--muted2);">';
   cols.forEach(function (c, i) {
-    if (i % 4 === 0) h += '<div style="position:absolute;left:' + (i / N * 100) + '%;padding-left:2px;">' + _qLabel(c.q) + '</div>';
+    if (((c.q % 4) + 4) % 4 === 0 && i < N - 2) h += '<div style="position:absolute;left:' + (i / N * 100) + '%;padding-left:2px;">' + _qLabel(c.q) + '</div>';
   });
   var row = function (lab, f, top) {
     var bt = top ? 'border-top:1px solid var(--border);' : '';
@@ -20881,6 +20915,8 @@ function _shpPlantChart(p, names, colors) {
     + '<div style="overflow-x:auto;"><table style="border-collapse:collapse;' + mono + 'font-size:9px;color:var(--text);margin-top:4px;">'
     + '<tr><th style="text-align:left;padding:2px 6px;">k / yr</th>' + cols.map(function (c) { return '<th style="padding:2px 4px;color:var(--muted2);font-weight:400;">' + _qLabel(c.q) + '</th>'; }).join('') + '</tr>'
     + keys.map(function (k) { return row(_esc(label(k)), function (c) { return c.segs[k] ? Math.round(c.segs[k]) : '–'; }); }).join('')
+    + (nPast ? row('Built (actual)', function (c) { return c.past ? Math.round(c.built) : '–'; }, true)
+      + row('Plant capacity used', function (c) { return c.past && c.hall > 0 ? Math.round(c.built / c.hall * 100) + '%' : '–'; }) : '')
     + row('Installed' + (pwt ? '' : ' (platform)'), function (c) { return Math.round(c.installed); }, true)
     + (pwt ? '' : row('Top hat lines', function (c) { return Math.round(c.tophat || 0); }))
     + row('Business case plans', function (c) { return Math.round(c.plans); })
@@ -20901,7 +20937,15 @@ function _shpChartTip(ev, pid, i) {
     return '<div style="display:flex;justify-content:space-between;gap:14px;' + (col ? 'color:' + col + ';' : '') + '"><span>' + l + '</span><span>' + v + '</span></div>';
   };
   var over = c.plans - c.installed;
-  tip.innerHTML = '<div style="color:var(--white);font-weight:700;margin-bottom:3px;">' + _qLabel(c.q) + '</div>'
+  if (c.past) tip.innerHTML = '<div style="color:var(--white);font-weight:700;margin-bottom:3px;">' + _qLabel(c.q) + ' · built (actual)</div>'
+    + ch.keys.filter(function (k) { return c.segs[k] > 0; }).reverse().map(function (k) {
+      return line('<span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:' + ch.color(k) + ';margin-right:5px;"></span>' + _esc(ch.label(k)), Math.round(c.segs[k]) + 'k');
+    }).join('')
+    + '<div style="border-top:1px solid var(--border2);margin-top:3px;padding-top:3px;"></div>'
+    + line('Built', Math.round(c.built) + 'k / yr (' + Math.round(c.built * 250).toLocaleString() + ' ' + (ch.pwt ? 'units' : 'cars') + ' that quarter)')
+    + line('Installed' + (ch.pwt ? '' : ' (platform)'), Math.round(c.installed) + 'k · ' + (c.installed > 0 ? Math.round(c.built / c.installed * 100) : 0) + '% used')
+    + line('Plant capacity', Math.round(c.hall) + 'k · ' + (c.hall > 0 ? Math.round(c.built / c.hall * 100) : 0) + '% used', c.hall > 0 && c.built / c.hall < 0.6 ? 'var(--orange)' : null);
+  else tip.innerHTML = '<div style="color:var(--white);font-weight:700;margin-bottom:3px;">' + _qLabel(c.q) + '</div>'
     + ch.keys.filter(function (k) { return c.segs[k] > 0; }).reverse().map(function (k) {
       return line('<span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:' + ch.color(k) + ';margin-right:5px;"></span>' + _esc(ch.label(k)), Math.round(c.segs[k]) + 'k');
     }).join('')
@@ -21155,6 +21199,11 @@ function _shpRenderFootprint() {
       + '<div style="font-family:\'DM Mono\',monospace;font-size:10px;color:var(--muted2);">plant capacity ' + Math.round(p.hall_k) + 'k'
       + (p.hall_committed_k > p.hall_k + 0.5 ? ' → ' + Math.round(p.hall_committed_k) + 'k decided' : '')
       + (p.size ? ' · can grow to ' + Math.round(p.size.max_k) + 'k' : '')
+      + (function (a) {   // the last cleared quarter: built against plant capacity
+        if (!a || !(a.hall_k > 0)) return '';
+        var b = Object.keys(a.built_k || {}).reduce(function (t, k) { return t + a.built_k[k]; }, 0), u = b / a.hall_k;
+        return ' · ' + _qLabel(a.qabs) + ' built ' + Math.round(b) + 'k/yr = <span style="color:' + (u < 0.6 ? 'var(--orange)' : 'var(--text)') + ';">' + Math.round(u * 100) + '% used</span>';
+      })((p.actuals || [])[(p.actuals || []).length - 1])
       + ' · fixed cost €' + (p.fixed_cost_q_at_reserved_m || 0).toFixed(1) + 'M/q of €' + (p.fixed_cost_q_full_m || 0).toFixed(1) + 'M if idle</div></div>';
     h += _shpPlantChart(p, vnames, vcolors)
       || '<div style="font-size:10px;color:var(--muted2);margin-top:8px;">No lines and no plans here: the whole plant capacity is free for a new model.</div>';
