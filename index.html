@@ -16192,7 +16192,8 @@ async function instructorCreateSession() {
     if (!sData.session?.id) throw new Error('Session creation failed: ' + JSON.stringify(sData));
     sessionId = sData.session.id;
 
-    const rRes  = await fetch(`${API_URL}/sessions/${sessionId}/rounds/next`, {method:'POST'});
+    // instructor only on the server (X-Instructor-Pin, 2026-10-29)
+    const rRes  = await fetch(`${API_URL}/sessions/${sessionId}/rounds/next`, {method:'POST', headers: _cmdAdminHeaders()});
     const rData = await rRes.json();
     console.log('Round created:', rData);
     if (!rData.round?.id) throw new Error('Round creation failed: ' + JSON.stringify(rData));
@@ -18299,7 +18300,8 @@ async function mcAdvanceRound() {
   try {
     // from_round_id: a re-click after a dropped response must not advance a second time
     var res  = await fetch(API_URL + '/sessions/' + sessionId + '/rounds/next'
-                           + (roundId ? '?from_round_id=' + encodeURIComponent(roundId) : ''), { method: 'POST' });
+                           + (roundId ? '?from_round_id=' + encodeURIComponent(roundId) : ''),
+                           { method: 'POST', headers: _cmdAdminHeaders() });   // instructor only (2026-10-29)
     var data = await res.json();
     if (!data.success && !data.round) throw new Error(data.detail || 'Failed');
     var rnd = data.round;
