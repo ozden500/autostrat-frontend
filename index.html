@@ -9848,7 +9848,7 @@ var _plmTab = {data: null, busy: false};
 // benefit/cost (financial_engine.session_lifecycle_plan, a dry run of what clearing persists).
 var _PLM_REASON = {below_hurdle: 'below your hurdle', no_budget: 'budget used up', no_fte: 'no engineering room'};
 var _PLM_PHASE = {engineering: 'Engineering', industrialising: 'Tooling & PPAP', ramping: 'Change-over', live: 'Live', planned: 'Planned',
-                  campaign: 'Campaign running', ended: 'Campaign over'};
+                  campaign: 'Campaign running', ended: 'Campaign over', stopped: 'Stopped (model ends first)'};
 
 async function _plmSetEnvelope(body) {
   if (_plmTab.busy) return;
@@ -9993,11 +9993,11 @@ function _plmPortfolioHtml(head, th, td, eur, deur, col) {
   if ((L.committed || []).length) {
     // projects still in engineering, tooling, change-over or a running campaign first; live and
     // finished ones (the history since the game's start) fold underneath
-    var _done = function(p) { return p.phase === 'live' || p.phase === 'ended'; };
+    var _done = function(p) { return p.phase === 'live' || p.phase === 'ended' || p.phase === 'stopped'; };
     var _act = L.committed.filter(function(p) { return !_done(p); }), _old = L.committed.filter(_done);
     var hdr = '<tr style="border-bottom:1px solid var(--border);">' + th('Model', 'left') + th('Project', 'left') + th('Decided') + th('Phase', 'left') + th('Change-over') + th('Cost') + th('Est. B/C') + th('Est. to date') + th('Realised') + '</tr>';
     var prow = function(p) {
-      var phCol = p.phase === 'live' ? 'var(--green)' : p.phase === 'ramping' ? 'var(--gold)' : 'var(--text)';
+      var phCol = p.phase === 'live' ? 'var(--green)' : p.phase === 'ramping' ? 'var(--gold)' : p.phase === 'stopped' ? 'var(--muted2)' : 'var(--text)';
       return '<tr style="border-bottom:1px solid var(--border);">' + td(_esc(p.vehicle_name || ''), 'left') +
         td(_esc(p.label) + (p.commodity ? ' (' + _esc(p.commodity) + ')' : '') + ' <b>' + p.level + '</b>', 'left') +
         td(_esc(p.decided)) + td('<span style="color:' + phCol + ';">' + _esc(_PLM_PHASE[p.phase] || p.phase) + '</span>', 'left') +
@@ -13231,6 +13231,12 @@ async function _eopPreview() {
                  d.age_penalty_pts >= 10 ? 'var(--red)' : '');
     (d.successor_overlap || []).forEach(function(o){
       h += _eopRow('Overlaps ' + o.name, o.overlap_q + ' q', o.overlap_q > 2 ? 'var(--gold)' : '');
+    });
+    // lifecycle projects that would change over after the new EOP: stopped, what they spent stays spent
+    (d.lifecycle_stopped || []).forEach(function(p){
+      var lbl = {vave: 'Cost-down', quality: 'Quality improvement', material: 'Material switch', facelift: 'Facelift',
+                 series: 'Special series'}[p.project_type] || p.project_type;
+      h += _eopRow('Stops ' + _esc(lbl) + ' ' + _esc(p.level || ''), 'change-over ' + _qLabel(p.changeover_qabs) + ' · saves ' + m(p.left_m) + ' not yet spent', 'var(--gold)');
     });
     h += '</div>';
     if ((d.history || []).length) h += '<div class="eop-note">Earlier changes: ' + d.history.map(function(x){
