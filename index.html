@@ -22914,9 +22914,12 @@ function renderHistoryTable(myRos, allVos, myTeamId, finHistByRound) {
 
   sorted.forEach(function(ro, i) {
     var fh   = finHistByRound[ro.round_id] || null;
-    var rev  = parseFloat(ro.revenue_m || 0);
-    var cogs = parseFloat(ro.cogs_m || 0);
-    var gp   = parseFloat(ro.gross_profit_m || (rev - cogs));
+    // revenue and gross margin from the statement where one exists (the same P&L as EBIT and net
+    // income beside them, since 2026-10-29); clearing's vehicle figures only for a quarter without one
+    var stmt = !!(fh && fh.net_revenue_m != null);
+    var rev  = parseFloat(stmt ? fh.net_revenue_m : (ro.revenue_m || 0));
+    var cogs = parseFloat(stmt ? (fh.cogs_m || 0) : (ro.cogs_m || 0));
+    var gp   = parseFloat(stmt && fh.gross_profit_m != null ? fh.gross_profit_m : (stmt ? rev - cogs : (ro.gross_profit_m || (rev - cogs))));
     var gm   = rev > 0 ? (gp / rev * 100).toFixed(1) : '0.0';
     var gmCol= parseFloat(gm) > 20 ? 'var(--green)' : parseFloat(gm) > 10 ? 'var(--gold)' : 'var(--red)';
     var units= parseInt(ro.total_units_sold || 0);
@@ -22931,7 +22934,7 @@ function renderHistoryTable(myRos, allVos, myTeamId, finHistByRound) {
 
     h += '<tr style="border-bottom:1px solid rgba(255,255,255,0.04);'+bg+'">';
     h += '<td style="padding:4px 10px;color:var(--gold);font-weight:600;">'+rndLabel+'</td>';
-    h += '<td style="padding:4px 8px;text-align:right;color:var(--cyan);">€'+rev.toFixed(0)+'M</td>';
+    h += '<td style="padding:4px 8px;text-align:right;color:var(--cyan);">€'+rev.toFixed(0)+'M'+(stmt ? '' : ' <span style="font-size:7px;color:var(--orange)">mkt</span>')+'</td>';
     h += '<td style="padding:4px 8px;text-align:right;">'+units.toLocaleString()+'</td>';
     h += '<td style="padding:4px 8px;text-align:right;color:'+gmCol+';">'+gm+'%</td>';
 
@@ -22983,7 +22986,7 @@ function renderHistoryTable(myRos, allVos, myTeamId, finHistByRound) {
   h += '</tbody></table></div>';
   if (hasFinancials) {
     h += '<div style="font-family:DM Mono,monospace;font-size:7px;color:var(--muted2);padding:4px 0;">'+
-      'EBIT, Net Income, Cash, Net Debt, CFO, CFI from real accrual model. Revenue, GM%, Units from market clearing. ⚠ = debt covenant breach.</div>';
+      'Revenue, GM%, EBIT, Net Income, Cash, Net Debt, CFO, CFI from the financial statements (revenue incl. aftersales, fleet and captive finance; <span style="color:var(--orange)">mkt</span> = market clearing\'s vehicle revenue, no statement yet). Units from market clearing. ⚠ = debt covenant breach.</div>';
   }
   el.innerHTML = h;
 }
