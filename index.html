@@ -26945,7 +26945,7 @@ function buildComponentsSourcingSection() {
   html += '<div id="prop-src-map-box" style="background:var(--s2);border:1px solid var(--border2);border-radius:4px;padding:10px 12px;margin-bottom:14px;">'
     + '<div style="display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:6px;margin-bottom:6px;">'
     + '<span style="font-family:DM Mono,monospace;font-size:9px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--text);">🗺 Sourcing map</span>'
-    + '<span style="font-family:DM Mono,monospace;font-size:9px;color:var(--muted2);">your §7 plants · supplier zones · hover a zone for freight, duty and the capacity you hold there</span></div>'
+    + '<span style="font-family:DM Mono,monospace;font-size:9px;color:var(--muted2);">your §7 plants · supplier zones · click a plant to decide it, then hover a zone · drag / Ctrl + wheel to move and zoom</span></div>'
     + '<div id="prop-src-map" style="position:relative;"></div><div id="prop-src-map-legend"></div></div>';
 
   html += '<div id="prop-ops-supply-plan-area">'+_renderSupplyPlanSection()+'</div>';
@@ -31094,6 +31094,9 @@ function _refreshSupplyPlanArea(){
 // arc from each picked zone to the plants it supplies (none for a plant's own zone). Tooltips: a
 // zone's labour index, risk, freight and duty to each plant, and the contracts held there.
 // Redrawn with the supply plan (_refreshSupplyPlanArea). Map data: the Markets tab's (_mktMapLib).
+// Since 2026-10-30: sea / land contrast, zoom (drag, Ctrl + wheel, buttons; _SRC.t kept across redraws),
+// a selected plant (_SRC.sel, click a plant: gold ring, its card opens) whose freight, duty and per-car
+// landed cost per module (_calcModuleSupplyMetrics) every zone tooltip shows.
 var _SRC_ISO = {DE: '276', FR: '250', IT: '380', ES: '724', GB: '826', PL: '616', CZ: '203', SK: '703', RO: '642', TR: '792',
   US: '840', CA: '124', MX: '484', CN: '156', JP: '392', KR: '410', TH: '764', ID: '360', IN: '356', BR: '076', AR: '032',
   CO: '170', ZA: '710', MA: '504', EG: '818', NG: '566', SA_: '682'};
@@ -31134,6 +31137,35 @@ function _srcProgramContracts() {
   return out;
 }
 
+var _SRC = {sel: null, t: null};   // the plant being decided (click a plant), the zoom transform
+
+// a zone's supplier labour in €/hour: the mean of its countries' rates (INDUSTRIAL_COUNTRIES; fixed in the
+// model, so "now" is every quarter's rate)
+function _srcZoneLabour(z) {
+  var r = [];
+  Object.keys(INDUSTRIAL_COUNTRIES).forEach(function (reg) {
+    (INDUSTRIAL_COUNTRIES[reg] || []).forEach(function (c) { if (_ZONE_BY_COUNTRY[c.code] === z && c.labor_eur_hr) r.push(c.labor_eur_hr); });
+  });
+  return r.length ? r.reduce(function (a, b) { return a + b; }, 0) / r.length : null;
+}
+
+function _srcSelect(pid) {
+  _SRC.sel = pid;
+  // open that plant's sourcing card, fold the others
+  _spPanelExpanded.inputs = true;
+  _spConfirmedPlants().concat(_spConfirmedPwtPlants()).forEach(function (p) { _spPlantExpanded[p.id] = p.id === pid; });
+  _refreshSupplyPlanArea();
+}
+
+function _srcZoomBy(f) {
+  var host = document.getElementById('prop-src-map');
+  if (host && host._zoom) d3.select(host).select('svg').transition().duration(250).call(host._zoom.scaleBy, f);
+}
+function _srcZoomReset() {
+  var host = document.getElementById('prop-src-map');
+  if (host && host._zoom) d3.select(host).select('svg').transition().duration(250).call(host._zoom.transform, d3.zoomIdentity);
+}
+
 function _srcMapDraw() {
   var host = document.getElementById('prop-src-map'), box = document.getElementById('prop-src-map-box');
   if (!host) return;
@@ -31145,13 +31177,15 @@ function _srcMapDraw() {
   var sp = (_prop.operations && _prop.operations.supply_plan) || {};
   var plants = _spConfirmedPlants().map(function (p) { return {p: p, ptype: 'vehicle', slots: _spVehiclePlantSlots()}; })
     .concat(_spConfirmedPwtPlants().map(function (p) { return {p: p, ptype: 'powertrain', slots: _spPwtPlantSlots()}; }));
+  if (!plants.some(function (x) { return x.p.id === _SRC.sel; })) _SRC.sel = plants.length ? plants[0].p.id : null;
+  var sel = plants.find(function (x) { return x.p.id === _SRC.sel; }) || null;
   var contracts = _srcProgramContracts();
-  // what this plan picks: zone -> plant id -> [slots]
-  var picks = {};
+  var modsOf = function (x) { return (sp.plants && sp.plants[x.p.id] && sp.plants[x.p.id].modules) || {}; };
+  var zoneOfSlot = function (x, sk) { var m = modsOf(x)[sk]; return (m && m.zone) || _zoneForPlant(x.p.country_code, x.p.region); };
+  var picks = {};   // zone -> plant id -> [slots]
   plants.forEach(function (x) {
-    var mods = (sp.plants && sp.plants[x.p.id] && sp.plants[x.p.id].modules) || {};
     x.slots.forEach(function (sk) {
-      var z = (mods[sk] && mods[sk].zone) || _zoneForPlant(x.p.country_code, x.p.region);
+      var z = zoneOfSlot(x, sk);
       ((picks[z] = picks[z] || {})[x.p.id] = picks[z][x.p.id] || []).push(sk);
     });
   });
@@ -31159,12 +31193,12 @@ function _srcMapDraw() {
   Object.keys(_SRC_ISO).forEach(function (cc) { ccOfIso[_SRC_ISO[cc]] = cc; });
   var feat = {};
   _mktMap.world.features.forEach(function (f) { feat[f.id] = f; });
-  var W = host.clientWidth || 900, H = Math.round(W * 0.40);
-  var proj = d3.geoNaturalEarth1().fitSize([W, H], _mktMap.world), path = d3.geoPath(proj);
+  var W = host.clientWidth || 900, H = Math.round(W * 0.42);
+  var proj = d3.geoNaturalEarth1().fitSize([W, H], {type: 'Sphere'}), path = d3.geoPath(proj);
   var at = function (cc) { var f = feat[_SRC_ISO[cc]]; return f ? proj(_srcCentroid(f)) : null; };
   host.innerHTML = '';
   var svg = d3.select(host).append('svg').attr('viewBox', '0 0 ' + W + ' ' + H)
-    .style('display', 'block').style('width', '100%').style('height', 'auto');
+    .style('display', 'block').style('width', '100%').style('height', 'auto').style('cursor', 'grab');
   var tip = d3.select(host).append('div')
     .style('position', 'absolute').style('pointer-events', 'none').style('display', 'none').style('z-index', 5)
     .style('background', 'var(--s3)').style('border', '1px solid var(--border2)').style('padding', '6px 9px')
@@ -31173,15 +31207,37 @@ function _srcMapDraw() {
   var show = function (ev, html) {
     var r = host.getBoundingClientRect(), x = ev.clientX - r.left;
     tip.style('display', 'block').html(html);
-    var w = tip.node().offsetWidth;
-    tip.style('left', Math.max(0, Math.min(r.width - w, x + 14 + w > r.width ? x - w - 14 : x + 14)) + 'px').style('top', (ev.clientY - r.top + 12) + 'px');
+    var w = tip.node().offsetWidth, h = tip.node().offsetHeight, y = ev.clientY - r.top + 12;
+    tip.style('left', Math.max(0, Math.min(r.width - w, x + 14 + w > r.width ? x - w - 14 : x + 14)) + 'px')
+      .style('top', Math.max(0, Math.min(y, r.height - h)) + 'px');
   };
   var hide = function () { tip.style('display', 'none'); };
   var zoneDef = function (z) { return SP_ZONES.find(function (d) { return d.key === z; }) || {}; };
   var plantName = function (p) { return (p.country_name || p.country_code || p.region) + ' plant'; };
+  var eur = function (v) { return (v < 0 ? '−€' : '€') + Math.abs(Math.round(v)).toLocaleString(); };
   var zoneTip = function (z) {
-    var d = zoneDef(z), h = '<b>' + _esc(d.label || z) + '</b> · labour ×' + (d.labor_index || 0).toFixed(2)
-      + ' · risk ' + Math.round((d.risk || 0) * 100) + '%';
+    var d = zoneDef(z), lab = _srcZoneLabour(z);
+    var h = '<b>' + _esc(d.label || z) + '</b> · supplier labour ' + (lab != null ? '€' + Math.round(lab) + '/h' : '') + ' (×'
+      + (d.labor_index || 0).toFixed(2) + ' of the reference) · risk ' + Math.round((d.risk || 0) * 100) + '%';
+    if (sel) {
+      var col = _ZONE_ABBR[_zoneForPlant(sel.p.country_code, sel.p.region)];
+      var fr = (d.logistics || {})[col], du = (d.duty || {})[col];
+      h += '<br><span style="color:var(--gold);">To ' + _esc(plantName(sel.p)) + ':</span> freight €' + (fr != null ? fr : '–') + '/m³ · customs duty '
+        + (du != null ? du + '%' : '–') + (_zoneForPlant(sel.p.country_code, sel.p.region) === z ? ' (its own zone)' : '');
+      // what each of that plant's modules would cost per car from here (the §8 landed-cost formula)
+      var rows = sel.slots.map(function (sk) {
+        var m = modsOf(sel)[sk] || {};
+        var r = _calcModuleSupplyMetrics(sk, z, m.automation || 2, sel.p.region, sel.p.country_code);
+        if (!(r.base_buy > 0)) return '';
+        return '<tr><td style="padding:0 8px 0 10px;">' + _esc(_SRC_SLOT[sk] || sk) + (zoneOfSlot(sel, sk) === z ? ' ✓' : '') + '</td>'
+          + '<td style="text-align:right;padding:0 6px;">' + eur(r.labor_adj) + '</td><td style="text-align:right;padding:0 6px;">' + eur(r.logistics_eur)
+          + '</td><td style="text-align:right;padding:0 6px;">' + eur(r.duty_eur) + '</td><td style="text-align:right;padding:0 0 0 6px;">' + eur(r.landed_eur) + '</td></tr>';
+      }).join('');
+      if (rows) h += '<table style="border-collapse:collapse;font-size:10px;margin-top:2px;"><tr style="color:var(--muted2);font-size:9px;">'
+        + '<td style="padding:0 8px 0 10px;">per car</td><td style="text-align:right;padding:0 6px;">labour</td><td style="text-align:right;padding:0 6px;">freight</td>'
+        + '<td style="text-align:right;padding:0 6px;">duty</td><td style="text-align:right;padding:0 0 0 6px;">landed</td></tr>' + rows + '</table>'
+        + '<span style="color:var(--muted2);font-size:9px;">✓ = picked from here now · labour vs the reference supplier</span>';
+    }
     var cs = contracts[z] || [];
     if (cs.length) h += '<br><span style="color:' + _SRC_GOLD + ';">Supplier capacity you hold here:</span>' + cs.map(function (c) {
       return '<br>&nbsp; ' + _esc(_SRC_SLOT[c.slot] || c.slot) + ' · ' + _esc(c.name || '') + (c.parent ? ' (parent: tooling re-used)' : '')
@@ -31191,82 +31247,103 @@ function _srcMapDraw() {
     if (Object.keys(pk).length) h += '<br><span style="color:' + _SRC_CYAN + ';">Picked in this plan:</span>' + plants.filter(function (x) { return pk[x.p.id]; }).map(function (x) {
       return '<br>&nbsp; ' + pk[x.p.id].map(function (sk) { return _SRC_SLOT[sk] || sk; }).join(', ') + ' → ' + _esc(plantName(x.p));
     }).join('');
-    if (plants.length) h += '<br><span style="color:var(--muted2);">To your plants (freight index · duty):</span>' + plants.map(function (x) {
-      var col = _ZONE_ABBR[_zoneForPlant(x.p.country_code, x.p.region)];
-      return '<br>&nbsp; ' + _esc(plantName(x.p)) + ': ' + ((d.logistics || {})[col] != null ? d.logistics[col] : '–') + ' · ' + ((d.duty || {})[col] != null ? d.duty[col] + '%' : '–');
-    }).join('');
     return h;
   };
-  svg.append('g').selectAll('path').data(_mktMap.world.features).enter().append('path')
+  var zoneAt = function (f) { return _ZONE_BY_COUNTRY[ccOfIso[f.id]]; };
+  var gMap = svg.append('g');
+  gMap.append('path').datum({type: 'Sphere'}).attr('d', path).attr('fill', '#0b2033');                  // sea
+  gMap.append('path').datum(d3.geoGraticule10()).attr('d', path).attr('fill', 'none')
+    .attr('stroke', '#163049').attr('stroke-width', 0.4).attr('vector-effect', 'non-scaling-stroke');
+  gMap.append('g').selectAll('path').data(_mktMap.world.features).enter().append('path')
     .attr('d', path)
-    .attr('fill', function (f) {
-      var z = _ZONE_BY_COUNTRY[ccOfIso[f.id]];
-      return !z ? '#11151f' : contracts[z] ? '#5a4a1c' : '#243650';
-    })
-    .attr('stroke', function (f) { var z = _ZONE_BY_COUNTRY[ccOfIso[f.id]]; return z && picks[z] ? _SRC_CYAN : '#07080d'; })
-    .attr('stroke-width', function (f) { var z = _ZONE_BY_COUNTRY[ccOfIso[f.id]]; return z && picks[z] ? 1.1 : 0.4; })
-    .on('mousemove', function (ev, f) {
-      var z = _ZONE_BY_COUNTRY[ccOfIso[f.id]];
-      if (!z) return hide();
-      show(ev, zoneTip(z));
-    })
+    .attr('fill', function (f) { var z = zoneAt(f); return !z ? '#3a3f49' : contracts[z] ? '#8a6d22' : '#4b6c92'; })
+    .attr('stroke', function (f) { var z = zoneAt(f); return z && picks[z] ? _SRC_CYAN : '#0b2033'; })
+    .attr('stroke-width', function (f) { var z = zoneAt(f); return z && picks[z] ? 1.4 : 0.5; })
+    .attr('vector-effect', 'non-scaling-stroke')
+    .on('mousemove', function (ev, f) { var z = zoneAt(f); if (!z) return hide(); show(ev, zoneTip(z)); })
     .on('mouseleave', hide);
-  // arcs: each picked zone to the plants it supplies (a plant's own zone needs none)
-  var g = svg.append('g'), pos = {};
+  // plant positions (side by side within one country) and the arcs, drawn under the markers
+  var pos = {};
   plants.forEach(function (x, i) {
     var xy = at(x.p.country_code);
     if (!xy) return;
     var same = plants.slice(0, i).filter(function (y) { return y.p.country_code === x.p.country_code; }).length;
     pos[x.p.id] = [xy[0] + same * 13, xy[1]];
   });
+  var arcs = gMap.append('g').style('pointer-events', 'none');
   Object.keys(picks).forEach(function (z) {
     var a = at(_SRC_ZONE_AT[z]);
     if (!a) return;
     plants.forEach(function (x) {
       var b = pos[x.p.id], n = (picks[z][x.p.id] || []).length;
       if (!b || !n || _zoneForPlant(x.p.country_code, x.p.region) === z) return;
+      var on = !sel || x.p.id === sel.p.id;
       var mx = (a[0] + b[0]) / 2, my = (a[1] + b[1]) / 2, dx = b[0] - a[0], dy = b[1] - a[1];
-      var cx = mx - dy * 0.22, cy = my + dx * 0.22;
-      g.append('path').attr('d', 'M' + a[0] + ',' + a[1] + ' Q' + cx + ',' + cy + ' ' + b[0] + ',' + b[1])
-        .attr('fill', 'none').attr('stroke', _SRC_CYAN).attr('stroke-width', 0.8 + 0.7 * n)
-        .attr('stroke-dasharray', '4,3').attr('stroke-opacity', 0.85).attr('stroke-linecap', 'round')
-        .style('pointer-events', 'none');
+      arcs.append('path').attr('d', 'M' + a[0] + ',' + a[1] + ' Q' + (mx - dy * 0.22) + ',' + (my + dx * 0.22) + ' ' + b[0] + ',' + b[1])
+        .attr('fill', 'none').attr('stroke', on ? '#e8c060' : _SRC_CYAN).attr('stroke-width', (on ? 1.2 : 0.8) + 0.6 * n)
+        .attr('stroke-dasharray', '5,4').attr('stroke-opacity', on ? 0.95 : 0.35).attr('stroke-linecap', 'round')
+        .attr('vector-effect', 'non-scaling-stroke');
     });
   });
-  // zone labels where the decision is: zones picked or holding capacity for this car
-  var lg = svg.append('g');
+  // overlay (screen space, so markers and labels keep their size when zoomed)
+  var gTop = svg.append('g');
+  var labels = [], marks = [];
   SP_ZONES.forEach(function (d) {
     if (!picks[d.key] && !contracts[d.key]) return;
     var a = at(_SRC_ZONE_AT[d.key]);
     if (!a) return;
-    var col = contracts[d.key] ? _SRC_GOLD : _SRC_CYAN, n = (contracts[d.key] || []).length;
-    lg.append('circle').attr('cx', a[0]).attr('cy', a[1]).attr('r', 3.2).attr('fill', col);
-    var side = _SRC_ZONE_SIDE[d.key];
-    lg.append('text').attr('x', a[0] + (side === 'end' ? 3 : side === 'start' ? -3 : 0)).attr('y', a[1] + (_SRC_ZONE_DY[d.key] || -7))
-      .attr('text-anchor', side || 'middle')
-      .style('font-family', 'DM Mono,monospace').style('font-size', '9px').style('fill', col).style('paint-order', 'stroke')
-      .style('stroke', '#07080d').style('stroke-width', '3px').style('pointer-events', 'none')
+    var col = contracts[d.key] ? _SRC_GOLD : _SRC_CYAN, n = (contracts[d.key] || []).length, side = _SRC_ZONE_SIDE[d.key];
+    var g = gTop.append('g').style('pointer-events', 'none');
+    g.append('circle').attr('r', 3.4).attr('fill', col).attr('stroke', '#07080d').attr('stroke-width', 1);
+    g.append('text').attr('x', side === 'end' ? 3 : side === 'start' ? -3 : 0).attr('y', _SRC_ZONE_DY[d.key] || -7)
+      .attr('text-anchor', side || 'middle').style('font-family', 'DM Mono,monospace').style('font-size', '9.5px').style('fill', col)
+      .style('paint-order', 'stroke').style('stroke', '#07080d').style('stroke-width', '3px')
       .text(d.label + (n ? ' · ' + n + ' held' : ''));
+    labels.push({g: g, xy: a});
   });
-  // plants: square = vehicle, circle = powertrain
-  var mg = svg.append('g');
   plants.forEach(function (x) {
     var xy = pos[x.p.id];
     if (!xy) return;
-    var m = mg.append('g').attr('transform', 'translate(' + xy[0] + ',' + xy[1] + ')').style('cursor', 'default');
-    m.append('circle').attr('r', 8).attr('fill', '#0c0f18').attr('stroke', '#dce8f8').attr('stroke-width', 1.2);
-    if (x.ptype === 'vehicle') m.append('rect').attr('x', -3.5).attr('y', -3.5).attr('width', 7).attr('height', 7).attr('fill', '#dce8f8');
-    else m.append('circle').attr('r', 3.4).attr('fill', '#dce8f8');
-    var mods = (sp.plants && sp.plants[x.p.id] && sp.plants[x.p.id].modules) || {};
+    var on = sel && x.p.id === sel.p.id;
+    var g = gTop.append('g').style('cursor', 'pointer');
+    if (on) g.append('circle').attr('r', 13).attr('fill', 'none').attr('stroke', '#e8c060').attr('stroke-width', 2);
+    g.append('circle').attr('r', 8.5).attr('fill', on ? '#3a2e0c' : '#0c0f18').attr('stroke', on ? '#e8c060' : '#dce8f8').attr('stroke-width', 1.4);
+    var ink = on ? '#ffe7a3' : '#dce8f8';
+    if (x.ptype === 'vehicle') g.append('rect').attr('x', -3.6).attr('y', -3.6).attr('width', 7.2).attr('height', 7.2).attr('fill', ink);
+    else g.append('circle').attr('r', 3.5).attr('fill', ink);
+    if (on) g.append('text').attr('y', 24).attr('text-anchor', 'middle').style('font-family', 'DM Mono,monospace').style('font-size', '9.5px')
+      .style('fill', '#e8c060').style('paint-order', 'stroke').style('stroke', '#07080d').style('stroke-width', '3px').text('deciding: ' + plantName(x.p));
     var lines = x.slots.map(function (sk) {
-      var z = (mods[sk] && mods[sk].zone) || _zoneForPlant(x.p.country_code, x.p.region);
+      var z = zoneOfSlot(x, sk);
       return _SRC_SLOT[sk] + ' from ' + (zoneDef(z).label || z) + ((contracts[z] || []).some(function (c) { return c.slot === sk; }) ? ' <span style="color:' + _SRC_GOLD + ';">(capacity held)</span>' : '');
     });
-    m.on('mousemove', function (ev) {
+    g.on('mousemove', function (ev) {
       show(ev, '<b>' + _esc(plantName(x.p)) + '</b> · ' + (x.ptype === 'vehicle' ? 'vehicle' : 'powertrain') + ' plant · '
-        + Math.round((x.p.vehicle_capacity_yr || 0) / 1000) + 'k/yr<br>' + lines.join('<br>'));
-    }).on('mouseleave', hide);
+        + Math.round((x.p.vehicle_capacity_yr || 0) / 1000) + 'k/yr<br>' + lines.join('<br>')
+        + (on ? '' : '<br><span style="color:var(--gold);">click: decide this plant\'s sourcing</span>'));
+    }).on('mouseleave', hide).on('click', function (ev) { ev.stopPropagation(); hide(); _srcSelect(x.p.id); });
+    marks.push({g: g, xy: xy});
   });
+  // zoom: drag to pan, Ctrl + wheel or the buttons to zoom (a plain wheel keeps scrolling the page)
+  var place = function (t) {
+    gMap.attr('transform', t);
+    labels.concat(marks).forEach(function (o) { var p = t.apply(o.xy); o.g.attr('transform', 'translate(' + p[0] + ',' + p[1] + ')'); });
+  };
+  var zoom = d3.zoom().scaleExtent([1, 8]).translateExtent([[0, 0], [W, H]])
+    .filter(function (ev) { return ev.type === 'wheel' ? ev.ctrlKey : !ev.button; })
+    .on('zoom', function (ev) { _SRC.t = ev.transform; place(ev.transform); })
+    .on('start', function () { svg.style('cursor', 'grabbing'); })
+    .on('end', function () { svg.style('cursor', 'grab'); });
+  host._zoom = zoom;
+  svg.call(zoom).on('dblclick.zoom', null);
+  svg.call(zoom.transform, _SRC.t || d3.zoomIdentity);
+  var btn = 'width:24px;height:24px;border-radius:4px;border:1px solid var(--border2);background:var(--s2);color:var(--text);cursor:pointer;'
+    + 'font-family:DM Mono,monospace;font-size:13px;line-height:1;padding:0;';
+  d3.select(host).append('div').style('position', 'absolute').style('top', '8px').style('right', '8px').style('display', 'flex')
+    .style('flex-direction', 'column').style('gap', '4px')
+    .html('<button title="Zoom in" aria-label="Zoom in" style="' + btn + '" onclick="_srcZoomBy(1.6)">+</button>'
+      + '<button title="Zoom out" aria-label="Zoom out" style="' + btn + '" onclick="_srcZoomBy(1/1.6)">−</button>'
+      + '<button title="Whole world" aria-label="Reset zoom" style="' + btn + 'font-size:11px;" onclick="_srcZoomReset()">⟲</button>');
   var leg = document.getElementById('prop-src-map-legend');
   if (leg) {
     var sw = function (bg, bd, t) {
@@ -31277,11 +31354,12 @@ function _srcMapDraw() {
     leg.innerHTML = '<div style="display:flex;flex-wrap:wrap;gap:4px 14px;margin-top:6px;font-family:DM Mono,monospace;font-size:9px;color:var(--muted2);">'
       + '<span style="display:inline-flex;align-items:center;gap:5px;"><span style="width:9px;height:9px;background:#dce8f8;"></span>vehicle plant</span>'
       + '<span style="display:inline-flex;align-items:center;gap:5px;"><span style="width:9px;height:9px;border-radius:50%;background:#dce8f8;"></span>powertrain plant</span>'
-      + sw('#243650', '#243650', 'supplier zone')
-      + sw('#5a4a1c', '#5a4a1c', 'you already hold supplier capacity for a module of this car (or its parent)')
-      + sw('transparent', _SRC_CYAN, 'zone picked in this plan · dashed: shipped to a plant in another zone')
-      + '</div>'
-      + (held ? '' : '<div style="font-family:DM Mono,monospace;font-size:9px;color:var(--muted2);margin-top:4px;">None of this car\'s modules has supplier capacity yet: each zone you pick pays its first-time tooling.</div>');
+      + '<span style="display:inline-flex;align-items:center;gap:5px;"><span style="width:10px;height:10px;border-radius:50%;border:2px solid #e8c060;box-sizing:border-box;"></span>the plant you are deciding (click another to switch)</span>'
+      + sw('#4b6c92', '#4b6c92', 'supplier zone')
+      + sw('#8a6d22', '#8a6d22', 'you already hold supplier capacity for a module of this car (or its parent)')
+      + sw('transparent', _SRC_CYAN, 'zone picked in this plan · dashed: shipped to a plant in another zone (gold: to the plant you are deciding)')
+      + '</div><div style="font-family:DM Mono,monospace;font-size:9px;color:var(--muted2);margin-top:4px;">Drag to move · Ctrl + wheel or + / − to zoom · hover a zone for its labour, freight and duty to the plant you are deciding, per car.'
+      + (held ? '' : ' None of this car\'s modules has supplier capacity yet: each zone you pick pays its first-time tooling.') + '</div>';
   }
 }
 
