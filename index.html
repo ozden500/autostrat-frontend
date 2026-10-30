@@ -27611,38 +27611,41 @@ var SP_MODULE_TYPES = {
 // — diagonal = domestic shipment (0% duty, cheapest €25/m³ freight tier)
 var SP_ZONES = [
   {key:'EU_WEST', label:'W. Europe', flag:'🇪🇺', desc:'Core EU manufacturing economies — DE/FR/IT/ES/GB, Benelux, the Alpine and Nordic countries, IE/PT', labor_index:1.10, risk:0.10,
-   logistics:{EW:25, EE:35, ND:75, MX:75, CN:85, JP:85, KR:85, SEA:95, IN:95, LA:120,ME:90},
-   duty:     {EW:0,  EE:0,  ND:2.5,MX:0,  CN:6,  JP:0,  KR:0,  SEA:5, IN:10, LA:14, ME:3}},
+   logistics:{EW:25, EE:35, ND:75, MX:75, CN:85, JP:85, KR:85, SEA:95, IN:95, LA:120,ME:90, AF:105},
+   duty:     {EW:0,  EE:0,  ND:2.5,MX:0,  CN:6,  JP:0,  KR:0,  SEA:5, IN:10, LA:14, ME:3, AF:5}},
   {key:'EU_EAST', label:'E. Europe', flag:'🇪🇺', desc:'Lower-cost EU/Customs-Union — PL/CZ/SK/RO/TR, HU, the Balkans, GR, the Baltics', labor_index:0.32, risk:0.20,
-   logistics:{EW:35, EE:25, ND:75, MX:75, CN:85, JP:85, KR:85, SEA:95, IN:95, LA:120,ME:90},
-   duty:     {EW:0,  EE:0,  ND:2.5,MX:0,  CN:6,  JP:0,  KR:0,  SEA:5, IN:10, LA:14, ME:3}},
+   logistics:{EW:35, EE:25, ND:75, MX:75, CN:85, JP:85, KR:85, SEA:95, IN:95, LA:120,ME:90, AF:105},
+   duty:     {EW:0,  EE:0,  ND:2.5,MX:0,  CN:6,  JP:0,  KR:0,  SEA:5, IN:10, LA:14, ME:3, AF:5}},
   {key:'NA_DEVELOPED', label:'US / Canada', flag:'🇺🇸', desc:'High-cost North America', labor_index:0.95, risk:0.12,
-   logistics:{EW:75, EE:75, ND:25, MX:40, CN:80, JP:80, KR:80, SEA:100,IN:100,LA:90, ME:130},
-   duty:     {EW:3.5,EE:3.5,ND:0,  MX:0,  CN:6,  JP:0,  KR:0,  SEA:5, IN:10, LA:14, ME:4}},
+   logistics:{EW:75, EE:75, ND:25, MX:40, CN:80, JP:80, KR:80, SEA:100,IN:100,LA:90, ME:130, AF:130},
+   duty:     {EW:3.5,EE:3.5,ND:0,  MX:0,  CN:6,  JP:0,  KR:0,  SEA:5, IN:10, LA:14, ME:4, AF:10}},
   {key:'MEXICO', label:'Mexico', flag:'🇲🇽', desc:'Low-cost USMCA member — distinct FTA network (EU-Mexico, Mexico-Japan)', labor_index:0.13, risk:0.28,
-   logistics:{EW:75, EE:75, ND:40, MX:25, CN:80, JP:80, KR:80, SEA:100,IN:100,LA:90, ME:130},
-   duty:     {EW:0,  EE:0,  ND:0,  MX:0,  CN:5,  JP:0,  KR:8,  SEA:5, IN:10, LA:3,  ME:4}},
+   logistics:{EW:75, EE:75, ND:40, MX:25, CN:80, JP:80, KR:80, SEA:100,IN:100,LA:90, ME:130, AF:130},
+   duty:     {EW:0,  EE:0,  ND:0,  MX:0,  CN:5,  JP:0,  KR:8,  SEA:5, IN:10, LA:3,  ME:4, AF:12}},
   {key:'CHINA', label:'China', flag:'🇨🇳', desc:'Large-scale, low-to-mid-cost — high tariff exposure into NA (§301)', labor_index:0.24, risk:0.55,
-   logistics:{EW:85, EE:85, ND:80, MX:80, CN:25, JP:45, KR:45, SEA:55, IN:55, LA:140,ME:95},
-   duty:     {EW:4,  EE:4,  ND:25, MX:5,  CN:0,  JP:6,  KR:6,  SEA:3, IN:10, LA:14, ME:4}},
+   logistics:{EW:85, EE:85, ND:80, MX:80, CN:25, JP:45, KR:45, SEA:55, IN:55, LA:140,ME:95, AF:110},
+   duty:     {EW:4,  EE:4,  ND:25, MX:5,  CN:0,  JP:6,  KR:6,  SEA:3, IN:10, LA:14, ME:4, AF:12}},
   {key:'JAPAN', label:'Japan', flag:'🇯🇵', desc:'High-cost, high-quality — EU-Japan EPA, no comprehensive Japan-US deal', labor_index:0.92, risk:0.10,
-   logistics:{EW:85, EE:85, ND:80, MX:80, CN:45, JP:25, KR:45, SEA:55, IN:55, LA:140,ME:95},
-   duty:     {EW:0,  EE:0,  ND:2.5,MX:0,  CN:6,  JP:0,  KR:6,  SEA:0, IN:0,  LA:14, ME:4}},
+   logistics:{EW:85, EE:85, ND:80, MX:80, CN:45, JP:25, KR:45, SEA:55, IN:55, LA:140,ME:95, AF:110},
+   duty:     {EW:0,  EE:0,  ND:2.5,MX:0,  CN:6,  JP:0,  KR:6,  SEA:0, IN:0,  LA:14, ME:4, AF:12}},
   {key:'KOREA', label:'South Korea', flag:'🇰🇷', desc:'KORUS + EU-Korea FTA — near-zero tariffs into NA/EU', labor_index:0.63, risk:0.16,
-   logistics:{EW:85, EE:85, ND:80, MX:80, CN:45, JP:45, KR:25, SEA:55, IN:55, LA:140,ME:95},
-   duty:     {EW:0,  EE:0,  ND:0,  MX:6,  CN:6,  JP:6,  KR:0,  SEA:0, IN:0,  LA:10, ME:4}},
-  {key:'SE_ASIA', label:'SE Asia', flag:'🇹🇭', desc:'Low-cost ASEAN/AFTA/RCEP — TH/ID', labor_index:0.12, risk:0.42,
-   logistics:{EW:95, EE:95, ND:100,MX:100,CN:55, JP:55, KR:55, SEA:25, IN:50, LA:150,ME:100},
-   duty:     {EW:4,  EE:4,  ND:2.5,MX:5,  CN:3,  JP:0,  KR:0,  SEA:0, IN:5,  LA:14, ME:5}},
+   logistics:{EW:85, EE:85, ND:80, MX:80, CN:45, JP:45, KR:25, SEA:55, IN:55, LA:140,ME:95, AF:110},
+   duty:     {EW:0,  EE:0,  ND:0,  MX:6,  CN:6,  JP:6,  KR:0,  SEA:0, IN:0,  LA:10, ME:4, AF:12}},
+  {key:'SE_ASIA', label:'ASEAN', flag:'🇹🇭', desc:'Low-cost ASEAN (all 11 South-East Asian states), AFTA/RCEP — plants in TH/ID', labor_index:0.12, risk:0.42,
+   logistics:{EW:95, EE:95, ND:100,MX:100,CN:55, JP:55, KR:55, SEA:25, IN:50, LA:150,ME:100, AF:105},
+   duty:     {EW:4,  EE:4,  ND:2.5,MX:5,  CN:3,  JP:0,  KR:0,  SEA:0, IN:5,  LA:14, ME:5, AF:12}},
   {key:'INDIA', label:'India', flag:'🇮🇳', desc:'Low-cost, large-scale — protectionist, outside RCEP but inside JP/KR CEPA', labor_index:0.11, risk:0.40,
-   logistics:{EW:95, EE:95, ND:100,MX:100,CN:55, JP:55, KR:55, SEA:50, IN:25, LA:150,ME:100},
-   duty:     {EW:4,  EE:4,  ND:2.5,MX:5,  CN:6,  JP:0,  KR:0,  SEA:5, IN:0,  LA:14, ME:5}},
+   logistics:{EW:95, EE:95, ND:100,MX:100,CN:55, JP:55, KR:55, SEA:50, IN:25, LA:150,ME:100, AF:90},
+   duty:     {EW:4,  EE:4,  ND:2.5,MX:5,  CN:6,  JP:0,  KR:0,  SEA:5, IN:0,  LA:14, ME:5, AF:12}},
   {key:'LATAM', label:'Latin America', flag:'🇧🇷', desc:'Mercosur core (BR/AR) + Colombia — high common external tariff', labor_index:0.18, risk:0.42,
-   logistics:{EW:120,EE:120,ND:90, MX:90, CN:140,JP:140,KR:140,SEA:150,IN:150,LA:25, ME:160},
-   duty:     {EW:4,  EE:4,  ND:2.5,MX:1,  CN:6,  JP:0,  KR:5,  SEA:5, IN:10, LA:0,  ME:5}},
-  {key:'MEA', label:'Middle East / Africa', flag:'🇿🇦', desc:'Africa/Middle East — Morocco/Egypt/SA hold EU association agreements', labor_index:0.14, risk:0.48,
-   logistics:{EW:90, EE:90, ND:130,MX:130,CN:95, JP:95, KR:95, SEA:100,IN:100,LA:160,ME:25},
-   duty:     {EW:1,  EE:1,  ND:2.5,MX:5,  CN:6,  JP:0,  KR:8,  SEA:5, IN:10, LA:14, ME:0}},
+   logistics:{EW:120,EE:120,ND:90, MX:90, CN:140,JP:140,KR:140,SEA:150,IN:150,LA:25, ME:160, AF:140},
+   duty:     {EW:4,  EE:4,  ND:2.5,MX:1,  CN:6,  JP:0,  KR:5,  SEA:5, IN:10, LA:0,  ME:5, AF:14}},
+  {key:'MEA', label:'Middle East & N. Africa', flag:'🇲🇦', desc:'MENA — Morocco/Egypt hold EU association agreements, Saudi Arabia the GCC', labor_index:0.14, risk:0.48,
+   logistics:{EW:90, EE:90, ND:130,MX:130,CN:95, JP:95, KR:95, SEA:100,IN:100,LA:160,ME:25, AF:60},
+   duty:     {EW:1,  EE:1,  ND:2.5,MX:5,  CN:6,  JP:0,  KR:8,  SEA:5, IN:10, LA:14, ME:0, AF:6}},
+  {key:'SSA', label:'Sub-Saharan Africa', flag:'🇿🇦', desc:'South Africa / Nigeria — AfCFTA, AGOA into the US, EU partnership agreements; high tariffs into Africa', labor_index:0.09, risk:0.55,
+   logistics:{EW:105, EE:105, ND:130, MX:130, CN:110, JP:110, KR:110, SEA:105, IN:90, LA:140, ME:60, AF:30},
+   duty:     {EW:0, EE:0, ND:0, MX:5, CN:4, JP:0, KR:8, SEA:5, IN:10, LA:14, ME:3, AF:0}},
 ];
 // Reverse-lookup: country code → economic zone (same groupings as the roster above)
 var _ZONE_BY_COUNTRY = {
@@ -27657,7 +27660,16 @@ var _ZONE_BY_COUNTRY = {
   CN:'CHINA', JP:'JAPAN', KR:'KOREA',
   TH:'SE_ASIA',ID:'SE_ASIA', IN:'INDIA',
   BR:'LATAM',AR:'LATAM',CO:'LATAM',
-  ZA:'MEA',MA:'MEA',EG:'MEA',NG:'MEA',SA_:'MEA'
+  ZA:'SSA',MA:'MEA',EG:'MEA',NG:'SSA',SA_:'MEA',
+  // map-only members (no plants there): the §8 map draws each zone as one block
+  XK:'EU_EAST',
+  DZ:'MEA',TN:'MEA',LY:'MEA',EH:'MEA',SD:'MEA',AE:'MEA',QA:'MEA',KW:'MEA',OM:'MEA',BH:'MEA',YE:'MEA',JO:'MEA',
+  IL:'MEA',PS:'MEA',LB:'MEA',SY:'MEA',IQ:'MEA',IR:'MEA',
+  BN:'SE_ASIA',KH:'SE_ASIA',LAO:'SE_ASIA',MY:'SE_ASIA',MM:'SE_ASIA',PH:'SE_ASIA',SG:'SE_ASIA',VN:'SE_ASIA',TL:'SE_ASIA',
+  AO:'SSA',BJ:'SSA',BW:'SSA',BF:'SSA',BI:'SSA',CM:'SSA',CF:'SSA',TD:'SSA',CG:'SSA',CD:'SSA',CI:'SSA',DJ:'SSA',GQ:'SSA',
+  ER:'SSA',SZ:'SSA',ET:'SSA',GA:'SSA',GM:'SSA',GH:'SSA',GN:'SSA',GW:'SSA',KE:'SSA',LS:'SSA',LR:'SSA',MG:'SSA',MW:'SSA',
+  ML:'SSA',MR:'SSA',MZ:'SSA',NAM:'SSA',NE:'SSA',RW:'SSA',SN:'SSA',SL:'SSA',SO:'SSA',SOL:'SSA',SS:'SSA',TZ:'SSA',
+  TG:'SSA',UG:'SSA',ZM:'SSA',ZW:'SSA'
 };
 function _zoneForPlant(countryCode, region){
   return _ZONE_BY_COUNTRY[countryCode] || _spDefaultZoneForRegion(region);
@@ -27665,7 +27677,7 @@ function _zoneForPlant(countryCode, region){
 // duty{}/logistics{} matrices are keyed by these short column abbreviations —
 // map a resolved destination zone (full SP_ZONES key) onto its matrix column
 var _ZONE_ABBR = {EU_WEST:'EW', EU_EAST:'EE', NA_DEVELOPED:'ND', MEXICO:'MX', CHINA:'CN',
-  JAPAN:'JP', KOREA:'KR', SE_ASIA:'SEA', INDIA:'IN', LATAM:'LA', MEA:'ME'};
+  JAPAN:'JP', KOREA:'KR', SE_ASIA:'SEA', INDIA:'IN', LATAM:'LA', MEA:'ME', SSA:'AF'};
 // m³ of shipped volume per €1,000 of module buy-cost — captures component "value density"
 // (E&S electronics are dense/compact; TopHat trim/glass/seating is bulky — ~30x spread)
 var MODULE_VOLUME_FACTOR = {platform:0.150, pwt:0.090, epwt:0.050, battery:0.050, tophat:0.300, eands:0.010};
@@ -31107,9 +31119,19 @@ var _SRC_ISO = {DE: '276', FR: '250', IT: '380', ES: '724', GB: '826', PL: '616'
   CO: '170', ZA: '710', MA: '504', EG: '818', NG: '566', SA_: '682',
   NL: '528', BE: '056', LU: '442', AT: '040', CH: '756', IE: '372', PT: '620', DK: '208', SE: '752', NO: '578', FI: '246',
   HU: '348', SI: '705', HR: '191', BG: '100', RS: '688', BA: '070', MNE: '499', MK: '807', AL: '008', GR: '300',
-  LT: '440', LV: '428', EE: '233'};
+  LT: '440', LV: '428', EE: '233',
+  XK: 'XK', SOL: 'SOL',   // no ISO number in the map data: matched by name (_SRC_NAME_ISO)
+  DZ: '012', TN: '788', LY: '434', EH: '732', SD: '729', AE: '784', QA: '634', KW: '414', OM: '512', BH: '048', YE: '887',
+  JO: '400', IL: '376', PS: '275', LB: '422', SY: '760', IQ: '368', IR: '364',
+  BN: '096', KH: '116', LAO: '418', MY: '458', MM: '104', PH: '608', SG: '702', VN: '704', TL: '626',
+  AO: '024', BJ: '204', BW: '072', BF: '854', BI: '108', CM: '120', CF: '140', TD: '148', CG: '178', CD: '180', CI: '384',
+  DJ: '262', GQ: '226', ER: '232', SZ: '748', ET: '231', GA: '266', GM: '270', GH: '288', GN: '324', GW: '624', KE: '404',
+  LS: '426', LR: '430', MG: '450', MW: '454', ML: '466', MR: '478', MZ: '508', NAM: '516', NE: '562', RW: '646', SN: '686',
+  SL: '694', SO: '706', SS: '728', TZ: '834', TG: '768', UG: '800', ZM: '894', ZW: '716'};
+var _SRC_NAME_ISO = {Kosovo: 'XK', Somaliland: 'SOL'};
+function _srcIsoOf(f) { return f.id || _SRC_NAME_ISO[(f.properties || {}).name]; }
 var _SRC_ZONE_AT = {EU_WEST: 'FR', EU_EAST: 'RO', NA_DEVELOPED: 'US', MEXICO: 'MX', CHINA: 'CN', JAPAN: 'JP', KOREA: 'KR',
-  SE_ASIA: 'TH', INDIA: 'IN', LATAM: 'BR', MEA: 'EG'};   // where a zone's dot sits (off the usual plant countries)
+  SE_ASIA: 'TH', INDIA: 'IN', LATAM: 'BR', MEA: 'EG', SSA: 'CD'};   // where a zone's dot sits (off the usual plant countries)
 var _SRC_ZONE_DY = {EU_WEST: 14, EU_EAST: 14, KOREA: 14, MEXICO: 14, INDIA: 14};   // label below the dot (else above)
 var _SRC_ZONE_SIDE = {EU_WEST: 'end', EU_EAST: 'start', JAPAN: 'start', KOREA: 'end'};   // label left / right of the dot
 var _SRC_SLOT = {platform: 'Platform', pwt: 'Engine', epwt: 'E-drive', battery: 'Battery', tophat: 'Top hat', eands: 'E&S'};
@@ -31200,7 +31222,7 @@ function _srcMapDraw() {
   var ccOfIso = {};
   Object.keys(_SRC_ISO).forEach(function (cc) { ccOfIso[_SRC_ISO[cc]] = cc; });
   var feat = {};
-  _mktMap.world.features.forEach(function (f) { feat[f.id] = f; });
+  _mktMap.world.features.forEach(function (f) { feat[_srcIsoOf(f)] = f; });
   var W = host.clientWidth || 900, H = Math.round(W * 0.42);
   var proj = d3.geoNaturalEarth1().fitSize([W, H], {type: 'Sphere'}), path = d3.geoPath(proj);
   var at = function (cc) { var f = feat[_SRC_ISO[cc]]; return f ? proj(_srcCentroid(f)) : null; };
@@ -31259,7 +31281,7 @@ function _srcMapDraw() {
     }).join('');
     return h;
   };
-  var zoneAt = function (f) { return _ZONE_BY_COUNTRY[ccOfIso[f.id]]; };
+  var zoneAt = function (f) { return _ZONE_BY_COUNTRY[ccOfIso[_srcIsoOf(f)]]; };
   var gMap = svg.append('g');
   gMap.append('path').datum({type: 'Sphere'}).attr('d', path).attr('fill', '#0b2033');                  // sea
   gMap.append('path').datum(d3.geoGraticule10()).attr('d', path).attr('fill', 'none')
@@ -31273,7 +31295,7 @@ function _srcMapDraw() {
     .on('mouseleave', hide);
   var topo = _mktMap.topo, geoms = topo && topo.objects.countries.geometries.filter(function (g) { return g.id !== '010'; });
   if (topo) {
-    var zg = function (g) { return _ZONE_BY_COUNTRY[ccOfIso[g.id]]; };
+    var zg = function (g) { return _ZONE_BY_COUNTRY[ccOfIso[_srcIsoOf(g)]]; };
     // borders: between different zones, and between countries outside any zone; none inside a zone
     gMap.append('path').datum(topojson.mesh(topo, topo.objects.countries, function (p, q) {
       return p !== q && p.id !== '010' && q.id !== '010' && (zg(p) !== zg(q) || !zg(p));
