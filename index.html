@@ -27610,10 +27610,10 @@ var SP_MODULE_TYPES = {
 // duty{} and logistics{} are both keyed by DESTINATION ZONE (EW/EE/ND/MX/CN/JP/KR/SEA/IN/LA/ME)
 // — diagonal = domestic shipment (0% duty, cheapest €25/m³ freight tier)
 var SP_ZONES = [
-  {key:'EU_WEST', label:'W. Europe', flag:'🇪🇺', desc:'Core EU manufacturing economies — DE/FR/IT/ES/GB', labor_index:1.10, risk:0.10,
+  {key:'EU_WEST', label:'W. Europe', flag:'🇪🇺', desc:'Core EU manufacturing economies — DE/FR/IT/ES/GB, Benelux, the Alpine and Nordic countries, IE/PT', labor_index:1.10, risk:0.10,
    logistics:{EW:25, EE:35, ND:75, MX:75, CN:85, JP:85, KR:85, SEA:95, IN:95, LA:120,ME:90},
    duty:     {EW:0,  EE:0,  ND:2.5,MX:0,  CN:6,  JP:0,  KR:0,  SEA:5, IN:10, LA:14, ME:3}},
-  {key:'EU_EAST', label:'E. Europe', flag:'🇪🇺', desc:'Lower-cost EU/Customs-Union — PL/CZ/SK/RO/TR', labor_index:0.32, risk:0.20,
+  {key:'EU_EAST', label:'E. Europe', flag:'🇪🇺', desc:'Lower-cost EU/Customs-Union — PL/CZ/SK/RO/TR, HU, the Balkans, GR, the Baltics', labor_index:0.32, risk:0.20,
    logistics:{EW:35, EE:25, ND:75, MX:75, CN:85, JP:85, KR:85, SEA:95, IN:95, LA:120,ME:90},
    duty:     {EW:0,  EE:0,  ND:2.5,MX:0,  CN:6,  JP:0,  KR:0,  SEA:5, IN:10, LA:14, ME:3}},
   {key:'NA_DEVELOPED', label:'US / Canada', flag:'🇺🇸', desc:'High-cost North America', labor_index:0.95, risk:0.12,
@@ -27648,6 +27648,11 @@ var SP_ZONES = [
 var _ZONE_BY_COUNTRY = {
   DE:'EU_WEST',FR:'EU_WEST',IT:'EU_WEST',ES:'EU_WEST',GB:'EU_WEST',
   PL:'EU_EAST',CZ:'EU_EAST',SK:'EU_EAST',RO:'EU_EAST',TR:'EU_EAST',
+  // neighbours without plants (2026-10-30): the §8 map draws each zone as one block
+  NL:'EU_WEST',BE:'EU_WEST',LU:'EU_WEST',AT:'EU_WEST',CH:'EU_WEST',IE:'EU_WEST',PT:'EU_WEST',
+  DK:'EU_WEST',SE:'EU_WEST',NO:'EU_WEST',FI:'EU_WEST',
+  HU:'EU_EAST',SI:'EU_EAST',HR:'EU_EAST',BG:'EU_EAST',RS:'EU_EAST',BA:'EU_EAST',MNE:'EU_EAST',
+  MK:'EU_EAST',AL:'EU_EAST',GR:'EU_EAST',LT:'EU_EAST',LV:'EU_EAST',EE:'EU_EAST',
   US:'NA_DEVELOPED',CA:'NA_DEVELOPED', MX:'MEXICO',
   CN:'CHINA', JP:'JAPAN', KR:'KOREA',
   TH:'SE_ASIA',ID:'SE_ASIA', IN:'INDIA',
@@ -31099,7 +31104,10 @@ function _refreshSupplyPlanArea(){
 // landed cost per module (_calcModuleSupplyMetrics) every zone tooltip shows.
 var _SRC_ISO = {DE: '276', FR: '250', IT: '380', ES: '724', GB: '826', PL: '616', CZ: '203', SK: '703', RO: '642', TR: '792',
   US: '840', CA: '124', MX: '484', CN: '156', JP: '392', KR: '410', TH: '764', ID: '360', IN: '356', BR: '076', AR: '032',
-  CO: '170', ZA: '710', MA: '504', EG: '818', NG: '566', SA_: '682'};
+  CO: '170', ZA: '710', MA: '504', EG: '818', NG: '566', SA_: '682',
+  NL: '528', BE: '056', LU: '442', AT: '040', CH: '756', IE: '372', PT: '620', DK: '208', SE: '752', NO: '578', FI: '246',
+  HU: '348', SI: '705', HR: '191', BG: '100', RS: '688', BA: '070', MNE: '499', MK: '807', AL: '008', GR: '300',
+  LT: '440', LV: '428', EE: '233'};
 var _SRC_ZONE_AT = {EU_WEST: 'FR', EU_EAST: 'RO', NA_DEVELOPED: 'US', MEXICO: 'MX', CHINA: 'CN', JAPAN: 'JP', KOREA: 'KR',
   SE_ASIA: 'TH', INDIA: 'IN', LATAM: 'BR', MEA: 'EG'};   // where a zone's dot sits (off the usual plant countries)
 var _SRC_ZONE_DY = {EU_WEST: 14, EU_EAST: 14, KOREA: 14, MEXICO: 14, INDIA: 14};   // label below the dot (else above)
@@ -31256,14 +31264,30 @@ function _srcMapDraw() {
   gMap.append('path').datum({type: 'Sphere'}).attr('d', path).attr('fill', '#0b2033');                  // sea
   gMap.append('path').datum(d3.geoGraticule10()).attr('d', path).attr('fill', 'none')
     .attr('stroke', '#163049').attr('stroke-width', 0.4).attr('vector-effect', 'non-scaling-stroke');
+  // countries filled by zone without outlines (a hairline of the same colour closes the antialiasing seams)
+  var fillOf = function (f) { var z = zoneAt(f); return !z ? '#3a3f49' : contracts[z] ? '#8a6d22' : '#4b6c92'; };
   gMap.append('g').selectAll('path').data(_mktMap.world.features).enter().append('path')
-    .attr('d', path)
-    .attr('fill', function (f) { var z = zoneAt(f); return !z ? '#3a3f49' : contracts[z] ? '#8a6d22' : '#4b6c92'; })
-    .attr('stroke', function (f) { var z = zoneAt(f); return z && picks[z] ? _SRC_CYAN : '#0b2033'; })
-    .attr('stroke-width', function (f) { var z = zoneAt(f); return z && picks[z] ? 1.4 : 0.5; })
+    .attr('d', path).attr('fill', fillOf).attr('stroke', fillOf).attr('stroke-width', 0.6)
     .attr('vector-effect', 'non-scaling-stroke')
     .on('mousemove', function (ev, f) { var z = zoneAt(f); if (!z) return hide(); show(ev, zoneTip(z)); })
     .on('mouseleave', hide);
+  var topo = _mktMap.topo, geoms = topo && topo.objects.countries.geometries.filter(function (g) { return g.id !== '010'; });
+  if (topo) {
+    var zg = function (g) { return _ZONE_BY_COUNTRY[ccOfIso[g.id]]; };
+    // borders: between different zones, and between countries outside any zone; none inside a zone
+    gMap.append('path').datum(topojson.mesh(topo, topo.objects.countries, function (p, q) {
+      return p !== q && p.id !== '010' && q.id !== '010' && (zg(p) !== zg(q) || !zg(p));
+    })).attr('d', path).attr('fill', 'none').attr('stroke', '#0b2033').attr('stroke-width', 0.7)
+      .attr('vector-effect', 'non-scaling-stroke').style('pointer-events', 'none');
+    // the zones this plan picks: one outline around the whole zone
+    Object.keys(picks).forEach(function (z) {
+      var gs = geoms.filter(function (g) { return zg(g) === z; });
+      if (!gs.length) return;
+      gMap.append('path').datum(topojson.merge(topo, gs)).attr('d', path).attr('fill', 'none')
+        .attr('stroke', _SRC_CYAN).attr('stroke-width', 1.6).attr('stroke-linejoin', 'round')
+        .attr('vector-effect', 'non-scaling-stroke').style('pointer-events', 'none');
+    });
+  }
   // plant positions (side by side within one country) and the arcs, drawn under the markers
   var pos = {}, gap = {};
   plants.forEach(function (x, i) {
@@ -33357,6 +33381,7 @@ function _mktMapLib() {
       fc.features = fc.features.filter(function(f){ return f.id !== '010'; });   // no Antarctica
       fc.features.forEach(function(f){ f.properties.mkt = _mktCodeOf(f); });
       _mktMap.world = fc;
+      _mktMap.topo = w;      // the §8 map merges countries into zones (_srcMapDraw)
     })
     .catch(function(e){ _mktMap.failed = true; console.warn('[markets map]', e); });
   return _mktMap.ready;
