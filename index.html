@@ -28873,7 +28873,10 @@ function _renderSimplifiedFootprint(){
     h+='<div style="border:1px solid var(--border2);border-radius:4px;padding:12px 14px;font-family:DM Mono,monospace;font-size:9px;color:var(--muted2);font-style:italic;">No vehicle plants on record.</div>';
     h+='</div>';return h;
   }
-  if(_shp){h+=_p7mBox();setTimeout(_p7mDraw,0);}   // the plants on a map, with what this car can get from SOP to EOP
+  // shared plants: the map (what this car can get from SOP to EOP; click a plant for its window), the car's
+  // allocations, the full table folded; the inline allocation panel is replaced by the window
+  if(_shp){h+=_p7mBox();setTimeout(function(){_p7mDraw();var a=document.getElementById('prop-ops-alloc-area');if(a)a.style.display='none';},0);}
+  var _h0=h;h='';
   h+='<div style="border:1px solid var(--border2);border-radius:4px;overflow:hidden;">';
   var COLS='1fr 70px 70px 70px 50px 50px 50px 90px';
   var HD='padding:5px 10px;font-family:DM Mono,monospace;font-size:8px;color:var(--muted2);font-weight:700;';
@@ -28930,7 +28933,8 @@ function _renderSimplifiedFootprint(){
     h+='</div>';
     h+='</div>';
   });
-  h+='</div></div>';
+  h+='</div>';
+  h=_shp?_h0+_p7wAllocList()+_propFold('p7-table','Table view · all your vehicle plants',h)+'</div>':_h0+h+'</div>';
   return h;
 }
 
@@ -29109,36 +29113,46 @@ function _p7mDraw() {
   }
 }
 
-// ── §7 plant window (click a plant on the map or in the table, shared-plant sessions): the most this
-// car can get there from SOP to EOP, its volume and line automation (▲ / ▼), and for each automation
-// level what placing it costs: the plant capex from the server's fit check (POST …/plant-fit, read
-// only: new line / share / expand a family line, a derivative's retool) and the production cost per
-// car (_calcFacilityInv on a scratch plant). Nothing is stored until Confirm, which allocates through
-// the §7 handlers and names this plant as the placement (plant_ref).
+// ── §7 plant window (click a plant on the map or in the list, shared-plant sessions): the most this
+// car can get there from SOP to EOP, its volume, the automation of its two lines (platform = body
+// shop, top hat = assembly; ▲ / ▼), what to add to a family line it shares, and per automation level
+// what placing it costs: each line's capex from the server's fit check (POST …/plant-fit, read only:
+// new line / share / expand a family line, a derivative's retool) and the production cost per car
+// (_calcFacilityInv on a scratch plant, at the plant's line automation: the mean of the two, as §7
+// stores it). Nothing is stored until Confirm, which allocates through the §7 handlers, names this
+// plant as the placement (plant_ref) and runs the fit check §10 reads.
 var _P7W = null;
 var _P7_AUTO = {1: 'Manual', 2: 'Standard', 3: 'Advanced', 4: 'Highly automated'};
 var _P7_ACT = {reuse: 'reuses the line', share: 'shares the family line', expand: 'expands the family line', new_line: 'new line'};
+var _P7_SIDE = {platform: 'Platform line (body shop)', tophat: 'Top hat line (assembly)'};
+
+// the line of this car's module family in a plant (the module, or the parent it derives from)
+function _p7wFamLine(sp, t) {
+  var s = null;
+  try { s = _shpPropSlots().filter(function (x) { return x.module_type === t; })[0]; } catch (e) { s = null; }
+  if (!s) return null;
+  return (sp.lines || []).filter(function (l) {
+    return l.module_type === t && (l.family_root_id === s.module_id || (s.parent_module_id && l.family_root_id === s.parent_module_id));
+  })[0] || null;
+}
 
 function _p7wOpen(pid) {
   var sp = (_shpSharedPlants('vehicle') || []).filter(function (p) { return p.id === pid; })[0];
   if (!sp) return;
   var ops = _prop.operations || {}, lk = sp.region + '_' + sp.country_code, av = _p7mAvail(sp);
   var conf = (ops.vehicle_plants || []).filter(function (e) { return e.id === 'vp_' + lk && e.vehicle_capacity_yr > 0; })[0];
-  // default automation: this car's allocation here, else the line of its family here, else standard
-  var al = 2, alSrc = 'the standard level';
-  var famLine = null;
-  try {
-    var ps = _shpPropSlots().filter(function (x) { return x.module_type === 'platform'; })[0];
-    if (ps) famLine = (sp.lines || []).filter(function (l) {
-      return l.module_type === 'platform' && (l.family_root_id === ps.module_id || (ps.parent_module_id && l.family_root_id === ps.parent_module_id));
-    })[0] || null;
-  } catch (e) { famLine = null; }
-  if (conf && conf.platform_auto_level) { al = conf.platform_auto_level; alSrc = 'your allocation here'; }
-  else if (famLine && famLine.automation_level) { al = famLine.automation_level; alSrc = 'the platform family line already here'; }
+  // default automation per line: this car's allocation here, else its family's line here, else standard
+  var al = {}, src = {};
+  ['platform', 'tophat'].forEach(function (t) {
+    var fl = _p7wFamLine(sp, t);
+    if (conf && conf[t + '_auto_level']) { al[t] = conf[t + '_auto_level']; src[t] = 'your allocation here'; }
+    else if (fl && fl.automation_level) { al[t] = fl.automation_level; src[t] = 'its family line here'; }
+    else { al[t] = 2; src[t] = 'standard'; }
+  });
   var plan = _suggestedVolK();
   var k = conf ? conf.vehicle_capacity_yr : av.k >= 1 ? Math.min(plan || Math.floor(av.k), Math.floor(av.k)) : (plan || 50);
-  _P7W = {pid: pid, lk: lk, sp: sp, av: av, k: Math.max(1, Math.round(k)), al: al, al0: al, alSrc: alSrc, conf: conf, plan: plan,
-          cache: {}, manuf: {}, timer: null};
+  _P7W = {pid: pid, lk: lk, sp: sp, av: av, k: Math.max(1, Math.round(k)), al: al, al0: {platform: al.platform, tophat: al.tophat}, src: src,
+          add: conf && conf.line_add_k != null ? conf.line_add_k : null, conf: conf, plan: plan, cache: {}, manuf: {}, timer: null};
   var el = document.getElementById('p7w-modal');
   if (!el) {
     el = document.createElement('div');
@@ -29172,11 +29186,19 @@ function _p7wVolSet(v) {
   var w = _P7W, n = parseInt(v, 10); if (!w || !(n > 0)) return;
   w.k = Math.min(999, n); _p7wRender(); _p7wPrice();
 }
-function _p7wAuto(d, abs) {
+function _p7wAuto(t, d, abs) {
   var w = _P7W; if (!w) return;
-  w.al = Math.max(1, Math.min(4, abs ? d : w.al + d));
+  w.al[t] = Math.max(1, Math.min(4, abs ? d : w.al[t] + d));
   _p7wRender();   // every level is priced at once: no new request
 }
+function _p7wAdd(v) {   // k added to a family line this car shares (blank = what its volume needs)
+  var w = _P7W; if (!w) return;
+  var n = parseFloat(v);
+  w.add = v === '' || isNaN(n) ? null : Math.max(0, n);
+  _p7wRender(); _p7wPrice();
+}
+
+function _p7wKey2(k, al) { return k + '|' + al + '|' + (_P7W.add == null ? '' : _P7W.add); }
 
 // production cost per car at this plant (§7's manufacturing engine on a scratch plant: the real ones stay untouched)
 function _p7wManufEur(k, al) {
@@ -29194,7 +29216,8 @@ function _p7wManufEur(k, al) {
   return v;
 }
 
-// the fit check for this plant at every automation level (debounced while the volume moves)
+// the fit check for this plant at every automation level (debounced while the volume moves); each
+// answer prices both lines at that level, so any platform × top hat pick reads from these four
 function _p7wPrice() {
   var w = _P7W; if (!w) return;
   if (w.timer) clearTimeout(w.timer);
@@ -29203,7 +29226,7 @@ function _p7wPrice() {
     if (!se) return;
     var slots = _shpPropSlots().filter(function (s) { return s.module_type === 'platform' || s.module_type === 'tophat'; });
     [1, 2, 3, 4].forEach(function (al) {
-      var key = k + '|' + al;
+      var key = _p7wKey2(k, al);
       if (w.cache[key]) return;
       w.cache[key] = {pending: true};
       fetch(API_URL + '/sessions/' + sessionId + '/teams/' + teamId + '/plant-fit', {
@@ -29212,7 +29235,7 @@ function _p7wPrice() {
           segment_code: (_prop.study || {}).segment_code, platform_size: _getPlatformSize(), body_type: _getBodyType(),
           pwt_type: _pwtToManufKey(((_prop.study || {}).rolled_up_specs || {}).pwt_type || ''),
           automation_level: al, shift_structure: 'CONTINENTAL',
-          placements: slots.map(function (s) { return Object.assign({plant_id: w.pid, capacity_k: k, add_k: null}, s); })})
+          placements: slots.map(function (s) { return Object.assign({plant_id: w.pid, capacity_k: k, add_k: w.add}, s); })})
       }).then(function (r) { return r.json().then(function (d) { return {ok: r.ok, d: d}; }); })
         .then(function (x) { w.cache[key] = x.ok ? x.d : {error: x.d.detail || 'Refused'}; if (_P7W === w) _p7wRenderCost(); })
         .catch(function () { w.cache[key] = {error: 'Could not reach the server'}; if (_P7W === w) _p7wRenderCost(); });
@@ -29221,50 +29244,73 @@ function _p7wPrice() {
   }, 350);
 }
 
-// the transformation cost table and the confirm row (redrawn alone when a fit check answers)
+// one line's placement at a level, from that level's answer
+function _p7wPl(t, al) {
+  var f = _P7W.cache[_p7wKey2(_P7W.k, al)];
+  if (!f || f.pending) return {pending: true};
+  if (f.error) return {error: f.error};
+  var p = (f.placements || []).filter(function (x) { return x.module_type === t; })[0] || {};
+  return {p: p, f: f};
+}
+
+// the transformation cost table, the pick and the confirm row (redrawn alone when a fit check answers)
 function _p7wCostHtml() {
   var w = _P7W, MN = 'font-family:DM Mono,monospace;';
   var sec = function (t) { return '<div style="' + MN + 'font-size:8px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin:14px 0 6px;">' + t + '</div>'; };
   var eurM = function (v) { return '€' + (+v).toFixed(1) + 'M'; };
   var eur = function (v) { return '€' + Math.round(v || 0).toLocaleString(); };
-  var h = sec('Transformation cost at ' + w.k + 'k/yr')
+  var TD = 'text-align:right;padding:5px 6px;';
+  var capCell = function (t, al) {
+    var x = _p7wPl(t, al), on = w.al[t] === al;
+    var v = x.pending ? '<span style="color:var(--muted2);">pricing…</span>' : x.error ? '<span style="color:var(--red);">–</span>' : eurM(x.p.capex_m || 0);
+    return '<td onclick="_p7wAuto(\'' + t + '\',' + al + ',true)" title="' + _P7_SIDE[t] + ' at L' + al + '" style="' + TD + 'cursor:pointer;color:var(--gold);'
+      + (on ? 'background:rgba(220,180,0,0.14);outline:1px solid rgba(220,180,0,0.5);outline-offset:-1px;' : '') + '">' + (on ? '► ' : '') + v + '</td>';
+  };
+  var h = sec('Transformation cost at ' + w.k + 'k/yr · click a capex to pick that line’s level')
     + '<table style="width:100%;border-collapse:collapse;' + MN + 'font-size:10px;">'
-    + '<tr style="color:var(--muted2);font-size:8px;"><td style="padding:3px 6px;">Automation</td><td style="text-align:right;padding:3px 6px;">Plant capex</td>'
-    + '<td style="text-align:right;padding:3px 6px;">Operators</td><td style="text-align:right;padding:3px 6px;">Labour / car</td>'
-    + '<td style="text-align:right;padding:3px 6px;">Upkeep / car</td><td style="text-align:right;padding:3px 6px;">Production / car</td><td style="padding:3px 6px;">Fit</td></tr>';
+    + '<tr style="color:var(--muted2);font-size:8px;"><td style="padding:3px 6px;">Automation</td><td style="' + TD + '">Platform capex</td><td style="' + TD + '">Top hat capex</td>'
+    + '<td style="' + TD + '">Operators</td><td style="' + TD + '">Labour / car</td><td style="' + TD + '">Upkeep / car</td><td style="' + TD + '">Production / car</td></tr>';
   [1, 2, 3, 4].forEach(function (al) {
-    var f = w.cache[w.k + '|' + al], m = _p7wManufEur(w.k, al), on = al === w.al;
-    var cap = !f || f.pending ? '<span style="color:var(--muted2);">pricing…</span>' : f.error ? '<span style="color:var(--red);">–</span>' : eurM(f.capex_m || 0);
-    var fit = !f || f.pending ? '' : f.error ? '<span style="color:var(--red);">' + _esc(f.error) + '</span>'
-      : f.ok ? (f.warnings || []).length ? '<span style="color:var(--orange);">⚠ fits, over the line</span>' : '<span style="color:var(--green);">✓ fits</span>'
-      : '<span style="color:var(--red);">✗ does not fit</span>';
-    h += '<tr onclick="_p7wAuto(' + al + ',true)" style="cursor:pointer;border-top:1px solid var(--border);background:' + (on ? 'rgba(220,180,0,0.08)' : 'transparent') + ';">'
-      + '<td style="padding:5px 6px;color:' + (on ? 'var(--gold)' : 'var(--text)') + ';">' + (on ? '► ' : '') + 'L' + al + ' ' + _P7_AUTO[al] + '</td>'
-      + '<td style="text-align:right;padding:5px 6px;color:var(--gold);">' + cap + '</td>'
-      + (m ? '<td style="text-align:right;padding:5px 6px;">' + Math.round(m.operators || 0) + '</td><td style="text-align:right;padding:5px 6px;">' + eur(m.labour)
-        + '</td><td style="text-align:right;padding:5px 6px;">' + eur(m.upkeep) + '</td><td style="text-align:right;padding:5px 6px;">' + eur(m.total) + '</td>'
-        : '<td colspan="4" style="text-align:right;padding:5px 6px;">–</td>')
-      + '<td style="padding:5px 6px;">' + fit + '</td></tr>';
+    var m = _p7wManufEur(w.k, al);
+    h += '<tr style="border-top:1px solid var(--border);"><td style="padding:5px 6px;color:var(--text);">L' + al + ' ' + _P7_AUTO[al] + '</td>'
+      + capCell('platform', al) + capCell('tophat', al)
+      + (m ? '<td style="' + TD + '">' + Math.round(m.operators || 0) + '</td><td style="' + TD + '">' + eur(m.labour) + '</td><td style="' + TD + '">' + eur(m.upkeep)
+        + '</td><td style="' + TD + '">' + eur(m.total) + '</td>' : '<td colspan="4" style="' + TD + '">–</td>') + '</tr>';
   });
-  h += '</table>';
-  var fs = w.cache[w.k + '|' + w.al];
-  if (fs && !fs.pending && !fs.error) {
-    h += '<div style="' + MN + 'font-size:9px;color:var(--text);line-height:1.6;margin-top:6px;">'
-      + (fs.placements || []).map(function (p) {
-        return (_SHP_TYPE[p.module_type] || p.module_type) + ': ' + (_P7_ACT[p.action] || p.action || '') + (p.expand_k > 0 ? ' +' + Math.round(p.expand_k) + 'k' : '')
-          + ' · ' + eurM(p.capex_m || 0);
-      }).join('<br>')
-      + (!fs.ok ? '<br><span style="color:var(--red);">' + _esc((fs.errors || []).join('; ')) + '</span>' : '')
-      + ((fs.warnings || []).length ? '<br><span style="color:var(--orange);">' + _esc(fs.warnings.join('; ')) + '</span>' : '') + '</div>';
+  h += '</table><div style="' + MN + 'font-size:8px;color:var(--muted2);margin-top:4px;">Operators and the per-car costs are for both lines at that level.</div>';
+  // the pick: each line at its level
+  var pp = _p7wPl('platform', w.al.platform), pt = _p7wPl('tophat', w.al.tophat), mix = Math.round((w.al.platform + w.al.tophat) / 2);
+  var ready = !pp.pending && !pt.pending && !pp.error && !pt.error, bad = false;
+  h += sec('Your pick');
+  if (pp.error || pt.error) h += '<div style="' + MN + 'font-size:10px;color:var(--red);">' + _esc(pp.error || pt.error) + '</div>';
+  else if (!ready) h += '<div style="' + MN + 'font-size:10px;color:var(--muted2);">pricing…</div>';
+  else {
+    var line = function (t, x) {
+      var p = x.p;
+      return _P7_SIDE[t] + ' L' + w.al[t] + ': ' + (_P7_ACT[p.action] || p.action || '') + (p.expand_k > 0 ? ' +' + Math.round(p.expand_k) + 'k' : '') + ' · ' + eurM(p.capex_m || 0);
+    };
+    var mm = _p7wManufEur(w.k, mix), errs = [], warns = [];
+    [pp, pt].forEach(function (x) {
+      (x.f.errors || []).forEach(function (e) { if (errs.indexOf(e) < 0) errs.push(e); });
+      (x.f.warnings || []).forEach(function (e) { if (warns.indexOf(e) < 0) warns.push(e); });
+    });
+    bad = !pp.f.ok || !pt.f.ok;
+    h += '<div style="' + MN + 'font-size:10px;color:var(--text);line-height:1.7;">' + line('platform', pp) + '<br>' + line('tophat', pt)
+      + '<br><b style="color:var(--gold);">Plant capex ' + eurM((pp.p.capex_m || 0) + (pt.p.capex_m || 0)) + '</b>'
+      + (mm ? ' · production ' + eur(mm.total) + ' a car at L' + mix + ' (the plant’s line automation: the mean of the two)' : '')
+      + (bad ? '<br><span style="color:var(--red);">✗ Does not fit: ' + _esc(errs.join('; ')) + '</span>'
+        : warns.length ? '<br><span style="color:var(--orange);">⚠ ' + _esc(warns.join('; ')) + '</span>' : '<br><span style="color:var(--green);">✓ Fits</span>')
+      + '</div>';
   }
-  h += '<div style="' + MN + 'font-size:8px;color:var(--muted2);margin-top:6px;line-height:1.5;">Plant capex: the server’s fit check for this plant (new line, family-line expansion, a derivative’s retool), the figure §10 uses. '
+  h += '<div style="' + MN + 'font-size:8px;color:var(--muted2);margin-top:6px;line-height:1.5;">Capex: the server’s fit check for this plant (new line, family-line expansion, a derivative’s retool), the figure §10 uses. '
     + 'Per car at 3 shifts: labour, and upkeep (maintenance of the equipment, energy). More automation needs fewer operators but more '
     + 'equipment to keep up: at low volume its upkeep can outweigh the labour it saves.</div>';
-  // confirm / cancel (no confirm while the setting picked does not fit: approval would refuse it)
-  var bad = fs && !fs.pending && !fs.error && !fs.ok;
-  h += '<div style="display:flex;gap:8px;margin-top:14px;">'
-    + '<button onclick="_p7wConfirm()"' + (bad ? ' disabled title="Does not fit: lower the volume, or expand the plant on Industrial Ops"' : '') + ' style="' + MN + 'flex:1;font-size:11px;padding:9px;border-radius:3px;border:1px solid rgba(200,164,60,.5);background:var(--goldl);color:var(--gold);cursor:' + (bad ? 'not-allowed;opacity:0.45' : 'pointer') + ';">✓ '
-    + (w.conf ? 'Update allocation' : 'Confirm allocation') + ' · ' + w.k + 'k/yr · L' + w.al + '</button>'
+  // confirm / remove / cancel (no confirm while the pick does not fit: approval would refuse it)
+  h += '<div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap;">'
+    + '<button onclick="_p7wConfirm()"' + (bad ? ' disabled title="Does not fit: lower the volume, or expand the plant on Industrial Ops"' : '')
+    + ' style="' + MN + 'flex:1;min-width:220px;font-size:11px;padding:9px;border-radius:3px;border:1px solid rgba(200,164,60,.5);background:var(--goldl);color:var(--gold);cursor:'
+    + (bad ? 'not-allowed;opacity:0.45' : 'pointer') + ';">✓ ' + (w.conf ? 'Update allocation' : 'Confirm allocation') + ' · ' + w.k + 'k/yr · L' + w.al.platform + ' / L' + w.al.tophat + '</button>'
+    + (w.conf ? '<button onclick="_p7wRemove()" style="' + MN + 'font-size:11px;padding:9px 14px;border-radius:3px;border:1px solid rgba(220,60,60,.4);background:transparent;color:var(--red);cursor:pointer;">Remove allocation</button>' : '')
     + '<button onclick="_p7wClose()" style="' + MN + 'font-size:11px;padding:9px 16px;border-radius:3px;border:1px solid var(--border2);background:var(--s1);color:var(--muted2);cursor:pointer;">✕ Cancel</button></div>';
   return h;
 }
@@ -29294,10 +29340,10 @@ function _p7wRender() {
     var v = Math.min((fy[y] || {}).platform || 0, (fy[y] || {}).tophat || 0);
     return y + ' ' + Math.round(Math.max(0, v)) + 'k';
   }).join(' · ');
-  var h = '<div style="background:var(--s2);border:1px solid var(--border2);border-radius:6px;width:680px;max-width:100%;max-height:100%;overflow:auto;box-shadow:0 8px 32px rgba(0,0,0,0.6);">'
+  var h = '<div style="background:var(--s2);border:1px solid var(--border2);border-radius:6px;width:720px;max-width:100%;max-height:100%;overflow:auto;box-shadow:0 8px 32px rgba(0,0,0,0.6);">'
     + '<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 14px;border-bottom:1px solid var(--border2);">'
     + '<div style="' + MN + 'font-size:11px;font-weight:700;color:var(--gold);">🏭 ' + _esc(sp.name || sp.country_code) + ' <span style="font-weight:400;color:var(--muted2);font-size:9px;">· '
-    + sp.region + ' · ' + sp.status + (sp.status === 'building' ? ' (ready ' + sp.ready + ')' : '') + ' · plant capacity ' + Math.round(sp.hall_k || 0) + 'k/yr</span></div>'
+    + sp.region + ' · ' + sp.status + (sp.status === 'building' ? ' (ready ' + sp.ready + ')' : '') + ' · plant capacity ' + Math.round(sp.hall_k || 0) + 'k/yr · used now ' + Math.round(_shpUsedK(sp)) + 'k</span></div>'
     + '<button onclick="_p7wClose()" aria-label="Close" style="' + MN + 'font-size:13px;color:var(--muted2);background:none;border:none;cursor:pointer;padding:2px 6px;">✕</button></div>'
     + '<div style="padding:4px 14px 12px;">';
   // max available
@@ -29321,31 +29367,76 @@ function _p7wRender() {
     + '<div style="' + MN + 'font-size:9px;color:' + (over ? 'var(--orange)' : 'var(--muted2)') + ';">'
     + (over ? '▲ ' + Math.round(w.k - av.k) + 'k above what is free: the fit check below says whether the plant takes it (a family line is expanded, or plant room is needed)'
       : 'Within what is free (the white mark).') + '</div>';
-  // automation
-  h += sec('Line automation')
-    + '<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">' + btn('_p7wAuto(-1)', '▼', 'Less automation')
-    + '<span style="' + MN + 'font-size:12px;color:var(--gold);min-width:150px;text-align:center;">L' + w.al + ' · ' + _P7_AUTO[w.al] + '</span>'
-    + btn('_p7wAuto(1)', '▲', 'More automation')
-    + '<span style="' + MN + 'font-size:9px;color:var(--muted2);">default L' + w.al0 + ' (' + w.alSrc + ')</span></div>';
+  // what to add to a family line this car shares here
+  if (av.platform.fam || av.tophat.fam) {
+    h += sec('Add to your family line')
+      + '<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;' + MN + 'font-size:9px;color:var(--muted2);">'
+      + '<input type="number" min="0" step="1" value="' + (w.add == null ? '' : w.add) + '" placeholder="as needed" onchange="_p7wAdd(this.value)" aria-label="Add to the family line, k a year" style="'
+      + MN + 'font-size:12px;padding:5px 8px;border-radius:3px;border:1px solid var(--border2);background:var(--s1);color:var(--text);width:112px;text-align:right;">k/yr'
+      + '<span>blank = what your volume needs beyond the line’s spare · 0 = share what is installed (the models on the line then split it pro rata)</span></div>';
+  }
+  // automation, one per line
+  h += sec('Line automation');
+  ['platform', 'tophat'].forEach(function (t) {
+    h += '<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:6px;">'
+      + '<span style="' + MN + 'font-size:9px;color:var(--text);width:170px;">' + _P7_SIDE[t] + '</span>'
+      + btn('_p7wAuto(\'' + t + '\',-1)', '▼', 'Less automation, ' + _P7_SIDE[t])
+      + '<span style="' + MN + 'font-size:12px;color:var(--gold);min-width:150px;text-align:center;">L' + w.al[t] + ' · ' + _P7_AUTO[w.al[t]] + '</span>'
+      + btn('_p7wAuto(\'' + t + '\',1)', '▲', 'More automation, ' + _P7_SIDE[t])
+      + '<span style="' + MN + 'font-size:9px;color:var(--muted2);">default L' + w.al0[t] + ' (' + w.src[t] + ')</span></div>';
+  });
   h += '<div id="p7w-cost">' + _p7wCostHtml() + '</div></div></div>';
   var focus = document.activeElement && document.activeElement.closest && document.activeElement.closest('#p7w-modal') ? document.activeElement.getAttribute('aria-label') : null;
   el.innerHTML = h;
   if (focus) { var f2 = el.querySelector('[aria-label="' + focus + '"]'); if (f2) f2.focus(); }
 }
 
-// Confirm: allocate through the §7 handlers (as the panel below does) and place it in this plant
+// Confirm: allocate through the §7 handlers and place it in this plant, then run the fit check §10 reads
 function _p7wConfirm() {
   var w = _P7W; if (!w) return;
   _p7wClose();
   onPropOpsSelectPlant('vehicle_plants', w.lk);
-  onPropOpsAutoLevel(w.al);
+  _prop.operations.platform_auto_level = w.al.platform;
+  _prop.operations.tophat_auto_level = w.al.tophat;
   onPropOpsVehicleCapYr(w.k);
   onPropOpsConfirmAllocation(w.lk);
   var vp = ((_prop.operations || {}).vehicle_plants || []).filter(function (e) { return e.id === 'vp_' + w.lk; })[0];
-  if (vp) vp.plant_ref = w.pid;
-  _shpPropRender();
-  toast('✓ ' + (w.sp.name || w.sp.country_code) + ': ' + w.k + 'k/yr at L' + w.al + ' ' + _P7_AUTO[w.al]);
+  if (vp) {
+    vp.plant_ref = w.pid;
+    if (w.add == null) delete vp.line_add_k; else vp.line_add_k = w.add;
+  }
+  _shpPropCheck();
+  toast('✓ ' + (w.sp.name || w.sp.country_code) + ': ' + w.k + 'k/yr · platform L' + w.al.platform + ' · top hat L' + w.al.tophat);
 }
+
+function _p7wRemove() {
+  var w = _P7W; if (!w) return;
+  _p7wClose();
+  onPropOpsRemovePlantAllocation('vp_' + w.lk);
+}
+
+// the car's vehicle plant allocations under the map (shared-plant sessions): open or remove each
+function _p7wAllocList() {
+  var ops = _prop.operations || {}, MN = 'font-family:DM Mono,monospace;';
+  var plants = _shpSharedPlants('vehicle') || [];
+  var conf = _shpConfirmed(ops.vehicle_plants);
+  var h = '<div style="border:1px solid var(--border2);border-radius:4px;overflow:hidden;">'
+    + '<div style="' + MN + 'font-size:8px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);padding:6px 10px;background:var(--s2);border-bottom:1px solid var(--border2);">This car’s vehicle plants</div>';
+  if (!conf.length) return h + '<div style="' + MN + 'font-size:9px;color:var(--muted2);padding:8px 10px;font-style:italic;">None yet: click a plant on the map to allocate this car there.</div></div>';
+  conf.forEach(function (e) {
+    var lk = (e.id || '').replace(/^vp_/, '');
+    var sp = plants.filter(function (p) { return p.id === e.plant_ref; })[0] || plants.filter(function (p) { return p.region + '_' + p.country_code === lk; })[0];
+    h += '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:7px 10px;border-top:1px solid var(--border);' + MN + 'font-size:10px;">'
+      + '<span style="color:var(--gold);flex:1;min-width:140px;">🏭 ' + _esc(sp ? (sp.name || sp.country_code) : (e.country_name || lk)) + '</span>'
+      + '<span style="color:var(--text);">' + e.vehicle_capacity_yr + 'k/yr</span>'
+      + '<span style="color:var(--muted2);">platform L' + (e.platform_auto_level || e.automation_level || 2) + ' · top hat L' + (e.tophat_auto_level || e.automation_level || 2) + '</span>'
+      + (e.line_add_k != null ? '<span style="color:var(--muted2);">+' + e.line_add_k + 'k to the family line</span>' : '')
+      + (sp ? '<button onclick="_p7wOpen(\'' + sp.id + '\')" style="' + MN + 'font-size:9px;padding:3px 9px;border-radius:3px;border:1px solid rgba(200,164,60,.4);background:var(--goldl);color:var(--gold);cursor:pointer;">Open</button>' : '')
+      + '<button onclick="onPropOpsRemovePlantAllocation(\'' + _esc(e.id) + '\')" aria-label="Remove allocation" style="' + MN + 'font-size:9px;padding:3px 7px;border-radius:3px;border:1px solid rgba(220,60,60,.3);background:transparent;color:var(--red);cursor:pointer;">✕</button></div>';
+  });
+  return h + '</div>';
+}
+
 
 function _renderPlantAllocationPanel(lk){
   var ops=_prop.operations||{};
@@ -30534,14 +30625,15 @@ async function _shpPropCheck() {
   vps.forEach(function (e) {
     var k = e.target_capacity_k || e.vehicle_capacity_yr || 0;
     slots.filter(function (s) { return s.module_type === 'platform' || s.module_type === 'tophat'; })
-      .forEach(function (s) { pl.push(Object.assign({ plant_id: e.plant_ref, capacity_k: k, add_k: e.line_add_k != null ? e.line_add_k : null }, s)); });
+      .forEach(function (s) { pl.push(Object.assign({ plant_id: e.plant_ref, capacity_k: k, add_k: e.line_add_k != null ? e.line_add_k : null,
+        automation_level: e[s.module_type + '_auto_level'] || e.automation_level || null }, s)); });   // each line at its own level
   });
   if (pps.length) {
     var kp = pps[0].target_capacity_k || pps[0].vehicle_capacity_yr
       || vps.reduce(function (a, e) { return a + (e.target_capacity_k || 0); }, 0);
     slots.filter(function (s) { return s.module_type === 'ice_pwt' || s.module_type === 'epwt'; })
       .forEach(function (s) { pl.push(Object.assign({ plant_id: pps[0].plant_ref, capacity_k: kp,
-        add_k: pps[0].line_add_k != null ? pps[0].line_add_k : null }, s)); });
+        add_k: pps[0].line_add_k != null ? pps[0].line_add_k : null, automation_level: pps[0].automation_level || null }, s)); });
   }
   msg.innerHTML = '<span style="color:var(--muted2);">Checking…</span>';
   try {
@@ -30676,7 +30768,7 @@ async function buildMfgPlantSection() {
   // The three moves §7 asks for, in order (the tables below are where each happens)
   var _stp=function(n,t){return '<div style="display:flex;gap:8px;align-items:baseline;"><span style="font-family:Orbitron,sans-serif;font-size:11px;color:var(--gold);">'+n+'</span><span>'+t+'</span></div>';};
   html+='<div style="display:flex;flex-wrap:wrap;gap:6px 22px;margin:12px 0;font-family:DM Mono,monospace;font-size:9px;color:var(--text);">'+
-    _stp('1','Click a vehicle plant row, set k/yr, Confirm Allocation')+_stp('2','Click the powertrain plant row, Confirm PWT Allocation')+_stp('3','Continue to sourcing')+'</div>';
+    _stp('1','Click a vehicle plant (on the map, or its row), set k/yr, Confirm')+_stp('2','Click the powertrain plant row, Confirm PWT Allocation')+_stp('3','Continue to sourcing')+'</div>';
   html+='<div id="prop-ops-footprint-area">'+_renderSimplifiedFootprint()+'</div>';
   html+='<div id="prop-ops-alloc-area">';
   if(_allocMode2==='existing'&&_selLk2){html+=_renderPlantAllocationPanel(_selLk2);}
