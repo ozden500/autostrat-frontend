@@ -28873,6 +28873,7 @@ function _renderSimplifiedFootprint(){
     h+='<div style="border:1px solid var(--border2);border-radius:4px;padding:12px 14px;font-family:DM Mono,monospace;font-size:9px;color:var(--muted2);font-style:italic;">No vehicle plants on record.</div>';
     h+='</div>';return h;
   }
+  if(_shp){h+=_p7mBox();setTimeout(_p7mDraw,0);}   // the plants on a map, with what this car can get from SOP to EOP
   h+='<div style="border:1px solid var(--border2);border-radius:4px;overflow:hidden;">';
   var COLS='1fr 70px 70px 70px 50px 50px 50px 90px';
   var HD='padding:5px 10px;font-family:DM Mono,monospace;font-size:8px;color:var(--muted2);font-weight:700;';
@@ -28913,7 +28914,7 @@ function _renderSimplifiedFootprint(){
     var bdr=i<rows.length-1?'border-bottom:1px solid var(--border2);':'';
     var leftBorder=isSelected?'3px solid var(--gold)':isConfirmed?'3px solid rgba(200,164,60,0.4)':'3px solid transparent';
     var CD='padding:7px 10px;font-family:DM Mono,monospace;font-size:9px;';
-    h+='<div onclick="onPropOpsSelectPlant(\'vehicle_plants\',\''+lk+'\')" style="cursor:pointer;display:grid;grid-template-columns:'+COLS+';background:'+bg+';'+bdr+';border-left:'+leftBorder+';">';
+    h+='<div onclick="'+(sp?'_p7wOpen(\''+sp.id+'\')':'onPropOpsSelectPlant(\'vehicle_plants\',\''+lk+'\')')+'" style="cursor:pointer;display:grid;grid-template-columns:'+COLS+';background:'+bg+';'+bdr+';border-left:'+leftBorder+';">';
     h+='<div style="'+CD+'color:'+(isSelected?'var(--gold)':'var(--text)')+';">'+locLabel+'</div>';
     h+='<div style="'+CD+'text-align:right;color:var(--gold);">'+(isBuilding?'—':totalCapK+'k/yr')+'</div>';
     h+='<div style="'+CD+'text-align:right;color:var(--cyan);">'+(reservedK>0?reservedK+'k/yr':'—')+'</div>';
@@ -28931,6 +28932,419 @@ function _renderSimplifiedFootprint(){
   });
   h+='</div></div>';
   return h;
+}
+
+// ── §7 plant map (shared-plant sessions): the team's vehicle plants and the most this car can be
+// given in each from SOP to EOP: the plant room left free over the whole window (the least of any
+// quarter, hall_free_window_k) on both the platform and the top hat side, plus the spare over the
+// window on a line of this car's module family already there (shared rather than installed).
+var _P7M = {t: null};   // zoom transform, kept across redraws
+
+function _p7mAvail(sp) {
+  var hw = sp.hall_free_window_k || {}, out = {};
+  ['platform', 'tophat'].forEach(function (t) {
+    var s = null;
+    try { s = _shpPropSlots().filter(function (x) { return x.module_type === t; })[0]; } catch (e) { s = null; }
+    var fam = s ? (sp.lines || []).filter(function (l) {
+      return l.module_type === t && (l.family_root_id === s.module_id || (s.parent_module_id && l.family_root_id === s.parent_module_id));
+    }) : [];
+    var spare = fam.reduce(function (a, l) { return a + Math.max(0, l.free_window_k || 0); }, 0);
+    out[t] = {hall: Math.max(0, hw[t] || 0), fam: fam.length > 0, spare: spare, k: Math.max(0, hw[t] || 0) + spare};
+  });
+  out.k = Math.min(out.platform.k, out.tophat.k);
+  return out;
+}
+
+function _p7mNeedK() {
+  var ops = _prop.operations || {};
+  var c = _shpConfirmed(ops.vehicle_plants).reduce(function (s, p) { return s + (p.vehicle_capacity_yr || 0); }, 0);
+  return c || ops.vehicle_capacity_yr || ops.capacity_target_k || _suggestedVolK() || 0;
+}
+
+function _p7mZoomBy(f) {
+  var host = document.getElementById('prop-p7-map');
+  if (host && host._zoom) d3.select(host).select('svg').transition().duration(250).call(host._zoom.scaleBy, f);
+}
+function _p7mZoomReset() {
+  var host = document.getElementById('prop-p7-map');
+  if (host && host._zoom) d3.select(host).select('svg').transition().duration(250).call(host._zoom.transform, d3.zoomIdentity);
+}
+
+function _p7mBox() {
+  var se = _shpPropSopEop();
+  return '<div id="prop-p7-map-box" style="background:var(--s2);border:1px solid var(--border2);border-radius:4px;padding:10px 12px;margin-bottom:10px;">'
+    + '<div style="font-family:DM Mono,monospace;font-size:9px;color:var(--muted2);margin-bottom:6px;line-height:1.5;">'
+    + 'Your vehicle plants and the most this car can be given in each '
+    + (se ? 'from <b style="color:var(--text);">' + _qLabel(se[0]) + '</b> (SOP) to <b style="color:var(--text);">' + _qLabel(se[1]) + '</b> (EOP)' : 'over its life (set SOP / EOP in §1)')
+    + ': the plant room free in every quarter of that window, plus the spare on a line of this car\'s module family already there.</div>'
+    + '<div id="prop-p7-map" style="position:relative;min-height:120px;"></div><div id="prop-p7-map-legend"></div></div>';
+}
+
+function _p7mDraw() {
+  var host = document.getElementById('prop-p7-map'), box = document.getElementById('prop-p7-map-box');
+  if (!host) return;
+  if (_mktMap.failed) { if (box) box.style.display = 'none'; return; }
+  if (!_mktMap.world) {
+    _mktMapLib().then(function () { if (_mktMap.world) _p7mDraw(); else if (box) box.style.display = 'none'; });
+    return;
+  }
+  var all = _shpSharedPlants('vehicle') || [], anchor = _mktAnchors(), se = _shpPropSopEop();
+  var plants = all.filter(function (p) { return anchor[p.country_code]; });
+  var ops = _prop.operations || {}, need = _p7mNeedK();
+  var selKey = ops.allocation_mode === 'existing' ? ops.selected_plant_key : null;
+  var confirmed = {};
+  _shpConfirmed(ops.vehicle_plants).forEach(function (f) { confirmed[(f.id || '').replace(/^vp_/, '')] = f.vehicle_capacity_yr; });
+  var W = host.clientWidth || 900, H = Math.round(W * 0.42);
+  var proj = d3.geoNaturalEarth1().fitSize([W, H], {type: 'Sphere'}), path = d3.geoPath(proj);
+  host.innerHTML = '';
+  var svg = d3.select(host).append('svg').attr('viewBox', '0 0 ' + W + ' ' + H)
+    .style('display', 'block').style('width', '100%').style('height', 'auto').style('cursor', 'grab');
+  var tip = d3.select(host).append('div')
+    .style('position', 'absolute').style('pointer-events', 'none').style('display', 'none').style('z-index', 5)
+    .style('background', 'var(--s3)').style('border', '1px solid var(--border2)').style('padding', '6px 9px')
+    .style('font-family', 'DM Mono,monospace').style('font-size', '10.5px').style('color', 'var(--text)')
+    .style('border-radius', '3px').style('white-space', 'nowrap').style('line-height', '1.5');
+  var show = function (ev, html) {
+    var r = host.getBoundingClientRect(), x = ev.clientX - r.left;
+    tip.style('display', 'block').html(html);
+    var w = tip.node().offsetWidth, h = tip.node().offsetHeight, y = ev.clientY - r.top + 12;
+    tip.style('left', Math.max(0, Math.min(r.width - w, x + 14 + w > r.width ? x - w - 14 : x + 14)) + 'px')
+      .style('top', Math.max(0, Math.min(y, r.height - h)) + 'px');
+  };
+  var hide = function () { tip.style('display', 'none'); };
+  var hosts = {};
+  plants.forEach(function (p) { hosts[p.country_code] = true; });
+  var gMap = svg.append('g');
+  gMap.append('path').datum({type: 'Sphere'}).attr('d', path).attr('fill', '#0b2033');                  // sea
+  gMap.append('path').datum(d3.geoGraticule10()).attr('d', path).attr('fill', 'none')
+    .attr('stroke', '#163049').attr('stroke-width', 0.4).attr('vector-effect', 'non-scaling-stroke');
+  gMap.append('g').selectAll('path').data(_mktMap.world.features).enter().append('path')
+    .attr('d', path).attr('fill', function (f) { return hosts[f.properties.mkt] ? '#4b6c92' : '#3a3f49'; })
+    .attr('stroke', '#0b2033').attr('stroke-width', 0.5).attr('vector-effect', 'non-scaling-stroke');
+  // markers (screen space: they keep their size when zoomed), side by side within one country
+  var maxHall = Math.max.apply(null, [1].concat(plants.map(function (p) { return p.hall_k || 0; })));
+  var rad = function (p) { return 8 + 8 * Math.sqrt(Math.max(0, p.hall_k || 0) / maxHall); };
+  var gTop = svg.append('g'), marks = [];
+  plants.forEach(function (p, i) {
+    var xy = proj(anchor[p.country_code]);
+    if (!xy) return;
+    var same = plants.filter(function (q) { return q.country_code === p.country_code; });
+    var dx = (same.indexOf(p) - (same.length - 1) / 2) * 40;
+    var lk = p.region + '_' + p.country_code, av = _p7mAvail(p), R = rad(p);
+    var late = se && p.status === 'building' && (p.ready_qabs || 0) > se[0];
+    var col = av.k <= 0.5 ? 'var(--red)' : need > 0 && av.k < need ? 'var(--orange)' : 'var(--green)';
+    var on = selKey === lk, conf = confirmed[lk];
+    var g = gTop.append('g').style('cursor', 'pointer');
+    if (on || conf) g.append('circle').attr('r', R + 4).attr('fill', 'none').attr('stroke', '#e8c060').attr('stroke-width', on ? 2 : 1.2)
+      .attr('stroke-opacity', on ? 1 : 0.6);
+    g.append('circle').attr('r', R).attr('fill', '#0c0f18').style('stroke', col).attr('stroke-width', 2.2)
+      .attr('stroke-dasharray', p.status === 'building' ? '3,2' : null);
+    g.append('rect').attr('x', -R * 0.38).attr('y', -R * 0.38).attr('width', R * 0.76).attr('height', R * 0.76).attr('fill', '#dce8f8');
+    g.append('text').attr('y', R + 11).attr('text-anchor', 'middle').style('font-family', 'DM Mono,monospace').style('font-size', '9.5px')
+      .style('fill', col).style('paint-order', 'stroke').style('stroke', '#07080d').style('stroke-width', '3px')
+      .text(Math.round(av.k) + 'k free' + (conf ? ' · ✓ ' + conf + 'k' : ''));
+    g.append('text').attr('y', -R - 5).attr('text-anchor', 'middle').style('font-family', 'DM Mono,monospace').style('font-size', '9px')
+      .style('fill', 'var(--text)').style('paint-order', 'stroke').style('stroke', '#07080d').style('stroke-width', '3px')
+      .text(p.name || p.country_code);
+    var side = function (t, lab) {
+      var a = av[t];
+      return lab + ': plant room ' + Math.round(a.hall) + 'k' + (a.fam ? ' + ' + Math.round(a.spare) + 'k spare on your family line' : ' (no line of this family here: a new line)');
+    };
+    var used = _shpUsedK(p), fy = p.hall_free_years_k || {};
+    var yrs = Object.keys(fy).sort().map(function (y) {
+      var k = Math.min((fy[y] || {}).platform || 0, (fy[y] || {}).tophat || 0);
+      return y + ' <span style="color:' + (k > 0.5 ? 'var(--green)' : 'var(--muted2)') + ';">' + Math.round(Math.max(0, k)) + 'k</span>';
+    }).join(' · ');
+    var html = '<b>' + _esc(p.name || p.country_code) + '</b> · ' + p.status + (p.status === 'building' ? ' (ready ' + p.ready + ')' : '')
+      + '<br>Plant capacity ' + Math.round(p.hall_k || 0) + 'k/yr · used now ' + Math.round(used) + 'k'
+      + '<br><span style="color:var(--muted2);">Free in every quarter ' + (se ? _qLabel(se[0]) + ' – ' + _qLabel(se[1]) : 'of the life') + ':</span>'
+      + '<br>&nbsp; ' + side('platform', 'Platform') + '<br>&nbsp; ' + side('tophat', 'Top hat')
+      + (yrs ? '<br><span style="color:var(--muted2);">Plant room by year (least in the year):</span><br>&nbsp; ' + yrs : '')
+      + '<br><b style="color:' + col + ';">This car can get up to ' + Math.round(av.k) + 'k/yr here</b>'
+      + (need > 0 ? ' <span style="color:var(--muted2);">(your plan: ' + Math.round(need) + 'k/yr)</span>' : '')
+      + (need > av.k + 0.5 ? '<br><span style="color:var(--orange);">Short by ' + Math.round(need - av.k) + 'k/yr: expand the plant or a family line on Industrial Ops, or split the car across plants</span>' : '')
+      + (late ? '<br><span style="color:var(--orange);">Ready ' + p.ready + ', after SOP ' + _qLabel(se[0]) + '</span>' : '')
+      + (conf ? '<br><span style="color:var(--gold);">Allocated ' + conf + 'k/yr here</span>' : '')
+      + '<br><span style="color:var(--gold);">click: open the plant (volume, automation, cost)</span>';
+    g.on('mousemove', function (ev) { show(ev, html); }).on('mouseleave', hide)
+      .on('click', function (ev) { ev.stopPropagation(); hide(); _p7wOpen(p.id); });
+    marks.push({g: g, xy: xy, dx: dx});
+  });
+  if (!marks.length) gTop.append('text').attr('x', W / 2).attr('y', H / 2).attr('text-anchor', 'middle')
+    .style('font-family', 'DM Mono,monospace').style('font-size', '11px').style('fill', 'var(--muted2)').text('No vehicle plants yet');
+  var place = function (t) {
+    gMap.attr('transform', t);
+    marks.forEach(function (o) { var q = t.apply(o.xy); o.g.attr('transform', 'translate(' + (q[0] + o.dx) + ',' + q[1] + ')'); });
+  };
+  var zoom = d3.zoom().scaleExtent([1, 8]).translateExtent([[0, 0], [W, H]])
+    .filter(function (ev) { return ev.type === 'wheel' ? ev.ctrlKey : !ev.button; })
+    .on('zoom', function (ev) { _P7M.t = ev.transform; place(ev.transform); })
+    .on('start', function () { svg.style('cursor', 'grabbing'); })
+    .on('end', function () { svg.style('cursor', 'grab'); });
+  host._zoom = zoom;
+  svg.call(zoom).on('dblclick.zoom', null);
+  svg.call(zoom.transform, _P7M.t || d3.zoomIdentity);
+  var btn = 'width:24px;height:24px;border-radius:4px;border:1px solid var(--border2);background:var(--s2);color:var(--text);cursor:pointer;'
+    + 'font-family:DM Mono,monospace;font-size:13px;line-height:1;padding:0;';
+  d3.select(host).append('div').style('position', 'absolute').style('top', '8px').style('right', '8px').style('display', 'flex')
+    .style('flex-direction', 'column').style('gap', '4px')
+    .html('<button title="Zoom in" aria-label="Zoom in" style="' + btn + '" onclick="_p7mZoomBy(1.6)">+</button>'
+      + '<button title="Zoom out" aria-label="Zoom out" style="' + btn + '" onclick="_p7mZoomBy(1/1.6)">−</button>'
+      + '<button title="Whole world" aria-label="Reset zoom" style="' + btn + 'font-size:11px;" onclick="_p7mZoomReset()">⟲</button>');
+  var leg = document.getElementById('prop-p7-map-legend');
+  if (leg) {
+    var ring = function (c, dash, t) {
+      return '<span style="display:inline-flex;align-items:center;gap:5px;"><span style="width:10px;height:10px;border-radius:50%;border:2px ' + (dash ? 'dashed' : 'solid')
+        + ' ' + c + ';box-sizing:border-box;"></span>' + t + '</span>';
+    };
+    var off = all.length - plants.length;
+    leg.innerHTML = '<div style="display:flex;flex-wrap:wrap;gap:4px 14px;margin-top:6px;font-family:DM Mono,monospace;font-size:9px;color:var(--muted2);">'
+      + '<span>size = plant capacity · label = the most this car can get there</span>'
+      + ring('var(--green)', false, need > 0 ? 'covers your ' + Math.round(need) + 'k/yr' : 'room free')
+      + (need > 0 ? ring('var(--orange)', false, 'less than your plan') : '')
+      + ring('var(--red)', false, 'full') + ring('var(--muted2)', true, 'being built')
+      + ring('#e8c060', false, 'selected / allocated')
+      + '</div><div style="font-family:DM Mono,monospace;font-size:9px;color:var(--muted2);margin-top:4px;">Drag to move · Ctrl + wheel or + / − to zoom · click a plant to open it: volume, automation and what it costs.'
+      + (off > 0 ? ' ' + off + ' plant' + (off > 1 ? 's' : '') + ' not on the map (see the table).' : '') + '</div>';
+  }
+}
+
+// ── §7 plant window (click a plant on the map or in the table, shared-plant sessions): the most this
+// car can get there from SOP to EOP, its volume and line automation (▲ / ▼), and for each automation
+// level what placing it costs: the plant capex from the server's fit check (POST …/plant-fit, read
+// only: new line / share / expand a family line, a derivative's retool) and the production cost per
+// car (_calcFacilityInv on a scratch plant). Nothing is stored until Confirm, which allocates through
+// the §7 handlers and names this plant as the placement (plant_ref).
+var _P7W = null;
+var _P7_AUTO = {1: 'Manual', 2: 'Standard', 3: 'Advanced', 4: 'Highly automated'};
+var _P7_ACT = {reuse: 'reuses the line', share: 'shares the family line', expand: 'expands the family line', new_line: 'new line'};
+
+function _p7wOpen(pid) {
+  var sp = (_shpSharedPlants('vehicle') || []).filter(function (p) { return p.id === pid; })[0];
+  if (!sp) return;
+  var ops = _prop.operations || {}, lk = sp.region + '_' + sp.country_code, av = _p7mAvail(sp);
+  var conf = (ops.vehicle_plants || []).filter(function (e) { return e.id === 'vp_' + lk && e.vehicle_capacity_yr > 0; })[0];
+  // default automation: this car's allocation here, else the line of its family here, else standard
+  var al = 2, alSrc = 'the standard level';
+  var famLine = null;
+  try {
+    var ps = _shpPropSlots().filter(function (x) { return x.module_type === 'platform'; })[0];
+    if (ps) famLine = (sp.lines || []).filter(function (l) {
+      return l.module_type === 'platform' && (l.family_root_id === ps.module_id || (ps.parent_module_id && l.family_root_id === ps.parent_module_id));
+    })[0] || null;
+  } catch (e) { famLine = null; }
+  if (conf && conf.platform_auto_level) { al = conf.platform_auto_level; alSrc = 'your allocation here'; }
+  else if (famLine && famLine.automation_level) { al = famLine.automation_level; alSrc = 'the platform family line already here'; }
+  var plan = _suggestedVolK();
+  var k = conf ? conf.vehicle_capacity_yr : av.k >= 1 ? Math.min(plan || Math.floor(av.k), Math.floor(av.k)) : (plan || 50);
+  _P7W = {pid: pid, lk: lk, sp: sp, av: av, k: Math.max(1, Math.round(k)), al: al, al0: al, alSrc: alSrc, conf: conf, plan: plan,
+          cache: {}, manuf: {}, timer: null};
+  var el = document.getElementById('p7w-modal');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'p7w-modal';
+    el.style.cssText = 'position:fixed;inset:0;z-index:2000;background:rgba(0,0,0,0.72);display:flex;align-items:center;justify-content:center;padding:16px;';
+    el.addEventListener('click', function (ev) { if (ev.target === el) _p7wClose(); });
+    document.body.appendChild(el);
+    document.addEventListener('keydown', _p7wKey);
+  }
+  _p7wRender();
+  _p7wPrice();
+}
+
+function _p7wKey(ev) { if (ev.key === 'Escape' && _P7W) _p7wClose(); }
+
+function _p7wClose() {
+  if (_P7W && _P7W.timer) clearTimeout(_P7W.timer);
+  _P7W = null;
+  var el = document.getElementById('p7w-modal');
+  if (el) el.remove();
+  document.removeEventListener('keydown', _p7wKey);
+}
+
+function _p7wVol(d) {   // ▲ / ▼ by 5k (to the next multiple of 5), or 'max'
+  var w = _P7W; if (!w) return;
+  if (d === 'max') w.k = Math.max(1, Math.floor(w.av.k));
+  else w.k = Math.max(1, Math.min(999, d > 0 ? Math.floor(w.k / 5) * 5 + 5 : Math.ceil(w.k / 5) * 5 - 5));
+  _p7wRender(); _p7wPrice();
+}
+function _p7wVolSet(v) {
+  var w = _P7W, n = parseInt(v, 10); if (!w || !(n > 0)) return;
+  w.k = Math.min(999, n); _p7wRender(); _p7wPrice();
+}
+function _p7wAuto(d, abs) {
+  var w = _P7W; if (!w) return;
+  w.al = Math.max(1, Math.min(4, abs ? d : w.al + d));
+  _p7wRender();   // every level is priced at once: no new request
+}
+
+// production cost per car at this plant (§7's manufacturing engine on a scratch plant: the real ones stay untouched)
+function _p7wManufEur(k, al) {
+  var w = _P7W, key = k + '|' + al;
+  if (w.manuf[key] !== undefined) return w.manuf[key];
+  var v = null;
+  try {
+    var fac = {id: '_p7w', region: w.sp.region, country_code: w.sp.country_code, automation_level: al, target_capacity_k: k,
+               shift_structure: 'CONTINENTAL', platform_shared: false, module_capacity: {}, _computed: null};
+    _calcFacilityInv('vehicle_plants', fac);
+    var r = fac._computed && fac._computed.manuf_result;
+    if (r) v = {total: r.manuf_var_total, labour: r.labour_per_unit, upkeep: (r.maint_per_unit || 0) + (r.energy_per_unit || 0), operators: r.total_operators};
+  } catch (e) { v = null; }
+  w.manuf[key] = v;
+  return v;
+}
+
+// the fit check for this plant at every automation level (debounced while the volume moves)
+function _p7wPrice() {
+  var w = _P7W; if (!w) return;
+  if (w.timer) clearTimeout(w.timer);
+  w.timer = setTimeout(function () {
+    var se = _shpPropSopEop(), k = w.k;
+    if (!se) return;
+    var slots = _shpPropSlots().filter(function (s) { return s.module_type === 'platform' || s.module_type === 'tophat'; });
+    [1, 2, 3, 4].forEach(function (al) {
+      var key = k + '|' + al;
+      if (w.cache[key]) return;
+      w.cache[key] = {pending: true};
+      fetch(API_URL + '/sessions/' + sessionId + '/teams/' + teamId + '/plant-fit', {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({sop_qabs: se[0], eop_qabs: se[1], vehicle_id: (_prop.study || {}).id || null,
+          segment_code: (_prop.study || {}).segment_code, platform_size: _getPlatformSize(), body_type: _getBodyType(),
+          pwt_type: _pwtToManufKey(((_prop.study || {}).rolled_up_specs || {}).pwt_type || ''),
+          automation_level: al, shift_structure: 'CONTINENTAL',
+          placements: slots.map(function (s) { return Object.assign({plant_id: w.pid, capacity_k: k, add_k: null}, s); })})
+      }).then(function (r) { return r.json().then(function (d) { return {ok: r.ok, d: d}; }); })
+        .then(function (x) { w.cache[key] = x.ok ? x.d : {error: x.d.detail || 'Refused'}; if (_P7W === w) _p7wRenderCost(); })
+        .catch(function () { w.cache[key] = {error: 'Could not reach the server'}; if (_P7W === w) _p7wRenderCost(); });
+    });
+    _p7wRenderCost();
+  }, 350);
+}
+
+// the transformation cost table and the confirm row (redrawn alone when a fit check answers)
+function _p7wCostHtml() {
+  var w = _P7W, MN = 'font-family:DM Mono,monospace;';
+  var sec = function (t) { return '<div style="' + MN + 'font-size:8px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin:14px 0 6px;">' + t + '</div>'; };
+  var eurM = function (v) { return '€' + (+v).toFixed(1) + 'M'; };
+  var eur = function (v) { return '€' + Math.round(v || 0).toLocaleString(); };
+  var h = sec('Transformation cost at ' + w.k + 'k/yr')
+    + '<table style="width:100%;border-collapse:collapse;' + MN + 'font-size:10px;">'
+    + '<tr style="color:var(--muted2);font-size:8px;"><td style="padding:3px 6px;">Automation</td><td style="text-align:right;padding:3px 6px;">Plant capex</td>'
+    + '<td style="text-align:right;padding:3px 6px;">Operators</td><td style="text-align:right;padding:3px 6px;">Labour / car</td>'
+    + '<td style="text-align:right;padding:3px 6px;">Upkeep / car</td><td style="text-align:right;padding:3px 6px;">Production / car</td><td style="padding:3px 6px;">Fit</td></tr>';
+  [1, 2, 3, 4].forEach(function (al) {
+    var f = w.cache[w.k + '|' + al], m = _p7wManufEur(w.k, al), on = al === w.al;
+    var cap = !f || f.pending ? '<span style="color:var(--muted2);">pricing…</span>' : f.error ? '<span style="color:var(--red);">–</span>' : eurM(f.capex_m || 0);
+    var fit = !f || f.pending ? '' : f.error ? '<span style="color:var(--red);">' + _esc(f.error) + '</span>'
+      : f.ok ? (f.warnings || []).length ? '<span style="color:var(--orange);">⚠ fits, over the line</span>' : '<span style="color:var(--green);">✓ fits</span>'
+      : '<span style="color:var(--red);">✗ does not fit</span>';
+    h += '<tr onclick="_p7wAuto(' + al + ',true)" style="cursor:pointer;border-top:1px solid var(--border);background:' + (on ? 'rgba(220,180,0,0.08)' : 'transparent') + ';">'
+      + '<td style="padding:5px 6px;color:' + (on ? 'var(--gold)' : 'var(--text)') + ';">' + (on ? '► ' : '') + 'L' + al + ' ' + _P7_AUTO[al] + '</td>'
+      + '<td style="text-align:right;padding:5px 6px;color:var(--gold);">' + cap + '</td>'
+      + (m ? '<td style="text-align:right;padding:5px 6px;">' + Math.round(m.operators || 0) + '</td><td style="text-align:right;padding:5px 6px;">' + eur(m.labour)
+        + '</td><td style="text-align:right;padding:5px 6px;">' + eur(m.upkeep) + '</td><td style="text-align:right;padding:5px 6px;">' + eur(m.total) + '</td>'
+        : '<td colspan="4" style="text-align:right;padding:5px 6px;">–</td>')
+      + '<td style="padding:5px 6px;">' + fit + '</td></tr>';
+  });
+  h += '</table>';
+  var fs = w.cache[w.k + '|' + w.al];
+  if (fs && !fs.pending && !fs.error) {
+    h += '<div style="' + MN + 'font-size:9px;color:var(--text);line-height:1.6;margin-top:6px;">'
+      + (fs.placements || []).map(function (p) {
+        return (_SHP_TYPE[p.module_type] || p.module_type) + ': ' + (_P7_ACT[p.action] || p.action || '') + (p.expand_k > 0 ? ' +' + Math.round(p.expand_k) + 'k' : '')
+          + ' · ' + eurM(p.capex_m || 0);
+      }).join('<br>')
+      + (!fs.ok ? '<br><span style="color:var(--red);">' + _esc((fs.errors || []).join('; ')) + '</span>' : '')
+      + ((fs.warnings || []).length ? '<br><span style="color:var(--orange);">' + _esc(fs.warnings.join('; ')) + '</span>' : '') + '</div>';
+  }
+  h += '<div style="' + MN + 'font-size:8px;color:var(--muted2);margin-top:6px;line-height:1.5;">Plant capex: the server’s fit check for this plant (new line, family-line expansion, a derivative’s retool), the figure §10 uses. '
+    + 'Per car at 3 shifts: labour, and upkeep (maintenance of the equipment, energy). More automation needs fewer operators but more '
+    + 'equipment to keep up: at low volume its upkeep can outweigh the labour it saves.</div>';
+  // confirm / cancel (no confirm while the setting picked does not fit: approval would refuse it)
+  var bad = fs && !fs.pending && !fs.error && !fs.ok;
+  h += '<div style="display:flex;gap:8px;margin-top:14px;">'
+    + '<button onclick="_p7wConfirm()"' + (bad ? ' disabled title="Does not fit: lower the volume, or expand the plant on Industrial Ops"' : '') + ' style="' + MN + 'flex:1;font-size:11px;padding:9px;border-radius:3px;border:1px solid rgba(200,164,60,.5);background:var(--goldl);color:var(--gold);cursor:' + (bad ? 'not-allowed;opacity:0.45' : 'pointer') + ';">✓ '
+    + (w.conf ? 'Update allocation' : 'Confirm allocation') + ' · ' + w.k + 'k/yr · L' + w.al + '</button>'
+    + '<button onclick="_p7wClose()" style="' + MN + 'font-size:11px;padding:9px 16px;border-radius:3px;border:1px solid var(--border2);background:var(--s1);color:var(--muted2);cursor:pointer;">✕ Cancel</button></div>';
+  return h;
+}
+
+function _p7wRenderCost() {
+  var el = document.getElementById('p7w-cost');
+  if (el && _P7W) el.innerHTML = _p7wCostHtml(); else _p7wRender();
+}
+
+function _p7wRender() {
+  var w = _P7W, el = document.getElementById('p7w-modal');
+  if (!w || !el) return;
+  var sp = w.sp, av = w.av, se = _shpPropSopEop(), MN = 'font-family:DM Mono,monospace;';
+  var maxK = Math.floor(av.k), over = w.k > av.k;
+  var btn = function (on, label, title) {
+    return '<button onclick="' + on + '" title="' + title + '" aria-label="' + title + '" style="' + MN + 'width:30px;height:30px;border-radius:4px;border:1px solid var(--border2);'
+      + 'background:var(--s1);color:var(--text);cursor:pointer;font-size:12px;line-height:1;padding:0;">' + label + '</button>';
+  };
+  var sec = function (t) { return '<div style="' + MN + 'font-size:8px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin:14px 0 6px;">' + t + '</div>'; };
+  var side = function (t, lab) {
+    var a = av[t];
+    return lab + ' ' + Math.round(a.k) + 'k <span style="color:var(--muted2);">(plant room ' + Math.round(a.hall) + 'k'
+      + (a.fam ? ' + ' + Math.round(a.spare) + 'k spare on your family line' : ', no line of this family here') + ')</span>';
+  };
+  var fy = sp.hall_free_years_k || {};
+  var yrs = Object.keys(fy).sort().map(function (y) {
+    var v = Math.min((fy[y] || {}).platform || 0, (fy[y] || {}).tophat || 0);
+    return y + ' ' + Math.round(Math.max(0, v)) + 'k';
+  }).join(' · ');
+  var h = '<div style="background:var(--s2);border:1px solid var(--border2);border-radius:6px;width:680px;max-width:100%;max-height:100%;overflow:auto;box-shadow:0 8px 32px rgba(0,0,0,0.6);">'
+    + '<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 14px;border-bottom:1px solid var(--border2);">'
+    + '<div style="' + MN + 'font-size:11px;font-weight:700;color:var(--gold);">🏭 ' + _esc(sp.name || sp.country_code) + ' <span style="font-weight:400;color:var(--muted2);font-size:9px;">· '
+    + sp.region + ' · ' + sp.status + (sp.status === 'building' ? ' (ready ' + sp.ready + ')' : '') + ' · plant capacity ' + Math.round(sp.hall_k || 0) + 'k/yr</span></div>'
+    + '<button onclick="_p7wClose()" aria-label="Close" style="' + MN + 'font-size:13px;color:var(--muted2);background:none;border:none;cursor:pointer;padding:2px 6px;">✕</button></div>'
+    + '<div style="padding:4px 14px 12px;">';
+  // max available
+  h += sec('Max available for this car' + (se ? ', ' + _qLabel(se[0]) + ' – ' + _qLabel(se[1]) : ''))
+    + '<div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;"><span style="' + MN + 'font-size:20px;color:' + (maxK > 0 ? 'var(--green)' : 'var(--red)') + ';">'
+    + maxK + 'k/yr</span><span style="' + MN + 'font-size:9px;color:var(--muted2);">free in every quarter of the life: the smaller of</span></div>'
+    + '<div style="' + MN + 'font-size:9px;color:var(--text);line-height:1.6;margin-top:2px;">' + side('platform', 'Platform') + '<br>' + side('tophat', 'Top hat')
+    + (yrs ? '<br><span style="color:var(--muted2);">Plant room by year: ' + yrs + '</span>' : '') + '</div>';
+  // volume
+  h += sec('Volume')
+    + '<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">' + btn('_p7wVol(-1)', '▼', 'Volume down 5k')
+    + '<input type="number" min="1" max="999" value="' + w.k + '" onchange="_p7wVolSet(this.value)" aria-label="Volume, k a year" style="' + MN + 'font-size:13px;padding:5px 8px;border-radius:3px;'
+    + 'border:1px solid rgba(220,180,0,0.4);background:var(--s1);color:var(--gold);width:70px;text-align:right;">'
+    + btn('_p7wVol(1)', '▲', 'Volume up 5k') + '<span style="' + MN + 'font-size:9px;color:var(--muted2);">k/yr</span>'
+    + (maxK > 0 ? '<button onclick="_p7wVol(\'max\')" style="' + MN + 'font-size:9px;padding:6px 10px;border-radius:3px;border:1px solid var(--border2);background:var(--s1);color:var(--green);cursor:pointer;">max ' + maxK + 'k</button>' : '')
+    + (w.plan ? '<span style="' + MN + 'font-size:9px;color:var(--muted2);">§9 plan ' + w.plan + 'k/yr</span>' : '') + '</div>';
+  var pct = Math.min(100, maxK > 0 ? w.k / Math.max(maxK, w.k) * 100 : 100), mpct = maxK > 0 ? Math.min(100, maxK / Math.max(maxK, w.k) * 100) : 0;
+  h += '<div style="position:relative;height:8px;border-radius:4px;background:var(--s1);margin:8px 0 4px;overflow:hidden;">'
+    + '<div style="position:absolute;left:0;top:0;bottom:0;width:' + pct + '%;background:' + (over ? 'var(--orange)' : 'var(--green)') + ';opacity:0.85;"></div>'
+    + (maxK > 0 ? '<div style="position:absolute;top:0;bottom:0;left:calc(' + mpct + '% - 1px);width:2px;background:var(--text);"></div>' : '') + '</div>'
+    + '<div style="' + MN + 'font-size:9px;color:' + (over ? 'var(--orange)' : 'var(--muted2)') + ';">'
+    + (over ? '▲ ' + Math.round(w.k - av.k) + 'k above what is free: the fit check below says whether the plant takes it (a family line is expanded, or plant room is needed)'
+      : 'Within what is free (the white mark).') + '</div>';
+  // automation
+  h += sec('Line automation')
+    + '<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">' + btn('_p7wAuto(-1)', '▼', 'Less automation')
+    + '<span style="' + MN + 'font-size:12px;color:var(--gold);min-width:150px;text-align:center;">L' + w.al + ' · ' + _P7_AUTO[w.al] + '</span>'
+    + btn('_p7wAuto(1)', '▲', 'More automation')
+    + '<span style="' + MN + 'font-size:9px;color:var(--muted2);">default L' + w.al0 + ' (' + w.alSrc + ')</span></div>';
+  h += '<div id="p7w-cost">' + _p7wCostHtml() + '</div></div></div>';
+  var focus = document.activeElement && document.activeElement.closest && document.activeElement.closest('#p7w-modal') ? document.activeElement.getAttribute('aria-label') : null;
+  el.innerHTML = h;
+  if (focus) { var f2 = el.querySelector('[aria-label="' + focus + '"]'); if (f2) f2.focus(); }
+}
+
+// Confirm: allocate through the §7 handlers (as the panel below does) and place it in this plant
+function _p7wConfirm() {
+  var w = _P7W; if (!w) return;
+  _p7wClose();
+  onPropOpsSelectPlant('vehicle_plants', w.lk);
+  onPropOpsAutoLevel(w.al);
+  onPropOpsVehicleCapYr(w.k);
+  onPropOpsConfirmAllocation(w.lk);
+  var vp = ((_prop.operations || {}).vehicle_plants || []).filter(function (e) { return e.id === 'vp_' + w.lk; })[0];
+  if (vp) vp.plant_ref = w.pid;
+  _shpPropRender();
+  toast('✓ ' + (w.sp.name || w.sp.country_code) + ': ' + w.k + 'k/yr at L' + w.al + ' ' + _P7_AUTO[w.al]);
 }
 
 function _renderPlantAllocationPanel(lk){
