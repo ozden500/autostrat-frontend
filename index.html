@@ -27038,7 +27038,7 @@ function buildComponentsSourcingSection() {
   html += '<div id="prop-ops-supply-plan-area">'+_renderSupplyPlanSection()+'</div>';
 
   html += '<div style="margin-top:14px;display:flex;justify-content:space-between;gap:10px;">';
-  html += '<span style="font-family:DM Mono,monospace;font-size:9px;color:var(--muted2);align-self:center;">Continuing reserves the supplier capacity for these zones (re-running it updates the reservation).</span>';
+  html += '<span style="font-family:DM Mono,monospace;font-size:9px;color:var(--muted2);align-self:center;">Continuing reserves the supplier capacity for these zones. Re-running it this quarter replaces this car’s order (zones you drop are released).</span>';
   html += '<button id="prop-ops-confirm-sourcing-btn" onclick="_propSourcingContinue()" style="font-family:DM Mono,monospace;font-size:10px;padding:8px 18px;border-radius:3px;border:1px solid rgba(200,164,60,.4);background:var(--goldl);color:var(--gold);cursor:pointer;">Reserve capacity &amp; continue \u2192 Commercial Plan</button>';
   html += '</div>';
 
@@ -30669,7 +30669,9 @@ async function _mzcLoadCapacity() {
   if (!sessionId || !teamId || _mzcLoading) return;
   _mzcLoading = true;
   try {
-    var res = await fetch(API_URL + '/sessions/' + sessionId + '/teams/' + teamId + '/module-zone-capacity');
+    // as this car's §8 re-run sees it: its own reservations and this quarter's orders out (a re-run replaces them)
+    var vq = (_prop && _prop.study && _prop.study.id) ? '?vehicle_id=' + encodeURIComponent(_prop.study.id) : '';
+    var res = await fetch(API_URL + '/sessions/' + sessionId + '/teams/' + teamId + '/module-zone-capacity' + vq);
     var data = await res.json();
     var map = {};
     (data.capacity || []).forEach(function(c) { map[(c.module_id || c.module_slot) + '__' + c.zone_key] = c; });
@@ -30729,7 +30731,7 @@ function _mzcEstimateInvestment(sk, moduleId, zoneKey, autoLevel, needK) {
   var c = _mzcCapacity[(moduleId || sk) + '__' + zoneKey] || { contracted_k: 0, free_k: 0 };
   var freeK = Math.max(0, c.free_k || 0);
   var shortfall = Math.max(0, (needK || 0) - freeK);
-  var isFirstTime = (c.contracted_k || 0) <= 0 && shortfall > 0;
+  var isFirstTime = (c.contracted_k || 0) + (c.pending_k || 0) <= 0 && shortfall > 0;   // capacity on order holds the tooling too
   var zone = SP_ZONES.find(function(z){return z.key===zoneKey;}) || SP_ZONES[0];
   // Tooling is spec-driven but volume-independent (priced at the reference line — a one-time
   // qualification cost that doesn't depend on how many you order), scaled by the zone's local labour.
