@@ -26941,6 +26941,13 @@ function buildComponentsSourcingSection() {
 
   html += '<div style="font-family:DM Mono,monospace;font-size:9px;color:var(--muted2);margin-bottom:14px;">Define how components are sourced for each confirmed assembly plant.</div>';
 
+  // the sourcing map (_srcMapDraw): your plants, the supplier zones, where you already hold capacity
+  html += '<div id="prop-src-map-box" style="background:var(--s2);border:1px solid var(--border2);border-radius:4px;padding:10px 12px;margin-bottom:14px;">'
+    + '<div style="display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:6px;margin-bottom:6px;">'
+    + '<span style="font-family:DM Mono,monospace;font-size:9px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--text);">🗺 Sourcing map</span>'
+    + '<span style="font-family:DM Mono,monospace;font-size:9px;color:var(--muted2);">your §7 plants · supplier zones · hover a zone for freight, duty and the capacity you hold there</span></div>'
+    + '<div id="prop-src-map" style="position:relative;"></div><div id="prop-src-map-legend"></div></div>';
+
   html += '<div id="prop-ops-supply-plan-area">'+_renderSupplyPlanSection()+'</div>';
 
   html += '<div style="margin-top:14px;display:flex;justify-content:space-between;gap:10px;">';
@@ -26953,6 +26960,7 @@ function buildComponentsSourcingSection() {
   var s8 = document.getElementById('prop-sec-8-status');
   if (s8 && _spConfirmedPlants().length && !/^✓/.test(s8.textContent)) s8.textContent = '— set sourcing zones, then confirm';
   renderOpsAggregateSummary();
+  _srcMapDraw();
   _mzcLoadCapacity();
 }
 
@@ -31076,6 +31084,205 @@ function _calcModuleMakeCost(sk,countryObj){
 function _refreshSupplyPlanArea(){
   var el=document.getElementById('prop-ops-supply-plan-area');
   if(el)el.innerHTML=_renderSupplyPlanSection();
+  _srcMapDraw();
+}
+
+// ── §8 sourcing map (2026-10-30) ─────────────────────────────────────────────
+// §7's plants and the supplier zones on one world map, above the sourcing decisions: zones where
+// the team already holds supplier capacity for a module of this car (or the parent a derivative
+// re-uses tooling from, _mzcRetoolF) in gold, the zones this plan picks outlined in cyan, a dashed
+// arc from each picked zone to the plants it supplies (none for a plant's own zone). Tooltips: a
+// zone's labour index, risk, freight and duty to each plant, and the contracts held there.
+// Redrawn with the supply plan (_refreshSupplyPlanArea). Map data: the Markets tab's (_mktMapLib).
+var _SRC_ISO = {DE: '276', FR: '250', IT: '380', ES: '724', GB: '826', PL: '616', CZ: '203', SK: '703', RO: '642', TR: '792',
+  US: '840', CA: '124', MX: '484', CN: '156', JP: '392', KR: '410', TH: '764', ID: '360', IN: '356', BR: '076', AR: '032',
+  CO: '170', ZA: '710', MA: '504', EG: '818', NG: '566', SA_: '682'};
+var _SRC_ZONE_AT = {EU_WEST: 'FR', EU_EAST: 'RO', NA_DEVELOPED: 'US', MEXICO: 'MX', CHINA: 'CN', JAPAN: 'JP', KOREA: 'KR',
+  SE_ASIA: 'TH', INDIA: 'IN', LATAM: 'BR', MEA: 'EG'};   // where a zone's dot sits (off the usual plant countries)
+var _SRC_ZONE_DY = {EU_WEST: 14, EU_EAST: 14, KOREA: 14, MEXICO: 14, INDIA: 14};   // label below the dot (else above)
+var _SRC_ZONE_SIDE = {EU_WEST: 'end', EU_EAST: 'start', JAPAN: 'start', KOREA: 'end'};   // label left / right of the dot
+var _SRC_SLOT = {platform: 'Platform', pwt: 'Engine', epwt: 'E-drive', battery: 'Battery', tophat: 'Top hat', eands: 'E&S'};
+var _SRC_GOLD = '#c8a43c', _SRC_CYAN = '#32ccc0';
+
+// a country's centre: its largest polygon's (France without Guiana, the US without Alaska)
+function _srcCentroid(f) {
+  if (!f.geometry || f.geometry.type !== 'MultiPolygon') return d3.geoCentroid(f);
+  var best = null, ba = -1;
+  f.geometry.coordinates.forEach(function (c) {
+    var g = {type: 'Polygon', coordinates: c}, a = d3.geoArea(g);
+    if (a > ba) { ba = a; best = g; }
+  });
+  return d3.geoCentroid(best);
+}
+
+// the team's supplier capacity for this car's modules, by zone: {zone: [{slot, name, parent, k, free_k, adj}]}
+function _srcProgramContracts() {
+  var out = {};
+  _spGetActivePropSlots().forEach(function (sk) {
+    var mid = _spModuleIdForSlot(sk), p = _prop[sk] || {};
+    var par = p.mode === 'derivative' && p.parent ? p.parent.id : null;
+    Object.keys(_mzcCapacity || {}).forEach(function (key) {
+      var c = _mzcCapacity[key];
+      var mine = sk === 'battery' ? (c.module_slot === 'battery' && !c.module_id) : !!(mid && c.module_id === mid);
+      var viaParent = !mine && !!(par && c.module_id === par);
+      var k = (+c.contracted_k || 0) + (+c.pending_k || 0);
+      if ((!mine && !viaParent) || !(k > 0 || +c.reserved_k > 0)) return;
+      (out[c.zone_key] = out[c.zone_key] || []).push({slot: sk, name: c.module_name || _SRC_SLOT[sk], parent: viaParent,
+        k: k, free_k: +c.free_k || 0, adj: +c.price_adj_pct || 0});
+    });
+  });
+  return out;
+}
+
+function _srcMapDraw() {
+  var host = document.getElementById('prop-src-map'), box = document.getElementById('prop-src-map-box');
+  if (!host) return;
+  if (_mktMap.failed) { if (box) box.style.display = 'none'; return; }
+  if (!_mktMap.world) {
+    _mktMapLib().then(function () { if (_mktMap.world) _srcMapDraw(); else if (box) box.style.display = 'none'; });
+    return;
+  }
+  var sp = (_prop.operations && _prop.operations.supply_plan) || {};
+  var plants = _spConfirmedPlants().map(function (p) { return {p: p, ptype: 'vehicle', slots: _spVehiclePlantSlots()}; })
+    .concat(_spConfirmedPwtPlants().map(function (p) { return {p: p, ptype: 'powertrain', slots: _spPwtPlantSlots()}; }));
+  var contracts = _srcProgramContracts();
+  // what this plan picks: zone -> plant id -> [slots]
+  var picks = {};
+  plants.forEach(function (x) {
+    var mods = (sp.plants && sp.plants[x.p.id] && sp.plants[x.p.id].modules) || {};
+    x.slots.forEach(function (sk) {
+      var z = (mods[sk] && mods[sk].zone) || _zoneForPlant(x.p.country_code, x.p.region);
+      ((picks[z] = picks[z] || {})[x.p.id] = picks[z][x.p.id] || []).push(sk);
+    });
+  });
+  var ccOfIso = {};
+  Object.keys(_SRC_ISO).forEach(function (cc) { ccOfIso[_SRC_ISO[cc]] = cc; });
+  var feat = {};
+  _mktMap.world.features.forEach(function (f) { feat[f.id] = f; });
+  var W = host.clientWidth || 900, H = Math.round(W * 0.40);
+  var proj = d3.geoNaturalEarth1().fitSize([W, H], _mktMap.world), path = d3.geoPath(proj);
+  var at = function (cc) { var f = feat[_SRC_ISO[cc]]; return f ? proj(_srcCentroid(f)) : null; };
+  host.innerHTML = '';
+  var svg = d3.select(host).append('svg').attr('viewBox', '0 0 ' + W + ' ' + H)
+    .style('display', 'block').style('width', '100%').style('height', 'auto');
+  var tip = d3.select(host).append('div')
+    .style('position', 'absolute').style('pointer-events', 'none').style('display', 'none').style('z-index', 5)
+    .style('background', 'var(--s3)').style('border', '1px solid var(--border2)').style('padding', '6px 9px')
+    .style('font-family', 'DM Mono,monospace').style('font-size', '10.5px').style('color', 'var(--text)')
+    .style('border-radius', '3px').style('white-space', 'nowrap').style('line-height', '1.5');
+  var show = function (ev, html) {
+    var r = host.getBoundingClientRect(), x = ev.clientX - r.left;
+    tip.style('display', 'block').html(html);
+    var w = tip.node().offsetWidth;
+    tip.style('left', Math.max(0, Math.min(r.width - w, x + 14 + w > r.width ? x - w - 14 : x + 14)) + 'px').style('top', (ev.clientY - r.top + 12) + 'px');
+  };
+  var hide = function () { tip.style('display', 'none'); };
+  var zoneDef = function (z) { return SP_ZONES.find(function (d) { return d.key === z; }) || {}; };
+  var plantName = function (p) { return (p.country_name || p.country_code || p.region) + ' plant'; };
+  var zoneTip = function (z) {
+    var d = zoneDef(z), h = '<b>' + _esc(d.label || z) + '</b> · labour ×' + (d.labor_index || 0).toFixed(2)
+      + ' · risk ' + Math.round((d.risk || 0) * 100) + '%';
+    var cs = contracts[z] || [];
+    if (cs.length) h += '<br><span style="color:' + _SRC_GOLD + ';">Supplier capacity you hold here:</span>' + cs.map(function (c) {
+      return '<br>&nbsp; ' + _esc(_SRC_SLOT[c.slot] || c.slot) + ' · ' + _esc(c.name || '') + (c.parent ? ' (parent: tooling re-used)' : '')
+        + ' · ' + Math.round(c.k) + 'k/yr, ' + Math.round(c.free_k) + 'k free' + (c.adj ? ' · price ' + c.adj.toFixed(1) + '%' : '');
+    }).join('');
+    var pk = picks[z] || {};
+    if (Object.keys(pk).length) h += '<br><span style="color:' + _SRC_CYAN + ';">Picked in this plan:</span>' + plants.filter(function (x) { return pk[x.p.id]; }).map(function (x) {
+      return '<br>&nbsp; ' + pk[x.p.id].map(function (sk) { return _SRC_SLOT[sk] || sk; }).join(', ') + ' → ' + _esc(plantName(x.p));
+    }).join('');
+    if (plants.length) h += '<br><span style="color:var(--muted2);">To your plants (freight index · duty):</span>' + plants.map(function (x) {
+      var col = _ZONE_ABBR[_zoneForPlant(x.p.country_code, x.p.region)];
+      return '<br>&nbsp; ' + _esc(plantName(x.p)) + ': ' + ((d.logistics || {})[col] != null ? d.logistics[col] : '–') + ' · ' + ((d.duty || {})[col] != null ? d.duty[col] + '%' : '–');
+    }).join('');
+    return h;
+  };
+  svg.append('g').selectAll('path').data(_mktMap.world.features).enter().append('path')
+    .attr('d', path)
+    .attr('fill', function (f) {
+      var z = _ZONE_BY_COUNTRY[ccOfIso[f.id]];
+      return !z ? '#11151f' : contracts[z] ? '#5a4a1c' : '#243650';
+    })
+    .attr('stroke', function (f) { var z = _ZONE_BY_COUNTRY[ccOfIso[f.id]]; return z && picks[z] ? _SRC_CYAN : '#07080d'; })
+    .attr('stroke-width', function (f) { var z = _ZONE_BY_COUNTRY[ccOfIso[f.id]]; return z && picks[z] ? 1.1 : 0.4; })
+    .on('mousemove', function (ev, f) {
+      var z = _ZONE_BY_COUNTRY[ccOfIso[f.id]];
+      if (!z) return hide();
+      show(ev, zoneTip(z));
+    })
+    .on('mouseleave', hide);
+  // arcs: each picked zone to the plants it supplies (a plant's own zone needs none)
+  var g = svg.append('g'), pos = {};
+  plants.forEach(function (x, i) {
+    var xy = at(x.p.country_code);
+    if (!xy) return;
+    var same = plants.slice(0, i).filter(function (y) { return y.p.country_code === x.p.country_code; }).length;
+    pos[x.p.id] = [xy[0] + same * 13, xy[1]];
+  });
+  Object.keys(picks).forEach(function (z) {
+    var a = at(_SRC_ZONE_AT[z]);
+    if (!a) return;
+    plants.forEach(function (x) {
+      var b = pos[x.p.id], n = (picks[z][x.p.id] || []).length;
+      if (!b || !n || _zoneForPlant(x.p.country_code, x.p.region) === z) return;
+      var mx = (a[0] + b[0]) / 2, my = (a[1] + b[1]) / 2, dx = b[0] - a[0], dy = b[1] - a[1];
+      var cx = mx - dy * 0.22, cy = my + dx * 0.22;
+      g.append('path').attr('d', 'M' + a[0] + ',' + a[1] + ' Q' + cx + ',' + cy + ' ' + b[0] + ',' + b[1])
+        .attr('fill', 'none').attr('stroke', _SRC_CYAN).attr('stroke-width', 0.8 + 0.7 * n)
+        .attr('stroke-dasharray', '4,3').attr('stroke-opacity', 0.85).attr('stroke-linecap', 'round')
+        .style('pointer-events', 'none');
+    });
+  });
+  // zone labels where the decision is: zones picked or holding capacity for this car
+  var lg = svg.append('g');
+  SP_ZONES.forEach(function (d) {
+    if (!picks[d.key] && !contracts[d.key]) return;
+    var a = at(_SRC_ZONE_AT[d.key]);
+    if (!a) return;
+    var col = contracts[d.key] ? _SRC_GOLD : _SRC_CYAN, n = (contracts[d.key] || []).length;
+    lg.append('circle').attr('cx', a[0]).attr('cy', a[1]).attr('r', 3.2).attr('fill', col);
+    var side = _SRC_ZONE_SIDE[d.key];
+    lg.append('text').attr('x', a[0] + (side === 'end' ? 3 : side === 'start' ? -3 : 0)).attr('y', a[1] + (_SRC_ZONE_DY[d.key] || -7))
+      .attr('text-anchor', side || 'middle')
+      .style('font-family', 'DM Mono,monospace').style('font-size', '9px').style('fill', col).style('paint-order', 'stroke')
+      .style('stroke', '#07080d').style('stroke-width', '3px').style('pointer-events', 'none')
+      .text(d.label + (n ? ' · ' + n + ' held' : ''));
+  });
+  // plants: square = vehicle, circle = powertrain
+  var mg = svg.append('g');
+  plants.forEach(function (x) {
+    var xy = pos[x.p.id];
+    if (!xy) return;
+    var m = mg.append('g').attr('transform', 'translate(' + xy[0] + ',' + xy[1] + ')').style('cursor', 'default');
+    m.append('circle').attr('r', 8).attr('fill', '#0c0f18').attr('stroke', '#dce8f8').attr('stroke-width', 1.2);
+    if (x.ptype === 'vehicle') m.append('rect').attr('x', -3.5).attr('y', -3.5).attr('width', 7).attr('height', 7).attr('fill', '#dce8f8');
+    else m.append('circle').attr('r', 3.4).attr('fill', '#dce8f8');
+    var mods = (sp.plants && sp.plants[x.p.id] && sp.plants[x.p.id].modules) || {};
+    var lines = x.slots.map(function (sk) {
+      var z = (mods[sk] && mods[sk].zone) || _zoneForPlant(x.p.country_code, x.p.region);
+      return _SRC_SLOT[sk] + ' from ' + (zoneDef(z).label || z) + ((contracts[z] || []).some(function (c) { return c.slot === sk; }) ? ' <span style="color:' + _SRC_GOLD + ';">(capacity held)</span>' : '');
+    });
+    m.on('mousemove', function (ev) {
+      show(ev, '<b>' + _esc(plantName(x.p)) + '</b> · ' + (x.ptype === 'vehicle' ? 'vehicle' : 'powertrain') + ' plant · '
+        + Math.round((x.p.vehicle_capacity_yr || 0) / 1000) + 'k/yr<br>' + lines.join('<br>'));
+    }).on('mouseleave', hide);
+  });
+  var leg = document.getElementById('prop-src-map-legend');
+  if (leg) {
+    var sw = function (bg, bd, t) {
+      return '<span style="display:inline-flex;align-items:center;gap:5px;"><span style="width:12px;height:9px;border-radius:2px;background:' + bg
+        + ';border:1px solid ' + bd + ';"></span>' + t + '</span>';
+    };
+    var held = Object.keys(contracts).length;
+    leg.innerHTML = '<div style="display:flex;flex-wrap:wrap;gap:4px 14px;margin-top:6px;font-family:DM Mono,monospace;font-size:9px;color:var(--muted2);">'
+      + '<span style="display:inline-flex;align-items:center;gap:5px;"><span style="width:9px;height:9px;background:#dce8f8;"></span>vehicle plant</span>'
+      + '<span style="display:inline-flex;align-items:center;gap:5px;"><span style="width:9px;height:9px;border-radius:50%;background:#dce8f8;"></span>powertrain plant</span>'
+      + sw('#243650', '#243650', 'supplier zone')
+      + sw('#5a4a1c', '#5a4a1c', 'you already hold supplier capacity for a module of this car (or its parent)')
+      + sw('transparent', _SRC_CYAN, 'zone picked in this plan · dashed: shipped to a plant in another zone')
+      + '</div>'
+      + (held ? '' : '<div style="font-family:DM Mono,monospace;font-size:9px;color:var(--muted2);margin-top:4px;">None of this car\'s modules has supplier capacity yet: each zone you pick pays its first-time tooling.</div>');
+  }
 }
 
 function _buildPlantFromDecision(){
