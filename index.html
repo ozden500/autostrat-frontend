@@ -31213,7 +31213,9 @@ function _srcMapDraw() {
   };
   var hide = function () { tip.style('display', 'none'); };
   var zoneDef = function (z) { return SP_ZONES.find(function (d) { return d.key === z; }) || {}; };
-  var plantName = function (p) { return (p.country_name || p.country_code || p.region) + ' plant'; };
+  var ptypeOf = {};
+  plants.forEach(function (x) { ptypeOf[x.p.id] = x.ptype; });
+  var plantName = function (p) { return (p.country_name || p.country_code || p.region) + (ptypeOf[p.id] === 'powertrain' ? ' powertrain plant' : ' vehicle plant'); };
   var eur = function (v) { return (v < 0 ? '−€' : '€') + Math.abs(Math.round(v)).toLocaleString(); };
   var zoneTip = function (z) {
     var d = zoneDef(z), lab = _srcZoneLabour(z);
@@ -31263,12 +31265,14 @@ function _srcMapDraw() {
     .on('mousemove', function (ev, f) { var z = zoneAt(f); if (!z) return hide(); show(ev, zoneTip(z)); })
     .on('mouseleave', hide);
   // plant positions (side by side within one country) and the arcs, drawn under the markers
-  var pos = {};
+  var pos = {}, gap = {};
   plants.forEach(function (x, i) {
     var xy = at(x.p.country_code);
     if (!xy) return;
+    var n = plants.filter(function (y) { return y.p.country_code === x.p.country_code; }).length;
     var same = plants.slice(0, i).filter(function (y) { return y.p.country_code === x.p.country_code; }).length;
-    pos[x.p.id] = [xy[0] + same * 13, xy[1]];
+    pos[x.p.id] = xy;
+    gap[x.p.id] = (same - (n - 1) / 2) * 20;   // px either side of the country's centre
   });
   var arcs = gMap.append('g').style('pointer-events', 'none');
   Object.keys(picks).forEach(function (z) {
@@ -31322,12 +31326,12 @@ function _srcMapDraw() {
         + Math.round((x.p.vehicle_capacity_yr || 0) / 1000) + 'k/yr<br>' + lines.join('<br>')
         + (on ? '' : '<br><span style="color:var(--gold);">click: decide this plant\'s sourcing</span>'));
     }).on('mouseleave', hide).on('click', function (ev) { ev.stopPropagation(); hide(); _srcSelect(x.p.id); });
-    marks.push({g: g, xy: xy});
+    marks.push({g: g, xy: xy, dx: gap[x.p.id] || 0});
   });
   // zoom: drag to pan, Ctrl + wheel or the buttons to zoom (a plain wheel keeps scrolling the page)
   var place = function (t) {
     gMap.attr('transform', t);
-    labels.concat(marks).forEach(function (o) { var p = t.apply(o.xy); o.g.attr('transform', 'translate(' + p[0] + ',' + p[1] + ')'); });
+    labels.concat(marks).forEach(function (o) { var p = t.apply(o.xy); o.g.attr('transform', 'translate(' + (p[0] + (o.dx || 0)) + ',' + p[1] + ')'); });
   };
   var zoom = d3.zoom().scaleExtent([1, 8]).translateExtent([[0, 0], [W, H]])
     .filter(function (ev) { return ev.type === 'wheel' ? ev.ctrlKey : !ev.button; })
