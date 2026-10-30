@@ -31261,7 +31261,7 @@ function _srcProgramContracts() {
       var k = (+c.contracted_k || 0) + (+c.pending_k || 0);
       if ((!mine && !viaParent) || !(k > 0 || +c.reserved_k > 0)) return;
       (out[c.zone_key] = out[c.zone_key] || []).push({slot: sk, name: c.module_name || _SRC_SLOT[sk], parent: viaParent,
-        k: k, free_k: +c.free_k || 0, adj: +c.price_adj_pct || 0});
+        k: k, free_k: +c.free_k || 0, adj: +c.price_adj_pct || 0, inh: +c.inherited_k || 0});
     });
   });
   return out;
@@ -31402,7 +31402,8 @@ function _srcMapDraw() {
     var cs = contracts[z] || [];
     if (cs.length) h += '<br><span style="color:' + _SRC_GOLD + ';">Supplier capacity you hold here:</span>' + cs.map(function (c) {
       return '<br>&nbsp; ' + _esc(_SRC_SLOT[c.slot] || c.slot) + ' · ' + _esc(c.name || '') + (c.parent ? ' (parent: tooling re-used)' : '')
-        + ' · ' + Math.round(c.k) + 'k/yr, ' + Math.round(c.free_k) + 'k free' + (c.adj ? ' · price ' + c.adj.toFixed(1) + '%' : '');
+        + ' · ' + Math.round(c.k) + 'k/yr' + (c.inh > 0 ? ' (' + Math.round(c.inh) + 'k inherited with your fleet)' : '')
+        + ', ' + Math.round(c.free_k) + 'k free' + (c.adj ? ' · price ' + c.adj.toFixed(1) + '%' : '');
     }).join('');
     var pk = picks[z] || {};
     if (Object.keys(pk).length) h += '<br><span style="color:' + _SRC_CYAN + ';">Picked in this plan:</span>' + plants.filter(function (x) { return pk[x.p.id]; }).map(function (x) {
