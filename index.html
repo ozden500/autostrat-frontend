@@ -27637,7 +27637,7 @@ var SP_ZONES = [
   {key:'INDIA', label:'India', flag:'🇮🇳', desc:'Low-cost, large-scale — protectionist, outside RCEP but inside JP/KR CEPA', labor_index:0.11, risk:0.40,
    logistics:{EW:95, EE:95, ND:100,MX:100,CN:55, JP:55, KR:55, SEA:50, IN:25, LA:150,ME:100, AF:90},
    duty:     {EW:4,  EE:4,  ND:2.5,MX:5,  CN:6,  JP:0,  KR:0,  SEA:5, IN:0,  LA:14, ME:5, AF:12}},
-  {key:'LATAM', label:'Latin America', flag:'🇧🇷', desc:'Mercosur core (BR/AR) + Colombia — high common external tariff', labor_index:0.18, risk:0.42,
+  {key:'LATAM', label:'Latin America', flag:'🇧🇷', desc:'Mercosur core (BR/AR) + Colombia, with the rest of South America — high common external tariff', labor_index:0.18, risk:0.42,
    logistics:{EW:120,EE:120,ND:90, MX:90, CN:140,JP:140,KR:140,SEA:150,IN:150,LA:25, ME:160, AF:140},
    duty:     {EW:4,  EE:4,  ND:2.5,MX:1,  CN:6,  JP:0,  KR:5,  SEA:5, IN:10, LA:0,  ME:5, AF:14}},
   {key:'MEA', label:'Middle East & N. Africa', flag:'🇲🇦', desc:'MENA — Morocco/Egypt hold EU association agreements, Saudi Arabia the GCC', labor_index:0.14, risk:0.48,
@@ -27669,7 +27669,8 @@ var _ZONE_BY_COUNTRY = {
   AO:'SSA',BJ:'SSA',BW:'SSA',BF:'SSA',BI:'SSA',CM:'SSA',CF:'SSA',TD:'SSA',CG:'SSA',CD:'SSA',CI:'SSA',DJ:'SSA',GQ:'SSA',
   ER:'SSA',SZ:'SSA',ET:'SSA',GA:'SSA',GM:'SSA',GH:'SSA',GN:'SSA',GW:'SSA',KE:'SSA',LS:'SSA',LR:'SSA',MG:'SSA',MW:'SSA',
   ML:'SSA',MR:'SSA',MZ:'SSA',NAM:'SSA',NE:'SSA',RW:'SSA',SN:'SSA',SL:'SSA',SO:'SSA',SOL:'SSA',SS:'SSA',TZ:'SSA',
-  TG:'SSA',UG:'SSA',ZM:'SSA',ZW:'SSA'
+  TG:'SSA',UG:'SSA',ZM:'SSA',ZW:'SSA',
+  GF:'LATAM',VE:'LATAM',GY:'LATAM',SR:'LATAM',EC:'LATAM',PE:'LATAM',BO:'LATAM',PY:'LATAM',UY:'LATAM',CL:'LATAM'
 };
 function _zoneForPlant(countryCode, region){
   return _ZONE_BY_COUNTRY[countryCode] || _spDefaultZoneForRegion(region);
@@ -31127,7 +31128,9 @@ var _SRC_ISO = {DE: '276', FR: '250', IT: '380', ES: '724', GB: '826', PL: '616'
   AO: '024', BJ: '204', BW: '072', BF: '854', BI: '108', CM: '120', CF: '140', TD: '148', CG: '178', CD: '180', CI: '384',
   DJ: '262', GQ: '226', ER: '232', SZ: '748', ET: '231', GA: '266', GM: '270', GH: '288', GN: '324', GW: '624', KE: '404',
   LS: '426', LR: '430', MG: '450', MW: '454', ML: '466', MR: '478', MZ: '508', NAM: '516', NE: '562', RW: '646', SN: '686',
-  SL: '694', SO: '706', SS: '728', TZ: '834', TG: '768', UG: '800', ZM: '894', ZW: '716'};
+  SL: '694', SO: '706', SS: '728', TZ: '834', TG: '768', UG: '800', ZM: '894', ZW: '716',
+  GF: 'GF',   // French Guiana: split from France's shape (_srcTopo)
+  VE: '862', GY: '328', SR: '740', EC: '218', PE: '604', BO: '068', PY: '600', UY: '858', CL: '152'};
 var _SRC_NAME_ISO = {Kosovo: 'XK', Somaliland: 'SOL'};
 function _srcIsoOf(f) { return f.id || _SRC_NAME_ISO[(f.properties || {}).name]; }
 var _SRC_ZONE_AT = {EU_WEST: 'FR', EU_EAST: 'RO', NA_DEVELOPED: 'US', MEXICO: 'MX', CHINA: 'CN', JAPAN: 'JP', KOREA: 'KR',
@@ -31196,6 +31199,30 @@ function _srcZoomReset() {
   if (host && host._zoom) d3.select(host).select('svg').transition().duration(250).call(host._zoom.transform, d3.zoomIdentity);
 }
 
+// The map data draws French Guiana as part of France (one MultiPolygon): the §8 map splits its
+// polygons west of 30°W off as 'GF' (South America). Built once from the raw topology.
+function _srcTopo() {
+  if (_mktMap.srcTopo || !_mktMap.topo) return _mktMap.srcTopo || null;
+  var topo = _mktMap.topo, geoms = [];
+  topo.objects.countries.geometries.forEach(function (g) {
+    if (g.id === '010') return;                     // no Antarctica
+    if (g.id === '250' && g.type === 'MultiPolygon') {
+      var eu = [], gf = [];
+      g.arcs.forEach(function (poly) {
+        var c = d3.geoCentroid(topojson.feature(topo, {type: 'Polygon', arcs: poly}));
+        (c[0] < -30 ? gf : eu).push(poly);
+      });
+      geoms.push({type: 'MultiPolygon', arcs: eu, id: '250', properties: g.properties});
+      if (gf.length) geoms.push({type: 'MultiPolygon', arcs: gf, id: 'GF', properties: {name: 'French Guiana'}});
+      return;
+    }
+    geoms.push(g);
+  });
+  var obj = {type: 'GeometryCollection', geometries: geoms};
+  _mktMap.srcTopo = {topo: topo, obj: obj, features: topojson.feature(topo, obj).features};
+  return _mktMap.srcTopo;
+}
+
 function _srcMapDraw() {
   var host = document.getElementById('prop-src-map'), box = document.getElementById('prop-src-map-box');
   if (!host) return;
@@ -31222,7 +31249,8 @@ function _srcMapDraw() {
   var ccOfIso = {};
   Object.keys(_SRC_ISO).forEach(function (cc) { ccOfIso[_SRC_ISO[cc]] = cc; });
   var feat = {};
-  _mktMap.world.features.forEach(function (f) { feat[_srcIsoOf(f)] = f; });
+  var st = _srcTopo(), countries = st ? st.features : _mktMap.world.features;
+  countries.forEach(function (f) { feat[_srcIsoOf(f)] = f; });
   var W = host.clientWidth || 900, H = Math.round(W * 0.42);
   var proj = d3.geoNaturalEarth1().fitSize([W, H], {type: 'Sphere'}), path = d3.geoPath(proj);
   var at = function (cc) { var f = feat[_SRC_ISO[cc]]; return f ? proj(_srcCentroid(f)) : null; };
@@ -31288,16 +31316,16 @@ function _srcMapDraw() {
     .attr('stroke', '#163049').attr('stroke-width', 0.4).attr('vector-effect', 'non-scaling-stroke');
   // countries filled by zone without outlines (a hairline of the same colour closes the antialiasing seams)
   var fillOf = function (f) { var z = zoneAt(f); return !z ? '#3a3f49' : contracts[z] ? '#8a6d22' : '#4b6c92'; };
-  gMap.append('g').selectAll('path').data(_mktMap.world.features).enter().append('path')
+  gMap.append('g').selectAll('path').data(countries).enter().append('path')
     .attr('d', path).attr('fill', fillOf).attr('stroke', fillOf).attr('stroke-width', 0.6)
     .attr('vector-effect', 'non-scaling-stroke')
     .on('mousemove', function (ev, f) { var z = zoneAt(f); if (!z) return hide(); show(ev, zoneTip(z)); })
     .on('mouseleave', hide);
-  var topo = _mktMap.topo, geoms = topo && topo.objects.countries.geometries.filter(function (g) { return g.id !== '010'; });
+  var topo = st && st.topo, geoms = st && st.obj.geometries;
   if (topo) {
     var zg = function (g) { return _ZONE_BY_COUNTRY[ccOfIso[_srcIsoOf(g)]]; };
     // borders: between different zones, and between countries outside any zone; none inside a zone
-    gMap.append('path').datum(topojson.mesh(topo, topo.objects.countries, function (p, q) {
+    gMap.append('path').datum(topojson.mesh(topo, st.obj, function (p, q) {
       return p !== q && p.id !== '010' && q.id !== '010' && (zg(p) !== zg(q) || !zg(p));
     })).attr('d', path).attr('fill', 'none').attr('stroke', '#0b2033').attr('stroke-width', 0.7)
       .attr('vector-effect', 'non-scaling-stroke').style('pointer-events', 'none');
@@ -31377,7 +31405,15 @@ function _srcMapDraw() {
   // zoom: drag to pan, Ctrl + wheel or the buttons to zoom (a plain wheel keeps scrolling the page)
   var place = function (t) {
     gMap.attr('transform', t);
-    labels.concat(marks).forEach(function (o) { var p = t.apply(o.xy); o.g.attr('transform', 'translate(' + (p[0] + (o.dx || 0)) + ',' + p[1] + ')'); });
+    var at2 = function (o) { var p = t.apply(o.xy); return [p[0] + (o.dx || 0), p[1]]; };
+    var mp = marks.map(at2);
+    marks.forEach(function (o, i) { o.g.attr('transform', 'translate(' + mp[i][0] + ',' + mp[i][1] + ')'); });
+    // a zone's dot and label step aside from a plant sitting on it (the zone dot's country may hold one)
+    labels.forEach(function (o) {
+      var p = at2(o);
+      if (mp.some(function (m) { return Math.abs(m[0] - p[0]) < 22 && Math.abs(m[1] - p[1]) < 22; })) p = [p[0], p[1] - 22];   // above the plant (its caption is below)
+      o.g.attr('transform', 'translate(' + p[0] + ',' + p[1] + ')');
+    });
   };
   var zoom = d3.zoom().scaleExtent([1, 8]).translateExtent([[0, 0], [W, H]])
     .filter(function (ev) { return ev.type === 'wheel' ? ev.ctrlKey : !ev.button; })
