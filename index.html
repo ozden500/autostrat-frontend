@@ -30552,73 +30552,50 @@ async function _shpPropPanel() {
   if (!box) {
     box = document.createElement('div');
     box.id = 'prop-shp-area';
-    host.insertBefore(box, host.firstChild);
+    var imp = document.getElementById('prop-ops-impact-area');   // under the plant map and its lists
+    if (imp) imp.parentNode.insertBefore(box, imp); else host.insertBefore(box, host.firstChild);
   }
   _shpPropRender();
 }
 
+// The car's plant fit (shared plants, read only since 2026-10-31: plants, volumes, automation and sharing are
+// chosen in the plant window on the map): all its lines together from SOP to EOP, the plant capex §10 uses
+// (POST …/plant-fit through _shpPropCheck, run by the window's Confirm), and a warning when its powertrain
+// allocation builds fewer units than its vehicle plants (one powertrain a car).
 function _shpPropRender() {
   var box = document.getElementById('prop-shp-area'), d = _SHP_PROP.data;
   if (!box || !d) return;
-  var ops = _prop.operations || {}, se = _shpPropSopEop();
+  var ops = _prop.operations || {};
   var vps = _shpConfirmed(ops.vehicle_plants), pps = _shpConfirmed(ops.powertrain_plants);
-  var mine = function (t) { return (d.plants || []).filter(function (p) { return p.ptype === t && p.status !== 'closed' && p.status !== 'sold'; }); };
-  var sel = 'background:var(--s2);border:1px solid var(--border2);color:var(--text);border-radius:3px;padding:3px 6px;font-size:10px;';
-  var plantSel = function (e, t, key) {
-    var list = mine(t);
-    if (!e.plant_ref) {
-      var same = list.filter(function (p) { return p.country_code === e.country_code; })[0];
+  // an allocation names its plant (the window sets plant_ref; an older one: your plant of that kind in its country)
+  [[vps, 'vehicle'], [pps, 'powertrain']].forEach(function (x) {
+    x[0].forEach(function (e) {
+      if (e.plant_ref) return;
+      var same = (d.plants || []).filter(function (p) { return p.ptype === x[1] && p.country_code === e.country_code && p.status !== 'closed' && p.status !== 'sold'; })[0];
       if (same) e.plant_ref = same.id;
-    }
-    return '<select style="' + sel + '" onchange="_shpPropPick(\'' + key + '\',\'' + _esc(e.id) + '\',this.value)">'
-      + '<option value="">— choose a plant —</option>'
-      + list.map(function (p) {
-        var free = (p.hall_free_window_k || {})[t === 'vehicle' ? 'tophat' : 'ice_pwt'];
-        return '<option value="' + p.id + '"' + (p.id === e.plant_ref ? ' selected' : '') + '>' + _esc(p.name || p.country_code) + ' · '
-          + p.status + (p.status === 'building' ? ' (ready ' + p.ready + ')' : '') + ' · ' + Math.round(free || 0) + 'k free plant capacity over the life</option>';
-      }).join('') + '</select>';
-  };
-  var h = '<div class="card" style="padding:12px 14px;margin-bottom:14px;border:1px solid var(--gold);">'
-    + '<div style="font-family:Orbitron,sans-serif;font-size:11px;color:var(--gold);margin-bottom:6px;">PLACE THE MODEL IN YOUR PLANTS</div>'
-    + '<div style="font-size:11px;color:var(--muted2);line-height:1.5;margin-bottom:8px;">This game runs on shared plants. '
-    + 'Size each plant below as usual, then pick which of your plants builds it. From '
-    + (se ? '<b>' + _qLabel(se[0]) + '</b> to <b>' + _qLabel(se[1]) + '</b>' : 'SOP to EOP')
-    + ' the model builds on your platform and top hat lines (vehicle plant) and on a powertrain line. A new module installs '
-    + 'a new line at the k / yr above; a module of a family you already build shares that family\'s line: say what to add to it '
-    + '(0 = share what is installed: the models on the line then split it pro rata where they ask for more). '
-    + 'Approval stores your §9 volumes on the lines as the business case plan. No plant capacity left? Expand or build a plant on '
-    + 'Industrial Ops → Decisions.</div>';
+    });
+  });
+  var kOf = function (e) { return Math.round(e.target_capacity_k || e.vehicle_capacity_yr || 0); };
+  var vehK = vps.reduce(function (a, e) { return a + kOf(e); }, 0), pwtK = pps.length ? kOf(pps[0]) : 0;
+  var MN = 'font-family:DM Mono,monospace;';
+  var h = '<div class="card" style="padding:12px 14px;margin-bottom:14px;border:1px solid var(--border2);">'
+    + '<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">'
+    + '<span style="font-family:Orbitron,sans-serif;font-size:11px;color:var(--gold);">PLANT FIT</span>'
+    + '<span style="' + MN + 'font-size:9px;color:var(--muted2);">all this car\u2019s lines together: the plant capex §10 uses</span></div>';
   if (!(d.plants || []).length) {
-    h += '<div style="font-size:11px;color:var(--red);">You have no plants. Build one on Industrial Ops → Decisions first.</div></div>';
-    box.innerHTML = h; return;
+    box.innerHTML = h + '<div style="font-size:11px;color:var(--red);margin-top:6px;">You have no plants. Build one on Industrial Ops first.</div></div>';
+    return;
   }
   if (!vps.length) {
-    h += '<div style="font-size:11px;color:var(--muted2);font-style:italic;">Confirm a vehicle plant allocation below, then place it here.</div></div>';
-    box.innerHTML = h; return;
+    box.innerHTML = h + '<div style="font-size:11px;color:var(--muted2);font-style:italic;margin-top:6px;">Allocate the car to a vehicle plant on the map above.</div></div>';
+    return;
   }
-  // a module of a family the plant already builds shares its line: what to add to it (blank = what this k needs)
-  var addCell = function (e, t, key) {
-    var sp = (d.plants || []).filter(function (p) { return p.id === e.plant_ref; })[0];
-    var types = t === 'vehicle' ? ['platform', 'tophat'] : ['ice_pwt', 'epwt'];
-    if (!sp || !types.some(function (mt) { return _shpHasFamilyLine(sp, mt); })) return '<span style="color:var(--muted2);">new line</span>';
-    return '<input type="number" min="0" step="5" placeholder="as needed" value="' + (e.line_add_k != null ? e.line_add_k : '') + '"'
-      + ' style="' + sel + 'width:84px;" onchange="_shpPropAdd(\'' + key + '\',\'' + _esc(e.id) + '\',this.value)">';
-  };
-  h += '<table style="width:100%;border-collapse:collapse;font-size:10px;"><tr style="font-family:DM Mono,monospace;font-size:8px;color:var(--muted);text-transform:uppercase;">'
-    + '<td>Allocation</td><td style="text-align:right;">k / yr</td><td>Builds in</td><td>Add to family line (k)</td></tr>';
-  vps.forEach(function (e) {
-    h += '<tr><td style="padding:3px 0;">Vehicle · ' + _esc(e.country_name || e.country_code || '') + '</td><td style="text-align:right;font-family:DM Mono,monospace;">'
-      + Math.round(e.target_capacity_k || e.vehicle_capacity_yr || 0) + '</td><td style="padding-left:10px;">' + plantSel(e, 'vehicle', 'vehicle_plants') + '</td>'
-      + '<td style="padding-left:10px;">' + addCell(e, 'vehicle', 'vehicle_plants') + '</td></tr>';
-  });
-  pps.slice(0, 1).forEach(function (e) {
-    h += '<tr><td style="padding:3px 0;">Powertrain · ' + _esc(e.country_name || e.country_code || '') + '</td><td style="text-align:right;font-family:DM Mono,monospace;">'
-      + Math.round(e.target_capacity_k || e.vehicle_capacity_yr || 0) + '</td><td style="padding-left:10px;">' + plantSel(e, 'powertrain', 'powertrain_plants') + '</td>'
-      + '<td style="padding-left:10px;">' + addCell(e, 'powertrain', 'powertrain_plants') + '</td></tr>';
-  });
-  h += '</table><div style="margin-top:8px;display:flex;gap:10px;align-items:center;">'
-    + '<button onclick="_shpPropCheck()" style="font-family:DM Mono,monospace;font-size:10px;padding:5px 14px;border-radius:3px;border:1px solid rgba(200,164,60,.4);background:var(--goldl);color:var(--gold);cursor:pointer;">Check fit</button>'
-    + '<span id="prop-shp-msg" style="font-size:10px;"></span></div><div id="prop-shp-res"></div></div>';
+  if (!pps.length) h += '<div style="font-size:11px;color:var(--orange);margin-top:6px;">⚠ No powertrain plant yet: open the Powertrain plants tab above.</div>';
+  else if (pwtK + 0.5 < vehK) h += '<div style="font-size:11px;color:var(--orange);margin-top:6px;">⚠ Powertrain ' + pwtK + 'k/yr is less than the vehicle plants\u2019 '
+    + vehK + 'k/yr: one powertrain a car, so the car can only be built at ' + pwtK + 'k/yr. Raise it in the powertrain plant.</div>';
+  h += '<div id="prop-shp-res"></div><div style="margin-top:8px;display:flex;gap:10px;align-items:center;">'
+    + '<button onclick="_shpPropCheck()" style="' + MN + 'font-size:10px;padding:5px 14px;border-radius:3px;border:1px solid rgba(200,164,60,.4);background:var(--goldl);color:var(--gold);cursor:pointer;">'
+    + (ops._plantFit ? 'Check again' : 'Check fit') + '</button><span id="prop-shp-msg" style="font-size:10px;"></span></div></div>';
   box.innerHTML = h;
   if (ops._plantFit) _shpPropShow(ops._plantFit);
 }
@@ -30629,23 +30606,6 @@ function _shpPropAllocChanged() {
   _shpPropRender();
 }
 
-function _shpPropPick(key, id, plantId) {
-  var e = ((_prop.operations || {})[key] || []).filter(function (x) { return x.id === id; })[0];
-  if (e) e.plant_ref = plantId || null;
-  if (_prop.operations) delete _prop.operations._plantFit;   // the old check no longer holds
-  _shpPropRender();   // the plant may (or may not) already have the family's line
-}
-
-// k added to the family line a model shares (blank = what its own k / yr needs beyond the line's spare)
-function _shpPropAdd(key, id, val) {
-  var e = ((_prop.operations || {})[key] || []).filter(function (x) { return x.id === id; })[0];
-  if (!e) return;
-  var v = parseFloat(val);
-  if (val === '' || isNaN(v)) delete e.line_add_k; else e.line_add_k = Math.max(0, v);
-  if (_prop.operations) delete _prop.operations._plantFit;
-  var r = document.getElementById('prop-shp-res'); if (r) r.innerHTML = '';
-}
-
 async function _shpPropCheck() {
   _shpPropRender();   // allocations may have changed since the panel was drawn
   var ops = _prop.operations || {}, se = _shpPropSopEop(), msg = document.getElementById('prop-shp-msg');
@@ -30654,7 +30614,7 @@ async function _shpPropCheck() {
   var vps = _shpConfirmed(ops.vehicle_plants), pps = _shpConfirmed(ops.powertrain_plants);
   var slots = _shpPropSlots(), pl = [];
   var miss = vps.concat(pps.slice(0, 1)).filter(function (e) { return !e.plant_ref; });
-  if (miss.length) { msg.innerHTML = '<span style="color:var(--red);">Choose a plant for every allocation.</span>'; return; }
+  if (miss.length) { msg.innerHTML = '<span style="color:var(--red);">Open each allocated plant on the map and Confirm it.</span>'; return; }
   vps.forEach(function (e) {
     var k = e.target_capacity_k || e.vehicle_capacity_yr || 0;
     slots.filter(function (s) { return s.module_type === 'platform' || s.module_type === 'tophat'; })
@@ -30693,16 +30653,16 @@ function _shpPropShow(f) {
   var names = {};
   ((_SHP_PROP.data || {}).plants || []).forEach(function (p) { names[p.id] = p.name || p.country_code; });
   el.innerHTML = '<div style="margin-top:8px;font-size:11px;color:' + (f.ok ? 'var(--green)' : 'var(--red)') + ';">'
-    + (f.ok ? '✓ Fits. Plant capex for this model: <b>€' + (+f.capex_m).toFixed(1) + 'M</b> (lines, expansions, retool; plant capacity is booked on the plants). §10 uses this figure.'
+    + (f.ok ? '✓ Fits. Plant capex for this car: <b>€' + (+f.capex_m).toFixed(1) + 'M</b>'
       : '✗ Does not fit: ' + _esc((f.errors || []).join('; '))) + '</div>'
     + (f.ok && (f.warnings || []).length ? '<div style="margin-top:4px;font-size:11px;color:var(--orange);line-height:1.5;">⚠ ' + _esc(f.warnings.join('; '))
-      + '. You may approve it: the models on the line share what is installed, pro rata where they ask for more, so this business case '
-      + 'counts cars the line may not build. §10 shows the capacity-limited case; add to the family line above to close the gap.</div>' : '')
+      + '. You may approve it: the models on the line share it pro rata. §10 shows the capacity-limited case; to close the gap, '
+      + 'untick "Share the installed line" in that plant’s window.</div>' : '')
     + '<table style="width:100%;border-collapse:collapse;font-size:10px;margin-top:4px;">'
     + (f.placements || []).map(function (p) {
       return '<tr style="border-top:1px solid var(--border);"><td style="padding:3px 0;">' + (_SHP_TYPE[p.module_type] || p.module_type) + '</td><td>' + _esc(names[p.plant_id] || '') + '</td>'
         + '<td>' + (act[p.action] || p.action || '') + (p.error ? ' · <span style="color:var(--red);">' + _esc(p.error) + '</span>' : '') + '</td>'
-        + '<td style="text-align:right;font-family:DM Mono,monospace;">' + (p.spare_k ? Math.round(p.spare_k) + 'k spare' : '') + (p.expand_k ? ' +' + Math.round(p.expand_k) + 'k' : '')
+        + '<td style="text-align:right;font-family:DM Mono,monospace;">' + (p.expand_k ? '+' + Math.round(p.expand_k) + 'k' : '')
         + (p.over_k > 0.5 ? ' <span style="color:var(--orange);">' + Math.round(p.over_k) + 'k over</span>' : '') + '</td>'
         + '<td style="text-align:right;font-family:DM Mono,monospace;">€' + (+(p.capex_m || 0)).toFixed(1) + 'M</td></tr>';
     }).join('') + '</table>';
