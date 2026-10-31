@@ -29115,7 +29115,8 @@ function _p7mDraw() {
     var lk = p.region + '_' + p.country_code, av = _p7mAvail(p, view), R = rad(p);
     var late = se && p.status === 'building' && (p.ready_qabs || 0) > se[0];
     var col = av.k <= 0.5 ? 'var(--red)' : need > 0 && av.k < need ? 'var(--orange)' : 'var(--green)';
-    var conf = confirmed[lk];
+    var conf = confirmed[lk], cerr = conf ? _p7wAllocErr(p.id, view) : null;
+    if (cerr) col = 'var(--red)';   // allocated, but the fit check refuses it
     var g = gTop.append('g').style('cursor', 'pointer');
     if (conf) g.append('circle').attr('r', R + 4).attr('fill', 'none').attr('stroke', '#e8c060').attr('stroke-width', 1.6);
     g.append('circle').attr('r', R).attr('fill', '#0c0f18').style('stroke', col).attr('stroke-width', 2.2)
@@ -29124,7 +29125,7 @@ function _p7mDraw() {
     else g.append('circle').attr('r', R * 0.4).attr('fill', '#dce8f8');
     g.append('text').attr('y', R + 11).attr('text-anchor', 'middle').style('font-family', 'DM Mono,monospace').style('font-size', '9.5px')
       .style('fill', col).style('paint-order', 'stroke').style('stroke', '#07080d').style('stroke-width', '3px')
-      .text(Math.round(av.k) + 'k free' + (conf ? ' · ✓ ' + conf + 'k' : ''));
+      .text(Math.round(av.k) + 'k free' + (conf ? (cerr ? ' · ✗ ' : ' · ✓ ') + conf + 'k' : ''));
     g.append('text').attr('y', -R - 5).attr('text-anchor', 'middle').style('font-family', 'DM Mono,monospace').style('font-size', '9px')
       .style('fill', 'var(--text)').style('paint-order', 'stroke').style('stroke', '#07080d').style('stroke-width', '3px')
       .text(p.name || p.country_code);
@@ -29330,7 +29331,8 @@ function _p7wCostHtml() {
   var pl = w.av.types.map(_p7wPl);
   var err = pl.filter(function (x) { return x.error; })[0], pend = pl.some(function (x) { return x.pending; });
   var mm = w.ptype === 'vehicle' ? _p7wManufEur(w.k, Math.round((_p7wLvl('platform') + _p7wLvl('tophat')) / 2)) : null;
-  var bad = false, h = '<div style="' + MN + 'font-size:11px;line-height:1.8;margin-top:14px;padding:10px 12px;border-radius:4px;background:var(--s1);">';
+  // no Confirm before the price is back, nor when it failed or does not fit (approval would refuse it)
+  var bad = !!(err || pend), h = '<div style="' + MN + 'font-size:11px;line-height:1.8;margin-top:14px;padding:10px 12px;border-radius:4px;background:var(--s1);">';
   if (err) h += '<span style="color:var(--red);">' + _esc(err.error) + '</span>';
   else if (pend) h += '<span style="color:var(--muted2);">Pricing…</span>';
   else {
@@ -29433,6 +29435,13 @@ function _p7wRemoveAlloc(ptype, id) {
   _p7mSetView(ptype);
 }
 
+// the last fit check's error for this car's lines in a plant (ops._plantFit), or null
+function _p7wAllocErr(plantId, ptype) {
+  var f = (_prop.operations || {})._plantFit, types = _p7mTypes(ptype);
+  var p = f && plantId ? (f.placements || []).filter(function (x) { return x.plant_id === plantId && x.error && types.indexOf(x.module_type) >= 0; })[0] : null;
+  return p ? p.error : null;
+}
+
 // the car's allocations of the tab's kind under the map: open or remove each
 function _p7wAllocList(ptype) {
   var ops = _prop.operations || {}, MN = 'font-family:DM Mono,monospace;', K = _P7_KIND[ptype];
@@ -29447,6 +29456,7 @@ function _p7wAllocList(ptype) {
     h += '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:7px 10px;border-top:1px solid var(--border);' + MN + 'font-size:10px;">'
       + '<span style="color:var(--gold);flex:1;min-width:140px;">' + K.icon + ' ' + _esc(sp ? (sp.name || sp.country_code) : (e.country_name || lk)) + '</span>'
       + '<span style="color:var(--text);">' + e.vehicle_capacity_yr + 'k/yr</span>'
+      + (_p7wAllocErr(e.plant_ref, ptype) ? '<span style="color:var(--red);">✗ ' + _esc(_p7wAllocErr(e.plant_ref, ptype)) + '</span>' : '')
       + '<span style="color:var(--muted2);">' + (ptype === 'vehicle'
         ? 'platform L' + (e.platform_auto_level || e.automation_level || 2) + ' · top hat L' + (e.tophat_auto_level || e.automation_level || 2)
         : 'L' + (e.automation_level || 2)) + '</span>'
@@ -30643,6 +30653,8 @@ async function _shpPropCheck() {
     msg.innerHTML = '';
     _shpPropShow(ops._plantFit);
     renderOpsAggregateSummary();   // the plant capex boxes read the fit
+    var fa = document.getElementById('prop-ops-footprint-area');   // the map's allocations: fits or not
+    if (fa && _shpShared()) fa.innerHTML = _renderSimplifiedFootprint();
   } catch (e) { msg.innerHTML = '<span style="color:var(--red);">Could not reach the server.</span>'; }
 }
 
