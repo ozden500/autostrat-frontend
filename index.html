@@ -5104,7 +5104,7 @@ function _labDerivPanel() {
       + row('R&D', (full > 0 ? '€' + (full * t.rd_f).toFixed(1) + 'M · ' : '') + Math.round(t.rd_f * 100) + '% of a new module' + (full > 0 ? ' (€' + full.toFixed(1) + 'M)' : ''))
       + row('Lead time', Math.round(t.lt_f * 100) + '% of a new module' + (rdy ? '; not before ' + rdy : ''))
       + row('Supplier tooling', Math.round(t.retool_f * 100) + '% where the parent is sourced')
-      + row('Plant line', 'new variant: ' + Math.round(t.cplx_f * _DERIV_E.VARIANT_SHARE * 100) + '% of a line of its size');
+      + row('Plant line', 'new variant: ' + Math.round(t.cplx_f * _DERIV_E.VARIANT_SHARE * 100) + '% of a new 100k line, once');
   }
   var lim = _DERIV_E.terms(currentModType, par.config_key, par.specs || {}, par.config_key, {}).limits, rng = [];
   (MOD_SPECS[currentModType] || []).forEach(function(sp) {
@@ -24841,7 +24841,7 @@ var _DERIV_E = {
                 'ICE>REEV': 0.60, 'TURBO>REEV': 0.60, 'HEV>REEV': 0.40, 'PHEV>REEV': 0.30,
                 'REEV>PHEV': 0.30, 'REEV>HEV': 0.30, 'REEV>ICE': 0.35, 'REEV>TURBO': 0.35},
   RD: [0.25, 0.35], LT: [0.40, 0.30], RETOOL: [0.30, 0.40], NEWNESS: [0.30, 0.40],   // a + b·change
-  // a new variant on an existing plant line: VARIANT_SHARE × cplx_f × a new line at the line's capacity
+  // a new variant on an existing plant line: VARIANT_SHARE × cplx_f × a new 100k line (× (line k / 100) ^ 0.1)
   CPLX: [0.05, 0.95], VARIANT_SHARE: 0.35,
   TOL: 1e-6,
   _r: function(x, d) { var f = Math.pow(10, d); return Math.floor(x * f + 0.5) / f; },
@@ -25162,7 +25162,7 @@ function _derivPanel(propKey) {
              Math.round(t.rd_f * 100) + '% of €' + fullRd.toFixed(1) + 'M new')
       + cell('Lead time', Math.round(t.lt_f * 100) + '%', 'of a new module' + (rdy ? '; not before ' + rdy : ''))
       + cell('Supplier tooling', Math.round(t.retool_f * 100) + '%', 'where the parent is sourced')
-      + cell('Plant line', Math.round(t.cplx_f * _DERIV_E.VARIANT_SHARE * 100) + '%', 'of a line of its size, once (new variant)')
+      + cell('Plant line', Math.round(t.cplx_f * _DERIV_E.VARIANT_SHARE * 100) + '%', 'of a new 100k line, once (new variant)')
       + cell('Launch defects', Math.round(t.newness * 100) + '%', 'of a new module’s')
       + '</div>';
   }
@@ -29164,7 +29164,8 @@ function _p7wFamLines(sp, t) {
   try { s = _shpPropSlots().filter(function (x) { return x.module_type === t; })[0]; } catch (e) { s = null; }
   if (!s) return [];
   return (sp.lines || []).filter(function (l) {
-    return l.module_type === t && (l.family_root_id === s.module_id || (s.parent_module_id && l.family_root_id === s.parent_module_id));
+    return l.module_type === t && (l.family_root_id === s.module_id || (s.parent_module_id && l.family_root_id === s.parent_module_id)
+      || (s.family_root_id && l.family_root_id === s.family_root_id));
   });
 }
 
@@ -30439,6 +30440,15 @@ function _renderFootprintMatrix(){
 // POST …/plant-fit prices it; approval reserves it (the server re-checks, 409 if the room went).
 var _SHP_PROP = { data: null, fit: null };
 
+// a module's family root: up its developed_from chain through the team's modules (_prop.modules), as
+// financial_engine.module_family_root does (a derivative of a derivative shares the root's line)
+function _shpFamilyRoot(id) {
+  var byId = {};
+  (_prop.modules || []).forEach(function (m) { byId[m.id] = m; });
+  for (var i = 0; id && byId[id] && byId[id].developed_from_module_id && i < 20; i++) id = byId[id].developed_from_module_id;
+  return id || null;
+}
+
 function _shpPropSlots() {
   var out = [];
   var add = function (mt, s) {
@@ -30449,7 +30459,8 @@ function _shpPropSlots() {
       parent_module_id: s.mode === 'derivative' && par && par.id ? par.id : null,
       retool_f: s.mode === 'derivative' && s.deriv ? (s.deriv.retool_f || 0) : null,
       change: s.mode === 'derivative' && s.deriv && s.deriv.change != null ? s.deriv.change : null,   // its complexity on a shared line
-      config_key: m.config_key || (s.specs || {}).config_key || null, specs: s.specs || m.specs || {} });
+      config_key: m.config_key || (s.specs || {}).config_key || null, specs: s.specs || m.specs || {},
+      family_root_id: _shpFamilyRoot(s.mode === 'reuse' ? m.id : s.mode === 'derivative' && par ? par.id : null) });
   };
   add('platform', _prop.platform);
   add('tophat', _prop.tophat);
@@ -30479,7 +30490,8 @@ function _shpHasFamilyLine(sp, mtype) {
   try { s = _shpPropSlots().filter(function (x) { return x.module_type === mtype; })[0]; } catch (e) { s = null; }
   if (!s) return false;
   return (sp.lines || []).some(function (l) {
-    return l.module_type === mtype && (l.family_root_id === s.module_id || (s.parent_module_id && l.family_root_id === s.parent_module_id));
+    return l.module_type === mtype && (l.family_root_id === s.module_id || (s.parent_module_id && l.family_root_id === s.parent_module_id)
+      || (s.family_root_id && l.family_root_id === s.family_root_id));
   });
 }
 
