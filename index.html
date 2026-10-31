@@ -29231,7 +29231,7 @@ function _p7wOpen(pid) {
   // a powertrain plant giving fewer units than the vehicle plants build (one powertrain a car) needs a sign-off
   var sg = conf && conf.pwt_shortfall_signed;
   _P7W = {pid: pid, lk: lk, sp: sp, ptype: ptype, av: av, k: Math.max(1, Math.round(k)), al: al, lineLvl: lineLvl, lock: lock,
-          add: conf && conf.line_add_k != null ? conf.line_add_k : null, conf: conf, cache: {}, manuf: {}, timer: null,
+          add: null, min: !!(conf && (conf.line_add_min || conf.line_add_k === 0)), conf: conf, cache: {}, manuf: {}, timer: null,
           need: veh ? 0 : need, signed: !!(sg && sg.need === need && sg.k === conf.vehicle_capacity_yr)};
   var el = document.getElementById('p7w-modal');
   if (!el) {
@@ -29272,13 +29272,15 @@ function _p7wSign(on) {   // the team accepts a powertrain plant below its vehic
   _p7wRenderCost();
 }
 
-function _p7wShare(on) {   // share the family line as installed (add 0) instead of expanding it as needed
+// minimise added capacity (2026-10-31): add only what the family line itself lacks for this car's volume,
+// relying on its installed capacity whatever the other models plan on it (unticked: as needed, on top of them)
+function _p7wShare(on) {
   var w = _P7W; if (!w) return;
-  w.add = on ? 0 : null;
+  w.min = !!on;
   _p7wRender(); _p7wPrice();
 }
 
-function _p7wKey2(k, al) { return k + '|' + al + '|' + (_P7W.add == null ? '' : _P7W.add); }
+function _p7wKey2(k, al) { return k + '|' + al + '|' + (_P7W.min ? 'min' : ''); }
 
 // production cost per car in a vehicle plant (§7's manufacturing engine on a scratch plant: the real ones stay untouched)
 function _p7wManufEur(k, al) {
@@ -29315,7 +29317,7 @@ function _p7wPrice() {
           segment_code: (_prop.study || {}).segment_code, platform_size: _getPlatformSize(), body_type: _getBodyType(),
           pwt_type: _pwtToManufKey(((_prop.study || {}).rolled_up_specs || {}).pwt_type || ''),
           automation_level: al, shift_structure: 'CONTINENTAL',
-          placements: slots.map(function (s) { return Object.assign({plant_id: w.pid, capacity_k: k, add_k: w.add}, s); })})
+          placements: slots.map(function (s) { return Object.assign({plant_id: w.pid, capacity_k: k, add_k: null, add_min: w.min || null}, s); })})
       }).then(function (r) { return r.json().then(function (d) { return {ok: r.ok, d: d}; }); })
         .then(function (x) { w.cache[key] = x.ok ? x.d : {error: x.d.detail || 'Refused'}; if (_P7W === w) _p7wRenderCost(); })
         .catch(function () { w.cache[key] = {error: 'Could not reach the server'}; if (_P7W === w) _p7wRenderCost(); });
@@ -29351,13 +29353,36 @@ function _p7wCostHtml() {
     h += 'Plant capex <b style="color:var(--gold);">€' + capex.toFixed(1) + 'M</b>'
       + (cplx > 0 ? ' <span style="color:var(--muted2);">(capacity €' + (capex - cplx).toFixed(1) + 'M · new variant €' + cplx.toFixed(1) + 'M)</span>' : '')
       + (mm ? ' · production <b>€' + Math.round(mm.total).toLocaleString() + '</b> a car' : '')
+      + (w.min ? pl.filter(function (x) { return x.p.installed_k != null; }).map(function (x) {
+          return '<br><span style="color:var(--muted2);">' + (_SHP_TYPE[x.p.module_type] || x.p.module_type) + ' adds ' + Math.round(x.p.expand_k || 0)
+            + 'k/yr (line installed ' + Math.round(x.p.installed_k) + 'k/yr, your peak ' + w.k + 'k/yr)</span>';
+        }).join('') : '')
       + '<br>' + (bad ? '<span style="color:var(--red);">✗ Not enough room in this plant</span>'
         : warn ? '<span style="color:var(--orange);">⚠ Fits, sharing the line with other models</span>'
         : '<span style="color:var(--green);">✓ Fits</span>');
+    w.short = null;
     if (!bad && w.ptype === 'powertrain' && w.need > w.k + 0.5) {
-      h += '<br><span style="color:var(--orange);">⚠ Below your vehicle plants’ ' + Math.round(w.need) + 'k/yr: one powertrain a car, so the car is built at most at '
-        + w.k + 'k/yr.</span><label style="display:flex;align-items:center;gap:6px;margin-top:4px;cursor:pointer;color:var(--text);">'
-        + '<input type="checkbox"' + (w.signed ? ' checked' : '') + ' onchange="_p7wSign(this.checked)"> I accept building at most ' + w.k + 'k/yr</label>';
+      // on a line of the engine's family the car shares the whole line (pro rata when it is full), so its supply is
+      // not guaranteed rather than capped; a new line is a hard cap (one powertrain a car)
+      var famT = w.av.types.filter(function (t) { return w.av[t].fam; })[0], nm = (_SHP_TYPE[famT || w.av.types[0]] || 'Powertrain').toLowerCase();
+      var need = Math.round(w.need), txt, acc;
+      if (famT) {
+        var inst = Math.round(_p7wFamLines(w.sp, famT).reduce(function (a, l) { return a + (l.capacity_k || 0); }, 0));
+        var added = Math.round(pl.reduce(function (a, x) { return a + (x.p.expand_k || 0); }, 0));
+        w.short = {shared: true, installed: inst, added: added, nm: nm};
+        txt = 'The ' + nm + ' line here already has <b>' + inst + 'k/yr</b> installed, shared with your other models. '
+          + (added > 0 ? 'You add <b>' + added + 'k/yr</b>.' : 'You add nothing.')
+          + '<br>This may not guarantee ' + nm + 's for the <b>' + need + 'k/yr</b> your vehicle plants can build: when the other models '
+          + 'use the line fully, this car gets a pro-rata share.';
+        acc = 'I accept that ' + nm + ' supply may limit this car below ' + need + 'k/yr';
+      } else {
+        w.short = {shared: false, nm: nm};
+        txt = 'The new ' + nm + ' line builds <b>' + w.k + 'k/yr</b>; your vehicle plants build <b>' + need + 'k/yr</b>. One ' + nm
+          + ' per car, so this car is built at most at <b>' + w.k + 'k/yr</b>.';
+        acc = 'I accept building at most ' + w.k + 'k/yr';
+      }
+      h += '<br><span style="color:var(--orange);">⚠ ' + txt + '</span><label style="display:flex;align-items:center;gap:6px;margin-top:4px;cursor:pointer;color:var(--text);">'
+        + '<input type="checkbox"' + (w.signed ? ' checked' : '') + ' onchange="_p7wSign(this.checked)"> ' + acc + '</label>';
       if (!w.signed) bad = true;   // Confirm once signed off
     }
   }
@@ -29397,13 +29422,15 @@ function _p7wRender() {
     + '<button onclick="_p7wClose()" aria-label="Close" style="' + MN + 'font-size:13px;color:var(--muted2);background:none;border:none;cursor:pointer;padding:2px 6px;">✕</button></div>'
     + '<div style="' + MN + 'font-size:10px;color:var(--muted2);margin-top:4px;">'
     + (w.ptype === 'powertrain' && w.need ? 'Your vehicle plants: <b style="color:var(--text);">' + Math.round(w.need) + 'k/yr</b> · ' : '')
-    + 'Max available ' + (w.ptype === 'powertrain' && w.need ? 'here' : 'for this car') + ': <b style="color:' + (maxK > 0 ? 'var(--green)' : 'var(--red)') + ';">' + maxK + 'k/yr</b></div>';
+    + (w.ptype === 'powertrain' && w.av.fam ? 'Room to add here' : w.ptype === 'powertrain' && w.need ? 'Max available here' : 'Max available for this car')
+    + ': <b style="color:' + (maxK > 0 ? 'var(--green)' : 'var(--red)') + ';">' + maxK + 'k/yr</b>'
+    + (w.ptype === 'powertrain' && w.av.fam ? ' (+ the shared ' + (_SHP_TYPE[w.av.types.filter(function (t) { return w.av[t].fam; })[0]] || '').toLowerCase() + ' line)' : '') + '</div>';
   h += row('Volume', btn('_p7wVol(-1)', '▼', 'Volume down') + val(w.k + 'k/yr', 80) + btn('_p7wVol(1)', '▲', 'Volume up'));
   h += w.ptype === 'vehicle' ? auto('platform', 'Platform automation') + auto('tophat', 'Top hat automation')
     : auto('pwt', Object.keys(w.lineLvl).length && !w.lock.pwt ? 'Automation (new lines)' : 'Automation');
   if (w.av.fam)
     h += '<label style="display:flex;align-items:center;gap:6px;margin-top:12px;' + MN + 'font-size:10px;color:var(--text);cursor:pointer;">'
-      + '<input type="checkbox"' + (w.add === 0 ? ' checked' : '') + ' onchange="_p7wShare(this.checked)"> Share the installed line (no expansion)</label>';
+      + '<input type="checkbox"' + (w.min ? ' checked' : '') + ' onchange="_p7wShare(this.checked)"> Minimise added capacity: rely on the capacity already installed for this product family</label>';
   h += '<div id="p7w-cost">' + _p7wCostHtml() + '</div></div>';
   el.innerHTML = h;
 }
@@ -29431,8 +29458,9 @@ function _p7wConfirm() {
   var e = (ops[K.key] || []).filter(function (x) { return x.id === K.pre + w.lk; })[0];
   if (e) {
     e.plant_ref = w.pid;
-    if (w.add == null) delete e.line_add_k; else e.line_add_k = w.add;
-    if (w.ptype === 'powertrain' && w.need > w.k + 0.5) e.pwt_shortfall_signed = {k: w.k, need: w.need, qabs: (_SHP_PROP.data || {}).qabs};
+    delete e.line_add_k;
+    if (w.min) e.line_add_min = true; else delete e.line_add_min;
+    if (w.ptype === 'powertrain' && w.need > w.k + 0.5) e.pwt_shortfall_signed = Object.assign({k: w.k, need: w.need, qabs: (_SHP_PROP.data || {}).qabs}, w.short || {});
     else delete e.pwt_shortfall_signed;
   }
   _p7mSetView(w.ptype);
@@ -30622,7 +30650,9 @@ function _shpPropRender() {
   else if (pwtK + 0.5 < vehK) {
     var sg = pps[0].pwt_shortfall_signed;
     h += sg && sg.k === pwtK && sg.need === vehK
-      ? '<div style="font-size:11px;color:var(--muted2);margin-top:6px;">Signed off: powertrain ' + pwtK + 'k/yr below the vehicle plants\u2019 ' + vehK + 'k/yr, so the car is built at most at ' + pwtK + 'k/yr.</div>'
+      ? '<div style="font-size:11px;color:var(--muted2);margin-top:6px;">' + (sg.shared
+        ? 'Signed off: ' + (sg.nm || 'powertrain') + ' supply (' + sg.installed + 'k/yr shared line' + (sg.added ? ' + ' + sg.added + 'k/yr added' : '') + ') may limit this car below ' + vehK + 'k/yr.'
+        : 'Signed off: the car is built at most at ' + pwtK + 'k/yr (new ' + (sg.nm || 'powertrain') + ' line).') + '</div>'
       : '<div style="font-size:11px;color:var(--orange);margin-top:6px;">⚠ Powertrain ' + pwtK + 'k/yr is less than the vehicle plants\u2019 '
         + vehK + 'k/yr: one powertrain a car, so the car can only be built at ' + pwtK + 'k/yr. Open the powertrain plant to raise it or sign this off.</div>';
   }
@@ -30651,7 +30681,7 @@ async function _shpPropCheck() {
   vps.forEach(function (e) {
     var k = e.target_capacity_k || e.vehicle_capacity_yr || 0;
     slots.filter(function (s) { return s.module_type === 'platform' || s.module_type === 'tophat'; })
-      .forEach(function (s) { pl.push(Object.assign({ plant_id: e.plant_ref, capacity_k: k, add_k: e.line_add_k != null ? e.line_add_k : null,
+      .forEach(function (s) { pl.push(Object.assign({ plant_id: e.plant_ref, capacity_k: k, add_k: e.line_add_k != null ? e.line_add_k : null, add_min: !!e.line_add_min,
         automation_level: e[s.module_type + '_auto_level'] || e.automation_level || null }, s)); });   // each line at its own level
   });
   if (pps.length) {
@@ -30659,7 +30689,7 @@ async function _shpPropCheck() {
       || vps.reduce(function (a, e) { return a + (e.target_capacity_k || 0); }, 0);
     slots.filter(function (s) { return s.module_type === 'ice_pwt' || s.module_type === 'epwt'; })
       .forEach(function (s) { pl.push(Object.assign({ plant_id: pps[0].plant_ref, capacity_k: kp,
-        add_k: pps[0].line_add_k != null ? pps[0].line_add_k : null, automation_level: pps[0].automation_level || null }, s)); });
+        add_k: pps[0].line_add_k != null ? pps[0].line_add_k : null, add_min: !!pps[0].line_add_min, automation_level: pps[0].automation_level || null }, s)); });
   }
   msg.innerHTML = '<span style="color:var(--muted2);">Checking…</span>';
   try {
