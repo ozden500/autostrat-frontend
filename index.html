@@ -3012,7 +3012,7 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
       <div class="mm-grid">
         <div class="mm-field"><label>Vehicle Name</label><input type="text" id="vm-name" placeholder="e.g. Alpha C-Hatch" maxlength="50"></div>
         <div class="mm-field"><label>Market Segment</label><select id="vm-segment" onchange="onVehicleSegmentChange()"><option value="">— loading —</option></select></div>
-        <div class="mm-field"><label>Platform Module</label><select id="vm-platform"><option value="">— none —</option></select></div>
+        <div class="mm-field"><label>Platform Module</label><select id="vm-platform" onchange="onVehicleSegmentChange()"><option value="">— none —</option></select></div>
         <div class="mm-field"><label>ICE PWT Module</label><select id="vm-pwt"><option value="">— none —</option></select></div>
         <div class="mm-field"><label>e-Motor Module</label><select id="vm-epwt"><option value="">— none —</option></select></div>
         <div class="mm-field">
@@ -5092,7 +5092,8 @@ function _labDerivPanel() {
   var thSegL = currentModType === 'tophat' ? _tophatSegmentOf(par) : null;
   var h = '<div style="' + MO + 'font-size:8px;color:var(--purple);text-transform:uppercase;letter-spacing:1px;margin-bottom:5px;">'
     + 'Derivative of ' + (par.name || '') + ' <span style="color:var(--muted2);">(' + (par.config_key || '') + ')</span> · parent unchanged'
-    + (thSegL ? ' · for ' + thSegL + ' vehicles only' : '') + '</div>';
+    + (thSegL ? ' · for ' + thSegL + ' vehicles only' : '')
+    + (currentModType === 'tophat' && par.donor_platform_name ? ' · on the ' + par.donor_platform_name + ' platform family' : '') + '</div>';
   if (!t || !t.ok) {
     h += '<div style="' + MO + 'font-size:9px;color:var(--red);">⚠ ' + ((t && t.reason) || 'Configure the design') + '</div>';
   } else {
@@ -15146,9 +15147,13 @@ function onVehicleSegmentChange() {
     return;
   }
 
-  // A top hat stays in its donor's segment (_tophatSegmentOf; the backend checks it again)
+  // A top hat stays in its donor's segment (_tophatSegmentOf) and on its donor's platform family
+  // (donor_platform_root, 2026-10-31); the backend checks both again
+  const plId = (document.getElementById('vm-platform') || {}).value;
+  const plRoot = plId ? _shpFamilyRoot(plId, _vmAllMods) : null;
   const validTophats = _vmAllMods.filter(m =>
-    m.module_type === 'tophat' && m.development_status === 'completed' && _tophatSegmentOf(m) === segment);
+    m.module_type === 'tophat' && m.development_status === 'completed' && _tophatSegmentOf(m) === segment
+    && (!plRoot || !m.donor_platform_root || m.donor_platform_root === plRoot));
 
   thSel.innerHTML = '<option value="">— none —</option>';
   if (validTophats.length === 0) {
@@ -23933,8 +23938,32 @@ function _isPropModuleCompatible(mod, modType) {
     var thSegOf = _tophatSegmentOf(mod);
     if (!thSegOf || thSegOf !== seg)
       return {ok:false, reason:'Top hat of ' + (thSegOf || 'an unknown segment') + ': stays in its segment'};
+    // ... and on its donor's platform family (2026-10-31; the backend checks it again)
+    var plRoot = _propPlatformRoot();
+    if (plRoot && mod.donor_platform_root && mod.donor_platform_root !== plRoot)
+      return {ok:false, reason: plRoot === 'new' ? 'Your platform is new: develop a new top hat'
+        : 'Built on the ' + (mod.donor_platform_name || 'another') + ' platform family'};
   }
   return {ok:true};
+}
+
+// The car's platform family (2026-10-31): the root of the reused platform or of a derivative's parent; a New
+// platform starts its own family ('new': no reused / derived top hat fits it); null = not picked yet (no test).
+// A reused / derived top hat must sit on its donor's platform family (donor_platform_root from the module lists,
+// financial_engine.tophat_donor_platforms).
+function _propPlatformRoot() {
+  var p = _prop.platform || {};
+  if (p.mode === 'new') return 'new';
+  if (p.mode === 'derivative') return p.parent ? _shpFamilyRoot(p.parent.id) : null;
+  return p.module ? _shpFamilyRoot(p.module.id) : null;
+}
+// After a platform change: a top hat picked in §4 that no longer fits its family is cleared
+function _propRecheckTophat() {
+  var t = _prop.tophat, mod = t && (t.mode === 'derivative' ? t.parent : t.module);
+  if (!mod || _isPropModuleCompatible(mod, 'tophat').ok) return;
+  _prop.tophat = {mode: t.mode, module: null, parent: null, deriv: null, specs: t.mode === 'reuse' ? {} : (t.specs || {})};
+  var st = document.getElementById('prop-sec-4-status'); if (st) st.textContent = '— not configured';
+  toast('⚠ Top hat ' + (mod.name || '') + ' does not fit this platform family: pick or develop a top hat again in §4');
 }
 
 // A top hat stays in its donor's segment (2026-10-20): it may be reused or derived only for a
@@ -25194,6 +25223,7 @@ function selectPropParent(propKey, moduleId, nextFn) {
   if (!mod) return;
   _prop[propKey] = {mode: 'derivative', parent: mod, module: null, specs: _derivUiSpecs(propKey, mod)};
   _rerenderPropSlot(propKey, nextFn || _PROP_NEXT_FN[propKey]);
+  if (propKey === 'platform') _propRecheckTophat();
 }
 function _derivChangeParent(propKey) {
   _prop[propKey] = {mode: 'derivative', parent: null, module: null, specs: {}};
@@ -25277,6 +25307,7 @@ function setPropModMode(propKey, mode, nextFn) {
                 battery:'prop-pwt-battery-content',
                 tophat:'prop-tophat-content', eands:'prop-eands-content'};
   buildModuleSection(secMap[propKey], modMap[propKey], propKey, elMap[propKey], nextFn);
+  if (propKey === 'platform') _propRecheckTophat();
 }
 
 function selectPropModule(propKey, moduleId, nextFn) {
@@ -25293,6 +25324,7 @@ function selectPropModule(propKey, moduleId, nextFn) {
   // shows as selected and the decision strip turns green.
   var rebuild = {2: buildPlatformSection, 3: buildPWTSection, 4: buildTopHatSection, 5: buildEandSSection}[secNum];
   if (rebuild) rebuild();
+  if (propKey === 'platform') _propRecheckTophat();
   _propTallySchedule();
 }
 
@@ -30442,9 +30474,9 @@ var _SHP_PROP = { data: null, fit: null };
 
 // a module's family root: up its developed_from chain through the team's modules (_prop.modules), as
 // financial_engine.module_family_root does (a derivative of a derivative shares the root's line)
-function _shpFamilyRoot(id) {
+function _shpFamilyRoot(id, mods) {
   var byId = {};
-  (_prop.modules || []).forEach(function (m) { byId[m.id] = m; });
+  (mods || _prop.modules || []).forEach(function (m) { byId[m.id] = m; });
   for (var i = 0; id && byId[id] && byId[id].developed_from_module_id && i < 20; i++) id = byId[id].developed_from_module_id;
   return id || null;
 }
