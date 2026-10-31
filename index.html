@@ -29227,10 +29227,12 @@ function _p7wOpen(pid) {
   });
   var need = _p7mNeedK(ptype);
   var k = conf ? conf.vehicle_capacity_yr
-    : !veh ? (need || Math.floor(av.k) || 50)
     : av.k >= 1 ? Math.min(need || Math.floor(av.k), Math.floor(av.k)) : (need || 50);
+  // a powertrain plant giving fewer units than the vehicle plants build (one powertrain a car) needs a sign-off
+  var sg = conf && conf.pwt_shortfall_signed;
   _P7W = {pid: pid, lk: lk, sp: sp, ptype: ptype, av: av, k: Math.max(1, Math.round(k)), al: al, lineLvl: lineLvl, lock: lock,
-          add: conf && conf.line_add_k != null ? conf.line_add_k : null, conf: conf, cache: {}, manuf: {}, timer: null};
+          add: conf && conf.line_add_k != null ? conf.line_add_k : null, conf: conf, cache: {}, manuf: {}, timer: null,
+          need: veh ? 0 : need, signed: !!(sg && sg.need === need && sg.k === conf.vehicle_capacity_yr)};
   var el = document.getElementById('p7w-modal');
   if (!el) {
     el = document.createElement('div');
@@ -29264,6 +29266,12 @@ function _p7wAuto(t, d) {
   w.al[t] = Math.max(1, Math.min(4, w.al[t] + d));
   _p7wRender();   // every level is priced at once: no new request
 }
+function _p7wSign(on) {   // the team accepts a powertrain plant below its vehicle plants' volume
+  var w = _P7W; if (!w) return;
+  w.signed = !!on;
+  _p7wRenderCost();
+}
+
 function _p7wShare(on) {   // share the family line as installed (add 0) instead of expanding it as needed
   var w = _P7W; if (!w) return;
   w.add = on ? 0 : null;
@@ -29346,6 +29354,12 @@ function _p7wCostHtml() {
       + '<br>' + (bad ? '<span style="color:var(--red);">✗ Not enough room in this plant</span>'
         : warn ? '<span style="color:var(--orange);">⚠ Fits, sharing the line with other models</span>'
         : '<span style="color:var(--green);">✓ Fits</span>');
+    if (!bad && w.ptype === 'powertrain' && w.need > w.k + 0.5) {
+      h += '<br><span style="color:var(--orange);">⚠ Below your vehicle plants’ ' + Math.round(w.need) + 'k/yr: one powertrain a car, so the car is built at most at '
+        + w.k + 'k/yr.</span><label style="display:flex;align-items:center;gap:6px;margin-top:4px;cursor:pointer;color:var(--text);">'
+        + '<input type="checkbox"' + (w.signed ? ' checked' : '') + ' onchange="_p7wSign(this.checked)"> I accept building at most ' + w.k + 'k/yr</label>';
+      if (!w.signed) bad = true;   // Confirm once signed off
+    }
   }
   h += '</div><div style="display:flex;gap:8px;margin-top:12px;">'
     + '<button onclick="_p7wConfirm()"' + (bad ? ' disabled' : '') + ' style="' + MN + 'flex:1;font-size:11px;padding:9px;border-radius:3px;border:1px solid rgba(200,164,60,.5);'
@@ -29381,7 +29395,9 @@ function _p7wRender() {
     + '<div style="display:flex;justify-content:space-between;align-items:center;">'
     + '<span style="' + MN + 'font-size:12px;font-weight:700;color:var(--gold);">' + _P7_KIND[w.ptype].icon + ' ' + _esc(sp.name || sp.country_code) + '</span>'
     + '<button onclick="_p7wClose()" aria-label="Close" style="' + MN + 'font-size:13px;color:var(--muted2);background:none;border:none;cursor:pointer;padding:2px 6px;">✕</button></div>'
-    + '<div style="' + MN + 'font-size:10px;color:var(--muted2);margin-top:4px;">Max available for this car: <b style="color:' + (maxK > 0 ? 'var(--green)' : 'var(--red)') + ';">' + maxK + 'k/yr</b></div>';
+    + '<div style="' + MN + 'font-size:10px;color:var(--muted2);margin-top:4px;">'
+    + (w.ptype === 'powertrain' && w.need ? 'Your vehicle plants: <b style="color:var(--text);">' + Math.round(w.need) + 'k/yr</b> · ' : '')
+    + 'Max available ' + (w.ptype === 'powertrain' && w.need ? 'here' : 'for this car') + ': <b style="color:' + (maxK > 0 ? 'var(--green)' : 'var(--red)') + ';">' + maxK + 'k/yr</b></div>';
   h += row('Volume', btn('_p7wVol(-1)', '▼', 'Volume down') + val(w.k + 'k/yr', 80) + btn('_p7wVol(1)', '▲', 'Volume up'));
   h += w.ptype === 'vehicle' ? auto('platform', 'Platform automation') + auto('tophat', 'Top hat automation')
     : auto('pwt', Object.keys(w.lineLvl).length && !w.lock.pwt ? 'Automation (new lines)' : 'Automation');
@@ -29416,6 +29432,8 @@ function _p7wConfirm() {
   if (e) {
     e.plant_ref = w.pid;
     if (w.add == null) delete e.line_add_k; else e.line_add_k = w.add;
+    if (w.ptype === 'powertrain' && w.need > w.k + 0.5) e.pwt_shortfall_signed = {k: w.k, need: w.need, qabs: (_SHP_PROP.data || {}).qabs};
+    else delete e.pwt_shortfall_signed;
   }
   _p7mSetView(w.ptype);
   _shpPropCheck();
@@ -30601,8 +30619,13 @@ function _shpPropRender() {
     return;
   }
   if (!pps.length) h += '<div style="font-size:11px;color:var(--orange);margin-top:6px;">⚠ No powertrain plant yet: open the Powertrain plants tab above.</div>';
-  else if (pwtK + 0.5 < vehK) h += '<div style="font-size:11px;color:var(--orange);margin-top:6px;">⚠ Powertrain ' + pwtK + 'k/yr is less than the vehicle plants\u2019 '
-    + vehK + 'k/yr: one powertrain a car, so the car can only be built at ' + pwtK + 'k/yr. Raise it in the powertrain plant.</div>';
+  else if (pwtK + 0.5 < vehK) {
+    var sg = pps[0].pwt_shortfall_signed;
+    h += sg && sg.k === pwtK && sg.need === vehK
+      ? '<div style="font-size:11px;color:var(--muted2);margin-top:6px;">Signed off: powertrain ' + pwtK + 'k/yr below the vehicle plants\u2019 ' + vehK + 'k/yr, so the car is built at most at ' + pwtK + 'k/yr.</div>'
+      : '<div style="font-size:11px;color:var(--orange);margin-top:6px;">⚠ Powertrain ' + pwtK + 'k/yr is less than the vehicle plants\u2019 '
+        + vehK + 'k/yr: one powertrain a car, so the car can only be built at ' + pwtK + 'k/yr. Open the powertrain plant to raise it or sign this off.</div>';
+  }
   h += '<div id="prop-shp-res"></div><div style="margin-top:8px;display:flex;gap:10px;align-items:center;">'
     + '<button onclick="_shpPropCheck()" style="' + MN + 'font-size:10px;padding:5px 14px;border-radius:3px;border:1px solid rgba(200,164,60,.4);background:var(--goldl);color:var(--gold);cursor:pointer;">'
     + (ops._plantFit ? 'Check again' : 'Check fit') + '</button><span id="prop-shp-msg" style="font-size:10px;"></span></div></div>';
