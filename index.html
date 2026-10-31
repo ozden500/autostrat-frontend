@@ -28922,7 +28922,7 @@ function _renderSimplifiedFootprint(){
   }
   // shared plants: the map (what this car can get from SOP to EOP; click a plant for its window), the car's
   // allocations, the full table folded; the inline allocation panel is replaced by the window
-  if(_shp){h+=_p7mBox();setTimeout(function(){_p7mDraw();['prop-ops-alloc-area','prop-ops-pwt-footprint-area','prop-ops-pwt-alloc-area'].forEach(function(id){var a=document.getElementById(id);if(a)a.style.display='none';});},0);}
+  if(_shp){h+=_p7mBox();setTimeout(function(){_p7mDraw();['prop-ops-alloc-area','prop-ops-pwt-footprint-area','prop-ops-pwt-alloc-area','prop-ops-impact-area','prop-ops-agg-plants'].forEach(function(id){var a=document.getElementById(id);if(a)a.style.display='none';});},0);}
   var _h0=h;h='';
   h+='<div style="border:1px solid var(--border2);border-radius:4px;overflow:hidden;">';
   var COLS='1fr 70px 70px 70px 50px 50px 50px 90px';
@@ -28981,9 +28981,7 @@ function _renderSimplifiedFootprint(){
     h+='</div>';
   });
   h+='</div>';
-  h=!_shp?_h0+h+'</div>':_h0+(_P7M.view==='powertrain'
-    ?_p7wAllocList('powertrain')+_propFold('p7-ptable','Table view · all your powertrain plants',_renderPwtFootprint())
-    :_p7wAllocList('vehicle')+_propFold('p7-table','Table view · all your vehicle plants',h))+'</div>';
+  h=!_shp?_h0+h+'</div>':_h0+_p7wAllocList(_P7M.view)+'</div>';   // the plants are on the map; Plant fit sums them up
   return h;
 }
 
@@ -30722,7 +30720,7 @@ function _shpPropShow(f) {
       : '✗ Does not fit: ' + _esc((f.errors || []).join('; '))) + '</div>'
     + (f.ok && (f.warnings || []).length ? '<div style="margin-top:4px;font-size:11px;color:var(--orange);line-height:1.5;">⚠ ' + _esc(f.warnings.join('; '))
       + '. You may approve it: the models on the line share it pro rata. §10 shows the capacity-limited case; to close the gap, '
-      + 'untick "Share the installed line" in that plant’s window.</div>' : '')
+      + 'untick "Minimise added capacity" in that plant’s window.</div>' : '')
     + '<table style="width:100%;border-collapse:collapse;font-size:10px;margin-top:4px;">'
     + (f.placements || []).map(function (p) {
       return '<tr style="border-top:1px solid var(--border);"><td style="padding:3px 0;">' + (_SHP_TYPE[p.module_type] || p.module_type) + '</td><td>' + _esc(names[p.plant_id] || '') + '</td>'
