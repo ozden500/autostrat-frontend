@@ -31328,8 +31328,33 @@ function _mzcEstimateCapexM(sk, autoLevel, currentK, additionalK) {
 // sourcing zone's relative cost via labor_index) vs. ongoing capacity investment
 // (incremental scale-up of an already-tooled contract, scaled by automation level).
 // Mirrors backend _mzc_invest (backend/main.py) — keep these in sync.
+// The contract a module reserves on in a zone (2026-11-01; mirror of main._mzc_family_pool): its own when
+// it holds capacity there, else a contract of its family (same root) holding capacity: the parent's, then
+// the root's, then the largest. {key, c, variant}: variant = it sits on another module's contract, shares
+// its capacity, automation level and volume price, and pays its variant tooling once (_spVariantToolM).
+function _spHolds(c) { return !!c && ((+c.contracted_k || 0) + (+c.pending_k || 0)) > 0; }
+function _spPool(sk, moduleId, zoneKey) {
+  var own = _mzcCapacity[(moduleId || sk) + '__' + zoneKey];
+  if (sk === 'battery' || !moduleId || _spHolds(own)) return {key: moduleId || sk, c: own, variant: false};
+  var p = _prop[sk], der = p && p.mode === 'derivative' && p.parent && p.module && p.module.id === moduleId;
+  var parent = der ? p.parent.id : null, root = _shpFamilyRoot(der ? parent : moduleId), best = null;
+  Object.keys(_mzcCapacity).forEach(function (k) {
+    var c = _mzcCapacity[k];
+    if (c.zone_key !== zoneKey || !c.module_id || !_spHolds(c) || _shpFamilyRoot(c.module_id) !== root) return;
+    var sc = c.module_id === parent ? 3 : c.module_id === root ? 2 : 1, kk = (+c.contracted_k || 0) + (+c.pending_k || 0);
+    if (!best || sc > best.sc || (sc === best.sc && kk > best.k)) best = {sc: sc, k: kk, c: c};
+  });
+  return best ? {key: best.c.module_id, c: best.c, variant: true} : {key: moduleId, c: own, variant: false};
+}
+// a variant's tooling on its family's contract: the first-time tooling × its retool_f, once per variant
+function _spVariantToolM(sk, moduleId, pool, zone) {
+  if (!pool.variant || ((pool.c && pool.c.variants) || []).indexOf(moduleId) >= 0) return 0;
+  var p = _prop[sk], rf = p && p.mode === 'derivative' && p.deriv && p.module && p.module.id === moduleId && p.deriv.retool_f != null ? p.deriv.retool_f : 1;
+  return _mzcSupplierGfM(sk, _MODINV_E.V_REF) * _MZC_TOOLING_SHARE * zone.labor_index * rf;
+}
 function _mzcEstimateInvestment(sk, moduleId, zoneKey, autoLevel, needK, share) {
-  var c = _mzcCapacity[(moduleId || sk) + '__' + zoneKey] || { contracted_k: 0, free_k: 0 };
+  var pool = _spPool(sk, moduleId, zoneKey);
+  var c = pool.c || { contracted_k: 0, free_k: 0 };
   // share (2026-11-01): rely on the contract's installed capacity, shared with the team's other models
   var freeK = share ? Math.max(0, (c.contracted_k || 0) + (c.pending_k || 0)) : Math.max(0, c.free_k || 0);
   var shortfall = Math.max(0, (needK || 0) - freeK);
@@ -31339,18 +31364,22 @@ function _mzcEstimateInvestment(sk, moduleId, zoneKey, autoLevel, needK, share) 
   // qualification cost that doesn't depend on how many you order), scaled by the zone's local labour.
   // Capacity above is deliberately NOT zone-scaled: production equipment is globally traded, so
   // labor_index (Mexico 0.13 vs W. Europe 1.10) applies to local qualification/installation only.
-  var toolingM = isFirstTime ? _mzcSupplierGfM(sk, _MODINV_E.V_REF) * _MZC_TOOLING_SHARE * zone.labor_index * _mzcRetoolF(moduleId, zoneKey) : 0;
+  var toolingM = pool.variant ? _spVariantToolM(sk, moduleId, pool, zone)
+    : isFirstTime ? _mzcSupplierGfM(sk, _MODINV_E.V_REF) * _MZC_TOOLING_SHARE * zone.labor_index * _mzcRetoolF(moduleId, zoneKey) : 0;
   var capacityM = _mzcEstimateCapexM(sk, autoLevel, c.contracted_k || 0, shortfall);
-  return { shortfall: shortfall, isFirstTime: isFirstTime, toolingM: toolingM, capacityM: capacityM, totalM: toolingM + capacityM };
+  return { shortfall: shortfall, isFirstTime: isFirstTime, toolingM: toolingM, capacityM: capacityM, totalM: toolingM + capacityM,
+           variant: pool.variant, poolKey: pool.key };
 }
 
 function _mzcCapacityStrip(sk, moduleId, zoneKey, autoLevel, needK, share) {
-  var c = _mzcCapacity[(moduleId || sk) + '__' + zoneKey] || { contracted_k: 0, reserved_k: 0, free_k: 0, price_adj_pct: 0, pending_adj_pct: 0 };
+  var _pl = _spPool(sk, moduleId, zoneKey);
+  var c = _pl.c || { contracted_k: 0, reserved_k: 0, free_k: 0, price_adj_pct: 0, pending_adj_pct: 0 };
   var freeK = share ? Math.max(0, (c.contracted_k || 0) + (c.pending_k || 0)) : Math.max(0, c.free_k || 0);
   var shortfall = Math.max(0, (needK || 0) - freeK);
   var MO = 'font-family:DM Mono,monospace;';
   var h = '<div style="margin-top:9px;padding:7px 9px;background:var(--s2);border-radius:3px;border:1px dashed var(--border2);">';
-  h += '<div style="' + MO + 'font-size:7px;color:var(--muted2);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:3px;">📦 Zone Supply Contract — ' + zoneKey + '</div>';
+  h += '<div style="' + MO + 'font-size:7px;color:var(--muted2);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:3px;">📦 Zone Supply Contract — ' + zoneKey
+    + (_pl.variant ? ' · family contract ' + _esc(c.module_name || '') : '') + '</div>';
   h += '<div style="display:flex;gap:10px;flex-wrap:wrap;' + MO + 'font-size:7.5px;color:var(--muted2);">';
   h += '<span>Contracted <b style="color:var(--text);">' + (c.contracted_k || 0) + 'k</b></span>';
   h += '<span>Reserved <b style="color:var(--text);">' + (c.reserved_k || 0) + 'k</b></span>';
@@ -31500,7 +31529,7 @@ function _renderSourcingInvestmentSummary(){
     groups[l.sk]=groups[l.sk]||{};
     var g=groups[l.sk][l.zone];
     if(!g){
-      var c=_mzcCapacity[(l.moduleId||l.sk)+'__'+l.zone]||{};
+      var c=_spPool(l.sk,l.moduleId,l.zone).c||{};
       g=groups[l.sk][l.zone]={contracted_k:c.contracted_k||0,needK:0,shortfall:0,toolingM:0,capacityM:0,totalM:0,isFirstTime:false,autoSet:{}};
     }
     g.needK+=l.needK;
@@ -31531,7 +31560,7 @@ function _renderSourcingInvestmentSummary(){
   // the bridge can never disagree with the breakdown below or with what confirmSourcingPlan() bills.
   var bGf=0,bGfTool=0,bCapNoAuto=0;
   allLines.forEach(function(l){
-    var c=_mzcCapacity[(l.moduleId||l.sk)+'__'+l.zone]||{};
+    var c=_spPool(l.sk,l.moduleId,l.zone).c||{};
     var cur=c.contracted_k||0;
     var zone=SP_ZONES.find(function(z){return z.key===l.zone;})||SP_ZONES[0];
     bGf        += _mzcSupplierGfM(l.sk,l.needK);
@@ -31890,8 +31919,8 @@ var _P8W = null;
 // a supplier contract runs at one automation level (2026-11-01, set by its first order): the level of the
 // module's contract in this zone when it holds capacity (contracted or on order), else 0 (free to pick)
 function _spAutoLock(sk, moduleId, zone) {
-  var c = _mzcCapacity[(moduleId || sk) + '__' + zone];
-  return c && ((+c.contracted_k || 0) + (+c.pending_k || 0)) > 0 ? (+c.automation_level || 2) : 0;
+  var c = _spPool(sk, moduleId, zone).c;   // its own contract, or its family's (a derivative)
+  return _spHolds(c) ? (+c.automation_level || 2) : 0;
 }
 function _spDecLock(sk, dec, zone) { return _spAutoLock(sk, dec.module_id != null ? dec.module_id : _spModuleIdForSlot(sk), zone || dec.zone); }
 // the plan follows the locks (a default or older choice on a contracted zone takes the contract's level)
@@ -32018,6 +32047,13 @@ function _p8wRender() {
       + '<div style="' + MN + 'font-size:10px;margin-top:6px;text-align:right;"><b style="color:' + (pr.d > 0 ? 'var(--orange)' : 'var(--green)') + ';">' + sg(pr.d) + '/car</b>'
       + (pr.inv !== null ? ' <span style="color:var(--muted2);">\u00b7 supplier capex \u20ac' + pr.inv.toFixed(1) + 'M</span>' : '')
       + (hz ? '<br><span style="color:' + _SRC_GOLD + ';">\u25c6 you already hold ' + Math.round(hz.k) + 'k/yr here' + (hz.parent ? ' (parent module)' : '') + ', ' + Math.round(hz.free_k) + 'k/yr free</span>' : '')
+      + (function () {
+          var mid = dec.module_id != null ? dec.module_id : _spModuleIdForSlot(sk), pl = _spPool(sk, mid, dec.zone);
+          if (!pl.variant) return '';
+          var zz = SP_ZONES.find(function (q) { return q.key === dec.zone; }) || SP_ZONES[0], vt = _spVariantToolM(sk, mid, pl, zz);
+          return '<br><span style="color:var(--muted2);">on the family contract ' + _esc(pl.c.module_name || '') + ' \u00b7 '
+            + (vt > 0 ? 'variant tooling \u20ac' + vt.toFixed(1) + 'M' : 'variant already tooled') + '</span>';
+        })()
       + '</div>'
       + (_spDecLock(sk, dec)
         ? '<label style="display:flex;align-items:flex-start;gap:6px;margin-top:6px;' + MN + 'font-size:10px;color:var(--text);cursor:pointer;">'
