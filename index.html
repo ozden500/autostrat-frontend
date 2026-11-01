@@ -23555,7 +23555,7 @@ function _propLadderRender() {
       body.insertBefore(el, ds ? ds.nextSibling : body.firstChild);
     }
     var key = 'ladder' + n;
-    if (_propFoldOpen[key] === undefined) _propFoldOpen[key] = true;   // open by default
+    if (_propFoldOpen[key] === undefined) _propFoldOpen[key] = false;   // collapsed by default; the team expands it
     var html = _propLadderHtml(n);
     el.innerHTML = html ? _propFold(key, 'Cost per car, built up', html) : '';
   }
