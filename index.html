@@ -28493,6 +28493,101 @@ function _computePlantTransformationImpact(standardMake, vehiclePlants) {
   return {actualMake:actualMake, delta:delta, deltaColor:deltaColor, deltaStr:deltaStr};
 }
 
+// §7's module table (2026-11-01): §6's per-module table after the plant decisions. Per module: R&D (unchanged),
+// plant capex (the plant-fit check's placements; §6's greenfield until it has run), supplier capex (§6's greenfield:
+// sourcing sets it in §8), bought parts = §6's DMP + its share (by DMP) of the plants' buy-side volume effect, and
+// transformation = §6's make + its share (by work content at that plant's automation) of the plant's transformation vs
+// the standard plant; both weighted by each vehicle plant's share of the cars, so the totals equal the §8 bridge's
+// "Proposal so far" (_spPlantCostWeighted).
+function _p7ModuleCosts() {
+  var keys = ['platform', 'pwt', 'epwt', 'battery', 'tophat', 'eands'], cx = _computeStandardModuleCapex(), rows = {}, order = [];
+  var fit = (_prop.operations || {})._plantFit, fitOk = !!(fit && fit.ok && fit.placements);
+  var FIT_T = {platform: 'platform', tophat: 'tophat', pwt: 'ice_pwt', epwt: 'epwt', battery: 'battery'};
+  var totDmp = 0;
+  keys.forEach(function (k) {
+    var p = _prop[k];
+    if (!p || !p.mode || !p.module) return;
+    var tpc = parseFloat(p.module.per_unit_tpc_eur || 0), c = cx[k] || {plant: 0, supplier: 0};
+    var dmp = p.module.dmp ? parseFloat(p.module.dmp.total_eur || 0) : tpc * 0.85;
+    var make = p.module.make ? parseFloat(p.module.make.total_eur || 0) : tpc * 0.15;
+    var plant = c.plant || 0;
+    if (fitOk) plant = fit.placements.filter(function (x) { return x.module_type === FIT_T[k]; })
+      .reduce(function (a, x) { return a + (+x.capex_m || 0); }, 0);
+    rows[k] = {k: k, rd: _slotRdM(p), plant0: c.plant || 0, plant: plant, sup: c.supplier || 0, dmp0: dmp, make0: make, dmp: dmp, make: make};
+    order.push(k); totDmp += dmp;
+  });
+  var seg = (_prop.study && _prop.study.segment_code) || 'c_segment', bt = _getBodyType(), psz = _getPlatformSize(), pk = _pwtKeyFromProp();
+  var vps = _spPlantSlotsWeights().filter(function (x) { return x.ptype === 'vehicle'; });
+  vps.forEach(function (x) {
+    var mfr = _ensureVehiclePlantManuf(x.p);
+    if (!mfr) return;
+    var wc = {}, wcTot = 0;
+    order.forEach(function (k) {
+      var p = _prop[k] || {};
+      wc[k] = _MODINV_E.workContent(k, {specs: p.specs || (p.module && p.module.specs) || {}, segment_code: seg, body_type: bt, platform_size: psz,
+        pwt_type: pk, automation_level: x.p.automation_level || 2, platform_shared: x.p.platform_shared || false, cap_k: 0}) || 0;
+      wcTot += wc[k];
+    });
+    var buy = mfr.buy_cost_adj || 0, dMake = _manufVarDelta(mfr);
+    order.forEach(function (k) {
+      var r = rows[k];
+      r.dmp += x.w * buy * (totDmp > 0 ? r.dmp0 / totDmp : 0);
+      r.make += x.w * dMake * (wcTot > 0 ? wc[k] / wcTot : 1 / order.length);
+    });
+  });
+  return {rows: order.map(function (k) { return rows[k]; }), fitOk: fitOk, fitRun: !!fit, plants: vps.length};
+}
+function _renderP7ModuleTable() {
+  var d = _p7ModuleCosts();
+  if (!d.rows.length) return '';
+  var MO = 'font-family:DM Mono,monospace;', COLS = 'minmax(0,1fr) 66px 84px 76px 104px 112px 92px 96px';
+  var f = function (v) { return Math.round(v).toLocaleString(); };
+  var delta = function (v, unit) {
+    var n = Math.round(v * (unit === 'M' ? 10 : 1)) / (unit === 'M' ? 10 : 1);
+    if (Math.abs(n) < (unit === 'M' ? 0.05 : 0.5)) return '';
+    return ' <span style="font-size:7px;color:' + (n > 0 ? 'var(--orange)' : 'var(--green)') + ';">' + (n > 0 ? '+' : '−') + '€'
+      + (unit === 'M' ? Math.abs(n).toFixed(1) + 'M' : Math.abs(n).toLocaleString()) + '</span>';
+  };
+  var cell = function (t, c, b) { return '<div style="text-align:right;white-space:nowrap;' + MO + 'font-size:8px;color:' + (c || 'var(--muted2)') + ';' + (b ? 'font-weight:700;' : '') + '">' + t + '</div>'; };
+  var hdr = ['R&amp;D €M', 'Plant €M', 'Supplier €M', 'Bought parts €', 'Transformation €', 'TPC €', 'Ready'];
+  var out = '<div style="display:grid;grid-template-columns:' + COLS + ';gap:8px;padding:6px 10px 5px;' + MO + 'font-size:7px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;">'
+    + '<div>Module</div>' + hdr.map(function (t) { return '<div style="text-align:right;">' + t + '</div>'; }).join('') + '</div>';
+  var T = {rd: 0, plant: 0, plant0: 0, sup: 0, dmp: 0, dmp0: 0, make: 0, make0: 0};
+  d.rows.forEach(function (r) {
+    var meta = OEM_COST_MOD_META[r.k] || {label: r.k, color: 'var(--text)'}, tpc = r.dmp + r.make, tpc0 = r.dmp0 + r.make0;
+    Object.keys(T).forEach(function (q) { T[q] += r[q]; });
+    out += '<div style="display:grid;grid-template-columns:' + COLS + ';gap:8px;align-items:center;padding:7px 10px;border-bottom:1px solid rgba(255,255,255,.04);background:var(--s2);border-left:3px solid ' + meta.color + ';">'
+      + '<div style="display:flex;align-items:center;gap:6px;overflow:hidden;"><span style="width:6px;height:6px;border-radius:1px;background:' + meta.color + ';flex-shrink:0;"></span>'
+      + '<span style="' + MO + 'font-size:9px;font-weight:700;color:var(--white);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + meta.label + '</span></div>'
+      + cell('€' + f(r.rd) + 'M')
+      + cell(r.plant > 0 || r.plant0 > 0 ? '€' + f(r.plant) + 'M' + delta(r.plant - r.plant0, 'M') : '—')
+      + cell(r.sup > 0 ? '€' + f(r.sup) + 'M' : '—')
+      + cell('€' + f(r.dmp) + delta(r.dmp - r.dmp0), 'var(--text)')
+      + cell('€' + f(r.make) + delta(r.make - r.make0), 'var(--text)')
+      + '<div style="text-align:right;white-space:nowrap;font-family:Orbitron,sans-serif;font-size:11px;font-weight:700;color:' + meta.color + ';">€' + f(tpc) + delta(tpc - tpc0) + '</div>'
+      + '<div style="text-align:right;' + MO + 'font-size:8px;white-space:nowrap;">' + _propSopCell(r.k) + '</div></div>';
+  });
+  var _sv = _prop.study || {}, sopL = _sv.start_year ? 'Q' + (_sv.start_quarter || 1) + ' ' + _sv.start_year : '—';
+  var tpcT = T.dmp + T.make, tpcT0 = T.dmp0 + T.make0;
+  out += '<div style="display:grid;grid-template-columns:' + COLS + ';gap:8px;align-items:center;padding:8px 10px;background:var(--s3);border-top:1px solid rgba(200,164,60,.3);">'
+    + '<div style="' + MO + 'font-size:9px;font-weight:700;color:var(--gold);">TOTAL</div>'
+    + cell('€' + f(T.rd) + 'M', 'var(--white)', 1)
+    + cell('€' + f(T.plant) + 'M' + delta(T.plant - T.plant0, 'M'), 'var(--white)', 1)
+    + cell('€' + f(T.sup) + 'M', 'var(--white)', 1)
+    + cell('€' + f(T.dmp) + delta(T.dmp - T.dmp0), 'var(--white)', 1)
+    + cell('€' + f(T.make) + delta(T.make - T.make0), 'var(--white)', 1)
+    + '<div style="text-align:right;white-space:nowrap;font-family:Orbitron,sans-serif;font-size:12px;font-weight:800;color:var(--gold);">€' + f(tpcT) + delta(tpcT - tpcT0) + '</div>'
+    + cell('SOP ' + sopL, 'var(--white)', 1) + '</div>';
+  var note = 'Small figures = change vs §6. Plant capex: ' + (d.fitOk ? 'from the plant check (new lines, expansions, retooling)'
+      : d.fitRun ? 'the plant check failed, so §6\'s greenfield is shown' : '§6\'s greenfield until you run the plant check')
+    + '. Bought parts and transformation include each vehicle plant\'s volume effect and its transformation vs the standard plant'
+    + (d.plants > 1 ? ', weighted by its share of the cars' : '') + (d.plants ? '' : ' (none yet: confirm a vehicle plant)')
+    + '. Supplier capex stays §6\'s greenfield; sourcing sets it in §8.';
+  return '<div style="margin:16px 0 4px;' + MO + 'font-size:8px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);">Module cost &amp; investment — after your plant decisions</div>'
+    + '<div style="border:1px solid var(--border2);border-radius:4px;overflow:hidden;">' + out + '</div>'
+    + '<div style="' + MO + 'font-size:7.5px;color:var(--muted2);margin-top:5px;line-height:1.5;">' + note + '</div>';
+}
+
 function _calcFacilityInv(type,fac){
   var pk=_pwtKeyFromProp(),isEv=pk==='bev_only',isHybrid=pk==='ice_and_bev',hasIce=!isEv,hasBev=isEv||isHybrid;
   var targetKwh=((_prop.battery&&_prop.battery.module&&_prop.battery.module.specs&&_prop.battery.module.specs.target_kwh)||(_prop.battery&&_prop.battery.specs&&_prop.battery.specs.target_kwh))||60;
@@ -28926,6 +29021,8 @@ function renderOpsAggregateSummary(){
   // Re-render the §7 transformation cost impact panel as plant allocations are confirmed/removed
   var impEl=document.getElementById('prop-ops-impact-area');
   if(impEl)impEl.innerHTML=_renderPlantTransformationImpact();
+  var mcEl=document.getElementById('prop-ops-modcost-area');   // §7 module table after the plant decisions
+  if(mcEl)mcEl.innerHTML=_renderP7ModuleTable();
 }
 
 function _getVehicleModuleColumns(){
@@ -30943,6 +31040,7 @@ async function buildMfgPlantSection() {
   html+=aT('Vehicle Plant Capex','—','var(--gold)','prop-ops-agg-vp');
   html+=aT('PWT Plant Capex','—','var(--orange)','prop-ops-agg-pwt');
   html+='</div>';
+  html+='<div id="prop-ops-modcost-area">'+_renderP7ModuleTable()+'</div>';
   html+='<div style="margin-top:14px;display:flex;justify-content:flex-end;"><button onclick="advanceToComponentsSourcing()" style="font-family:DM Mono,monospace;font-size:10px;padding:8px 18px;border-radius:3px;border:1px solid rgba(200,164,60,.4);background:var(--goldl);color:var(--gold);cursor:pointer;">Continue → Components Sourcing</button></div>';
   el.innerHTML = html;
   _buildPlantFromDecision();
