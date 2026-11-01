@@ -26967,7 +26967,7 @@ function _propSopHtml() {
   var sopQ = v.start_year ? (v.start_year - 2025) * 4 + (v.start_quarter || 1) - 1 : null;
   var d = sc.data, bad = d && !d.ok;
   var h = '<div style="background:rgba(255,255,255,.03);border:1px solid ' + (bad ? 'rgba(239,68,68,.45)' : 'rgba(255,255,255,.08)') + ';border-radius:4px;padding:10px 12px;">'
-    + '<div style="' + MN + 'font-size:7px;letter-spacing:2px;color:' + (bad ? 'var(--red)' : 'var(--muted)') + ';margin-bottom:6px;">MODULE READINESS'
+    + '<div style="' + MN + 'font-size:7px;letter-spacing:2px;color:' + (bad ? 'var(--red)' : 'var(--muted2)') + ';margin-bottom:6px;">MODULE READINESS'
     + (sopQ != null ? ' vs SOP ' + _propQLbl(sopQ) : '') + '</div>';
   if (sc.pend) return h + '<div style="' + MN + 'font-size:9px;color:var(--muted2);">Checking module ready dates\u2026</div></div>';
   if (!d) return h + '<div style="' + MN + 'font-size:9px;color:var(--muted2);">Ready dates unavailable: they are checked again when you submit.</div></div>';
@@ -26979,8 +26979,8 @@ function _propSopHtml() {
       : 'ready ' + _propQLbl(m.ready_qabs) + (m.lead_time_quarters ? ' (' + m.lead_time_quarters + ' qtr' + (m.lead_time_quarters !== 1 ? 's' : '') + ' from now)' : '')
         + (m.blocks_sop ? ' \u26a0 +' + (m.ready_qabs - sopQ) + ' qtr' + (m.ready_qabs - sopQ !== 1 ? 's' : '') + ' after SOP' : '');
     h += '<div style="display:flex;justify-content:space-between;gap:10px;padding:3px 0;border-bottom:1px solid rgba(255,255,255,.04);">'
-      + '<span style="' + MN + 'font-size:9px;color:var(--muted2);">' + (_PROP_SOP_LBL[m.slot] || m.slot).toUpperCase()
-      + ' <span style="color:var(--muted);">\u00b7 ' + (MODE[m.mode] || '') + (m.name ? ' ' + _esc(m.name) : '') + '</span></span>'
+      + '<span style="' + MN + 'font-size:9px;color:var(--text);">' + (_PROP_SOP_LBL[m.slot] || m.slot).toUpperCase()
+      + ' <span style="color:var(--text);opacity:.75;">\u00b7 ' + (MODE[m.mode] || '') + (m.name ? ' ' + _esc(m.name) : '') + '</span></span>'
       + '<span style="' + MN + 'font-size:9px;color:' + col + ';text-align:right;">' + txt + '</span></div>';
   });
   if (bad) {
