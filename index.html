@@ -12917,13 +12917,13 @@ async function promoteVehicle(vehicleId, newStatus) {
 }
 
 async function deleteVehicle(vehicleId) {
-  if (!confirm('Delete this vehicle? This cannot be undone.\n\nSupplier tooling bought for it in §8 that no other model uses is written off (an R&D expense this quarter).')) return;
+  if (!confirm('Delete this vehicle? This cannot be undone.\n\nIts §8 supplier orders are released at no cost. Supplier capex it already paid before SOP (in closed rounds) is sunk and written off.')) return;
   try {
     const res = await fetch(`${API_URL}/vehicles/${vehicleId}`, {method:'DELETE'});
     const data = await res.json();
     if (data.success) {
       var wo = Number(data.supplier_writeoff_m || 0);
-      toast('✓ Vehicle deleted' + (wo > 0 ? ' · €' + wo.toFixed(1) + 'M supplier tooling written off' : ''));
+      toast('✓ Vehicle deleted' + (wo > 0 ? ' · €' + wo.toFixed(1) + 'M prepaid supplier capex sunk' : ''));
       await loadVehiclePlan();
     }
     else toast('⚠ '+(data.detail||'Error'));
@@ -18752,7 +18752,7 @@ var _FIN_LINES = {
     {l:'Plant fixed cost (capacity not used)', k:'plant_fixed_m', neg:true, optional:true},
     {l:'Plant decisions (compaction, mothball, severance)', k:'plant_event_cost_m', neg:true, optional:true},
     {l:'Depreciation',           k:'depreciation_total_m', neg:true},
-    {l:'  ↳ incl. book value written off at end of production (one-off)', k:'eop_writeoff_m', neg:true, optional:true},
+    {l:'  ↳ incl. one-off write-offs (end of production; prepaid supplier capex of a cancelled model)', k:'eop_writeoff_m', neg:true, optional:true},
     {l:'Factoring & reverse-factoring fees', k:'_wc_fin', neg:true, optional:true},
     {l:'Lease rent (sale-and-leaseback)', k:'lease_rent_m', neg:true, optional:true},
     {l:'Financial services (captive, after losses)', k:'fs_ebit_m', optional:true},
@@ -20737,7 +20737,7 @@ let mfgCurrentRound = 1;
 let _propVoByPlant = {};    // locKey → units_sold last round (populated by buildMfgPlantSection)
 let _propVoPerVehicle = {}; // vehicle_id → units_sold last round
 let _plantLeadTimes = { build: 4, expand: 2 };
-let _mzcLeadTimeQ = 2;
+let _mzcLeadTimeQ = 1;   // the session's supplier lead time (lt_module_capacity_q); unset = 1, as main._mzc_lead_time_q
 let mfgCountries = {}; // {region: [{country_code, country_name}]}
 
 // Footprint tab state
@@ -31387,14 +31387,13 @@ function _mzcCapacityStrip(sk, moduleId, zoneKey, autoLevel, needK, share) {
   h += '<span>Free <b style="color:' + (freeK > 0 ? 'var(--green)' : 'var(--muted2)') + ';">' + freeK.toFixed(1) + 'k</b></span>';
   h += '<span>Need <b style="color:var(--gold);">' + (needK || 0) + 'k</b></span>';
   h += '</div>';
-  if (shortfall > 0) {
-    var inv = _mzcEstimateInvestment(sk, moduleId, zoneKey, autoLevel, needK, share);
+  var inv = _mzcEstimateInvestment(sk, moduleId, zoneKey, autoLevel, needK, share);
+  if (shortfall > 0 || inv.toolingM > 0) {
     var leadTxt = '~' + _mzcLeadTimeQ + ' round' + (_mzcLeadTimeQ > 1 ? 's' : '');
-    if (inv.isFirstTime) {
-      h += '<div style="' + MO + 'font-size:7px;color:var(--orange);margin-top:3px;">⚠ First-time tooling in ' + zoneKey + ': €' + inv.toolingM.toFixed(2) + 'M tooling + €' + inv.capacityM.toFixed(2) + 'M capacity = €' + inv.totalM.toFixed(2) + 'M now — +' + inv.shortfall.toFixed(1) + 'k usable in ' + leadTxt + '</div>';
-    } else {
-      h += '<div style="' + MO + 'font-size:7px;color:var(--orange);margin-top:3px;">⚠ Capacity expansion in ' + zoneKey + ': €' + inv.capacityM.toFixed(2) + 'M now — +' + inv.shortfall.toFixed(1) + 'k usable in ' + leadTxt + '</div>';
-    }
+    var what = inv.variant ? 'Variant tooling on the family contract' : inv.isFirstTime ? 'First-time tooling' : 'Capacity expansion';
+    h += '<div style="' + MO + 'font-size:7px;color:var(--orange);margin-top:3px;">⚠ ' + what + ' in ' + zoneKey + ': '
+      + (inv.toolingM > 0 ? 'tooling €' + inv.toolingM.toFixed(2) + 'M + ' : '') + 'capacity €' + inv.capacityM.toFixed(2) + 'M = €' + inv.totalM.toFixed(2) + 'M'
+      + (inv.shortfall > 0 ? ' — +' + inv.shortfall.toFixed(1) + 'k usable in ' + leadTxt : '') + '</div>';
   } else {
     h += '<div style="' + MO + 'font-size:7px;color:var(--green);margin-top:3px;">✓ Covered by existing contracted capacity' + (share ? ' (shared with your other models)' : '') + '</div>';
   }
@@ -31517,34 +31516,12 @@ function _renderSourcingInvestmentSummary(){
   lines=lines.filter(function(l){return l.inv.totalM>0;});
   if(!lines.length)return '';
   var TYPE_ORDER=['platform','pwt','epwt','battery','tophat','eands'];
-  var TYPE_LABELS={platform:'PLATFORM',pwt:'ICE PWT',epwt:'e-PWT',battery:'BATTERY',tophat:'TOPHAT',eands:'E&S'};
   var MO='font-family:DM Mono,monospace;';
   var totalTooling=0,totalCapacity=0;
   lines.forEach(function(l){totalTooling+=l.inv.toolingM;totalCapacity+=l.inv.capacityM;});
 
-  // Group lines by module slot, then by sourcing zone — aggregating amounts
-  // (not recomputing) so the displayed totals stay in lockstep with what
-  // confirmSourcingPlan() actually reserves/charges per (plant, module, zone).
-  var groups={};
-  lines.forEach(function(l){
-    groups[l.sk]=groups[l.sk]||{};
-    var g=groups[l.sk][l.zone];
-    if(!g){
-      var c=_spPool(l.sk,l.moduleId,l.zone).c||{};
-      g=groups[l.sk][l.zone]={contracted_k:c.contracted_k||0,needK:0,shortfall:0,toolingM:0,capacityM:0,totalM:0,isFirstTime:false,autoSet:{}};
-    }
-    g.needK+=l.needK;
-    g.shortfall+=l.inv.shortfall;
-    g.toolingM+=l.inv.toolingM;
-    g.capacityM+=l.inv.capacityM;
-    g.totalM+=l.inv.totalM;
-    g.isFirstTime=g.isFirstTime||l.inv.isFirstTime;
-    g.autoSet[l.automation]=true;
-  });
-  // Each zone entry is rendered as its own short paragraph (header line of stats +
-  // an optional investment line below) rather than a fixed-column grid — long
-  // "tooling €X + capacity €Y = €Z" strings used to wrap inside a narrow grid cell
-  // and break row alignment with the neighboring columns, producing a jumbled look.
+  // The per-module investment (zone, contracted / required k, tooling + capacity) is in each module's
+  // build-up in Sourcing Decisions (_mzcCapacityStrip); this panel keeps the whole car (2026-11-01).
   var h='<div style="margin-bottom:12px;padding:10px 12px;background:var(--s2);border-radius:4px;border:1px solid var(--border2);">';
   h+='<div style="'+MO+'font-size:8px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:7px;">💰 Required Supplier Investment — based on Section 7 reservation amounts</div>';
 
@@ -31553,14 +31530,12 @@ function _renderSourcingInvestmentSummary(){
   //   greenfield @ your volume  (§7's curve at needK, auto L2, nothing contracted, PLUS the first-time
   //                              tooling a new supplier charges in the chosen zone; 2026-11-01: without
   //                              it tooling read as a +€ increase over a baseline that never paid it)
-  //   + already-contracted credit (marginal cost further along the 0.6 curve; ≤ 0)
+  //   + per module, the investment its existing supply contract avoids (capacity further along the 0.6
+  //     curve and tooling already in place, together: its brownfield before automation − its greenfield; ≤ 0)
   //   + supplier automation       (auto.capacity_mult vs L2)
-  //   + tooling already in place  (a contract held in the zone, or a parent module's tooling: ≤ 0)
   //   = brownfield charged
   // over every (plant, module) with a volume, and sum to totalTooling+totalCapacity by construction, so
-  // the bridge can never disagree with the breakdown below or with what confirmSourcingPlan() bills.
-  // per module (2026-11-01): what its existing supply contract avoids, capacity and tooling together
-  //   = (its brownfield before automation) − (its greenfield capacity + tooling)
+  // the bridge can never disagree with the module build-ups or with what confirmSourcingPlan() bills.
   var bGf=0,bGfTool=0,bCapNoAuto=0,bAvoid={},bFam={};
   allLines.forEach(function(l){
     var pl=_spPool(l.sk,l.moduleId,l.zone), c=pl.c||{};
@@ -31593,59 +31568,7 @@ function _renderSourcingInvestmentSummary(){
   h+=_bRow('Brownfield — charged on confirm','<span style="color:var(--cyan);">€'+bTotal.toFixed(2)+'M</span>',true);
   h+='</div>';
 
-  TYPE_ORDER.forEach(function(sk){
-    var zoneMap=groups[sk];
-    if(!zoneMap)return;
-    var zoneKeys=Object.keys(zoneMap);
-    var moduleTotalM=0;
-    zoneKeys.forEach(function(zk){moduleTotalM+=zoneMap[zk].totalM;});
-    zoneKeys.sort(function(a,b){
-      var za=SP_ZONES.find(function(z){return z.key===a;}),zb=SP_ZONES.find(function(z){return z.key===b;});
-      return (za&&za.label||a).localeCompare(zb&&zb.label||b);
-    });
-    h+='<div style="display:flex;justify-content:space-between;gap:8px;'+MO+'font-size:8px;font-weight:700;color:var(--text);padding:7px 0 3px;border-top:1px solid var(--border2);">';
-    h+='<span>'+(TYPE_LABELS[sk]||sk.toUpperCase())+'</span>';
-    h+='<span style="color:var(--muted2);font-weight:400;">€'+moduleTotalM.toFixed(2)+'M</span>';
-    h+='</div>';
-    zoneKeys.forEach(function(zk){
-      var g=zoneMap[zk];
-      var zone=SP_ZONES.find(function(z){return z.key===zk;});
-      var zoneLabel=(zone?zone.flag+' '+zone.label:zk);
-      var autoKeys=Object.keys(g.autoSet);
-      var autoLabel='Mixed';
-      if(autoKeys.length===1){
-        var al=SP_AUTO_LEVELS.find(function(a){return a.key===Number(autoKeys[0]);});
-        autoLabel=al?al.label:autoKeys[0];
-      }
-      var addCol=g.shortfall>0?(g.isFirstTime?'var(--orange)':'var(--cyan)'):'var(--muted2)';
-      h+='<div style="padding:4px 0 4px 12px;">';
-      h+='<div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px;flex-wrap:wrap;'+MO+'font-size:7.5px;">';
-      h+='<span style="color:var(--text);font-weight:600;">'+zoneLabel+'</span>';
-      h+='<span style="color:var(--muted2);text-align:right;">'
-        +'Contracted <b style="color:'+(g.contracted_k>0?'var(--text)':'var(--muted2)')+';font-weight:600;">'+g.contracted_k.toFixed(0)+'k</b>'
-        +' · Required <b style="color:var(--text);font-weight:600;">'+g.needK.toFixed(0)+'k</b>'
-        +(g.shortfall>0?(' · <span style="color:'+addCol+';font-weight:600;">+'+g.shortfall.toFixed(0)+'k</span>'):'')
-        +' · '+autoLabel
-        +'</span>';
-      h+='</div>';
-      if(g.totalM>0){
-        var invCol=g.isFirstTime?'var(--orange)':'var(--cyan)';
-        var invTxt=g.isFirstTime
-          ?('Tooling <b>€'+g.toolingM.toFixed(2)+'M</b> + Capacity <b>€'+g.capacityM.toFixed(2)+'M</b> = <b>€'+g.totalM.toFixed(2)+'M</b>')
-          :('Capacity <b>€'+g.capacityM.toFixed(2)+'M</b> = <b>€'+g.totalM.toFixed(2)+'M</b>');
-        h+='<div style="'+MO+'font-size:7px;color:'+invCol+';margin-top:2px;">→ '+invTxt+'</div>';
-      } else {
-        h+='<div style="'+MO+'font-size:7px;color:var(--muted2);margin-top:2px;">→ Covered by existing contracted capacity — no new investment</div>';
-      }
-      h+='</div>';
-    });
-  });
-  h+='<div style="border-top:1px solid var(--border2);margin:6px 0 4px;"></div>';
-  h+='<div style="display:flex;justify-content:space-between;gap:8px;'+MO+'font-size:8px;font-weight:700;">';
-  h+='<span style="color:var(--text);">Total — €'+(totalTooling+totalCapacity).toFixed(2)+'M</span>';
-  h+='<span style="color:var(--muted2);font-weight:400;">Tooling €'+totalTooling.toFixed(2)+'M + Capacity €'+totalCapacity.toFixed(2)+'M</span>';
-  h+='</div>';
-  h+='<div style="'+MO+'font-size:7px;color:var(--muted2);margin-top:4px;">Charged on "Confirm Sourcing Plan — Reserve Capacity" below; capacity benefit (price discount) applies from next round.</div>';
+  h+='<div style="'+MO+'font-size:7px;color:var(--muted2);margin-top:4px;">Ordered on "Reserve capacity" below. Once the model is approved it is paid in equal parts over the '+_mzcLeadTimeQ+' quarter'+(_mzcLeadTimeQ>1?'s':'')+' before SOP (supplier lead time); the asset stands from SOP and is depreciated to EOP. The volume price discount applies once the capacity is ready.</div>';
   h+='</div>';
   return h;
 }
