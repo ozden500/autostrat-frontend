@@ -29211,18 +29211,25 @@ function _p7mDraw() {
     else g.append('circle').attr('r', R * 0.4).attr('fill', '#dce8f8');
     g.append('text').attr('y', R + 11).attr('text-anchor', 'middle').style('font-family', 'DM Mono,monospace').style('font-size', '9.5px')
       .style('fill', col).style('paint-order', 'stroke').style('stroke', '#07080d').style('stroke-width', '3px')
-      .text(Math.round(av.k) + 'k free' + (conf ? (cerr ? ' · ✗ ' : ' · ✓ ') + conf + 'k' : ''));
+      .text(Math.round(av.k) + 'k/yr free' + (conf ? (cerr ? ' · ✗ ' : ' · ✓ ') + conf + 'k/yr' : ''));
+    var famT = av.types.filter(function (t) { return av[t].fam; });
+    if (famT.length) g.append('text').attr('y', R + 22).attr('text-anchor', 'middle').style('font-family', 'DM Mono,monospace').style('font-size', '8.5px')
+      .style('fill', '#e8c060').style('paint-order', 'stroke').style('stroke', '#07080d').style('stroke-width', '3px')
+      .text(famT.map(function (t) { return '◆ ' + (_SHP_TYPE[t] || t).toLowerCase(); }).join(' · '));
     g.append('text').attr('y', -R - 5).attr('text-anchor', 'middle').style('font-family', 'DM Mono,monospace').style('font-size', '9px')
       .style('fill', 'var(--text)').style('paint-order', 'stroke').style('stroke', '#07080d').style('stroke-width', '3px')
       .text(p.name || p.country_code);
     var html = '<b>' + _esc(p.name || p.country_code) + '</b> · ' + p.status + (p.status === 'building' ? ' (ready ' + p.ready + ')' : '')
-      + '<br>Plant capacity ' + Math.round(p.hall_k || 0) + 'k/yr · used now ' + Math.round(_shpUsedK(p)) + 'k'
+      + '<br>Plant capacity ' + Math.round(p.hall_k || 0) + 'k/yr · used now ' + Math.round(_shpUsedK(p)) + 'k/yr'
       + '<br>' + av.types.map(function (t) {
         var a = av[t];
-        return (_SHP_TYPE[t] || t) + ': ' + Math.round(a.hall) + 'k room' + (a.fam ? ' + ' + Math.round(a.spare) + 'k on your family line' : '');
+        var nm = _p7wFamLines(p, t).map(function (l) { return _esc(l.family_name || 'family line'); }).join(', ');
+        return (_SHP_TYPE[t] || t) + ': ' + (a.fam
+          ? '<span style="color:#e8c060;">◆ family line ' + nm + '</span> · ' + Math.round(a.spare) + 'k/yr spare + ' + Math.round(a.hall) + 'k/yr room'
+          : 'no line of this family (a new line is built) · ' + Math.round(a.hall) + 'k/yr room');
       }).join('<br>')
       + '<br><b style="color:' + col + ';">This car can get up to ' + Math.round(av.k) + 'k/yr here</b>'
-      + (need > 0 ? ' <span style="color:var(--muted2);">(needs ' + Math.round(need) + 'k)</span>' : '')
+      + (need > 0 ? ' <span style="color:var(--muted2);">(needs ' + Math.round(need) + 'k/yr)</span>' : '')
       + (late ? '<br><span style="color:var(--orange);">Ready ' + p.ready + ', after SOP</span>' : '')
       + '<br><span style="color:var(--gold);">click to open</span>';
     g.on('mousemove', function (ev) { show(ev, html); }).on('mouseleave', hide)
@@ -29261,6 +29268,7 @@ function _p7mDraw() {
       + ring('var(--green)', false, need > 0 ? 'covers ' + Math.round(need) + 'k/yr' : 'room free')
       + (need > 0 ? ring('var(--orange)', false, 'less') : '') + ring('var(--red)', false, 'full')
       + ring('var(--muted2)', true, 'being built') + ring('#e8c060', false, 'allocated')
+      + '<span><span style="color:#e8c060;">◆</span> a line of this car\u2019s ' + (view === 'vehicle' ? 'platform / top hat' : 'powertrain') + ' family is already there</span>'
       + '<span>size = plant capacity · click a plant to open it</span></div>';
   }
 }
