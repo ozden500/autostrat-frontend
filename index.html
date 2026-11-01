@@ -25956,10 +25956,11 @@ function buildReviewSection() {
   function moduleTable() {
     var capex = (typeof _computeStandardModuleCapex === 'function') ? _computeStandardModuleCapex() : {};
     var slots = [['platform',M.platform],['pwt',M.pwt],['epwt',M.epwt],['battery',M.battery],['tophat',M.tophat],['eands',M.eands]];
-    var COLS = 'minmax(0,1fr) 96px 66px 70px 82px 16px';
+    var COLS = 'minmax(0,1fr) 96px 66px 70px 82px 112px 16px';
+    var _sv = _prop.study || {}, _sopL = _sv.start_year ? 'Q' + (_sv.start_quarter || 1) + ' ' + _sv.start_year : '—';
     var HDR = 'font-family:DM Mono,monospace;font-size:7px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;';
     var out = '<div style="display:grid;grid-template-columns:'+COLS+';gap:8px;padding:0 10px 5px;'+HDR+'">'
-      + '<div>Module</div><div>Config</div><div style="text-align:right;">R&D €M</div><div style="text-align:right;">Capex €M</div><div style="text-align:right;">TPC €</div><div></div></div>';
+      + '<div>Module</div><div>Config</div><div style="text-align:right;">R&D €M</div><div style="text-align:right;">Capex €M</div><div style="text-align:right;">TPC €</div><div style="text-align:right;">Ready</div><div></div></div>';
     slots.forEach(function(pair){
       var k = pair[0], m = pair[1];
       if (!m || !m.mode) return;
@@ -25976,6 +25977,7 @@ function buildReviewSection() {
         + '<div style="text-align:right;font-family:DM Mono,monospace;font-size:8px;color:var(--muted2);">€'+_f(m.rd)+'M</div>'
         + '<div style="text-align:right;font-family:DM Mono,monospace;font-size:8px;color:var(--muted2);">'+(capM>0?'€'+_f(capM)+'M':'—')+'</div>'
         + '<div style="text-align:right;font-family:Orbitron,sans-serif;font-size:11px;font-weight:700;color:'+m.color+';">€'+_f(m.tpc).toLocaleString()+'</div>'
+        + '<div id="s6-rdy-'+k+'" style="text-align:right;font-family:DM Mono,monospace;font-size:8px;white-space:nowrap;">'+_propSopCell(k)+'</div>'
         + '<div style="text-align:center;font-size:8px;color:var(--muted);"><span id="'+did+'-chev">▸</span></div>'
         + '</div>';
       var dmpV  = m.dmp  ? parseFloat(m.dmp.total_eur||0)  : m.tpc*0.85;
@@ -26001,7 +26003,8 @@ function buildReviewSection() {
       + '<div style="font-family:DM Mono,monospace;font-size:9px;font-weight:700;color:var(--gold);">TOTAL</div><div></div>'
       + '<div style="text-align:right;font-family:DM Mono,monospace;font-size:8px;font-weight:700;color:var(--white);">€'+_f(_sc.totRd)+'M</div>'
       + '<div style="text-align:right;font-family:DM Mono,monospace;font-size:8px;font-weight:700;color:var(--white);">€'+_f(_sc.totPlantCx+_sc.totSupCx)+'M</div>'
-      + '<div style="text-align:right;font-family:Orbitron,sans-serif;font-size:12px;font-weight:800;color:var(--gold);">€'+_f(_sc.totTpc).toLocaleString()+'</div><div></div></div>';
+      + '<div style="text-align:right;font-family:Orbitron,sans-serif;font-size:12px;font-weight:800;color:var(--gold);">€'+_f(_sc.totTpc).toLocaleString()+'</div>'
+      + '<div style="text-align:right;font-family:DM Mono,monospace;font-size:8px;font-weight:700;color:var(--white);white-space:nowrap;">SOP '+_sopL+'</div><div></div></div>';
     return '<div style="border:1px solid var(--border2);border-radius:4px;overflow:hidden;margin-bottom:14px;">'+out+'</div>';
   }
 
@@ -26119,7 +26122,7 @@ function buildReviewSection() {
   }
 
   // Header banner: module readiness vs SOP (_propSopCheck fills it after the render)
-  h += '<div id="prop-sop6" style="margin-bottom:12px;">' + _propSopHtml() + '</div>';
+  h += '<div id="prop-sop6">' + _propSopHtml() + '</div>';
   h += '<div style="background:linear-gradient(135deg,rgba(200,164,60,.10) 0%,rgba(0,0,0,0) 55%);border:1px solid rgba(200,164,60,.22);border-radius:6px;padding:14px 20px;margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;">';
   h += '<div style="display:flex;align-items:center;gap:18px;">' +
     _VIS.car({body:_propVisBody(), segment:_prop.study && _prop.study.segment_code,
@@ -26958,7 +26961,25 @@ function _propSopCheck() {
     .then(function (d) { if (_prop._sop6 === me) { me.pend = false; me.data = d; _propSopPaint(); } })
     .catch(function () { if (_prop._sop6 === me) { me.pend = false; _propSopPaint(); } });
 }
-function _propSopPaint() { var el = document.getElementById('prop-sop6'); if (el) el.innerHTML = _propSopHtml(); }
+function _propSopPaint() {
+  var el = document.getElementById('prop-sop6'); if (el) el.innerHTML = _propSopHtml();
+  ['platform', 'pwt', 'epwt', 'battery', 'tophat', 'eands'].forEach(function (k) {
+    var c = document.getElementById('s6-rdy-' + k); if (c) c.innerHTML = _propSopCell(k);
+  });
+}
+// the module table's Ready cell: READY / the quarter it is ready (red when after the SOP)
+function _propSopCell(k) {
+  var sc = _prop._sop6;
+  if (!sc) return '<span style="color:var(--muted2);">—</span>';
+  if (sc.pend) return '<span style="color:var(--muted2);">…</span>';
+  var m = sc.data && sc.data.modules.filter(function (x) { return x.slot === k; })[0];
+  if (!m || m.error) return '<span style="color:var(--muted2);"' + (m && m.error ? ' title="' + _esc(m.error) + '"' : '') + '>—</span>';
+  if (m.status === 'completed') return '<span style="color:var(--green);">READY</span>';
+  var sopQ = sc.data.sop_qabs, late = m.blocks_sop ? m.ready_qabs - sopQ : 0;
+  return '<span style="color:' + (late ? 'var(--red)' : 'var(--gold)') + ';"'
+    + (m.lead_time_quarters ? ' title="' + m.lead_time_quarters + ' qtr' + (m.lead_time_quarters !== 1 ? 's' : '') + ' of development from now"' : '') + '>'
+    + _propQLbl(m.ready_qabs) + (late ? ' \u26a0 +' + late + 'q' : '') + '</span>';
+}
 function _propQLbl(q) { return 'Q' + (q % 4 + 1) + ' ' + (2025 + Math.floor(q / 4)); }
 function _propSopHtml() {
   var sc = _prop._sop6, v = _prop.study || {};
@@ -26966,13 +26987,12 @@ function _propSopHtml() {
   var MN = 'font-family:DM Mono,monospace;';
   var sopQ = v.start_year ? (v.start_year - 2025) * 4 + (v.start_quarter || 1) - 1 : null;
   var d = sc.data, bad = d && !d.ok;
-  var h = '<div style="background:rgba(255,255,255,.03);border:1px solid ' + (bad ? 'rgba(239,68,68,.45)' : 'rgba(255,255,255,.08)') + ';border-radius:4px;padding:10px 12px;">'
-    + '<div style="' + MN + 'font-size:7px;letter-spacing:2px;color:' + (bad ? 'var(--red)' : 'var(--muted2)') + ';margin-bottom:6px;">MODULE READINESS'
-    + (sopQ != null ? ' vs SOP ' + _propQLbl(sopQ) : '') + '</div>';
-  if (sc.pend) return h + '<div style="' + MN + 'font-size:9px;color:var(--muted2);">Checking module ready dates\u2026</div></div>';
-  if (!d) return h + '<div style="' + MN + 'font-size:9px;color:var(--muted2);">Ready dates unavailable: they are checked again when you submit.</div></div>';
+  if (!bad) return '';
+  var h = '<div style="background:rgba(255,255,255,.03);border:1px solid ' + (bad ? 'rgba(239,68,68,.45)' : 'rgba(255,255,255,.08)') + ';border-radius:4px;padding:10px 12px;margin-bottom:12px;">'
+    + '<div style="' + MN + 'font-size:7px;letter-spacing:2px;color:' + (bad ? 'var(--red)' : 'var(--muted2)') + ';margin-bottom:6px;">\u26a0 NOT READY FOR SOP'
+    + (sopQ != null ? ' ' + _propQLbl(sopQ) : '') + '</div>';
   var MODE = {reuse: 'Reuse', 'new': 'New', derivative: 'Derivative'};
-  d.modules.forEach(function (m) {
+  d.modules.filter(function (m) { return m.blocks_sop; }).forEach(function (m) {
     var col = m.error ? 'var(--muted2)' : m.blocks_sop ? 'var(--red)' : m.status === 'completed' ? 'var(--green)' : 'var(--gold)';
     var txt = m.error ? m.error
       : m.status === 'completed' ? 'READY'
