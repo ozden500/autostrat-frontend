@@ -25956,16 +25956,15 @@ function buildReviewSection() {
   function moduleTable() {
     var capex = (typeof _computeStandardModuleCapex === 'function') ? _computeStandardModuleCapex() : {};
     var slots = [['platform',M.platform],['pwt',M.pwt],['epwt',M.epwt],['battery',M.battery],['tophat',M.tophat],['eands',M.eands]];
-    var COLS = 'minmax(0,1fr) 96px 66px 70px 82px 112px 16px';
+    var COLS = 'minmax(0,1fr) 96px 66px 70px 76px 82px 112px 16px';
     var _sv = _prop.study || {}, _sopL = _sv.start_year ? 'Q' + (_sv.start_quarter || 1) + ' ' + _sv.start_year : '—';
     var HDR = 'font-family:DM Mono,monospace;font-size:7px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;';
     var out = '<div style="display:grid;grid-template-columns:'+COLS+';gap:8px;padding:0 10px 5px;'+HDR+'">'
-      + '<div>Module</div><div>Config</div><div style="text-align:right;">R&D €M</div><div style="text-align:right;">Capex €M</div><div style="text-align:right;">TPC €</div><div style="text-align:right;">Ready</div><div></div></div>';
+      + '<div>Module</div><div>Config</div><div style="text-align:right;">R&D €M</div><div style="text-align:right;">Plant €M</div><div style="text-align:right;">Supplier €M</div><div style="text-align:right;">TPC €</div><div style="text-align:right;">Ready</div><div></div></div>';
     slots.forEach(function(pair){
       var k = pair[0], m = pair[1];
       if (!m || !m.mode) return;
       var cx = capex[k] || {plant:0, supplier:0};
-      var capM = (cx.plant||0) + (cx.supplier||0);
       var mTag = m.mode === 'new' ? 'NEW' : m.mode === 'reuse' ? 'REUSE' : 'DERIV';
       var mCol = m.mode === 'new' ? m.color : m.mode === 'derivative' ? 'var(--purple)' : 'var(--green)';
       var did = 's6-mod-' + k;
@@ -25975,7 +25974,8 @@ function buildReviewSection() {
           + '<span style="font-family:DM Mono,monospace;font-size:6px;padding:1px 3px;border-radius:2px;border:1px solid '+mCol+';color:'+mCol+';flex-shrink:0;">'+mTag+'</span></div>'
         + '<div style="font-family:DM Mono,monospace;font-size:7px;color:var(--muted2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">'+(m.configKey||'—')+'</div>'
         + '<div style="text-align:right;font-family:DM Mono,monospace;font-size:8px;color:var(--muted2);">€'+_f(m.rd)+'M</div>'
-        + '<div style="text-align:right;font-family:DM Mono,monospace;font-size:8px;color:var(--muted2);">'+(capM>0?'€'+_f(capM)+'M':'—')+'</div>'
+        + '<div style="text-align:right;font-family:DM Mono,monospace;font-size:8px;color:var(--muted2);">'+((cx.plant||0)>0?'€'+_f(cx.plant)+'M':'—')+'</div>'
+        + '<div style="text-align:right;font-family:DM Mono,monospace;font-size:8px;color:var(--muted2);">'+((cx.supplier||0)>0?'€'+_f(cx.supplier)+'M':'—')+'</div>'
         + '<div style="text-align:right;font-family:Orbitron,sans-serif;font-size:11px;font-weight:700;color:'+m.color+';">€'+_f(m.tpc).toLocaleString()+'</div>'
         + '<div id="s6-rdy-'+k+'" style="text-align:right;font-family:DM Mono,monospace;font-size:8px;white-space:nowrap;">'+_propSopCell(k)+'</div>'
         + '<div style="text-align:center;font-size:8px;color:var(--muted);"><span id="'+did+'-chev">▸</span></div>'
@@ -26002,7 +26002,8 @@ function buildReviewSection() {
     out += '<div style="display:grid;grid-template-columns:'+COLS+';gap:8px;align-items:center;padding:8px 10px;background:var(--s3);border-top:1px solid rgba(200,164,60,.3);">'
       + '<div style="font-family:DM Mono,monospace;font-size:9px;font-weight:700;color:var(--gold);">TOTAL</div><div></div>'
       + '<div style="text-align:right;font-family:DM Mono,monospace;font-size:8px;font-weight:700;color:var(--white);">€'+_f(_sc.totRd)+'M</div>'
-      + '<div style="text-align:right;font-family:DM Mono,monospace;font-size:8px;font-weight:700;color:var(--white);">€'+_f(_sc.totPlantCx+_sc.totSupCx)+'M</div>'
+      + '<div style="text-align:right;font-family:DM Mono,monospace;font-size:8px;font-weight:700;color:var(--white);">€'+_f(_sc.totPlantCx)+'M</div>'
+      + '<div style="text-align:right;font-family:DM Mono,monospace;font-size:8px;font-weight:700;color:var(--white);">€'+_f(_sc.totSupCx)+'M</div>'
       + '<div style="text-align:right;font-family:Orbitron,sans-serif;font-size:12px;font-weight:800;color:var(--gold);">€'+_f(_sc.totTpc).toLocaleString()+'</div>'
       + '<div style="text-align:right;font-family:DM Mono,monospace;font-size:8px;font-weight:700;color:var(--white);white-space:nowrap;">SOP '+_sopL+'</div><div></div></div>';
     return '<div style="border:1px solid var(--border2);border-radius:4px;overflow:hidden;margin-bottom:14px;">'+out+'</div>';
@@ -31558,16 +31559,21 @@ function _renderSourcingInvestmentSummary(){
   //   = brownfield charged
   // over every (plant, module) with a volume, and sum to totalTooling+totalCapacity by construction, so
   // the bridge can never disagree with the breakdown below or with what confirmSourcingPlan() bills.
-  var bGf=0,bGfTool=0,bCapNoAuto=0;
+  // per module (2026-11-01): what its existing supply contract avoids, capacity and tooling together
+  //   = (its brownfield before automation) − (its greenfield capacity + tooling)
+  var bGf=0,bGfTool=0,bCapNoAuto=0,bAvoid={},bFam={};
   allLines.forEach(function(l){
-    var c=_spPool(l.sk,l.moduleId,l.zone).c||{};
+    var pl=_spPool(l.sk,l.moduleId,l.zone), c=pl.c||{};
     var cur=c.contracted_k||0;
     var zone=SP_ZONES.find(function(z){return z.key===l.zone;})||SP_ZONES[0];
-    bGf        += _mzcSupplierGfM(l.sk,l.needK);
-    bGfTool    += _mzcSupplierGfM(l.sk,_MODINV_E.V_REF)*_MZC_TOOLING_SHARE*zone.labor_index;
-    bCapNoAuto += Math.max(0,_mzcSupplierGfM(l.sk,cur+l.inv.shortfall)-_mzcSupplierGfM(l.sk,cur));
+    var gfC=_mzcSupplierGfM(l.sk,l.needK), gfT=_mzcSupplierGfM(l.sk,_MODINV_E.V_REF)*_MZC_TOOLING_SHARE*zone.labor_index;
+    var capNA=Math.max(0,_mzcSupplierGfM(l.sk,cur+l.inv.shortfall)-_mzcSupplierGfM(l.sk,cur));
+    bGf+=gfC; bGfTool+=gfT; bCapNoAuto+=capNA;
+    bAvoid[l.sk]=(bAvoid[l.sk]||0)+(capNA+l.inv.toolingM)-(gfC+gfT);
+    if(pl.variant)bFam[l.sk]=true;
   });
-  var bExist=bCapNoAuto-bGf, bAuto=totalCapacity-bCapNoAuto, bTool=totalTooling-bGfTool, bTotal=totalTooling+totalCapacity;
+  var bAuto=totalCapacity-bCapNoAuto, bTotal=totalTooling+totalCapacity;
+  var _B_LBL={platform:'Platform',pwt:'Powertrain',epwt:'e-Powertrain',battery:'Battery',tophat:'Top hat',eands:'E&S'};
   var _bSign=function(v,col){return '<span style="color:'+col+';">'+(v<0?'−':'+')+'€'+Math.abs(v).toFixed(2)+'M</span>';};
   var _bRow=function(label,val,strong){
     return '<div style="display:flex;justify-content:space-between;gap:10px;'+MO+'font-size:7.5px;padding:2px 0;'+(strong?'font-weight:700;':'')+'">'
@@ -31577,10 +31583,12 @@ function _renderSourcingInvestmentSummary(){
   h+='<div style="margin-bottom:9px;padding:8px 10px;background:var(--s1);border-radius:3px;border:1px dashed var(--border2);">';
   h+='<div style="'+MO+'font-size:7px;text-transform:uppercase;letter-spacing:0.5px;color:var(--muted);margin-bottom:4px;">Greenfield (§7) → Brownfield bridge</div>';
   h+=_bRow('Greenfield @ your volume — capacity + tooling, from your §2-5 design','<span style="color:var(--gold);">€'+(bGf+bGfTool).toFixed(2)+'M</span>');
-  h+='<div style="'+MO+'font-size:7px;color:var(--muted2);padding:0 0 2px 10px;">capacity €'+bGf.toFixed(2)+'M · first-time tooling €'+bGfTool.toFixed(2)+'M in the zones you picked</div>';
-  if(Math.abs(bExist)>=0.005)   h+=_bRow('Already-contracted capacity',_bSign(bExist,'var(--green)'));
+  TYPE_ORDER.forEach(function(sk){
+    var v=bAvoid[sk];
+    if(v===undefined||Math.abs(v)<0.005)return;
+    h+=_bRow(v<0?'Investment avoided — existing '+_B_LBL[sk]+(bFam[sk]?' family':'')+' supply contract':_B_LBL[sk]+' — above greenfield',_bSign(v,v<0?'var(--green)':'var(--orange)'));
+  });
   if(Math.abs(bAuto)>=0.005)    h+=_bRow('Supplier automation',_bSign(bAuto,bAuto<0?'var(--green)':'var(--orange)'));
-  if(Math.abs(bTool)>=0.005)    h+=_bRow('Tooling already in place — contracts held / parent module',_bSign(bTool,bTool<0?'var(--green)':'var(--orange)'));
   h+='<div style="border-top:1px solid var(--border2);margin:4px 0 3px;"></div>';
   h+=_bRow('Brownfield — charged on confirm','<span style="color:var(--cyan);">€'+bTotal.toFixed(2)+'M</span>',true);
   h+='</div>';
