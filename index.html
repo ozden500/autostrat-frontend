@@ -25796,36 +25796,6 @@ function buildReviewSection() {
   var allMods   = [M.platform, M.pwt, M.tophat, M.epwt, M.battery, M.eands];
   var totalRd   = allMods.reduce(function(s,m){return s+m.rd;},0);
 
-  // ── Readiness banner: show ready dates for reuse/modify modules ──
-  var sopYear = _prop.study&&_prop.study.start_year;
-  var sopQ    = _prop.study&&_prop.study.start_quarter;
-  var sopLabel= sopYear ? 'Q'+(sopQ||1)+' '+sopYear : '—';
-  var reuseSlots=[{k:'platform',m:_prop.platform},{k:'pwt',m:_prop.pwt},{k:'tophat',m:_prop.tophat},{k:'eands',m:_prop.eands}];
-  var readinessBanner='';
-  var anyConflict=false;
-  reuseSlots.forEach(function(s){
-    if (!s.m||!s.m.module) return;
-    var mod=s.m.module;
-    var ry=mod.ready_year, rq=mod.ready_quarter, st=mod.development_status;
-    if (!ry) return;
-    var ok=st==='completed';
-    var sopQnum=sopYear?(sopYear-2025)*4+(sopQ-1):null;
-    var readyQnum=(ry-2025)*4+(rq-1);
-    var sopConflict=sopQnum!==null&&readyQnum>sopQnum;
-    if (sopConflict) anyConflict=true;
-    var color=sopConflict?'var(--red)':ok?'var(--green)':'var(--gold)';
-    var readyStr='Q'+rq+' '+ry;
-    readinessBanner+='<div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid rgba(255,255,255,.04);">'+
-      '<span style="font-family:DM Mono,monospace;font-size:9px;color:var(--muted2);">'+s.k.toUpperCase()+'</span>'+
-      '<span style="font-family:DM Mono,monospace;font-size:9px;color:'+color+';">'+(ok?'READY':readyStr)+(sopConflict?' ⚠ conflicts SOP '+sopLabel:'')+'</span></div>';
-  });
-  if (readinessBanner) {
-    readinessBanner='<div style="background:rgba(255,255,255,.03);border:1px solid '+(anyConflict?'rgba(239,68,68,.4)':'rgba(255,255,255,.08)')+
-      ';border-radius:4px;padding:10px 12px;margin-bottom:12px;">'+
-      '<div style="font-family:DM Mono,monospace;font-size:7px;letter-spacing:2px;color:'+(anyConflict?'var(--red)':'var(--muted)')+
-      ';margin-bottom:6px;">MODULE READINESS'+(sopYear?' vs SOP '+sopLabel:'')+'</div>'+readinessBanner+'</div>';
-  }
-
   // Rating specs (reliability/comfort/safety, emission_tech) live on the 0-100 slider scale for NEW
   // modules and the 0-1 DB scale for reused ones. Normalise to 0-1 by the module's ORIGIN (mode),
   // NEVER by magnitude: a magnitude test (v>1?v/100:v) misreads a genuine 1% — stored "1" — as
@@ -26148,8 +26118,8 @@ function buildReviewSection() {
       + '</div>';
   }
 
-  // Header banner
-  if (readinessBanner) h += readinessBanner;
+  // Header banner: module readiness vs SOP (_propSopCheck fills it after the render)
+  h += '<div id="prop-sop6" style="margin-bottom:12px;">' + _propSopHtml() + '</div>';
   h += '<div style="background:linear-gradient(135deg,rgba(200,164,60,.10) 0%,rgba(0,0,0,0) 55%);border:1px solid rgba(200,164,60,.22);border-radius:6px;padding:14px 20px;margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;">';
   h += '<div style="display:flex;align-items:center;gap:18px;">' +
     _VIS.car({body:_propVisBody(), segment:_prop.study && _prop.study.segment_code,
@@ -26500,6 +26470,7 @@ function buildReviewSection() {
   h += '</div>';
 
   el.innerHTML = h;
+  _propSopCheck();
 
   // Draw radar after DOM update
   setTimeout(function() {
@@ -26953,7 +26924,104 @@ var MARKET_LOGISTICS_COST = {
   MEA:  {MEA:{l:175,t:0},   EU:{l:380,t:0.05},  NA:{l:550,t:0.05},    APAC:{l:600,t:0.10}, SA:{l:650,t:0.075}},
 };
 
+// \u00a76 module readiness vs SOP (2026-11-01, was only at submission): when every module of the car is ready
+// (reused: its row; New / Derivative: submitting it this quarter, POST \u2026/sop-readiness = module_development)
+// and the earliest SOP they allow; the team moves SOP and EOP (same time on sale) before \u00a77-\u00a710 plan on them.
+// confirmProposal's readiness check stays the final check on the saved modules.
+var _PROP_SOP_LBL = {platform: 'Platform', pwt: 'ICE powertrain', epwt: 'e-Motor', battery: 'Battery', tophat: 'Top hat', eands: 'E&S / ADAS'};
+function _propSopSlots() {
+  var out = [];
+  ['platform', 'pwt', 'epwt', 'battery', 'tophat', 'eands'].forEach(function (k) {
+    var p = _prop[k];
+    if (!p || !p.mode) return;
+    if (k === 'battery' && !/bev/.test((_prop.platform && _prop.platform.specs && _prop.platform.specs.pwt) || '')) return;
+    if (_slotDesigned(p)) {
+      var st = _propStoredSpecs(k);
+      if (st && st.ck) out.push({slot: k, module_type: st.modType, config_key: st.ck, specs: st.specs,
+                                 parent_id: p.mode === 'derivative' ? p.parent.id : null});
+    } else if (p.mode === 'reuse' && p.module && p.module.id) out.push({slot: k, module_id: p.module.id});
+  });
+  return out;
+}
+function _propSopCheck() {
+  var v = _prop.study;
+  if (!v || !sessionId || !teamId) return;
+  var body = {slots: _propSopSlots(), sop_year: v.start_year || null, sop_quarter: v.start_quarter || 1};
+  if (!body.slots.length) { _prop._sop6 = null; _propSopPaint(); return; }
+  var sig = JSON.stringify(body);
+  if (_prop._sop6 && _prop._sop6.sig === sig && (_prop._sop6.data || _prop._sop6.pend)) { _propSopPaint(); return; }
+  var me = _prop._sop6 = {sig: sig, pend: true, data: null};
+  _propSopPaint();
+  fetch(API_URL + '/sessions/' + sessionId + '/teams/' + teamId + '/sop-readiness', {
+    method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)})
+    .then(function (r) { return r.ok ? r.json() : null; })
+    .then(function (d) { if (_prop._sop6 === me) { me.pend = false; me.data = d; _propSopPaint(); } })
+    .catch(function () { if (_prop._sop6 === me) { me.pend = false; _propSopPaint(); } });
+}
+function _propSopPaint() { var el = document.getElementById('prop-sop6'); if (el) el.innerHTML = _propSopHtml(); }
+function _propQLbl(q) { return 'Q' + (q % 4 + 1) + ' ' + (2025 + Math.floor(q / 4)); }
+function _propSopHtml() {
+  var sc = _prop._sop6, v = _prop.study || {};
+  if (!sc) return '';
+  var MN = 'font-family:DM Mono,monospace;';
+  var sopQ = v.start_year ? (v.start_year - 2025) * 4 + (v.start_quarter || 1) - 1 : null;
+  var d = sc.data, bad = d && !d.ok;
+  var h = '<div style="background:rgba(255,255,255,.03);border:1px solid ' + (bad ? 'rgba(239,68,68,.45)' : 'rgba(255,255,255,.08)') + ';border-radius:4px;padding:10px 12px;">'
+    + '<div style="' + MN + 'font-size:7px;letter-spacing:2px;color:' + (bad ? 'var(--red)' : 'var(--muted)') + ';margin-bottom:6px;">MODULE READINESS'
+    + (sopQ != null ? ' vs SOP ' + _propQLbl(sopQ) : '') + '</div>';
+  if (sc.pend) return h + '<div style="' + MN + 'font-size:9px;color:var(--muted2);">Checking module ready dates\u2026</div></div>';
+  if (!d) return h + '<div style="' + MN + 'font-size:9px;color:var(--muted2);">Ready dates unavailable: they are checked again when you submit.</div></div>';
+  var MODE = {reuse: 'Reuse', 'new': 'New', derivative: 'Derivative'};
+  d.modules.forEach(function (m) {
+    var col = m.error ? 'var(--muted2)' : m.blocks_sop ? 'var(--red)' : m.status === 'completed' ? 'var(--green)' : 'var(--gold)';
+    var txt = m.error ? m.error
+      : m.status === 'completed' ? 'READY'
+      : 'ready ' + _propQLbl(m.ready_qabs) + (m.lead_time_quarters ? ' (' + m.lead_time_quarters + ' qtr' + (m.lead_time_quarters !== 1 ? 's' : '') + ' from now)' : '')
+        + (m.blocks_sop ? ' \u26a0 +' + (m.ready_qabs - sopQ) + ' qtr' + (m.ready_qabs - sopQ !== 1 ? 's' : '') + ' after SOP' : '');
+    h += '<div style="display:flex;justify-content:space-between;gap:10px;padding:3px 0;border-bottom:1px solid rgba(255,255,255,.04);">'
+      + '<span style="' + MN + 'font-size:9px;color:var(--muted2);">' + (_PROP_SOP_LBL[m.slot] || m.slot).toUpperCase()
+      + ' <span style="color:var(--muted);">\u00b7 ' + (MODE[m.mode] || '') + (m.name ? ' ' + _esc(m.name) : '') + '</span></span>'
+      + '<span style="' + MN + 'font-size:9px;color:' + col + ';text-align:right;">' + txt + '</span></div>';
+  });
+  if (bad) {
+    var eq = d.earliest_qabs, shift = sopQ != null ? eq - sopQ : 0;
+    var eopQ = v.end_year ? (v.end_year - 2025) * 4 + (v.end_quarter || 4) - 1 : null;
+    h += '<div style="margin-top:10px;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;background:rgba(239,68,68,.06);border-radius:3px;padding:9px 10px;">'
+      + '<div style="font-size:11px;color:var(--text);">Earliest SOP the modules allow: <b style="color:var(--gold);">' + _propQLbl(eq) + '</b>'
+      + (eopQ != null ? ' \u00b7 EOP moves with it to <b style="color:var(--gold);">' + _propQLbl(eopQ + shift) + '</b> (same ' + (eopQ - sopQ + 1) + ' quarters on sale)' : '')
+      + '<div style="' + MN + 'font-size:9px;color:var(--muted2);margin-top:3px;">Or go back to \u00a72\u2013\u00a75 and pick modules that are ready sooner.</div></div>'
+      + '<button onclick="_propSopMove(' + eq + ')" style="' + MN + 'font-size:10px;font-weight:700;padding:7px 14px;border-radius:3px;border:1px solid rgba(56,212,134,.5);background:rgba(56,212,134,.12);color:var(--green);cursor:pointer;white-space:nowrap;">'
+      + '\u2713 Move SOP to ' + _propQLbl(eq) + '</button></div>';
+  }
+  return h + '</div>';
+}
+async function _propSopMove(newQ) {
+  var v = _prop.study;
+  if (!v || !v.id) return;
+  var sopQ = (v.start_year - 2025) * 4 + (v.start_quarter || 1) - 1, shift = newQ - sopQ;
+  var body = {start_year: 2025 + Math.floor(newQ / 4), start_quarter: newQ % 4 + 1};
+  if (v.end_year) {
+    var e = (v.end_year - 2025) * 4 + (v.end_quarter || 4) - 1 + shift;
+    body.end_year = 2025 + Math.floor(e / 4); body.end_quarter = e % 4 + 1;
+  }
+  try {
+    var r = await fetch(API_URL + '/vehicles/' + v.id, {method: 'PATCH', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)});
+    var d = await r.json();
+    if (!r.ok || !d.success) { toast('\u26a0 ' + (d.detail || 'Could not move the SOP')); return; }
+  } catch (e) { toast('\u26a0 Could not move the SOP'); return; }
+  Object.assign(v, body);
+  toast('\u2713 SOP moved to ' + _propQLbl(newQ) + (body.end_year ? ', EOP to Q' + body.end_quarter + ' ' + body.end_year : ''));
+  // \u00a77 already placed: re-check the fit over the new life
+  if (_prop.operations && _prop.operations._plantFit && typeof _shpPropCheck === 'function') { try { _shpPropCheck(); } catch (e) {} }
+  buildReviewSection();
+}
+
 function advanceToCommercial() {
+  var sc = _prop._sop6;
+  if (sc && sc.data && !sc.data.ok) {
+    toast('\u26a0 Some modules are not ready for the SOP: move SOP / EOP in \u00a76 or pick modules that are ready sooner');
+    return;
+  }
   var s6 = document.getElementById('prop-sec-6-status');
   if (s6) s6.textContent = '\u2713 Specs reviewed';
   setPropStep(7);
