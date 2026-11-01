@@ -28199,7 +28199,10 @@ var _MANUF_E = (function() {
     var mpu = invForMaint>0 ? Math.round(invForMaint*1e6*MAINT_RATE/efc) : 0;
     var mvt = lpu+epu+mpu;
     var sca = tBuy*(SUPPL_COST[sAu]-1.0);
-    var vdi = Math.max(-0.10,-0.05*Math.log10(Math.max(1,capK/10)));   // volume discount on buy cost
+    // volume discount on bought parts: on the car's total volume over its vehicle plants (buy_volume_k, 2026-11-01:
+    // suppliers deliver the same parts to every plant of the car), else this plant's capacity
+    var bvK = (o.buy_volume_k!=null && o.buy_volume_k>0) ? o.buy_volume_k : capK;
+    var vdi = Math.max(-0.10,-0.05*Math.log10(Math.max(1,bvK/10)));
     var vad = tBuy*vdi;
     var bca = Math.round(sca+vad);
     var ops = (o.work_content_s!=null)
@@ -28246,7 +28249,7 @@ function _newVehManuf(ctx){
            +_MODINV_E.workContent('eands',   mc('eands',0))
            +(hasIce?_MODINV_E.workContent('pwt',mc('pwt',0)):0)
            +(hasBev?(_MODINV_E.workContent('epwt',mc('epwt',0))+_MODINV_E.workContent('battery',mc('battery',0))):0);
-  var m=_MANUF_E.calc({platform_size:ctx.platform_size||'medium',body_type:(ctx.body_type||'HB').toUpperCase(),segment_code:ctx.segment_code||'c_segment',pwt_type:pk,shift_structure:ctx.shift_structure,target_capacity_k:ctx.target_capacity_k,jph:ctx.jph,automation_level:al,platform_shared:shr,supplier_automation:ctx.supplier_automation||'MEDIUM',country:ctx.country||{labor_eur_hr:52,elec_eur_kwh:0.18},tpc_buy_eur:ctx.tpc_buy_eur||0,work_content_s:wcTot});
+  var m=_MANUF_E.calc({platform_size:ctx.platform_size||'medium',body_type:(ctx.body_type||'HB').toUpperCase(),segment_code:ctx.segment_code||'c_segment',pwt_type:pk,shift_structure:ctx.shift_structure,target_capacity_k:ctx.target_capacity_k,jph:ctx.jph,automation_level:al,platform_shared:shr,supplier_automation:ctx.supplier_automation||'MEDIUM',country:ctx.country||{labor_eur_hr:52,elec_eur_kwh:0.18},tpc_buy_eur:ctx.tpc_buy_eur||0,work_content_s:wcTot,buy_volume_k:ctx.buy_volume_k});
   var capK=m.invest_cap_k||1;   // physical single-shift-equiv line size drives per-module capex
   // Single-plant fallback bundles all modules (incl. powertrain), matching legacy total capex.
   var gfTot=_MODINV_E.investment('platform',mc('platform',capK))
@@ -28611,7 +28614,7 @@ function _calcFacilityInv(type,fac){
              +_MODINV_E.workContent('eands',   _mCtx('eands',0,_al2,_shr2))
              +(hasIce?_MODINV_E.workContent('pwt',_mCtx('pwt',0,_al2,_shr2)):0)
              +(hasBev?(_MODINV_E.workContent('epwt',_mCtx('epwt',0,_al2,_shr2))+_MODINV_E.workContent('battery',_mCtx('battery',0,_al2,_shr2))):0);
-    var m2=_MANUF_E.calc({platform_size:psz,body_type:bt,segment_code:seg,pwt_type:pk,shift_structure:fac.shift_structure,target_capacity_k:fac.target_capacity_k,jph:fac.jph,automation_level:_al2,platform_shared:_shr2,supplier_automation:'MEDIUM',country:c2,tpc_buy_eur:_computeDmpMake().dmp,work_content_s:wcTot});
+    var m2=_MANUF_E.calc({platform_size:psz,body_type:bt,segment_code:seg,pwt_type:pk,shift_structure:fac.shift_structure,target_capacity_k:fac.target_capacity_k,jph:fac.jph,automation_level:_al2,platform_shared:_shr2,supplier_automation:'MEDIUM',country:c2,tpc_buy_eur:_computeDmpMake().dmp,work_content_s:wcTot,buy_volume_k:fac._isRef?null:_propBuyVolumeK(fac)});
     if(!fac._computed)fac._computed={};
     fac._computed.manuf_result=m2;fac._computed.manuf_var_total=m2.manuf_var_total;fac._computed.eff_capacity_yr=m2.eff_capacity_yr;
     // inv_m is the greenfield capex for the PHYSICAL line (invest_cap_k, shift-adjusted); cap_k is the
@@ -28705,6 +28708,15 @@ function _calcFacilityInv(type,fac){
 // Ensures plant._manuf reflects the current BOM split (_computeDmpMake) and plant config —
 // recomputed fresh so Section 9 always agrees with Section 7, even if the user never opened
 // that plant's controls (fac._computed starts out null).
+// The car's yearly volume over its vehicle plants (k/yr), what its suppliers' volume discount is priced on
+// (_MANUF_E.calc buy_volume_k; mirror financial_engine._calc_manuf). The confirmed plants, plus this one if it
+// is not among them yet (an estimate); null when none has a capacity.
+function _propBuyVolumeK(fac) {
+  var cap = function (p) { return +(p.target_capacity_k || p.vehicle_capacity_yr) || 0; };
+  var vps = _spConfirmedPlants(), t = vps.reduce(function (a, p) { return a + cap(p); }, 0);
+  if (fac && vps.indexOf(fac) < 0) t += cap(fac);
+  return t > 0 ? t : null;
+}
 function _ensureVehiclePlantManuf(plant) {
   if (!plant) return null;
   var comp = _calcFacilityInv('vehicle_plants', plant);
