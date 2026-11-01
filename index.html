@@ -25953,11 +25953,11 @@ function buildReviewSection() {
   function moduleTable() {
     var capex = (typeof _computeStandardModuleCapex === 'function') ? _computeStandardModuleCapex() : {};
     var slots = [['platform',M.platform],['pwt',M.pwt],['epwt',M.epwt],['battery',M.battery],['tophat',M.tophat],['eands',M.eands]];
-    var COLS = 'minmax(0,1fr) 96px 66px 70px 76px 82px 112px 16px';
+    var COLS = 'minmax(0,1fr) 96px 66px 70px 76px 84px 92px 82px 112px 16px', _totDmp = 0, _totMake = 0;
     var _sv = _prop.study || {}, _sopL = _sv.start_year ? 'Q' + (_sv.start_quarter || 1) + ' ' + _sv.start_year : '—';
     var HDR = 'font-family:DM Mono,monospace;font-size:7px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;';
     var out = '<div style="display:grid;grid-template-columns:'+COLS+';gap:8px;padding:0 10px 5px;'+HDR+'">'
-      + '<div>Module</div><div>Config</div><div style="text-align:right;">R&D €M</div><div style="text-align:right;">Plant €M</div><div style="text-align:right;">Supplier €M</div><div style="text-align:right;">TPC €</div><div style="text-align:right;">Ready</div><div></div></div>';
+      + '<div>Module</div><div>Config</div><div style="text-align:right;">R&D €M</div><div style="text-align:right;">Plant €M</div><div style="text-align:right;">Supplier €M</div><div style="text-align:right;">Bought parts €</div><div style="text-align:right;">Transformation €</div><div style="text-align:right;">TPC €</div><div style="text-align:right;">Ready</div><div></div></div>';
     slots.forEach(function(pair){
       var k = pair[0], m = pair[1];
       if (!m || !m.mode) return;
@@ -25965,6 +25965,10 @@ function buildReviewSection() {
       var mTag = m.mode === 'new' ? 'NEW' : m.mode === 'reuse' ? 'REUSE' : 'DERIV';
       var mCol = m.mode === 'new' ? m.color : m.mode === 'derivative' ? 'var(--purple)' : 'var(--green)';
       var did = 's6-mod-' + k;
+      // TPC per car = supplier bought parts (DMP) + OEM transformation (make)
+      var dmpV  = m.dmp  ? parseFloat(m.dmp.total_eur||0)  : m.tpc*0.85;
+      var makeV = m.make ? parseFloat(m.make.total_eur||0) : m.tpc*0.15;
+      _totDmp += dmpV; _totMake += makeV;
       out += '<div onclick="_s6Toggle(\''+did+'\')" style="cursor:pointer;display:grid;grid-template-columns:'+COLS+';gap:8px;align-items:center;padding:7px 10px;border-bottom:1px solid rgba(255,255,255,.04);background:var(--s2);border-left:3px solid '+m.color+';">'
         + '<div style="display:flex;align-items:center;gap:6px;overflow:hidden;"><span style="width:6px;height:6px;border-radius:1px;background:'+m.color+';flex-shrink:0;"></span>'
           + '<span style="font-family:DM Mono,monospace;font-size:9px;font-weight:700;color:var(--white);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">'+m.label+'</span>'
@@ -25973,12 +25977,12 @@ function buildReviewSection() {
         + '<div style="text-align:right;font-family:DM Mono,monospace;font-size:8px;color:var(--muted2);">€'+_f(m.rd)+'M</div>'
         + '<div style="text-align:right;font-family:DM Mono,monospace;font-size:8px;color:var(--muted2);">'+((cx.plant||0)>0?'€'+_f(cx.plant)+'M':'—')+'</div>'
         + '<div style="text-align:right;font-family:DM Mono,monospace;font-size:8px;color:var(--muted2);">'+((cx.supplier||0)>0?'€'+_f(cx.supplier)+'M':'—')+'</div>'
+        + '<div style="text-align:right;font-family:DM Mono,monospace;font-size:8px;color:var(--text);">€'+_f(dmpV).toLocaleString()+'</div>'
+        + '<div style="text-align:right;font-family:DM Mono,monospace;font-size:8px;color:var(--text);">€'+_f(makeV).toLocaleString()+'</div>'
         + '<div style="text-align:right;font-family:Orbitron,sans-serif;font-size:11px;font-weight:700;color:'+m.color+';">€'+_f(m.tpc).toLocaleString()+'</div>'
         + '<div id="s6-rdy-'+k+'" style="text-align:right;font-family:DM Mono,monospace;font-size:8px;white-space:nowrap;">'+_propSopCell(k)+'</div>'
         + '<div style="text-align:center;font-size:8px;color:var(--muted);"><span id="'+did+'-chev">▸</span></div>'
         + '</div>';
-      var dmpV  = m.dmp  ? parseFloat(m.dmp.total_eur||0)  : m.tpc*0.85;
-      var makeV = m.make ? parseFloat(m.make.total_eur||0) : m.tpc*0.15;
       var costRows = [
         specRow('R&D Investment',            '€'+_f(m.rd)+'M' + (m.rdSunk>0 ? ' (reused: €'+_f(m.rdSunk)+'M sunk)' : '')),
         specRow('Plant Capex (greenfield)',  cx.plant>0 ? '€'+_f(cx.plant)+'M' : '—'),
@@ -26001,6 +26005,8 @@ function buildReviewSection() {
       + '<div style="text-align:right;font-family:DM Mono,monospace;font-size:8px;font-weight:700;color:var(--white);">€'+_f(_sc.totRd)+'M</div>'
       + '<div style="text-align:right;font-family:DM Mono,monospace;font-size:8px;font-weight:700;color:var(--white);">€'+_f(_sc.totPlantCx)+'M</div>'
       + '<div style="text-align:right;font-family:DM Mono,monospace;font-size:8px;font-weight:700;color:var(--white);">€'+_f(_sc.totSupCx)+'M</div>'
+      + '<div style="text-align:right;font-family:DM Mono,monospace;font-size:8px;font-weight:700;color:var(--white);">€'+_f(_totDmp).toLocaleString()+'</div>'
+      + '<div style="text-align:right;font-family:DM Mono,monospace;font-size:8px;font-weight:700;color:var(--white);">€'+_f(_totMake).toLocaleString()+'</div>'
       + '<div style="text-align:right;font-family:Orbitron,sans-serif;font-size:12px;font-weight:800;color:var(--gold);">€'+_f(_sc.totTpc).toLocaleString()+'</div>'
       + '<div style="text-align:right;font-family:DM Mono,monospace;font-size:8px;font-weight:700;color:var(--white);white-space:nowrap;">SOP '+_sopL+'</div><div></div></div>';
     return '<div style="border:1px solid var(--border2);border-radius:4px;overflow:hidden;margin-bottom:14px;">'+out+'</div>';
