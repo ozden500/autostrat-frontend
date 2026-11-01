@@ -31753,6 +31753,7 @@ function _renderSourcingResultsPanel(){
 }
 
 function _renderSupplyPlanSection(){
+  _spApplyAutoLocks();
   var h='<div style="margin-bottom:14px;">';
   h+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;align-items:start;">';
   h+='<div>'+_renderSourcingInputsPanel()+'</div>';
@@ -31884,6 +31885,22 @@ function _srcZoneLabour(z) {
 // supplier's automation level, like §7's plant window. Works on a copy; Confirm writes the plant's
 // supply_plan modules (the same fields onSpZone / onSpAuto set), Cancel / Esc / outside click drops it.
 var _P8W = null;
+// a supplier contract runs at one automation level (2026-11-01, set by its first order): the level of the
+// module's contract in this zone when it holds capacity (contracted or on order), else 0 (free to pick)
+function _spAutoLock(sk, moduleId, zone) {
+  var c = _mzcCapacity[(moduleId || sk) + '__' + zone];
+  return c && ((+c.contracted_k || 0) + (+c.pending_k || 0)) > 0 ? (+c.automation_level || 2) : 0;
+}
+function _spDecLock(sk, dec, zone) { return _spAutoLock(sk, dec.module_id != null ? dec.module_id : _spModuleIdForSlot(sk), zone || dec.zone); }
+// the plan follows the locks (a default or older choice on a contracted zone takes the contract's level)
+function _spApplyAutoLocks() {
+  var sp = _prop.operations && _prop.operations.supply_plan;
+  if (!sp || !sp.plants) return;
+  Object.keys(sp.plants).forEach(function (pid) {
+    var mods = (sp.plants[pid] || {}).modules || {};
+    Object.keys(mods).forEach(function (sk) { var l = _spDecLock(sk, mods[sk]); if (l) mods[sk].automation = l; });
+  });
+}
 function _p8wPlant(pid) {
   var v = _spConfirmedPlants().filter(function (p) { return p.id === pid; })[0];
   if (v) return {p: v, slots: _spVehiclePlantSlots(), ptype: 'vehicle'};
@@ -31897,6 +31914,7 @@ function _p8wOpen(pid) {
   var dec = {};
   x.slots.forEach(function (sk) {
     dec[sk] = Object.assign({zone: _zoneForPlant(x.p.country_code, x.p.region), automation: 2}, mods[sk] || {});
+    var l = _spDecLock(sk, dec[sk]); if (l) dec[sk].automation = l;
   });
   _P8W = {pid: pid, x: x, dec: dec};
   if (_SRC.sel !== pid) { _SRC.sel = pid; _srcMapDraw(); }
@@ -31921,10 +31939,12 @@ function _p8wClose() {
 function _p8wZone(sk, z) {
   var w = _P8W; if (!w) return;
   if (z === 'RUSSIA' && _geoBloc()) { toast('\u26a0 Sanctions: your head office is in the sanctions bloc, so sourcing from Russia is not allowed'); _p8wRender(); return; }
-  w.dec[sk].zone = z; _p8wRender();
+  w.dec[sk].zone = z;
+  var l = _spDecLock(sk, w.dec[sk]); if (l) w.dec[sk].automation = l;
+  _p8wRender();
 }
 function _p8wAuto(sk, d) {
-  var w = _P8W; if (!w) return;
+  var w = _P8W; if (!w || _spDecLock(sk, w.dec[sk])) return;
   w.dec[sk].automation = Math.max(1, Math.min(4, (w.dec[sk].automation || 2) + d)); _p8wRender();
 }
 function _p8wConfirm() {
@@ -31976,7 +31996,7 @@ function _p8wRender() {
     SP_ZONES.forEach(function (z) {
       var ban = z.key === 'RUSSIA' && _geoBloc();
       sel += '<option value="' + z.key + '"' + (dec.zone === z.key ? ' selected' : '') + (ban ? ' disabled' : '') + '>' + z.flag + ' ' + z.label
-        + (ban ? ' \u2014 sanctioned' : ' (' + sg(_p8wPrice(sk, vp, dec, z.key, dec.automation).d) + ')')
+        + (ban ? ' \u2014 sanctioned' : ' (' + sg(_p8wPrice(sk, vp, dec, z.key, _spDecLock(sk, dec, z.key) || dec.automation).d) + ')')
         + ((held[z.key] || []).some(function (c) { return c.slot === sk; }) ? ' \u25c6' : '') + '</option>';
     });
     sel += '</select>';
@@ -31985,7 +32005,10 @@ function _p8wRender() {
       + '<div style="' + MN + 'font-size:10px;"><span style="color:var(--muted2);text-transform:uppercase;letter-spacing:.5px;">' + (_SP_TYPE_LABELS[sk] || sk) + '</span>'
       + ' <b style="color:var(--white);">' + _esc(_spSlotLabel(sk)) + '</b></div>'
       + row('Zone', sel)
-      + row('Supplier automation', btn('_p8wAuto(\'' + sk + '\',-1)', '\u25bc', 'Less automation') + val('L' + dec.automation + ' ' + (al.label || ''), 130) + btn('_p8wAuto(\'' + sk + '\',1)', '\u25b2', 'More automation'))
+      + (_spDecLock(sk, dec)
+        ? row('Supplier automation', '<span style="width:30px;"></span>' + val('L' + dec.automation + ' ' + (al.label || ''), 130)
+            + '<span style="' + MN + 'font-size:9px;color:var(--muted2);white-space:nowrap;">set by your contract here</span>')
+        : row('Supplier automation', btn('_p8wAuto(\'' + sk + '\',-1)', '\u25bc', 'Less automation') + val('L' + dec.automation + ' ' + (al.label || ''), 130) + btn('_p8wAuto(\'' + sk + '\',1)', '\u25b2', 'More automation')))
       + '<div style="' + MN + 'font-size:10px;margin-top:6px;text-align:right;"><b style="color:' + (pr.d > 0 ? 'var(--orange)' : 'var(--green)') + ';">' + sg(pr.d) + '/car</b>'
       + (pr.inv !== null ? ' <span style="color:var(--muted2);">\u00b7 supplier capex \u20ac' + pr.inv.toFixed(1) + 'M</span>' : '')
       + (hz ? '<br><span style="color:' + _SRC_GOLD + ';">\u25c6 you already hold ' + Math.round(hz.k) + 'k/yr here' + (hz.parent ? ' (parent module)' : '') + ', ' + Math.round(hz.free_k) + 'k/yr free</span>' : '')
