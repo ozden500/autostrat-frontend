@@ -28100,7 +28100,19 @@ var _MODINV_E = (function() {
     return 0;
   }
 
-  return {investment:investment, workContent:workContent, supplierInvestment:supplierInvestment, capScale:capScale,
+  // The part of a line's investment one car carries (2026-11-01, §7 upkeep): the line priced at its own size
+  // (lineK k/yr, physF = physical line per k of capacity), times the car's share of it (carK / lineK). A family
+  // line the car reuses or expands is priced at its installed size, not as a line built for this car alone.
+  // Mirror: financial_engine._mi_line_share.
+  function lineShare(mod, o, carK, lineK, physF){
+    var L=+lineK||0, c=+carK||0;
+    if(L<=0||c<=0) return 0;
+    var oo={}; o=o||{}; for(var key in o) oo[key]=o[key];
+    oo.cap_k=Math.max(1, L*(+physF||1));
+    return investment(mod, oo)*Math.min(1, c/L);
+  }
+
+  return {investment:investment, workContent:workContent, supplierInvestment:supplierInvestment, capScale:capScale, lineShare:lineShare,
           V_REF:V_REF, AUTO_INV:AUTO_INV, AUTO_LAB:AUTO_LAB, MULTI_ENERGY_STEP:MULTI_ENERGY_STEP};
 })();
 
@@ -28502,11 +28514,18 @@ function _computePlantTransformationImpact(standardMake, vehiclePlants) {
 // transformation = §6's make + its share (by work content at that plant's automation) of the plant's transformation vs
 // the standard plant; both weighted by each vehicle plant's share of the cars, so the totals equal the §8 bridge's
 // "Proposal so far" (_spPlantCostWeighted).
-function _p7ModuleCosts() {
+// plantId (a vehicle plant's id, the table's plant tabs): that plant alone, its buy-side effect and transformation
+// unweighted (as if it built every car), its own lines' capex plus the powertrain plants' (they supply every car).
+function _p7ModuleCosts(plantId) {
   var keys = ['platform', 'pwt', 'epwt', 'battery', 'tophat', 'eands'], cx = _computeStandardModuleCapex(), rows = {}, order = [];
   var fit = (_prop.operations || {})._plantFit, fitOk = !!(fit && fit.ok && fit.placements);
   var FIT_T = {platform: 'platform', tophat: 'tophat', pwt: 'ice_pwt', epwt: 'epwt', battery: 'battery'};
-  var totDmp = 0;
+  var totDmp = 0, all = _spPlantSlotsWeights();
+  var sel = plantId ? all.filter(function (x) { return x.ptype === 'vehicle' && x.p.id === plantId; })[0] || null : null;
+  // powertrain plants' lines are shown once: on the tab of the vehicle plant with the most volume
+  var vbig = all.filter(function (x) { return x.ptype === 'vehicle'; }).sort(function (a, b) { return b.w - a.w; })[0];
+  var pwtRefs = sel && vbig && sel.p.id === vbig.p.id
+    ? all.filter(function (x) { return x.ptype === 'powertrain'; }).map(function (x) { return x.p.plant_ref; }) : [];
   keys.forEach(function (k) {
     var p = _prop[k];
     if (!p || !p.mode || !p.module) return;
@@ -28514,14 +28533,16 @@ function _p7ModuleCosts() {
     var dmp = p.module.dmp ? parseFloat(p.module.dmp.total_eur || 0) : tpc * 0.85;
     var make = p.module.make ? parseFloat(p.module.make.total_eur || 0) : tpc * 0.15;
     var plant = c.plant || 0;
-    if (fitOk) plant = fit.placements.filter(function (x) { return x.module_type === FIT_T[k]; })
+    if (sel) plant = 0;   // one plant: its own lines from the plant check, nothing until it has run
+    if (fitOk) plant = fit.placements.filter(function (x) { return x.module_type === FIT_T[k] && (!sel || x.plant_id === sel.p.plant_ref || pwtRefs.indexOf(x.plant_id) >= 0); })
       .reduce(function (a, x) { return a + (+x.capex_m || 0); }, 0);
-    rows[k] = {k: k, rd: _slotRdM(p), plant0: c.plant || 0, plant: plant, sup: c.supplier || 0, dmp0: dmp, make0: make, dmp: dmp, make: make};
+    rows[k] = {k: k, rd: _slotRdM(p), plant0: sel ? plant : (c.plant || 0), plant: plant, sup: c.supplier || 0, dmp0: dmp, make0: make, dmp: dmp, make: make};
     order.push(k); totDmp += dmp;
   });
   var seg = (_prop.study && _prop.study.segment_code) || 'c_segment', bt = _getBodyType(), psz = _getPlatformSize(), pk = _pwtKeyFromProp();
-  var vps = _spPlantSlotsWeights().filter(function (x) { return x.ptype === 'vehicle'; });
-  vps.forEach(function (x) {
+  var vps = all.filter(function (x) { return x.ptype === 'vehicle'; });
+  var use = sel ? [{p: sel.p, w: 1}] : vps;
+  use.forEach(function (x) {
     var mfr = _ensureVehiclePlantManuf(x.p);
     if (!mfr) return;
     var wc = {}, wcTot = 0;
@@ -28538,11 +28559,33 @@ function _p7ModuleCosts() {
       r.make += x.w * dMake * (wcTot > 0 ? wc[k] / wcTot : 1 / order.length);
     });
   });
-  return {rows: order.map(function (k) { return rows[k]; }), fitOk: fitOk, fitRun: !!fit, plants: vps.length};
+  return {rows: order.map(function (k) { return rows[k]; }), fitOk: fitOk, fitRun: !!fit, plants: vps.length, all: all, sel: sel, pwtHere: pwtRefs.length > 0,
+    buyK: vps.length ? _propBuyVolumeK(vps[0].p) : null};
+}
+// §7 module table tabs: 'all' (the car, plants weighted) or one plant's id
+var _p7ModTab = 'all';
+function _p7SetModTab(id) {
+  _p7ModTab = id;
+  var el = document.getElementById('prop-ops-modcost-area');
+  if (el) el.innerHTML = _renderP7ModuleTable();
 }
 function _renderP7ModuleTable() {
-  var d = _p7ModuleCosts();
-  if (!d.rows.length) return '';
+  var d = _p7ModuleCosts(_p7ModTab === 'all' ? null : _p7ModTab);
+  if (_p7ModTab !== 'all' && !d.sel) { _p7ModTab = 'all'; d = _p7ModuleCosts(); }   // that plant was removed
+  var sel = d.sel;
+  var MO0 = 'font-family:DM Mono,monospace;';
+  var tab = function (id, label) {
+    var on = _p7ModTab === id;
+    return '<button onclick="_p7SetModTab(\'' + id + '\')" style="' + MO0 + 'font-size:8px;padding:5px 10px;cursor:pointer;border-radius:3px 3px 0 0;'
+      + 'border:1px solid ' + (on ? 'var(--border2)' : 'transparent') + ';border-bottom:none;margin-bottom:-1px;'
+      + 'background:' + (on ? 'var(--s2)' : 'transparent') + ';color:' + (on ? 'var(--gold)' : 'var(--muted2)') + ';font-weight:' + (on ? 700 : 400) + ';">' + label + '</button>';
+  };
+  var tabs = d.plants ? '<div style="display:flex;flex-wrap:wrap;gap:2px;">' + tab('all', 'All plants')
+    + d.all.filter(function (x) { return x.ptype === 'vehicle'; }).map(function (x) {
+      var nm = x.p.country_name || x.p.country_code || x.p.id;
+      return tab(x.p.id, '🏭 ' + nm + ' · ' + Math.round(+x.p.target_capacity_k || +x.p.vehicle_capacity_yr || 0) + 'k/yr' + (d.plants > 1 ? ' (' + Math.round(x.w * 100) + '%)' : ''));
+    }).join('') + '</div>' : '';
+  if (!d.rows.length) return tabs ? '<div style="margin:16px 0 4px;">' + tabs + '</div>' : '';
   var MO = 'font-family:DM Mono,monospace;', COLS = 'minmax(0,1fr) 66px 84px 76px 104px 112px 92px 96px';
   var f = function (v) { return Math.round(v).toLocaleString(); };
   var delta = function (v, unit) {
@@ -28581,13 +28624,18 @@ function _renderP7ModuleTable() {
     + cell('€' + f(T.make) + delta(T.make - T.make0), 'var(--white)', 1)
     + '<div style="text-align:right;white-space:nowrap;font-family:Orbitron,sans-serif;font-size:12px;font-weight:800;color:var(--gold);">€' + f(tpcT) + delta(tpcT - tpcT0) + '</div>'
     + cell('SOP ' + sopL, 'var(--white)', 1) + '</div>';
-  var note = 'Small figures = change vs §6. Plant capex: ' + (d.fitOk ? 'from the plant check (new lines, expansions, retooling)'
+  var note = sel
+    ? 'This plant only, as if it built every car. Small figures = change vs §6: its buy-side volume effect (priced on the car\'s total '
+      + (d.buyK ? Math.round(d.buyK) + 'k/yr over all its vehicle plants' : 'volume') + ') and its transformation vs the standard plant. Plant capex = this plant\'s own lines from the plant check'
+      + (d.pwtHere ? ', plus the powertrain plants\' (shown on the plant with the most volume)' : '')
+      + (d.fitOk ? '' : ' (run the plant check)') + '. R&amp;D and supplier capex are the car\'s, not the plant\'s.'
+    : 'Small figures = change vs §6. Plant capex: ' + (d.fitOk ? 'from the plant check (new lines, expansions, retooling)'
       : d.fitRun ? 'the plant check failed, so §6\'s greenfield is shown' : '§6\'s greenfield until you run the plant check')
     + '. Bought parts and transformation include each vehicle plant\'s volume effect and its transformation vs the standard plant'
     + (d.plants > 1 ? ', weighted by its share of the cars' : '') + (d.plants ? '' : ' (none yet: confirm a vehicle plant)')
     + '. Supplier capex stays §6\'s greenfield; sourcing sets it in §8.';
   return '<div style="margin:16px 0 4px;' + MO + 'font-size:8px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);">Module cost &amp; investment — after your plant decisions</div>'
-    + '<div style="border:1px solid var(--border2);border-radius:4px;overflow:hidden;">' + out + '</div>'
+    + tabs + '<div style="border:1px solid var(--border2);border-radius:' + (tabs ? '0 4px 4px 4px' : '4px') + ';overflow:hidden;">' + out + '</div>'
     + '<div style="' + MO + 'font-size:7.5px;color:var(--muted2);margin-top:5px;line-height:1.5;">' + note + '</div>';
 }
 
@@ -28666,10 +28714,21 @@ function _calcFacilityInv(type,fac){
   // Phase 2: recompute vehicle-plant maintenance + var total from the per-module greenfield
   // investment (the workshop investment base is retired). Labour + energy already set from
   // work content / kWh in _MANUF_E.calc above.
+  // Upkeep (2026-11-01) is priced on the lines the car really uses at this plant (_plantLineSizes: the plant
+  // check's placements): a reused / expanded family line at its size, carrying the car's share of it; a line
+  // built for the car, or no plant check yet, = a line sized for the car (as before). The engine-fitting
+  // line (pwt_assy) has no placement. Mirror: financial_engine._calc_manuf(line_k=).
   if(type==='vehicle_plants' && fac._computed && fac._computed.manuf_result){
     var _gfTot=0; Object.keys(gf).forEach(function(k){_gfTot+=(gf[k].inv_m||0);});
     var _m2=fac._computed.manuf_result, _efc=_m2.eff_capacity_yr||1;
-    var _mpu=Math.round(_gfTot*1e6*_MANUF_E.MAINT_RATE/_efc);
+    var _lines=fac._isRef?null:_plantLineSizes(fac), _upBase=0;
+    var _physF=1/(((_m2.shift_factor||1)*(_m2.oee||0.80))||1);
+    Object.keys(gf).forEach(function(k){
+      var ln=_lines&&_lines[k];
+      _upBase+=ln?_MODINV_E.lineShare(k,_mCtx(k,0,ln.al||_al2,_shr2),_efc/1000,ln.k,_physF):(gf[k].inv_m||0);
+    });
+    _m2.upkeep_basis_m=Math.round(_upBase*10)/10;
+    var _mpu=Math.round(_upBase*1e6*_MANUF_E.MAINT_RATE/_efc);
     // 1 decimal, not whole €M: the per-module figures §7 displays are themselves
     // 1dp, so Math.round() made the registered capex disagree with the column the
     // team read (17.4+15.7+1.8 shown as 34.9, registered as 35; a €5.4M powertrain
@@ -28711,6 +28770,22 @@ function _calcFacilityInv(type,fac){
 // The car's yearly volume over its vehicle plants (k/yr), what its suppliers' volume discount is priced on
 // (_MANUF_E.calc buy_volume_k; mirror financial_engine._calc_manuf). The confirmed plants, plus this one if it
 // is not among them yet (an estimate); null when none has a capacity.
+// The family lines a vehicle plant gives the car, from the plant check (_plantFit.placements at fac.plant_ref):
+// {platform|tophat: {k: the line's k/yr (installed + expansion), al}} for lines it reuses or expands; a new line
+// is built for the car, so it keeps the car-sized basis. null without a passed check. Feeds the upkeep basis in
+// _calcFacilityInv.
+function _plantLineSizes(fac) {
+  var fit = (_prop.operations || {})._plantFit;
+  if (!fac || !fac.plant_ref || !(fit && fit.ok && fit.placements)) return null;
+  var out = null;
+  fit.placements.forEach(function (x) {
+    if (x.plant_id !== fac.plant_ref || (x.module_type !== 'platform' && x.module_type !== 'tophat')) return;
+    if (x.action === 'new_line') return;
+    var k = Math.max((+x.installed_k || 0) + (+x.expand_k || 0), +x.capacity_k || 0);
+    if (k > 0) { out = out || {}; out[x.module_type] = {k: k, al: x.automation_level}; }
+  });
+  return out;
+}
 function _propBuyVolumeK(fac) {
   var cap = function (p) { return +(p.target_capacity_k || p.vehicle_capacity_yr) || 0; };
   var vps = _spConfirmedPlants(), t = vps.reduce(function (a, p) { return a + cap(p); }, 0);
