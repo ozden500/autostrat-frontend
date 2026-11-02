@@ -28694,13 +28694,13 @@ function _renderP7ModuleTable() {
     ? 'This plant only, as if it built every car. Small figures = change vs §6: its buy-side volume effect (priced on the car\'s total '
       + (d.buyK ? Math.round(d.buyK) + 'k/yr over all its vehicle plants' : 'volume') + ') and its transformation vs the standard plant. Plant capex = this plant\'s own lines from the plant check'
       + (d.pwtHere ? ', plus the powertrain plants\' (shown on the plant with the most volume)' : '')
-      + (d.fitOk ? '' : ' (run the plant check)') + '. Supplier capex = new supplier lines for this plant' + Q + 's volume (the powertrain plants' + Q + ' with the plant with the most volume); sourcing sets it in §8. R&amp;D is the car' + Q + 's.'
+      + (d.fitOk ? '' : ' (run the plant check)') + '. Supplier capex = new supplier lines for this plant\'s volume (the powertrain plants\' with the plant with the most volume); sourcing sets it in §8. R&amp;D is the car\'s.'
     : 'Small figures = change vs §6. Plant capex: ' + (d.fitOk ? 'from the plant check (new lines, expansions, retooling)'
       : d.fitRun ? 'the plant check failed, so §6\'s greenfield is shown' : '§6\'s greenfield until you run the plant check')
     + '. Bought parts and transformation include each vehicle plant\'s volume effect and its transformation vs the standard plant'
     + (d.plants > 1 ? ', weighted by its share of the cars' : '') + (d.plants ? '' : ' (none yet: confirm a vehicle plant)')
-    + (d.supAtVol ? '. Supplier capex: new supplier lines at your volume (capacity + first-time tooling in each plant' + Q + 's local zone; §6 prices them at the reference volume); sourcing sets it in §8.'
-       : '. Supplier capex stays §6' + Q + 's greenfield until a plant is confirmed; sourcing sets it in §8.');
+    + (d.supAtVol ? '. Supplier capex: new supplier lines at your volume (capacity + first-time tooling in each plant\'s local zone; §6 prices them at the reference volume); sourcing sets it in §8.'
+       : '. Supplier capex stays §6\'s greenfield until a plant is confirmed; sourcing sets it in §8.');
   return '<div style="margin:16px 0 4px;' + MO + 'font-size:8px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);">Module cost &amp; investment — after your plant decisions</div>'
     + tabs + '<div style="border:1px solid var(--border2);border-radius:' + (tabs ? '0 4px 4px 4px' : '4px') + ';overflow:hidden;">' + out + '</div>'
     + '<div style="' + MO + 'font-size:7.5px;color:var(--muted2);margin-top:5px;line-height:1.5;">' + note + '</div>';
@@ -31821,8 +31821,8 @@ function _renderP8ModuleTable(lines) {
     + cell('SOP ' + sopL, 'var(--white)', 1) + '</div>';
   var pwtNote = d.pwtHere ? ' (the powertrain plants\' lines are shown on the plant with the most volume)' : '';
   var note = sel
-    ? 'The cars built in ' + _esc(sel.p.country_name || sel.p.country_code) + ', their powertrain modules included (from the powertrain plants, weighted by their volume). Small figures = change vs §7: the sourcing adjustment of the line that supplies each module (supplier labour, freight, duty). Supplier capex = what reserving those lines charges' + pwtNote + ', vs §7' + Q + 's new lines at this plant' + Q + 's volume. Transformation, R&amp;D and plant capex are §7\'s.'
-    : 'Small figures = change vs §7. Bought parts: each module\'s sourcing adjustment (supplier labour, freight, duty), weighted by the share of the cars each plant builds or supplies; supplier capex: what reserving charges, vs §7' + Q + 's new supplier lines at your volume (contracts already held, a family contract, one order for several plants, automation, the zone' + Q + 's tooling cost). Transformation, R&amp;D and plant capex are §7\'s. These totals are what §9 and §10 use. Click a module to change its sourcing.';
+    ? 'The cars built in ' + _esc(sel.p.country_name || sel.p.country_code) + ', their powertrain modules included (from the powertrain plants, weighted by their volume). Small figures = change vs §7: the sourcing adjustment of the line that supplies each module (supplier labour, freight, duty). Supplier capex = what reserving those lines charges' + pwtNote + ', vs §7\'s new lines at this plant\'s volume. Transformation, R&amp;D and plant capex are §7\'s.'
+    : 'Small figures = change vs §7. Bought parts: each module\'s sourcing adjustment (supplier labour, freight, duty), weighted by the share of the cars each plant builds or supplies; supplier capex: what reserving charges, vs §7\'s new supplier lines at your volume (contracts already held, a family contract, one order for several plants, automation, the zone\'s tooling cost). Transformation, R&amp;D and plant capex are §7\'s. These totals are what §9 and §10 use. Click a module to change its sourcing.';
   return '<div style="margin:2px 0 4px;' + MO + 'font-size:8px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);">Module cost &amp; investment — after sourcing</div>'
     + tabs + '<div style="border:1px solid var(--border2);border-radius:' + (tabs ? '0 4px 4px 4px' : '4px') + ';overflow:hidden;">' + out + '</div>'
     + '<div style="' + MO + 'font-size:7.5px;color:var(--muted2);margin-top:5px;line-height:1.5;">' + note + '</div>';
