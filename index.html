@@ -28572,9 +28572,25 @@ function _p7ModuleCosts(plantId) {
     if (sel) plant = 0;   // one plant: its own lines from the plant check, nothing until it has run
     if (fitOk) plant = fit.placements.filter(function (x) { return x.module_type === FIT_T[k] && (!sel || x.plant_id === sel.p.plant_ref || pwtRefs.indexOf(x.plant_id) >= 0); })
       .reduce(function (a, x) { return a + (+x.capex_m || 0); }, 0);
-    rows[k] = {k: k, rd: _slotRdM(p), plant0: sel ? plant : (c.plant || 0), plant: plant, sup: c.supplier || 0, dmp0: dmp, make0: make, dmp: dmp, make: make};
+    rows[k] = {k: k, rd: _slotRdM(p), plant0: sel ? plant : (c.plant || 0), plant: plant, sup: c.supplier || 0, sup6: c.supplier || 0, dmp0: dmp, make0: make, dmp: dmp, make: make};
     order.push(k); totDmp += dmp;
   });
+  // Supplier capex (2026-11-02): a new supplier line at your volume, as §8 measures sourcing against (§6's figure is
+  // priced at the reference volume): per plant that sources the module, capacity for its k/yr + first-time tooling in
+  // the plant's local zone (_mzcSupplierGfM, _MZC_TOOLING_SHARE). One plant's tab: its own lines, the powertrain
+  // plants' on the plant with the most volume. No confirmed plant yet: §6's figure.
+  var supK = {}, anySup = false, pwtOnSel = !sel || (vbig && sel.p.id === vbig.p.id);
+  all.forEach(function (x) {
+    var kk = +x.p.vehicle_capacity_yr || 0;
+    if (!(kk > 0)) return;
+    if (sel && (x.ptype === 'vehicle' ? x.p.id !== sel.p.id : !pwtOnSel)) return;
+    var zk = _zoneForPlant(x.p.country_code, x.p.region), z = SP_ZONES.find(function (q) { return q.key === zk; }) || SP_ZONES[0];
+    anySup = true;
+    x.slots.forEach(function (sk) {
+      supK[sk] = (supK[sk] || 0) + _mzcSupplierGfM(sk, kk) + _mzcSupplierGfM(sk, _MODINV_E.V_REF) * _MZC_TOOLING_SHARE * (z.labor_index || 1);
+    });
+  });
+  if (anySup) order.forEach(function (k) { rows[k].sup = supK[k] || 0; });
   var seg = (_prop.study && _prop.study.segment_code) || 'c_segment', bt = _getBodyType(), psz = _getPlatformSize(), pk = _pwtKeyFromProp();
   var vps = all.filter(function (x) { return x.ptype === 'vehicle'; });
   var use = sel ? [{p: sel.p, w: 1}] : vps;
@@ -28609,7 +28625,7 @@ function _p7ModuleCosts(plantId) {
       else r.make += x.w * (dMake - dPwt) * (wcV > 0 ? wc[k] / wcV : 1 / (order.length - pwK.length));
     });
   });
-  return {rows: order.map(function (k) { return rows[k]; }), fitOk: fitOk, fitRun: !!fit, plants: vps.length, all: all, sel: sel, pwtHere: pwtRefs.length > 0,
+  return {rows: order.map(function (k) { return rows[k]; }), fitOk: fitOk, fitRun: !!fit, plants: vps.length, all: all, sel: sel, pwtHere: pwtRefs.length > 0, supAtVol: anySup,
     buyK: vps.length ? _propBuyVolumeK(vps[0].p) : null};
 }
 // §7 module table tabs: 'all' (the car, plants weighted) or one plant's id
@@ -28648,7 +28664,7 @@ function _renderP7ModuleTable() {
   var hdr = ['R&amp;D €M', 'Plant €M', 'Supplier €M', 'Bought parts €', 'Transformation €', 'TPC €', 'Ready'];
   var out = '<div style="display:grid;grid-template-columns:' + COLS + ';gap:8px;padding:6px 10px 5px;' + MO + 'font-size:7px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;">'
     + '<div>Module</div>' + hdr.map(function (t) { return '<div style="text-align:right;">' + t + '</div>'; }).join('') + '</div>';
-  var T = {rd: 0, plant: 0, plant0: 0, sup: 0, dmp: 0, dmp0: 0, make: 0, make0: 0};
+  var T = {rd: 0, plant: 0, plant0: 0, sup: 0, sup6: 0, dmp: 0, dmp0: 0, make: 0, make0: 0};
   d.rows.forEach(function (r) {
     var meta = OEM_COST_MOD_META[r.k] || {label: r.k, color: 'var(--text)'}, tpc = r.dmp + r.make, tpc0 = r.dmp0 + r.make0;
     Object.keys(T).forEach(function (q) { T[q] += r[q]; });
@@ -28657,7 +28673,7 @@ function _renderP7ModuleTable() {
       + '<span style="' + MO + 'font-size:9px;font-weight:700;color:var(--white);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + meta.label + '</span></div>'
       + cell('€' + f(r.rd) + 'M')
       + cell(r.plant > 0 || r.plant0 > 0 ? '€' + f(r.plant) + 'M' + delta(r.plant - r.plant0, 'M') : '—')
-      + cell(r.sup > 0 ? '€' + f(r.sup) + 'M' : '—')
+      + cell(r.sup > 0 ? '€' + (r.sup < 10 ? r.sup.toFixed(1) : f(r.sup)) + 'M' + (sel ? '' : delta(r.sup - r.sup6, 'M')) : '—')
       + cell('€' + f(r.dmp) + delta(r.dmp - r.dmp0), 'var(--text)')
       + cell('€' + f(r.make) + delta(r.make - r.make0), 'var(--text)')
       + '<div style="text-align:right;white-space:nowrap;font-family:Orbitron,sans-serif;font-size:11px;font-weight:700;color:' + meta.color + ';">€' + f(tpc) + delta(tpc - tpc0) + '</div>'
@@ -28669,7 +28685,7 @@ function _renderP7ModuleTable() {
     + '<div style="' + MO + 'font-size:9px;font-weight:700;color:var(--gold);">TOTAL</div>'
     + cell('€' + f(T.rd) + 'M', 'var(--white)', 1)
     + cell('€' + f(T.plant) + 'M' + delta(T.plant - T.plant0, 'M'), 'var(--white)', 1)
-    + cell('€' + f(T.sup) + 'M', 'var(--white)', 1)
+    + cell('€' + f(T.sup) + 'M' + (sel ? '' : delta(T.sup - T.sup6, 'M')), 'var(--white)', 1)
     + cell('€' + f(T.dmp) + delta(T.dmp - T.dmp0), 'var(--white)', 1)
     + cell('€' + f(T.make) + delta(T.make - T.make0), 'var(--white)', 1)
     + '<div style="text-align:right;white-space:nowrap;font-family:Orbitron,sans-serif;font-size:12px;font-weight:800;color:var(--gold);">€' + f(tpcT) + delta(tpcT - tpcT0) + '</div>'
@@ -28678,12 +28694,13 @@ function _renderP7ModuleTable() {
     ? 'This plant only, as if it built every car. Small figures = change vs §6: its buy-side volume effect (priced on the car\'s total '
       + (d.buyK ? Math.round(d.buyK) + 'k/yr over all its vehicle plants' : 'volume') + ') and its transformation vs the standard plant. Plant capex = this plant\'s own lines from the plant check'
       + (d.pwtHere ? ', plus the powertrain plants\' (shown on the plant with the most volume)' : '')
-      + (d.fitOk ? '' : ' (run the plant check)') + '. R&amp;D and supplier capex are the car\'s, not the plant\'s.'
+      + (d.fitOk ? '' : ' (run the plant check)') + '. Supplier capex = new supplier lines for this plant' + Q + 's volume (the powertrain plants' + Q + ' with the plant with the most volume); sourcing sets it in §8. R&amp;D is the car' + Q + 's.'
     : 'Small figures = change vs §6. Plant capex: ' + (d.fitOk ? 'from the plant check (new lines, expansions, retooling)'
       : d.fitRun ? 'the plant check failed, so §6\'s greenfield is shown' : '§6\'s greenfield until you run the plant check')
     + '. Bought parts and transformation include each vehicle plant\'s volume effect and its transformation vs the standard plant'
     + (d.plants > 1 ? ', weighted by its share of the cars' : '') + (d.plants ? '' : ' (none yet: confirm a vehicle plant)')
-    + '. Supplier capex stays §6\'s greenfield; sourcing sets it in §8.';
+    + (d.supAtVol ? '. Supplier capex: new supplier lines at your volume (capacity + first-time tooling in each plant' + Q + 's local zone; §6 prices them at the reference volume); sourcing sets it in §8.'
+       : '. Supplier capex stays §6' + Q + 's greenfield until a plant is confirmed; sourcing sets it in §8.');
   return '<div style="margin:16px 0 4px;' + MO + 'font-size:8px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);">Module cost &amp; investment — after your plant decisions</div>'
     + tabs + '<div style="border:1px solid var(--border2);border-radius:' + (tabs ? '0 4px 4px 4px' : '4px') + ';overflow:hidden;">' + out + '</div>'
     + '<div style="' + MO + 'font-size:7.5px;color:var(--muted2);margin-top:5px;line-height:1.5;">' + note + '</div>';
@@ -31706,8 +31723,8 @@ function _propPlantCapexM() {   // the plant capex §10 counts (§7 fit; else th
 // (supplier labour, freight, duty: _calcModuleSupplyMetrics.piece_adj) of the line that supplies that car's module;
 // transformation, R&D and plant capex carry over from §7; supplier capex = the brownfield of those lines (shared
 // contracts split by volume; the powertrain plants' lines shown once, on the vehicle plant with the most volume,
-// as §7 shows their plant capex), compared on the All tab with the greenfield at your volume (capacity + first-time
-// tooling, _spBridgeLines l.gf). The All tab's totals are what §9 / §10 use (_calcSupplyPlanTotals).
+// as §7 shows their plant capex), compared with §7's supplier figure (new supplier lines at your volume, each plant's
+// own order, tooling in its local zone). The All tab's totals are what §9 / §10 use (_calcSupplyPlanTotals).
 var _p8ModTab = 'all';
 function _p8SetModTab(id) { _p8ModTab = id; _refreshSupplyPlanArea(); }
 function _p8ModuleCosts(lines, plantId) {
@@ -31718,7 +31735,7 @@ function _p8ModuleCosts(lines, plantId) {
   var rows = base.rows.map(function (r) {
     var o = {}; Object.keys(r).forEach(function (q) { o[q] = r[q]; });
     o.dmp0 = r.dmp; o.make0 = r.make;                // §7's values: the small figures are the change from them
-    o.sup0 = 0; o.sup = 0; o.lines = [];            // sup0 = the greenfield at your volume (All tab)
+    o.sup0 = r.sup; o.sup = 0; o.lines = [];        // sup0 = §7's: new supplier lines at your volume
     return o;
   });
   var byK = {}; rows.forEach(function (r) { byK[r.k] = r; });
@@ -31726,7 +31743,7 @@ function _p8ModuleCosts(lines, plantId) {
     var r = byK[l.sk];
     if (!r) return;
     var supM = l.inv ? l.inv.totalM : 0;
-    if (!sel) { r.dmp += l.dPurch; r.sup += supM; r.sup0 += l.gf || 0; r.lines.push(l); return; }
+    if (!sel) { r.dmp += l.dPurch; r.sup += supM; r.lines.push(l); return; }
     if (l.ptype === 'vehicle' && l.p.id === sel.p.id) { r.dmp += l.m.piece_adj; r.sup += supM; r.lines.push(l); }
     else if (l.ptype === 'powertrain' && hasPwt) { r.dmp += l.w * l.m.piece_adj; if (pwtHere) r.sup += supM; r.lines.push(l); }
   });
@@ -31785,7 +31802,7 @@ function _renderP8ModuleTable(lines) {
       + '<div style="' + MO + 'font-size:7px;color:var(--muted2);margin:2px 0 0 12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + (src(r) || '—') + '</div></div>'
       + cell('€' + f(r.rd) + 'M')
       + cell(r.plant > 0 ? '€' + f(r.plant) + 'M' : '—')
-      + cell(r.sup > 0 ? '€' + fM(r.sup) + 'M' + (sel ? '' : delta(r.sup - r.sup0, 'M')) : '—')
+      + cell(r.sup > 0 || r.sup0 > 0 ? '€' + fM(r.sup) + 'M' + delta(r.sup - r.sup0, 'M') : '—')
       + cell('€' + f(r.dmp) + delta(r.dmp - r.dmp0), 'var(--text)')
       + cell('€' + f(r.make), 'var(--text)')
       + '<div style="text-align:right;white-space:nowrap;font-family:Orbitron,sans-serif;font-size:11px;font-weight:700;color:' + meta.color + ';">€' + f(tpc) + delta(tpc - tpc0) + '</div>'
@@ -31797,15 +31814,15 @@ function _renderP8ModuleTable(lines) {
     + '<div style="' + MO + 'font-size:9px;font-weight:700;color:var(--gold);">TOTAL</div>'
     + cell('€' + f(T.rd) + 'M', 'var(--white)', 1)
     + cell('€' + f(T.plant) + 'M', 'var(--white)', 1)
-    + cell('€' + f(T.sup) + 'M' + (sel ? '' : delta(T.sup - T.sup0, 'M')), 'var(--white)', 1)
+    + cell('€' + f(T.sup) + 'M' + delta(T.sup - T.sup0, 'M'), 'var(--white)', 1)
     + cell('€' + f(T.dmp) + delta(T.dmp - T.dmp0), 'var(--white)', 1)
     + cell('€' + f(T.make), 'var(--white)', 1)
     + '<div style="text-align:right;white-space:nowrap;font-family:Orbitron,sans-serif;font-size:12px;font-weight:800;color:var(--gold);">€' + f(tpcT) + delta(tpcT - tpcT0) + '</div>'
     + cell('SOP ' + sopL, 'var(--white)', 1) + '</div>';
   var pwtNote = d.pwtHere ? ' (the powertrain plants\' lines are shown on the plant with the most volume)' : '';
   var note = sel
-    ? 'The cars built in ' + _esc(sel.p.country_name || sel.p.country_code) + ', their powertrain modules included (from the powertrain plants, weighted by their volume). Small figures = change vs §7: the sourcing adjustment of the line that supplies each module (supplier labour, freight, duty). Supplier capex = the capex of those lines' + pwtNote + '. Transformation, R&amp;D and plant capex are §7\'s.'
-    : 'Small figures = change vs §7. Bought parts: each module\'s sourcing adjustment (supplier labour, freight, duty), weighted by the share of the cars each plant builds or supplies; supplier capex: what reserving charges, vs a greenfield supplier line at your volume (contracts already held, a family contract, automation, tooling in place). Transformation, R&amp;D and plant capex are §7\'s. These totals are what §9 and §10 use. Click a module to change its sourcing.';
+    ? 'The cars built in ' + _esc(sel.p.country_name || sel.p.country_code) + ', their powertrain modules included (from the powertrain plants, weighted by their volume). Small figures = change vs §7: the sourcing adjustment of the line that supplies each module (supplier labour, freight, duty). Supplier capex = what reserving those lines charges' + pwtNote + ', vs §7' + Q + 's new lines at this plant' + Q + 's volume. Transformation, R&amp;D and plant capex are §7\'s.'
+    : 'Small figures = change vs §7. Bought parts: each module\'s sourcing adjustment (supplier labour, freight, duty), weighted by the share of the cars each plant builds or supplies; supplier capex: what reserving charges, vs §7' + Q + 's new supplier lines at your volume (contracts already held, a family contract, one order for several plants, automation, the zone' + Q + 's tooling cost). Transformation, R&amp;D and plant capex are §7\'s. These totals are what §9 and §10 use. Click a module to change its sourcing.';
   return '<div style="margin:2px 0 4px;' + MO + 'font-size:8px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);">Module cost &amp; investment — after sourcing</div>'
     + tabs + '<div style="border:1px solid var(--border2);border-radius:' + (tabs ? '0 4px 4px 4px' : '4px') + ';overflow:hidden;">' + out + '</div>'
     + '<div style="' + MO + 'font-size:7.5px;color:var(--muted2);margin-top:5px;line-height:1.5;">' + note + '</div>';
