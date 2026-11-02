@@ -27419,10 +27419,21 @@ function _p9YearDetail(m) {
     h += '<tr style="border-top:1px solid var(--border);' + (gm <= 0 && y.volume > 0 ? 'background:rgba(220,50,50,0.08);' : '') + '">'
       + td('<b style="color:var(--white);">' + y.year + '</b>') + td(y.volume ? y.volume.toLocaleString() : '—') + td('€' + m.msrp_eur_k + 'k', 'var(--gold)')
       + '<td style="padding:3px 8px;text-align:right;"><input type="number" min="-30" max="40" step="0.5" id="prop-com-ydisc-' + R + '-' + i + '" value="' + y.discount + '" onchange="onPropComYearDiscount(\'' + R + '\',' + i + ',this.value)" style="width:58px;color:var(--text);border-color:' + (y.disc_set ? 'var(--gold)' : 'var(--border2)') + ';' + inp + '"></td>'
-      + td(_p9e(nR), 'var(--muted2)') + td(_p9e(uc), 'var(--orange)') + td(_p9e(mg), mg >= 0 ? 'var(--cyan)' : 'var(--red)')
+      + td('<span title="' + _p9NetText(m.msrp_eur_k, y.discount) + '" style="cursor:help;border-bottom:1px dotted var(--border2);">' + _p9e(nR) + '</span>', 'var(--muted2)')
+      + td(_p9e(uc), 'var(--orange)') + td(_p9e(mg), mg >= 0 ? 'var(--cyan)' : 'var(--red)')
       + td(y.volume ? (gm >= 0 ? '+' : '') + gm.toFixed(2) : '—', gm > 0 ? 'var(--green)' : gm < 0 ? 'var(--red)' : 'var(--muted2)') + '</tr>';
   });
-  return h + '</tbody></table><div id="prop-com-' + R + '-after" style="' + MN + 'font-size:10px;color:var(--text);margin-top:6px;"></div>';
+  var list = (parseFloat(m.msrp_eur_k) || 0) * 1000;
+  h += '</tbody></table><div style="' + MN + 'font-size:9.5px;color:var(--muted2);margin-top:6px;line-height:1.5;">Net revenue per car = what the carmaker books: MSRP ' + _p9e(list)
+    + ' is the showroom price; less VAT (~20%) and the dealer’s margin (~12%), the carmaker keeps ' + Math.round(OEM_NET_REVENUE_SHARE * 100) + '% = '
+    + _p9e(list * OEM_NET_REVENUE_SHARE) + ', then the year’s sales discount comes off that. Hover a figure for its sum.</div>';
+  return h + '<div id="prop-com-' + R + '-after" style="' + MN + 'font-size:10px;color:var(--text);margin-top:6px;"></div>';
+}
+// MSRP → net revenue for one car, as a sentence (the year table's tooltip)
+function _p9NetText(msrpK, disc) {
+  var list = (parseFloat(msrpK) || 0) * 1000, oem = list * OEM_NET_REVENUE_SHARE, d = parseFloat(disc) || 0;
+  return 'MSRP ' + _p9e(list) + ' × ' + Math.round(OEM_NET_REVENUE_SHARE * 100) + '% (less VAT ~20% and dealer margin ~12%) = ' + _p9e(oem)
+    + ' − ' + d + '% sales discount ' + _p9e(oem * d / 100) + ' = ' + _p9e(oem * (1 - d / 100));
 }
 
 // Each plant's best year: how its capacity is shared among the regions it feeds
