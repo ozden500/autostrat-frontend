@@ -31457,6 +31457,31 @@ function _spPlantCostWeighted() {
   });
   return r;
 }
+// Powertrain shipped from the powertrain plant to each vehicle plant (2026-11-02): freight + import duty on the
+// module (customs value = its TPC; freight volume from the same value density as a bought part), from the powertrain
+// plant's zone to the vehicle plant's. Every car built at vehicle plant V carries Σ over the powertrain plants P of
+// P's volume share × that transfer. Mirror: cost_engines.SupplyPlanEngine._transfer_metrics / calc(plant_countries=).
+function _spTransferMetrics(sk, from, to) {
+  var p = _prop[sk], value = p && p.module ? parseFloat(p.module.per_unit_tpc_eur || 0) : 0;
+  var zk = _zoneForPlant(from.country_code, from.region), zone = SP_ZONES.find(function (z) { return z.key === zk; }) || SP_ZONES[0];
+  var dest = _ZONE_ABBR[_zoneForPlant(to.country_code, to.region)] || 'EW';
+  var duty = value * (zone.duty[dest] || 0) / 100;
+  var freight = (value / 1000) * (MODULE_VOLUME_FACTOR[sk] || MODULE_VOLUME_FACTOR.platform) * (zone.logistics[dest] || 80);
+  return {value: value, duty: Math.round(duty), freight: Math.round(freight), adj: Math.round(duty + freight)};
+}
+function _spTransferLines() {
+  var all = _spPlantSlotsWeights(), vps = all.filter(function (x) { return x.ptype === 'vehicle'; }),
+      pps = all.filter(function (x) { return x.ptype === 'powertrain'; }), out = [];
+  vps.forEach(function (v) {
+    pps.forEach(function (p) {
+      p.slots.forEach(function (sk) {
+        var m = _spTransferMetrics(sk, p.p, v.p);
+        if (m.value > 0) out.push({v: v.p, p: p.p, sk: sk, wV: v.w, wP: p.w, m: m});
+      });
+    });
+  });
+  return out;
+}
 function _calcSupplyPlanTotals(){
   var sp=(_prop.operations&&_prop.operations.supply_plan)||{};
   var lines=_spBridgeLines(false), totalAdj=0, totalLanded=0, totalRisk=0, totalW=0;
@@ -31466,6 +31491,7 @@ function _calcSupplyPlanTotals(){
       lines.push({sk:sk,w:1,m:m,dPurch:m.piece_adj});
     });
   }
+  _spTransferLines().forEach(function(t){ totalAdj+=t.wV*t.wP*t.m.adj; totalLanded+=t.wV*t.wP*t.m.adj; });
   lines.forEach(function(l){
     var li=(SP_MODULE_TYPES[l.sk]||{labor_intensity:0.3}).labor_intensity;
     totalAdj+=l.dPurch; totalLanded+=l.m.landed_eur*l.w;
@@ -31747,6 +31773,14 @@ function _p8ModuleCosts(lines, plantId) {
     if (l.ptype === 'vehicle' && l.p.id === sel.p.id) { r.dmp += l.m.piece_adj; r.sup += supM; r.lines.push(l); }
     else if (l.ptype === 'powertrain' && hasPwt) { r.dmp += l.w * l.m.piece_adj; if (pwtHere) r.sup += supM; r.lines.push(l); }
   });
+  // the powertrain shipped from its plant to the vehicle plant(s): freight + duty
+  _spTransferLines().forEach(function (t) {
+    var r = byK[t.sk];
+    if (!r || (sel && t.v.id !== sel.p.id)) return;
+    var f = (sel ? 1 : t.wV) * t.wP;
+    r.dmp += f * t.m.adj; r.ship = (r.ship || 0) + f * t.m.adj;
+    r.shipFrom = (r.shipFrom || []); if (r.shipFrom.indexOf(t.p.country_code) < 0) r.shipFrom.push(t.p.country_code);
+  });
   return {rows: rows, sel: sel, all: base.all, plants: base.plants, fitOk: base.fitOk, pwtHere: pwtHere && hasPwt};
 }
 function _renderP8ModuleTable(lines) {
@@ -31785,6 +31819,7 @@ function _renderP8ModuleTable(lines) {
         + (l.group > 1 ? ' · one order with ' + (l.group - 1) + ' other plant' + (l.group > 2 ? 's' : '') : '');
       if (!seen[t]) { seen[t] = 1; out.push(t); }
     });
+    if (r.ship) out.push('shipped from ' + _esc(r.shipFrom.join(', ')) + ' €' + Math.round(r.ship).toLocaleString() + '/car');
     return out.join(' · ');
   };
   var hdr = ['R&amp;D €M', 'Plant €M', 'Supplier €M', 'Bought parts €', 'Transformation €', 'TPC €', 'Ready'];
@@ -31821,8 +31856,8 @@ function _renderP8ModuleTable(lines) {
     + cell('SOP ' + sopL, 'var(--white)', 1) + '</div>';
   var pwtNote = d.pwtHere ? ' (the powertrain plants\' lines are shown on the plant with the most volume)' : '';
   var note = sel
-    ? 'The cars built in ' + _esc(sel.p.country_name || sel.p.country_code) + ', their powertrain modules included (from the powertrain plants, weighted by their volume). Small figures = change vs §7: the sourcing adjustment of the line that supplies each module (supplier labour, freight, duty). Supplier capex = what reserving those lines charges' + pwtNote + ', vs §7\'s new lines at this plant\'s volume. Transformation, R&amp;D and plant capex are §7\'s.'
-    : 'Small figures = change vs §7. Bought parts: each module\'s sourcing adjustment (supplier labour, freight, duty), weighted by the share of the cars each plant builds or supplies; supplier capex: what reserving charges, vs §7\'s new supplier lines at your volume (contracts already held, a family contract, one order for several plants, automation, the zone\'s tooling cost). Transformation, R&amp;D and plant capex are §7\'s. These totals are what §9 and §10 use. Click a module to change its sourcing.';
+    ? 'The cars built in ' + _esc(sel.p.country_name || sel.p.country_code) + ', their powertrain modules included (from the powertrain plants, weighted by their volume). Small figures = change vs §7: the sourcing adjustment of the line that supplies each module (supplier labour, freight, duty), and for the powertrain its shipping from the powertrain plant (freight + duty). Supplier capex = what reserving those lines charges' + pwtNote + ', vs §7\'s new lines at this plant\'s volume. Transformation, R&amp;D and plant capex are §7\'s.'
+    : 'Small figures = change vs §7. Bought parts: each module\'s sourcing adjustment (supplier labour, freight, duty), weighted by the share of the cars each plant builds or supplies, and the powertrain\'s shipping from its plant to the vehicle plants; supplier capex: what reserving charges, vs §7\'s new supplier lines at your volume (contracts already held, a family contract, one order for several plants, automation, the zone\'s tooling cost). Transformation, R&amp;D and plant capex are §7\'s. These totals are what §9 and §10 use. Click a module to change its sourcing.';
   return '<div style="margin:2px 0 4px;' + MO + 'font-size:8px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);">Module cost &amp; investment — after sourcing</div>'
     + tabs + '<div style="border:1px solid var(--border2);border-radius:' + (tabs ? '0 4px 4px 4px' : '4px') + ';overflow:hidden;">' + out + '</div>'
     + '<div style="' + MO + 'font-size:7.5px;color:var(--muted2);margin-top:5px;line-height:1.5;">' + note + '</div>';
@@ -31874,6 +31909,18 @@ function _renderSupplyPlanSection(){
         + '<td style="' + TD + 'text-align:left;color:var(--muted2);">' + contract + '</td>'
         + '<td style="' + TD + '">' + (inv.shortfall > 0 ? '+' + Math.round(inv.shortfall) + 'k in ' + _mzcLeadTimeQ + 'q' : '—') + '</td>'
         + '<td style="' + TD + '">' + disc + '</td></tr>';
+    });
+    _spTransferLines().forEach(function (t) {
+      h += '<tr>'
+        + '<td style="' + TD + 'text-align:left;">' + _esc(t.p.country_code || '') + ' → ' + _esc(t.v.country_code || '') + ' · ' + (_SP_TYPE_LABELS[t.sk] || t.sk) + ' <b style="color:var(--white);">shipped to the vehicle plant</b></td>'
+        + '<td style="' + TD + 'text-align:left;">transfer at €' + Math.round(t.m.value).toLocaleString() + '</td>'
+        + '<td style="' + TD + '">—</td><td style="' + TD + '">—</td>'
+        + '<td style="' + TD + '">' + eur(t.m.freight) + '</td>'
+        + '<td style="' + TD + '">' + eur(t.m.duty) + '</td>'
+        + '<td style="' + TD + 'color:var(--cyan);font-weight:700;">+' + eur(t.m.adj) + '</td>'
+        + '<td style="' + TD + '">—</td><td style="' + TD + '">—</td><td style="' + TD + '">—</td>'
+        + '<td style="' + TD + 'text-align:left;color:var(--muted2);">' + Math.round(t.wP * 100) + '% of this plant' + "'" + 's ' + (_SP_TYPE_LABELS[t.sk] || t.sk) + '</td>'
+        + '<td style="' + TD + '">—</td><td style="' + TD + '">—</td></tr>';
     });
     h += '</tbody></table></div>';
     h += '<div style="' + MO + 'font-size:7.5px;color:var(--muted2);margin-top:4px;">Landed €/car is per piece at that plant; the table above charges it to the cars that plant builds or supplies. Plants sourcing a module from the same zone place one order: its supplier capex is priced on their combined volume and split by volume.</div>';
