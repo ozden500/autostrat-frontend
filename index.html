@@ -27195,15 +27195,18 @@ function buildComponentsSourcingSection() {
   _geoLoad().then(function () { _refreshSupplyPlanArea(); });   // the Russia zone's sanctions status
 }
 
-// ── §9 Commercial plan around a map (2026-11-02) ──
-// Each §7 vehicle plant splits its output across sales regions (commercial_plan.plants[].split, the
-// same every year; its home region gets 100% by default). A region's volume is what the plants send
-// it; markets[] are derived from the plants (_propComDerive): annual volume, years (volume on
-// _VOLCURVE_E, discount on the default incentive scheme until the team sets one), sources
-// {plant entry id: share of the region} and plant_id (the largest source, for older readers).
-// Twin of financial_engine.market_sources (logistics / tariff, plan rows, S&OP plant plans).
-var _P9M = {t: null, yi: 1, open: null};   // map zoom, year shown, open panel {kind: 'plant' | 'region', id}
+// ── §9 Commercial plan: quick setup (2026-11-02) ──
+// Three decisions per sales region: sell there, the plant that builds its cars, MSRP, plus one lifetime
+// average discount. Volumes are not typed: each §7 vehicle plant's capacity is its best year
+// (commercial_plan.plants[].annual_volume, the peak of _VOLCURVE_E), shared among the regions it feeds by
+// market size (SALES_MARKETS seg_size_mult) unless the team sets a region's share in the year detail
+// (markets[].share_set). Discounts follow a scheme around the average (low at launch, rising 1.5 points a
+// year, volume-weighted to the average); a year the team sets is kept (years[].disc_set). _propComDerive
+// writes markets[] (selected, plant_id, annual_volume, years, sources) and plants[].split, the shape
+// financial_engine.market_sources reads. The map below the table is a read-only summary.
+var _P9M = {t: null, open: {}};   // map zoom, regions whose year detail is open
 var _P9_SEG_PK = {a_segment:12,b_segment:18,c_segment:26,d_segment:38,e_segment:55,f_segment:90,mpv:32,pickup:45,sports:55,c_van:28,d_van:40,e_van:55};
+var _P9_DISC_STEP = 1.5, _P9_DISC_DEFAULT = 6;
 
 // The confirmed vehicle plants (§7 leaves placeholder entries; financial_engine.vehicle_plants_of drops them too)
 function _propComPlants() {
@@ -27221,17 +27224,13 @@ function _propComLife() {
   var yrs = []; for (var y = parseInt(v.start_year); y <= parseInt(v.end_year); y++) yrs.push(y);
   return {sopQ: sopQ, eopQ: eopQ, years: yrs};
 }
-// Default sales-incentive scheme: 2% in the SOP year, +1.5 points a year, at most 12%
-function _propComDefaultDiscount(i) { return Math.min(12, 2 + 1.5 * Math.max(0, i)); }
-// A plant's default planned volume: its §7 capacity
+// A plant's best year: its §7 capacity
 function _propComDefaultVol(p) {
   var k = parseFloat(p && p.vehicle_capacity_yr) || 0;
   if (!(k > 0)) { var o = _prop.operations || {}; k = (parseFloat(o.vehicle_capacity_yr || o.capacity_target_k) || 8) / Math.max(1, _propComPlants().length); }
   return Math.round(k * 1000);
 }
-function _propComPlanOf(pid) {
-  return ((_prop.commercial && _prop.commercial.plants) || []).find(function (x) { return x.plant_id === pid; }) || null;
-}
+function _propComSize(region) { return (SALES_MARKETS.find(function (s) { return s.region === region; }) || {}).seg_size_mult || 0.5; }
 
 // The plants that supply a region and each one's share of its cars: [{plant, share}] (sources, else
 // plant_id, else the first plant). Twin of financial_engine.market_sources.
@@ -27259,88 +27258,84 @@ function _propMktLane(mkt) {
 // Landed cost of one car sold in a region at net revenue nR: build + freight + duty on nR
 function _propMktUnitCost(mkt, nR) { var x = _propMktLane(mkt); return x.base + x.l + nR * x.t; }
 
-// commercial_plan.plants → markets[]. A plan saved before has no plants: each plant takes the volume
-// of the markets routed to it, split by them (volumes unchanged); flat 5% discounts were the old
-// default and take the incentive scheme.
+// The region's share of its plant's output: share_set, else its market size among the plant's free regions
+function _propComShare(mkt) {
+  var c = _prop.commercial, mine = c.markets.filter(function (m) { return m.selected && m.plant_id === mkt.plant_id; });
+  if (!mkt.selected) return 0;
+  var fixed = 0, free = 0;
+  mine.forEach(function (m) { if (m.share_set !== undefined && m.share_set !== null) fixed += parseFloat(m.share_set) || 0; else free += _propComSize(m.region); });
+  if (mkt.share_set !== undefined && mkt.share_set !== null) return Math.max(0, Math.min(1, parseFloat(mkt.share_set) || 0));
+  return free > 0 ? Math.max(0, 1 - fixed) * _propComSize(mkt.region) / free : 0;
+}
+
+// The decisions → markets[] and plants[]. A plan saved before keeps its regions, plants, MSRP and (as the
+// average) its discounts; its volumes now come from the plants.
 function _propComDerive() {
   var c = _prop.commercial || (_prop.commercial = {}), pl = _propComPlants(), L = _propComLife();
   var v = _prop.study || {}, defPK = _P9_SEG_PK[v.segment_code || 'c_segment'] || 26;
   if (!c.markets) c.markets = [];
   SALES_MARKETS.forEach(function (sm) {
-    if (!c.markets.some(function (m) { return m.region === sm.region; }))
-      c.markets.push({region: sm.region, selected: false, plant_id: null, msrp_eur_k: Math.round(defPK * (sm.default_price_idx || 1) * 10) / 10, annual_volume: 0, years: []});
+    if (c.markets.some(function (m) { return m.region === sm.region; })) return;
+    var cp = typeof _findClosestPlant === 'function' ? _findClosestPlant(sm.region) : null;
+    c.markets.push({region: sm.region, selected: sm.default_vol_pct > 0, plant_id: cp ? cp.id : null,
+                    msrp_eur_k: Math.round(defPK * (sm.default_price_idx || 1) * 10) / 10, disc_avg: _P9_DISC_DEFAULT, years: []});
   });
-  if (!c.plants) {
-    var legacy = c.markets.some(function (m) { return m.selected && (parseFloat(m.annual_volume) || (m.years || []).some(function (y) { return y.volume > 0; })); });
-    c.plants = pl.map(function (p) {
-      var sp = {}, tot = 0;
-      if (legacy) c.markets.forEach(function (m) {
-        if (!m.selected) return;
-        var s = _propMktSources(m)[0];
-        if (!s || s.plant.id !== p.id) return;
-        var a = parseFloat(m.annual_volume) || (m.years || []).reduce(function (x, y) { return Math.max(x, y.volume || 0); }, 0);
-        if (a > 0) { sp[m.region] = (sp[m.region] || 0) + a; tot += a; }
-      });
-      if (legacy) {
-        Object.keys(sp).forEach(function (k) { sp[k] = sp[k] / tot; });
-        return {plant_id: p.id, annual_volume: Math.round(tot), split: tot > 0 ? sp : {}};
-      }
-      var h = {}; h[p.region] = 1;
-      return {plant_id: p.id, annual_volume: _propComDefaultVol(p), split: h};
-    });
-    c.markets.forEach(function (m) {
-      var ds = (m.years || []).map(function (y) { return parseFloat(y.discount) || 0; });
-      var old = ds.length && ds.every(function (d) { return d === 5; });
-      (m.years || []).forEach(function (y) { y.disc_set = !old; });
-    });
-  }
-  // plants added / removed in §7
-  c.plants = pl.map(function (p) {
-    var x = c.plants.find(function (q) { return q.plant_id === p.id; });
-    if (x) return x;
-    var h = {}; h[p.region] = 1;
-    return {plant_id: p.id, annual_volume: _propComDefaultVol(p), split: h};
+  c.markets.forEach(function (m) {
+    if (!pl.some(function (p) { return p.id === m.plant_id; })) {
+      var cp = typeof _findClosestPlant === 'function' ? _findClosestPlant(m.region) : null;
+      m.plant_id = cp ? cp.id : (pl[0] ? pl[0].id : null);
+    }
+    if (m.disc_avg === undefined || m.disc_avg === null) {
+      var n = 0, d = 0; (m.years || []).forEach(function (y) { var w = y.volume || 1; n += w; d += w * (parseFloat(y.discount) || 0); });
+      m.disc_avg = n ? Math.round(d / n * 2) / 2 : _P9_DISC_DEFAULT;
+      (m.years || []).forEach(function (y) { y.disc_set = false; });
+    }
+    if (!m.msrp_eur_k) m.msrp_eur_k = defPK;
   });
   var lyrs = L ? L.years : ((c.markets[0] && c.markets[0].years) || []).map(function (y) { return y.year; });
+  var split = {};
   c.markets.forEach(function (m) {
-    var ann = 0, by = {};
-    c.plants.forEach(function (cp) {
-      var a = (parseFloat(cp.annual_volume) || 0) * (parseFloat((cp.split || {})[m.region]) || 0);
-      if (a > 0) { by[cp.plant_id] = a; ann += a; }
-    });
-    var ids = Object.keys(by).sort(function (a, b) { return by[b] - by[a]; });
-    m.sources = {}; ids.forEach(function (k) { m.sources[k] = Math.round(by[k] / ann * 1e4) / 1e4; });
+    var p = pl.find(function (x) { return x.id === m.plant_id; });
+    var sh = p ? _propComShare(m) : 0, ann = p ? _propComDefaultVol(p) * sh : 0;
+    if (p && sh > 0) { (split[p.id] = split[p.id] || {})[m.region] = Math.round(sh * 1e4) / 1e4; }
     m.annual_volume = Math.round(ann);
-    m.selected = ann > 0;
-    m.plant_id = ids[0] || m.plant_id || (pl[0] ? pl[0].id : null);
-    if (!m.msrp_eur_k) m.msrp_eur_k = defPK;
+    m.sources = {}; if (p && ann > 0) m.sources[p.id] = 1;
     var vols = L ? _VOLCURVE_E.yearVolumes(ann, L.sopQ, L.eopQ) : {};
     var old = {}; (m.years || []).forEach(function (y) { old[y.year] = y; });
+    // the incentive scheme: +1.5 points a year around the volume-weighted centre, averaging disc_avg
+    var tv = 0, ti = 0;
+    lyrs.forEach(function (yr, i) { var vv = L ? (vols[yr] || 0) : 1; tv += vv; ti += vv * i; });
+    var ctr = tv > 0 ? ti / tv : (lyrs.length - 1) / 2;
     m.years = lyrs.map(function (yr, i) {
       var o = old[yr], set = !!(o && o.disc_set);
-      return {year: yr, discount: set ? parseFloat(o.discount) || 0 : _propComDefaultDiscount(i), disc_set: set,
-              volume: L ? (vols[yr] || 0) : (o ? o.volume || 0 : 0)};
+      var dd = Math.max(0, Math.round((parseFloat(m.disc_avg) + _P9_DISC_STEP * (i - ctr)) * 10) / 10);
+      return {year: yr, discount: set ? parseFloat(o.discount) || 0 : dd, disc_set: set, volume: L ? (vols[yr] || 0) : (o ? o.volume || 0 : 0)};
     });
   });
+  c.plants = pl.map(function (p) { return {plant_id: p.id, annual_volume: _propComDefaultVol(p), split: split[p.id] || {}}; });
 }
-// Cars a plant builds in a year: its share of every region it supplies
-function _propComPlantYear(pid, yi) {
-  return ((_prop.commercial && _prop.commercial.markets) || []).reduce(function (s, m) {
-    var y = (m.years || [])[yi], sh = parseFloat((m.sources || {})[pid]) || 0;
-    return s + (y && m.selected ? y.volume * sh : 0);
-  }, 0);
+// A region's lifetime figures: cars, average discount, landed cost, margin per car, gross margin
+function _propComLifetime(m) {
+  var o = {v: 0, gm: 0, net: 0, cost: 0, d: 0};
+  (m.years || []).forEach(function (y) {
+    var nR = _oemUnitRev(m.msrp_eur_k, y.discount), uc = _propMktUnitCost(m, nR);
+    o.v += y.volume; o.gm += (nR - uc) * y.volume / 1e6; o.net += nR * y.volume; o.cost += uc * y.volume; o.d += y.discount * y.volume;
+  });
+  if (o.v) { o.net /= o.v; o.cost /= o.v; o.d /= o.v; } else o.d = parseFloat(m.disc_avg) || 0;
+  return o;
 }
-function _propComPeakYi() {
-  var ys = ((_prop.commercial && _prop.commercial.markets) || []).reduce(function (a, m) { return (m.years || []).length > a.length ? m.years : a; }, []);
-  var best = 0, bv = -1;
-  ys.forEach(function (y, i) {
-    var t = ((_prop.commercial && _prop.commercial.markets) || []).reduce(function (s, m) { return s + (m.years && m.years[i] && m.selected ? m.years[i].volume : 0); }, 0);
-    if (t > bv) { bv = t; best = i; }
+// Cars a plant builds in its best plan year
+function _propComPlantBest(pid) {
+  var c = _prop.commercial, best = 0;
+  ((c.markets[0] || {}).years || []).forEach(function (_, i) {
+    var t = c.markets.reduce(function (s, m) { return s + (m.selected && m.plant_id === pid && m.years[i] ? m.years[i].volume : 0); }, 0);
+    best = Math.max(best, t);
   });
   return best;
 }
 function _p9k(u) { return (u / 1000).toFixed(u >= 10000 ? 0 : 1) + 'k'; }
 function _p9e(x) { return '€' + Math.round(x).toLocaleString(); }
+function _p9Mkt(region) { return ((_prop.commercial && _prop.commercial.markets) || []).find(function (m) { return m.region === region; }); }
 
 function buildCommercialSection() {
   if (!_mktTab.data && !_mktTab._fetchingFor9 && sessionId && teamId) {
@@ -27352,24 +27347,14 @@ function buildCommercialSection() {
   var el = document.getElementById('prop-commercial-content');
   if (!el) return;
   _propComDerive();
-  var c = _prop.commercial, yrs = ((c.markets[0] || {}).years || []).map(function (y) { return y.year; });
-  if (_P9M.yi >= yrs.length) _P9M.yi = Math.max(0, yrs.length - 1);
-  var MN = 'font-family:DM Mono,monospace;';
-  var html = '<div style="margin-bottom:10px;font-size:11px;color:var(--muted2);line-height:1.55;">Your plants from §7 are on the map. Each plant sends its cars to sales regions: '
-    + 'by default all of them to its own region. <b style="color:var(--text);">Click a plant</b> to send part of its output to other regions (the same split every year). '
-    + '<b style="color:var(--text);">Click a region</b> to price it: it starts from the landed cost (build + freight + duty) and shows each year’s volume, discount and gross margin. '
-    + 'Volumes follow the default curve: a slight rise over the first two years, then a gradual decline to EOP.</div>';
-  html += '<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:8px;' + MN + 'font-size:9px;color:var(--muted);">'
-    + '<span style="text-transform:uppercase;letter-spacing:1px;margin-right:4px;">Year on the map</span>'
-    + yrs.map(function (y, i) {
-      var on = i === _P9M.yi;
-      return '<button onclick="_P9M.yi=' + i + ';_p9mDraw()" id="prop-p9-yb-' + i + '" style="' + MN + 'font-size:10px;padding:3px 9px;border-radius:2px;cursor:pointer;border:1px solid '
-        + (on ? 'var(--gold)' : 'var(--border2)') + ';background:var(--s2);color:' + (on ? 'var(--gold)' : 'var(--muted2)') + ';">' + y + '</button>';
-    }).join('') + '</div>';
-  html += '<div id="prop-p9-map-box"><div id="prop-p9-map" style="position:relative;border:1px solid var(--border);border-radius:4px;overflow:hidden;background:#0b2033;"></div>'
-    + '<div id="prop-p9-map-legend"></div></div>';
-  html += '<div id="prop-p9-panel" style="margin-top:12px;">' + _p9PanelHtml() + '</div>';
-  html += _p9SummaryHtml();
+  var MN = 'font-family:DM Mono,monospace;', H2 = MN + 'font-size:8px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:8px;';
+  var html = '<div style="margin-bottom:10px;font-size:11px;color:var(--muted2);line-height:1.55;">Per region: sell there or not, the plant that builds its cars, the MSRP and an average discount. '
+    + 'Volumes follow from your plants: each plant’s §7 capacity is its best year, shared by market size among the regions it feeds; the other years follow the model’s life. '
+    + 'Open <b style="color:var(--text);">▸ years</b> only to refine a region year by year. One MSRP per region; country discounts are set each round on Commercial → Pricing.</div>';
+  html += '<div style="' + H2 + '">Quick setup · lifetime figures</div>' + _p9QuickTable();
+  html += '<div style="' + H2 + 'margin-top:14px;">Plants · best year</div>' + _p9PlantBars();
+  html += '<div style="' + H2 + 'margin-top:14px;">Summary</div>'
+    + '<div id="prop-p9-map-box"><div id="prop-p9-map" style="position:relative;border:1px solid var(--border);border-radius:4px;overflow:hidden;background:#0b2033;"></div><div id="prop-p9-map-legend"></div></div>';
   html += '<div id="prop-com-gc-warning" style="display:none;margin:12px 0;padding:10px 14px;background:rgba(220,50,50,0.1);border:1px solid rgba(220,50,50,0.4);border-radius:4px;' + MN + 'font-size:10px;color:var(--red);"></div>';
   html += '<div style="margin-top:14px;display:flex;justify-content:flex-end;"><button id="prop-com-continue-btn" onclick="advanceToBizCase()" style="' + MN + 'font-size:10px;padding:8px 18px;border-radius:3px;border:1px solid rgba(200,164,60,.4);background:var(--goldl);color:var(--gold);cursor:pointer;">Continue → Business Case</button></div>';
   el.innerHTML = html;
@@ -27378,173 +27363,110 @@ function buildCommercialSection() {
   _propTallySchedule();
 }
 
-// One row per region: where its cars come from, volume over life, MSRP, average discount, gross margin
-function _p9SummaryHtml() {
-  var c = _prop.commercial, MN = 'font-family:DM Mono,monospace;';
-  var th = function (t, al) { return '<th style="' + MN + 'font-size:8px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);padding:6px 8px;background:var(--s2);border-bottom:1px solid var(--border);text-align:' + (al || 'right') + ';font-weight:400;">' + t + '</th>'; };
-  var h = '<div style="margin-top:14px;' + MN + 'font-size:8px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:6px;">Regions · click a row to price it</div>'
-    + '<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;min-width:720px;"><thead><tr>'
-    + th('Region', 'left') + th('Built in', 'left') + th('Cars over life') + th('MSRP') + th('Avg discount') + th('Landed cost / car') + th('Gross margin') + '</tr></thead><tbody>';
+function _p9QuickTable() {
+  var c = _prop.commercial, pl = _propComPlants(), MN = 'font-family:DM Mono,monospace;';
+  var th = function (t, al) { return '<th style="' + MN + 'font-size:8px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);padding:6px 8px;background:var(--s2);border-bottom:1px solid var(--border);text-align:' + (al || 'right') + ';font-weight:400;white-space:nowrap;">' + t + '</th>'; };
+  var td = function (t, col, al, x) { return '<td style="padding:6px 8px;' + MN + 'font-size:10.5px;text-align:' + (al || 'right') + ';color:' + (col || 'var(--text)') + ';white-space:nowrap;' + (x || '') + '">' + t + '</td>'; };
+  var inp = 'background:var(--s2);border:1px solid var(--border2);border-radius:2px;' + MN + 'font-size:11px;text-align:right;padding:3px 5px;';
+  var mkd = _mktTab.data;
+  var h = '<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;min-width:900px;"><thead><tr>'
+    + th('Sell', 'left') + th('Region', 'left') + th('Built in', 'left') + th('MSRP €k') + th('Avg discount') + th('Landed cost / car') + th('Margin / car') + th('Cars over life') + th('Gross margin') + th('') + '</tr></thead><tbody>';
   var T = {v: 0, gm: 0};
   SALES_MARKETS.forEach(function (sm) {
-    var m = c.markets.find(function (x) { return x.region === sm.region; });
-    if (!m) return;
-    var vol = 0, gm = 0, dsum = 0, lsum = 0;
-    (m.years || []).forEach(function (y) {
-      var nR = _oemUnitRev(m.msrp_eur_k, y.discount), uc = _propMktUnitCost(m, nR);
-      vol += y.volume; gm += (nR - uc) * y.volume / 1e6; dsum += y.discount * y.volume; lsum += uc * y.volume;
-    });
-    T.v += vol; T.gm += gm;
-    var src = m.selected ? _propMktSources(m).map(function (s) { return (s.plant.country_code || s.plant.country_name) + (s.share < 0.999 ? ' ' + Math.round(s.share * 100) + '%' : ''); }).join(' · ') : '—';
-    var open = _P9M.open && _P9M.open.kind === 'region' && _P9M.open.id === sm.region;
-    var td = function (t, col, al) { return '<td style="padding:6px 8px;' + MN + 'font-size:10.5px;text-align:' + (al || 'right') + ';color:' + (col || 'var(--text)') + ';">' + t + '</td>'; };
-    h += '<tr onclick="_p9Open(\'region\',\'' + sm.region + '\')" style="cursor:pointer;border-bottom:1px solid var(--border);' + (open ? 'background:var(--s3);' : '') + (m.selected ? '' : 'opacity:.55;') + '">'
-      + td(sm.label, 'var(--white)', 'left') + td(src, 'var(--muted2)', 'left') + td(vol ? vol.toLocaleString() : '—')
-      + td('€' + (m.msrp_eur_k || 0) + 'k', 'var(--gold)') + td(vol ? (dsum / vol).toFixed(1) + '%' : '—')
-      + td(vol ? _p9e(lsum / vol) : '—', 'var(--orange)')
-      + td(vol ? (gm >= 0 ? '+' : '−') + '€' + Math.abs(gm).toFixed(1) + 'M' : '—', gm > 0 ? 'var(--green)' : gm < 0 ? 'var(--red)' : 'var(--muted2)') + '</tr>';
+    var m = _p9Mkt(sm.region); if (!m) return;
+    var R = sm.region, L = _propComLifetime(m), on = !!m.selected, open = !!_P9M.open[R];
+    var p = pl.find(function (x) { return x.id === m.plant_id; }), lo = _propLane(p, R), mg = L.net - L.cost;
+    T.v += on ? L.v : 0; T.gm += on ? L.gm : 0;
+    var cs = mkd ? (mkd.countries || []).filter(function (x) { return x.region === R; }) : [], nSell = cs.filter(function (x) { return x.status !== 'none'; }).length;
+    var badge = mkd && cs.length ? ' <span title="Countries in this region where your team has a sales network (Commercial → Markets)" style="font-size:8px;padding:1px 5px;border-radius:2px;background:var(--s2);color:' + (nSell ? 'var(--muted2)' : (on ? 'var(--red)' : 'var(--muted)')) + ';">' + (nSell ? 'network ' + nSell + '/' + cs.length : (on ? '⚠ no sales network' : 'no network')) + '</span>' : '';
+    h += '<tr style="border-bottom:1px solid var(--border);' + (on ? '' : 'opacity:.55;') + '">'
+      + '<td style="padding:6px 8px;"><input type="checkbox" id="prop-com-on-' + R + '"' + (on ? ' checked' : '') + ' onchange="onPropComSell(\'' + R + '\',this.checked)" aria-label="Sell in ' + sm.label + '" style="cursor:pointer;width:14px;height:14px;"></td>'
+      + td(sm.label + badge, 'var(--white)', 'left')
+      + '<td style="padding:6px 8px;' + MN + 'font-size:10px;"><select id="prop-com-plant-' + R + '" onchange="onPropComPlant(\'' + R + '\',this.value)" style="background:var(--s2);border:1px solid var(--border2);color:var(--text);border-radius:2px;padding:3px 6px;font-size:10px;' + MN + '">'
+      + pl.map(function (q) { return '<option value="' + q.id + '"' + (q.id === m.plant_id ? ' selected' : '') + '>' + _esc(q.country_name || q.country_code) + '</option>'; }).join('') + '</select>'
+      + '<div style="font-size:9px;color:var(--muted2);margin-top:2px;">freight ' + _p9e(lo.l) + ' · duty ' + (lo.t * 100).toFixed(1) + '%</div></td>'
+      + '<td style="padding:6px 8px;text-align:right;"><input type="number" min="5" max="500" step="0.5" id="prop-com-msrp-' + R + '" value="' + (m.msrp_eur_k || 0) + '" onchange="onPropComMsrp(\'' + R + '\',this.value)" style="width:72px;color:var(--gold);' + inp + '"></td>'
+      + '<td style="padding:6px 8px;text-align:right;' + MN + 'font-size:10px;color:var(--muted2);"><input type="number" min="-30" max="40" step="0.5" id="prop-com-disc-' + R + '" value="' + (Math.round(L.d * 10) / 10) + '" onchange="onPropComDiscAvg(\'' + R + '\',this.value)" style="width:58px;color:var(--text);' + inp + '"> %</td>'
+      + td(on && L.v ? _p9e(L.cost) : '—', 'var(--orange)')
+      + td(on && L.v ? _p9e(mg) : '—', mg >= 0 ? 'var(--cyan)' : 'var(--red)')
+      + td(on ? (L.v ? L.v.toLocaleString() : '<span style="color:var(--red);">0</span>') : '—')
+      + td(on && L.v ? (L.gm >= 0 ? '+' : '−') + '€' + Math.abs(L.gm).toFixed(1) + 'M' : '—', L.gm > 0 ? 'var(--green)' : L.gm < 0 ? 'var(--red)' : 'var(--muted2)', 'right', 'font-weight:600;')
+      + '<td style="padding:6px 8px;text-align:right;">' + (on ? '<button onclick="_p9Toggle(\'' + R + '\')" style="' + MN + 'font-size:9.5px;padding:3px 8px;border-radius:2px;border:1px solid var(--border2);background:var(--s2);color:var(--muted2);cursor:pointer;">' + (open ? '▾' : '▸') + ' years</button>' : '') + '</td></tr>';
+    if (on && open) h += '<tr><td></td><td colspan="9" style="padding:10px 8px;background:var(--s2);">' + _p9YearDetail(m) + '</td></tr>';
   });
-  h += '<tr style="background:var(--s2);"><td style="padding:6px 8px;' + MN + 'font-size:9px;color:var(--muted);">TOTAL</td><td></td><td style="padding:6px 8px;' + MN + 'font-size:10.5px;text-align:right;">' + T.v.toLocaleString() + '</td><td></td><td></td><td></td>'
-    + '<td style="padding:6px 8px;' + MN + 'font-size:11px;font-weight:700;text-align:right;color:' + (T.gm >= 0 ? 'var(--green)' : 'var(--red)') + ';">' + (T.gm >= 0 ? '+' : '−') + '€' + Math.abs(T.gm).toFixed(1) + 'M</td></tr>';
-  return h + '</tbody></table></div><div style="' + MN + 'font-size:9px;color:var(--muted2);margin-top:6px;">Gross margin = (net revenue − landed cost) × cars, as the §10 gate checks it; §10 adds warranty and emissions.</div>';
+  h += '<tr style="background:var(--s2);"><td></td><td style="padding:6px 8px;' + MN + 'font-size:9px;color:var(--muted);">TOTAL</td><td colspan="5"></td>'
+    + td(T.v.toLocaleString()) + td((T.gm >= 0 ? '+' : '−') + '€' + Math.abs(T.gm).toFixed(1) + 'M', T.gm >= 0 ? 'var(--green)' : 'var(--red)', 'right', 'font-weight:700;') + '<td></td></tr>';
+  return h + '</tbody></table></div><div style="' + MN + 'font-size:9px;color:var(--muted2);margin-top:6px;">Landed cost = build + freight + duty. Margin and gross margin over the model’s life at your discounts, as the §10 gate checks them; §10 adds warranty and emissions.</div>';
 }
 
-function _p9Open(kind, id) {
-  _P9M.open = (_P9M.open && _P9M.open.kind === kind && _P9M.open.id === id) ? null : {kind: kind, id: id};
-  buildCommercialSection();
-  var p = document.getElementById('prop-p9-panel');
-  if (p && _P9M.open && p.scrollIntoView) p.scrollIntoView({block: 'nearest', behavior: 'smooth'});
-}
-function _p9PanelHtml() {
-  var o = _P9M.open;
-  if (!o) return '';
-  return o.kind === 'plant' ? _p9PlantPanel(o.id) : _p9RegionPanel(o.id);
-}
-function _p9Box(title, body) {
-  return '<div style="border:1px solid var(--border2);border-radius:4px;background:var(--s1);padding:12px 14px;">'
-    + '<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;font-family:DM Mono,monospace;font-size:11px;color:var(--white);">' + title
-    + '<button onclick="_P9M.open=null;buildCommercialSection()" aria-label="Close" style="margin-left:auto;font-family:DM Mono,monospace;font-size:11px;background:none;border:1px solid var(--border2);color:var(--muted2);border-radius:3px;cursor:pointer;padding:1px 7px;">×</button></div>'
-    + body + '</div>';
-}
-
-// Plant: its planned volume and the % of it each region gets (the same every year)
-function _p9PlantPanel(pid) {
-  var p = _propComPlants().find(function (x) { return x.id === pid; }), cp = _propComPlanOf(pid);
-  if (!p || !cp) return '';
-  var MN = 'font-family:DM Mono,monospace;', pk = _propComPeakYi(), c = _prop.commercial;
-  var cap = Math.round((parseFloat(p.vehicle_capacity_yr) || 0) * 1000), tot = 0;
-  Object.keys(cp.split || {}).forEach(function (k) { tot += parseFloat(cp.split[k]) || 0; });
-  var built = _propComPlantYear(pid, pk), yr = ((c.markets[0] || {}).years || [])[pk];
-  var body = '<div style="display:flex;flex-wrap:wrap;gap:8px 18px;align-items:center;margin-bottom:10px;' + MN + 'font-size:10px;color:var(--muted2);">'
-    + '<label for="prop-p9-pvol">Planned volume (cars a year at the curve’s peak)</label>'
-    + '<input id="prop-p9-pvol" type="number" min="0" step="500" value="' + (cp.annual_volume || 0) + '" onchange="onPropComPlantVol(\'' + pid + '\',this.value)" style="width:100px;background:var(--s2);border:1px solid var(--border2);border-radius:2px;color:var(--text);' + MN + 'font-size:12px;text-align:right;padding:4px 6px;">'
-    + (cap ? '<span>§7 capacity ' + _p9k(cap) + '/yr</span>' : '')
-    + (cap && cp.annual_volume > cap ? '<span style="color:var(--red);">⚠ above the plant’s capacity for this car</span>' : '')
-    + '<span>' + (yr ? yr.year : '') + ': builds <b style="color:var(--text);">' + Math.round(built).toLocaleString() + '</b> cars</span></div>';
-  var th = function (t, al) { return '<th style="' + MN + 'font-size:8px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);padding:5px 8px;background:var(--s2);text-align:' + (al || 'right') + ';font-weight:400;">' + t + '</th>'; };
-  body += '<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;min-width:640px;"><thead><tr>' + th('Region', 'left') + th('Share of output') + th('Cars ' + (yr ? yr.year : ''))
-    + th('Freight / car') + th('Duty') + th('Margin / car on this route') + '</tr></thead><tbody>';
-  SALES_MARKETS.forEach(function (sm) {
-    var sh = parseFloat((cp.split || {})[sm.region]) || 0, lo = _propLane(p, sm.region);
-    var m = c.markets.find(function (x) { return x.region === sm.region; }) || {};
-    var d = ((m.years || [])[pk] || {}).discount, nR = _oemUnitRev(m.msrp_eur_k, d === undefined ? _propComDefaultDiscount(pk) : d);
-    var mg = nR - (_computeUnitEconCostSold(p).baseC + lo.l + nR * lo.t), home = sm.region === p.region;
-    var cars = m.selected ? (((m.years || [])[pk] || {}).volume || 0) * (parseFloat((m.sources || {})[pid]) || 0) : 0;
-    body += '<tr style="border-bottom:1px solid var(--border);">'
-      + '<td style="padding:5px 8px;' + MN + 'font-size:10.5px;color:var(--white);">' + sm.label + (home ? ' <span style="color:var(--muted2);font-size:9px;">home</span>' : '') + '</td>'
-      + '<td style="padding:4px 8px;text-align:right;"><input id="prop-p9-split-' + sm.region + '" type="number" min="0" max="100" step="5" value="' + Math.round(sh * 1000) / 10 + '" onchange="onPropComPlantSplit(\'' + pid + '\',\'' + sm.region + '\',this.value)" style="width:64px;background:var(--s2);border:1px solid var(--border2);border-radius:2px;color:var(--gold);' + MN + 'font-size:11px;text-align:right;padding:3px 5px;"> %</td>'
-      + '<td style="padding:5px 8px;' + MN + 'font-size:10.5px;text-align:right;">' + (cars > 0 ? Math.round(cars).toLocaleString() : '—') + '</td>'
-      + '<td style="padding:5px 8px;' + MN + 'font-size:10.5px;text-align:right;color:var(--orange);">' + _p9e(lo.l) + '</td>'
-      + '<td style="padding:5px 8px;' + MN + 'font-size:10.5px;text-align:right;color:var(--orange);">' + (lo.t * 100).toFixed(1) + '%</td>'
-      + '<td style="padding:5px 8px;' + MN + 'font-size:10.5px;text-align:right;color:' + (mg > 0 ? 'var(--green)' : 'var(--red)') + ';">' + _p9e(mg) + '</td></tr>';
-  });
-  var left = Math.round((1 - tot) * 1000) / 10;
-  body += '<tr style="background:var(--s2);"><td style="padding:5px 8px;' + MN + 'font-size:9px;color:var(--muted);">TOTAL</td><td style="padding:5px 8px;' + MN + 'font-size:10.5px;text-align:right;color:' + (left > 0.05 ? 'var(--orange)' : 'var(--text)') + ';">'
-    + Math.round(tot * 1000) / 10 + '%</td><td colspan="4" style="padding:5px 8px;' + MN + 'font-size:9.5px;color:var(--muted2);">'
-    + (left > 0.05 ? left + '% of the planned volume goes nowhere and is not built' : 'Margin per car at the region’s MSRP and ' + (yr ? yr.year : '') + ' discount') + '</td></tr></tbody></table></div>';
-  return _p9Box('🏭 ' + _esc(p.country_name || p.country_code) + ' plant · where its cars go', body);
-}
-
-// Region: where its cars come from, the landed cost, MSRP, and each year's volume, discount and margin
-function _p9RegionPanel(region) {
-  var c = _prop.commercial, m = c.markets.find(function (x) { return x.region === region; });
-  var sm = SALES_MARKETS.find(function (x) { return x.region === region; }) || {label: region};
-  if (!m) return '';
-  var MN = 'font-family:DM Mono,monospace;';
-  var mkd = _mktTab.data, cs = mkd ? (mkd.countries || []).filter(function (x) { return x.region === region; }) : [];
-  var nSell = cs.filter(function (x) { return x.status !== 'none'; }).length;
-  var badge = mkd && cs.length ? '<span title="Countries in this region where your team has a sales network (Commercial → Markets)" style="' + MN + 'font-size:8px;padding:1px 5px;border-radius:2px;background:var(--s2);color:' + (nSell ? 'var(--muted2)' : 'var(--red)') + ';">' + (nSell ? 'network ' + nSell + '/' + cs.length : '⚠ no sales network') + '</span>' : '';
-  if (!m.selected) return _p9Box(sm.label + ' ' + badge, '<div style="' + MN + 'font-size:10.5px;color:var(--muted2);">No plant sends cars here yet. Click a plant on the map and give ' + sm.label + ' a share of its output.</div>');
-  var x = _propMktLane(m), src = x.src.map(function (s) { return _esc(s.plant.country_name || s.plant.country_code) + ' ' + Math.round(s.share * 100) + '%'; }).join(' · ');
-  var nR0 = _oemUnitRev(m.msrp_eur_k, (m.years[0] || {}).discount || 0);
-  var tile = function (l, v, col) { return '<div style="background:var(--s2);border-radius:3px;padding:7px 9px;"><div style="font-size:8px;color:var(--muted2);margin-bottom:2px;">' + l + '</div><div style="' + MN + 'font-size:11px;color:' + (col || 'var(--text)') + ';">' + v + '</div></div>'; };
-  var body = '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px;margin-bottom:10px;">'
-    + tile('Built in', src) + tile('Build cost / car' + (_propDualCostDelta() ? ' (at ' + Math.round(_CO2_E.DUAL_BEV_MIX * 100) + '% BEV)' : ''), _p9e(x.base))
-    + tile('Freight / car', _p9e(x.l), 'var(--orange)') + tile('Duty', (x.t * 100).toFixed(1) + '% of net revenue', 'var(--orange)')
-    + tile('Landed cost / car (' + (m.years[0] || {}).year + ')', _p9e(x.base + x.l + nR0 * x.t), 'var(--orange)') + '</div>';
-  body += '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px;' + MN + 'font-size:9.5px;color:var(--muted2);">'
-    + '<label for="prop-com-msrp-' + region + '">MSRP (€ k)</label><input type="number" min="5" max="500" step="0.5" value="' + (m.msrp_eur_k || 0) + '" id="prop-com-msrp-' + region + '" onchange="onPropComMsrp(\'' + region + '\',this.value)" style="width:90px;background:var(--s2);border:1px solid var(--border2);border-radius:2px;color:var(--gold);' + MN + 'font-size:12px;text-align:center;padding:4px 6px;">'
-    + '<span>Sales incentives: default scheme 2% at launch, +1.5 points a year, at most 12%</span>'
-    + '<button onclick="onPropComDiscountReset(\'' + region + '\')" style="' + MN + 'font-size:9.5px;padding:3px 8px;border-radius:2px;border:1px solid var(--border2);background:var(--s2);color:var(--muted2);cursor:pointer;">reset to default scheme</button></div>';
-  var th = function (t) { return '<th style="' + MN + 'font-size:8px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);padding:6px 8px;background:var(--s2);border-bottom:1px solid var(--border);text-align:right;font-weight:400;">' + t + '</th>'; };
-  body += '<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;min-width:820px;"><thead><tr>'
-    + ['Year', 'Volume', 'MSRP', 'Discount %', 'Net revenue / car', 'Unit cost / car', 'Margin / car', 'Gross margin €M'].map(th).join('') + '</tr></thead><tbody>';
-  var T = {v: 0, r: 0, gm: 0};
-  (m.years || []).forEach(function (y, i) {
+// One region year by year: its share of the plant, and each year's cars, discount, unit cost and margin
+function _p9YearDetail(m) {
+  var R = m.region, MN = 'font-family:DM Mono,monospace;', p = _propComPlants().find(function (x) { return x.id === m.plant_id; });
+  var sh = _propComShare(m), set = m.share_set !== undefined && m.share_set !== null;
+  var inp = 'background:var(--s1);border:1px solid var(--border2);border-radius:2px;' + MN + 'font-size:11px;text-align:right;padding:3px 5px;';
+  var h = '<div style="display:flex;flex-wrap:wrap;gap:6px 14px;align-items:center;margin-bottom:8px;' + MN + 'font-size:10px;color:var(--muted2);">'
+    + '<span>Share of the ' + _esc(p ? (p.country_name || p.country_code) : '') + ' plant’s cars</span>'
+    + '<input type="number" min="0" max="100" step="5" id="prop-com-share-' + R + '" value="' + Math.round(sh * 1000) / 10 + '" onchange="onPropComShare(\'' + R + '\',this.value)" style="width:60px;color:' + (set ? 'var(--gold)' : 'var(--text)') + ';' + inp + '"> %'
+    + (set ? '<button onclick="onPropComShare(\'' + R + '\',\'\')" style="' + MN + 'font-size:9.5px;padding:2px 7px;border-radius:2px;border:1px solid var(--border2);background:var(--s1);color:var(--muted2);cursor:pointer;">back to market size</button>' : '<span>(by market size)</span>')
+    + '<span style="margin-left:auto;">Discounts: launch low, +1.5 points a year; a gold box is one you set</span>'
+    + (m.years.some(function (y) { return y.disc_set; }) ? '<button onclick="onPropComDiscAvg(\'' + R + '\',' + m.disc_avg + ')" style="' + MN + 'font-size:9.5px;padding:2px 7px;border-radius:2px;border:1px solid var(--border2);background:var(--s1);color:var(--muted2);cursor:pointer;">reset years</button>' : '')
+    + '</div>';
+  var th = function (t) { return '<th style="' + MN + 'font-size:8px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);padding:5px 8px;text-align:right;font-weight:400;">' + t + '</th>'; };
+  h += '<table style="width:100%;border-collapse:collapse;"><thead><tr>' + ['Year', 'Cars', 'MSRP', 'Discount %', 'Net revenue / car', 'Unit cost / car', 'Margin / car', 'Gross margin €M'].map(th).join('') + '</tr></thead><tbody>';
+  m.years.forEach(function (y, i) {
     var nR = _oemUnitRev(m.msrp_eur_k, y.discount), uc = _propMktUnitCost(m, nR), mg = nR - uc, gm = mg * y.volume / 1e6;
-    T.v += y.volume; T.r += nR * y.volume; T.gm += gm;
-    var td = function (t, col) { return '<td style="padding:5px 8px;' + MN + 'font-size:10.5px;text-align:right;color:' + (col || 'var(--text)') + ';">' + t + '</td>'; };
-    body += '<tr style="border-bottom:1px solid var(--border);' + (gm <= 0 && y.volume > 0 ? 'background:rgba(220,50,50,0.08);' : '') + '">'
-      + td('<b style="color:var(--white);">' + y.year + '</b>') + td(y.volume ? y.volume.toLocaleString() : '—') + td('€' + (m.msrp_eur_k || 0) + 'k', 'var(--gold)')
-      + '<td style="padding:4px 8px;text-align:right;"><input type="number" min="-30" max="40" step="0.5" value="' + y.discount + '" id="prop-com-disc-' + region + '-' + i + '" onchange="onPropComYearDiscount(\'' + region + '\',' + i + ',this.value)" title="' + (y.disc_set ? 'set by you' : 'default scheme') + '" style="width:62px;background:var(--s2);border:1px solid ' + (y.disc_set ? 'var(--gold)' : 'var(--border2)') + ';border-radius:2px;color:var(--text);' + MN + 'font-size:11px;text-align:right;padding:3px;"></td>'
+    var td = function (t, col) { return '<td style="padding:4px 8px;' + MN + 'font-size:10.5px;text-align:right;color:' + (col || 'var(--text)') + ';">' + t + '</td>'; };
+    h += '<tr style="border-top:1px solid var(--border);' + (gm <= 0 && y.volume > 0 ? 'background:rgba(220,50,50,0.08);' : '') + '">'
+      + td('<b style="color:var(--white);">' + y.year + '</b>') + td(y.volume ? y.volume.toLocaleString() : '—') + td('€' + m.msrp_eur_k + 'k', 'var(--gold)')
+      + '<td style="padding:3px 8px;text-align:right;"><input type="number" min="-30" max="40" step="0.5" id="prop-com-ydisc-' + R + '-' + i + '" value="' + y.discount + '" onchange="onPropComYearDiscount(\'' + R + '\',' + i + ',this.value)" style="width:58px;color:var(--text);border-color:' + (y.disc_set ? 'var(--gold)' : 'var(--border2)') + ';' + inp + '"></td>'
       + td(_p9e(nR), 'var(--muted2)') + td(_p9e(uc), 'var(--orange)') + td(_p9e(mg), mg >= 0 ? 'var(--cyan)' : 'var(--red)')
       + td(y.volume ? (gm >= 0 ? '+' : '') + gm.toFixed(2) : '—', gm > 0 ? 'var(--green)' : gm < 0 ? 'var(--red)' : 'var(--muted2)') + '</tr>';
   });
-  body += '<tr style="background:var(--s2);"><td style="padding:6px 8px;' + MN + 'font-size:9px;color:var(--muted);text-align:right;">TOTAL</td>'
-    + '<td style="padding:6px 8px;' + MN + 'font-size:10.5px;text-align:right;">' + T.v.toLocaleString() + '</td><td colspan="5"></td>'
-    + '<td style="padding:6px 8px;' + MN + 'font-size:11px;font-weight:700;text-align:right;color:' + (T.gm >= 0 ? 'var(--green)' : 'var(--red)') + ';">' + (T.gm >= 0 ? '+' : '') + T.gm.toFixed(2) + '</td></tr></tbody></table></div>';
-  body += '<div style="' + MN + 'font-size:9px;color:var(--muted2);margin-top:6px;">Unit cost = build cost + freight + duty on net revenue, weighted over the plants that supply ' + sm.label + '. A gold discount box is one you set; the others follow the default scheme.</div>'
-    + '<div id="prop-com-' + region + '-after" style="' + MN + 'font-size:10px;color:var(--text);margin-top:6px;"></div>';
-  return _p9Box('🌍 ' + sm.label + ' ' + badge, body);
+  return h + '</tbody></table><div id="prop-com-' + R + '-after" style="' + MN + 'font-size:10px;color:var(--text);margin-top:6px;"></div>';
 }
 
-function onPropComPlantVol(pid, val) {
-  var cp = _propComPlanOf(pid); if (!cp) return;
-  cp.annual_volume = Math.max(0, parseInt(val) || 0);
-  buildCommercialSection();
+// Each plant's best year: how its capacity is shared among the regions it feeds
+var _P9_REG_C = {EU: '#4a8ae0', NA: '#b88424', APAC: '#2aa898', SA: '#a865c4', MEA: '#cc634a'};
+function _p9PlantBars() {
+  var c = _prop.commercial, MN = 'font-family:DM Mono,monospace;';
+  return '<div style="display:flex;flex-direction:column;gap:7px;">' + _propComPlants().map(function (p) {
+    var cap = _propComDefaultVol(p), best = _propComPlantBest(p.id);
+    var mine = c.markets.filter(function (m) { return m.selected && m.plant_id === p.id; });
+    var segs = mine.map(function (m) { var s = _propComShare(m); return '<div title="' + m.region + ' ' + Math.round(s * 100) + '%" style="width:' + (s * 100) + '%;background:' + _P9_REG_C[m.region] + ';border-right:2px solid var(--s1);"></div>'; }).join('');
+    var tot = mine.reduce(function (s, m) { return s + _propComShare(m); }, 0);
+    return '<div style="display:grid;grid-template-columns:150px 1fr 230px;gap:10px;align-items:center;' + MN + 'font-size:10.5px;">'
+      + '<div style="color:var(--white);">' + _esc(p.country_name || p.country_code) + '<div style="font-size:9px;color:var(--muted2);">capacity ' + _p9k(cap) + '/yr</div></div>'
+      + '<div style="height:16px;display:flex;border:1px solid var(--border2);border-radius:2px;overflow:hidden;background:var(--s2);">' + segs + '</div>'
+      + '<div style="font-size:9.5px;color:' + (!mine.length ? 'var(--red)' : tot < 0.995 ? 'var(--orange)' : 'var(--muted2)') + ';">'
+      + (!mine.length ? '⚠ feeds no region: idle' : mine.map(function (m) { return m.region + ' ' + Math.round(_propComShare(m) * 100) + '%'; }).join(' · ') + ' · best year ' + _p9k(best)
+        + (tot < 0.995 ? ' · ' + Math.round((1 - tot) * 100) + '% unused' : '')) + '</div></div>';
+  }).join('') + '</div>';
 }
-// A region's share of a plant's output; the shares of one plant never exceed 100%
-function onPropComPlantSplit(pid, region, val) {
-  var cp = _propComPlanOf(pid); if (!cp) return;
-  cp.split = cp.split || {};
-  var others = 0; Object.keys(cp.split).forEach(function (k) { if (k !== region) others += parseFloat(cp.split[k]) || 0; });
-  var v = Math.max(0, Math.min(1 - others, (parseFloat(val) || 0) / 100));
-  if (v > 0) cp.split[region] = Math.round(v * 1e4) / 1e4; else delete cp.split[region];
-  buildCommercialSection();
-}
-function onPropComInput(input){}
-function onPropComMarketToggle(region){}
-function onPropComMsrp(region, val) {
-  var mkt = ((_prop.commercial && _prop.commercial.markets) || []).find(function (m) { return m.region === region; });
-  if (mkt) mkt.msrp_eur_k = parseFloat(val) || 0;
+
+function _p9Toggle(region) { _P9M.open[region] = !_P9M.open[region]; buildCommercialSection(); }
+function onPropComSell(region, on) { var m = _p9Mkt(region); if (m) { m.selected = !!on; buildCommercialSection(); } }
+function onPropComPlant(region, pid) { var m = _p9Mkt(region); if (m) { m.plant_id = pid; m.share_set = null; buildCommercialSection(); } }
+function onPropComMsrp(region, val) { var m = _p9Mkt(region); if (m) { m.msrp_eur_k = parseFloat(val) || 0; buildCommercialSection(); } }
+// The average discount: re-sets the yearly scheme around it (years set by hand go back to the scheme)
+function onPropComDiscAvg(region, val) {
+  var m = _p9Mkt(region); if (!m || val === '' || isNaN(parseFloat(val))) return;
+  m.disc_avg = parseFloat(val); (m.years || []).forEach(function (y) { y.disc_set = false; });
   buildCommercialSection();
 }
 function onPropComYearDiscount(region, idx, val) {
-  var mkt = ((_prop.commercial && _prop.commercial.markets) || []).find(function (m) { return m.region === region; });
-  if (mkt && mkt.years && mkt.years[idx]) { mkt.years[idx].discount = parseFloat(val) || 0; mkt.years[idx].disc_set = true; }
+  var m = _p9Mkt(region);
+  if (m && m.years && m.years[idx]) { m.years[idx].discount = parseFloat(val) || 0; m.years[idx].disc_set = true; }
   buildCommercialSection();
 }
-function onPropComDiscountReset(region) {
-  var mkt = ((_prop.commercial && _prop.commercial.markets) || []).find(function (m) { return m.region === region; });
-  if (mkt) (mkt.years || []).forEach(function (y) { y.disc_set = false; });
+// A region's share of its plant's cars ('' = back to market size)
+function onPropComShare(region, val) {
+  var m = _p9Mkt(region); if (!m) return;
+  m.share_set = (val === '' || isNaN(parseFloat(val))) ? null : Math.max(0, Math.min(100, parseFloat(val))) / 100;
   buildCommercialSection();
 }
-function onPropComDiscountAll(region, val) {
-  var mkt = ((_prop.commercial && _prop.commercial.markets) || []).find(function (m) { return m.region === region; });
-  if (!mkt || val === '' || isNaN(parseFloat(val))) return;
-  (mkt.years || []).forEach(function (y) { y.discount = parseFloat(val); y.disc_set = true; });
-  buildCommercialSection();
-}
+function onPropComInput(input){}
+function onPropComMarketToggle(region){ var m = _p9Mkt(region); if (m) onPropComSell(region, !m.selected); }
+function onPropComDiscountAll(region, val) { onPropComDiscAvg(region, val); }
 function onPropComMarketingM(val){
   var v=parseFloat(val)||0;
   if(!_prop.commercial)_prop.commercial={};
@@ -27555,26 +27477,21 @@ function onPropComMarketingM(val){
   if(el){el.textContent='Marketing component: '+comp+'/100 → BEI shifts toward '+comp+' over time';el.style.color=col;}
 }
 
-// The map: §7's vehicle plants, regions shaded by the cars they get in the year shown, one route per
-// plant → other region (width = cars). Click a plant or a region to open its panel.
+// The summary map (read only): plants with how full their best year is, regions shaded by lifetime gross
+// margin, one route per plant → other region (width = cars over life). Hover for the figures.
 function _p9mDraw() {
   var host = document.getElementById('prop-p9-map'), box = document.getElementById('prop-p9-map-box');
   if (!host) return;
-  ((_prop.commercial.markets[0] || {}).years || []).forEach(function (y, i) {
-    var b = document.getElementById('prop-p9-yb-' + i);
-    if (b) { b.style.borderColor = i === _P9M.yi ? 'var(--gold)' : 'var(--border2)'; b.style.color = i === _P9M.yi ? 'var(--gold)' : 'var(--muted2)'; }
-  });
   if (_mktMap.failed) { if (box) box.style.display = 'none'; return; }
   if (!_mktMap.world) {
     host.innerHTML = '<div style="padding:40px;text-align:center;font-family:DM Mono,monospace;font-size:10px;color:var(--muted2);">loading map…</div>';
     _mktMapLib().then(function () { if (_mktMap.world) _p9mDraw(); else if (box) box.style.display = 'none'; });
     return;
   }
-  var c = _prop.commercial, yi = _P9M.yi, anchor = _mktAnchors(), mreg = _shpMktRegion();
+  var c = _prop.commercial, anchor = _mktAnchors(), mreg = _shpMktRegion();
   var plants = _propComPlants().filter(function (p) { return anchor[p.country_code]; });
-  var regV = {}; c.markets.forEach(function (m) { regV[m.region] = m.selected ? ((m.years || [])[yi] || {}).volume || 0 : 0; });
-  var maxV = Math.max.apply(null, [1].concat(Object.keys(regV).map(function (k) { return regV[k]; })));
-  var yr = ((c.markets[0] || {}).years || [])[yi], yrL = yr ? yr.year : '';
+  var life = {}; c.markets.forEach(function (m) { life[m.region] = m.selected ? _propComLifetime(m) : null; });
+  var maxG = Math.max.apply(null, [1].concat(Object.keys(life).map(function (k) { return life[k] ? Math.max(0, life[k].gm) : 0; })));
   var W = host.clientWidth || 900, H = Math.round(W * 0.42);
   var proj = d3.geoNaturalEarth1().fitSize([W, H], {type: 'Sphere'}), path = d3.geoPath(proj);
   host.innerHTML = '';
@@ -27596,44 +27513,35 @@ function _p9mDraw() {
   var ramp = d3.scaleLinear().domain([0, 0.5, 1]).range(['#1d4a4c', '#32ccc0', '#c9fbf5']).clamp(true);
   var label = function (r) { return (SALES_MARKETS.find(function (s) { return s.region === r; }) || {label: r}).label; };
   var regTip = function (r) {
-    var m = c.markets.find(function (x) { return x.region === r; });
-    if (!m || !m.selected) return '<b>' + label(r) + '</b><br>no cars sent here<br><span style="color:var(--gold);">click to see the region</span>';
-    var y = (m.years || [])[yi] || {}, nR = _oemUnitRev(m.msrp_eur_k, y.discount), x = _propMktLane(m);
-    return '<b>' + label(r) + '</b> · ' + (y.volume || 0).toLocaleString() + ' cars in ' + yrL
-      + '<br>from ' + x.src.map(function (s) { return _esc(s.plant.country_code) + ' ' + Math.round(s.share * 100) + '%'; }).join(' · ')
-      + '<br>MSRP €' + m.msrp_eur_k + 'k · discount ' + y.discount + '%'
-      + '<br>landed ' + _p9e(x.base + x.l + nR * x.t) + ' · margin ' + _p9e(nR - (x.base + x.l + nR * x.t)) + ' / car'
-      + '<br><span style="color:var(--gold);">click to price it</span>';
+    var m = _p9Mkt(r), L = life[r];
+    if (!m || !L) return '<b>' + label(r) + '</b><br>not sold';
+    var p = _propComPlants().find(function (x) { return x.id === m.plant_id; }) || {};
+    return '<b>' + label(r) + '</b> · ' + L.v.toLocaleString() + ' cars over life from ' + _esc(p.country_name || p.country_code || '')
+      + '<br>MSRP €' + m.msrp_eur_k + 'k · average discount ' + L.d.toFixed(1) + '%'
+      + '<br>landed ' + _p9e(L.cost) + ' · margin ' + _p9e(L.net - L.cost) + ' / car'
+      + '<br>gross margin ' + (L.gm >= 0 ? '+' : '−') + '€' + Math.abs(L.gm).toFixed(1) + 'M';
   };
   var gMap = svg.append('g');
   gMap.append('path').datum({type: 'Sphere'}).attr('d', path).attr('fill', '#0b2033');
   gMap.append('path').datum(d3.geoGraticule10()).attr('d', path).attr('fill', 'none')
     .attr('stroke', '#163049').attr('stroke-width', 0.4).attr('vector-effect', 'non-scaling-stroke');
-  var openR = _P9M.open && _P9M.open.kind === 'region' ? _P9M.open.id : null;
   gMap.append('g').selectAll('path').data(_mktMap.world.features).enter().append('path')
     .attr('d', path)
-    .attr('fill', function (f) { var r = mreg[f.properties.mkt], v = regV[r] || 0; return v > 0 ? ramp(v / maxV) : '#3a3f49'; })
-    .attr('stroke', function (f) { return openR && mreg[f.properties.mkt] === openR ? '#e8c060' : '#0b2033'; })
-    .attr('stroke-width', function (f) { return openR && mreg[f.properties.mkt] === openR ? 1.2 : 0.5; })
-    .attr('vector-effect', 'non-scaling-stroke').style('cursor', function (f) { return mreg[f.properties.mkt] ? 'pointer' : 'default'; })
+    .attr('fill', function (f) { var L = life[mreg[f.properties.mkt]]; return L && L.v > 0 ? (L.gm > 0 ? ramp(L.gm / maxG) : '#6b2a2a') : '#3a3f49'; })
+    .attr('stroke', '#0b2033').attr('stroke-width', 0.5).attr('vector-effect', 'non-scaling-stroke')
     .on('mousemove', function (ev, f) { var r = mreg[f.properties.mkt]; if (r) show(ev, regTip(r)); else hide(); })
-    .on('mouseleave', hide)
-    .on('click', function (ev, f) { var r = mreg[f.properties.mkt]; if (r) { hide(); _p9Open('region', r); } });
-  // plant positions (screen space), side by side within one country
+    .on('mouseleave', hide);
   var marks = [], pos = {};
   plants.forEach(function (p) {
     var same = plants.filter(function (q) { return q.country_code === p.country_code; });
     pos[p.id] = {xy: proj(anchor[p.country_code]), dx: (same.indexOf(p) - (same.length - 1) / 2) * 40};
   });
-  // routes: plant → hub of each other region it sends cars to
   var flows = [];
-  plants.forEach(function (p) {
-    c.markets.forEach(function (m) {
-      var sh = parseFloat((m.sources || {})[p.id]) || 0, y = (m.years || [])[yi];
-      if (!m.selected || !sh || m.region === p.region || !y) return;
-      var hub = anchor[_SHP_REG_HUB[m.region]]; if (!hub) return;
-      flows.push({p: p, m: m, b: proj(hub), u: y.volume * sh});
-    });
+  c.markets.forEach(function (m) {
+    var p = plants.find(function (x) { return x.id === m.plant_id; }), L = life[m.region];
+    if (!p || !L || !L.v || m.region === p.region) return;
+    var hub = anchor[_SHP_REG_HUB[m.region]]; if (!hub) return;
+    flows.push({p: p, m: m, b: proj(hub), u: L.v});
   });
   var maxF = Math.max.apply(null, [1].concat(flows.map(function (f) { return f.u; })));
   var gTop = svg.append('g'), gFlow = gTop.append('g');
@@ -27645,7 +27553,7 @@ function _p9mDraw() {
       var k = Math.min(0.3 * len, 120), cx = mx - dy / len * k, cy = my + dx / len * k;
       if (cy > my) { cx = mx + dy / len * k; cy = my - dx / len * k; }
       var w = 1.5 + 6 * Math.sqrt(f.u / maxF), lo = _propLane(f.p, f.m.region), d = 'M' + a[0] + ',' + a[1] + ' Q' + cx + ',' + cy + ' ' + b[0] + ',' + b[1];
-      var html = '<b>' + _esc(f.p.country_code) + ' → ' + label(f.m.region) + '</b> · ' + Math.round(f.u).toLocaleString() + ' cars in ' + yrL
+      var html = '<b>' + _esc(f.p.country_code) + ' → ' + label(f.m.region) + '</b> · ' + Math.round(f.u).toLocaleString() + ' cars over life'
         + '<br>freight ' + _p9e(lo.l) + ' / car · duty ' + (lo.t * 100).toFixed(1) + '%';
       gFlow.append('path').attr('d', d).attr('fill', 'none').attr('stroke', _SHP_EXPORT_C).attr('stroke-width', w).attr('stroke-opacity', 0.85).attr('stroke-linecap', 'round');
       gFlow.append('circle').attr('cx', b[0]).attr('cy', b[1]).attr('r', 3.5).attr('fill', _SHP_EXPORT_C);
@@ -27654,11 +27562,9 @@ function _p9mDraw() {
     });
   };
   plants.forEach(function (p) {
-    var cap = (parseFloat(p.vehicle_capacity_yr) || 0) * 1000, L = _propComPlantYear(p.id, yi), u = cap > 0 ? L / cap : 0, R = 13;
-    var col = u > 1.0001 ? 'var(--red)' : u >= 0.85 ? 'var(--orange)' : 'var(--green)';
-    var openP = _P9M.open && _P9M.open.kind === 'plant' && _P9M.open.id === p.id;
-    var g = gTop.append('g').style('cursor', 'pointer');
-    if (openP) g.append('circle').attr('r', R + 4).attr('fill', 'none').attr('stroke', '#e8c060').attr('stroke-width', 1.6);
+    var cap = _propComDefaultVol(p), best = _propComPlantBest(p.id), u = cap > 0 ? best / cap : 0, R = 13;
+    var col = u < 0.05 ? 'var(--red)' : u >= 0.85 ? 'var(--green)' : 'var(--orange)';
+    var g = gTop.append('g');
     g.append('circle').attr('r', R).attr('fill', '#0c0f18').attr('stroke', '#2c3650').attr('stroke-width', 3);
     if (u > 0) g.append('path').attr('d', d3.arc().innerRadius(R - 1.5).outerRadius(R + 1.5)({startAngle: 0, endAngle: 2 * Math.PI * Math.min(1, u)})).style('fill', col);
     g.append('rect').attr('x', -5).attr('y', -5).attr('width', 10).attr('height', 10).attr('fill', '#dce8f8');
@@ -27666,24 +27572,21 @@ function _p9mDraw() {
       .style('fill', 'var(--white)').style('paint-order', 'stroke').style('stroke', '#07080d').style('stroke-width', '3px').text(p.country_name || p.country_code);
     g.append('text').attr('y', R + 13).attr('text-anchor', 'middle').style('font-family', 'DM Mono,monospace').style('font-size', '9.5px')
       .style('fill', col).style('paint-order', 'stroke').style('stroke', '#07080d').style('stroke-width', '3px')
-      .text(_p9k(L) + (cap ? ' / ' + _p9k(cap) : '') + ' cars');
-    var cp = _propComPlanOf(p.id) || {}, sp = cp.split || {};
-    var html = '<b>' + _esc(p.country_name || p.country_code) + ' plant</b>' + (cap ? ' · capacity ' + _p9k(cap) + '/yr' : '')
-      + '<br>' + yrL + ': builds ' + Math.round(L).toLocaleString() + ' cars' + (cap ? ' (' + Math.round(u * 100) + '%)' : '')
-      + '<br>output: ' + (Object.keys(sp).length ? Object.keys(sp).map(function (r) { return r + ' ' + Math.round(sp[r] * 100) + '%'; }).join(' · ') : 'none')
-      + '<br><span style="color:var(--gold);">click to split its output</span>';
-    g.on('mousemove', function (ev) { show(ev, html); }).on('mouseleave', hide)
-      .on('click', function (ev) { ev.stopPropagation(); hide(); _p9Open('plant', p.id); });
+      .text(u < 0.05 ? 'idle' : _p9k(best) + ' / ' + _p9k(cap) + ' best year');
+    var html = '<b>' + _esc(p.country_name || p.country_code) + ' plant</b> · capacity ' + _p9k(cap) + '/yr'
+      + '<br>best year ' + Math.round(best).toLocaleString() + ' cars (' + Math.round(u * 100) + '%)'
+      + '<br>feeds: ' + (c.markets.filter(function (m) { return m.selected && m.plant_id === p.id; }).map(function (m) { return m.region + ' ' + Math.round(_propComShare(m) * 100) + '%'; }).join(' · ') || 'nothing');
+    g.on('mousemove', function (ev) { show(ev, html); }).on('mouseleave', hide);
     marks.push({g: g, p: p});
   });
-  // region labels at each region's hub: cars in the year shown
   var rlab = [];
   SALES_MARKETS.forEach(function (sm) {
-    var hub = anchor[_SHP_REG_HUB[sm.region]], v = regV[sm.region] || 0;
-    if (!hub || !v) return;
+    var hub = anchor[_SHP_REG_HUB[sm.region]], L = life[sm.region];
+    if (!hub || !L || !L.v) return;
     var g = gTop.append('g').style('pointer-events', 'none');
     g.append('text').attr('y', 22).attr('text-anchor', 'middle').style('font-family', 'DM Mono,monospace').style('font-size', '10px')
-      .style('fill', '#e8c060').style('paint-order', 'stroke').style('stroke', '#07080d').style('stroke-width', '3px').text(sm.region + ' ' + _p9k(v));
+      .style('fill', L.gm >= 0 ? '#e8c060' : 'var(--red)').style('paint-order', 'stroke').style('stroke', '#07080d').style('stroke-width', '3px')
+      .text(sm.region + ' ' + (L.gm >= 0 ? '+' : '−') + '€' + Math.abs(L.gm).toFixed(0) + 'M');
     rlab.push({g: g, xy: proj(hub)});
   });
   if (!marks.length) gTop.append('text').attr('x', W / 2).attr('y', H / 2).attr('text-anchor', 'middle')
@@ -27713,11 +27616,12 @@ function _p9mDraw() {
     var it = function (sw, t) { return '<span style="display:inline-flex;align-items:center;gap:5px;">' + sw + t + '</span>'; };
     var dot = function (cc) { return '<span style="width:9px;height:9px;border-radius:50%;background:' + cc + ';"></span>'; };
     leg.innerHTML = '<div style="display:flex;flex-wrap:wrap;gap:4px 14px;margin-top:6px;font-family:DM Mono,monospace;font-size:9px;color:var(--muted2);">'
-      + it('<span style="width:10px;height:10px;background:#dce8f8;"></span>', 'vehicle plant, ring = cars built ÷ capacity in ' + yrL + ':')
-      + it(dot('var(--green)'), '&lt;85%') + it(dot('var(--orange)'), '85–100%') + it(dot('var(--red)'), 'over')
-      + it('<span style="width:60px;height:8px;border-radius:2px;background:linear-gradient(90deg,#1d4a4c,#32ccc0,#c9fbf5);"></span>', 'cars a region gets, 0 – ' + _p9k(maxV))
+      + it('<span style="width:10px;height:10px;background:#dce8f8;"></span>', 'plant, ring = best year ÷ capacity')
+      + it(dot('var(--green)'), '≥85%') + it(dot('var(--orange)'), 'less') + it(dot('var(--red)'), 'idle')
+      + it('<span style="width:60px;height:8px;border-radius:2px;background:linear-gradient(90deg,#1d4a4c,#32ccc0,#c9fbf5);"></span>', 'lifetime gross margin, 0 – €' + maxG.toFixed(0) + 'M')
+      + it('<span style="width:10px;height:10px;background:#6b2a2a;"></span>', 'loses money')
       + it('<span style="width:16px;height:3px;background:' + _SHP_EXPORT_C + ';"></span>', 'cars shipped to another region')
-      + '<span>click a plant or a region · ctrl + wheel to zoom</span></div>';
+      + '<span>hover for figures · ctrl + wheel to zoom</span></div>';
   }
 }
 function _p9mZoomBy(f) {
