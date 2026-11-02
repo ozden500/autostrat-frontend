@@ -31461,7 +31461,7 @@ function _calcSupplyPlanTotals(){
   return {totalAdj:sp._total_piece_adj_eur,riskScore:sp._risk_score,totalLanded:sp._total_landed_parts_eur};
 }
 
-// §8's exploded view (the final amounts per module) starts folded.
+// §8's exploded view (each plant x module line's sourcing detail) starts folded.
 var _spPanelExpanded = { detail: false };
 function _spTogglePanel(p) {
   _spPanelExpanded[p] = !_spPanelExpanded[p];
@@ -31700,72 +31700,131 @@ function _propPlantCapexM() {   // the plant capex §10 counts (§7 fit; else th
   });
   return t;
 }
+// §8's module table (2026-11-02): §7's table after sourcing, by car. Tabs: "All cars" (each vehicle plant's cars
+// weighted by its share) and one tab per vehicle plant = the cars it builds, their powertrain modules included,
+// supplied by the powertrain plants (weighted by their volume). Bought parts = §7's + the sourcing adjustment
+// (supplier labour, freight, duty: _calcModuleSupplyMetrics.piece_adj) of the line that supplies that car's module;
+// transformation, R&D and plant capex carry over from §7; supplier capex = the brownfield of those lines (shared
+// contracts split by volume; the powertrain plants' lines shown once, on the vehicle plant with the most volume,
+// as §7 shows their plant capex), compared on the All tab with the greenfield at your volume (capacity + first-time
+// tooling, _spBridgeLines l.gf). The All tab's totals are what §9 / §10 use (_calcSupplyPlanTotals).
+var _p8ModTab = 'all';
+function _p8SetModTab(id) { _p8ModTab = id; _refreshSupplyPlanArea(); }
+function _p8ModuleCosts(lines, plantId) {
+  var base = _p7ModuleCosts(plantId || null), sel = base.sel;
+  var hasPwt = lines.some(function (l) { return l.ptype === 'powertrain'; });
+  var vbig = base.all.filter(function (x) { return x.ptype === 'vehicle'; }).sort(function (a, b) { return b.w - a.w; })[0];
+  var pwtHere = !sel || (vbig && sel.p.id === vbig.p.id);
+  var rows = base.rows.map(function (r) {
+    var o = {}; Object.keys(r).forEach(function (q) { o[q] = r[q]; });
+    o.dmp0 = r.dmp; o.make0 = r.make;                // §7's values: the small figures are the change from them
+    o.sup0 = 0; o.sup = 0; o.lines = [];            // sup0 = the greenfield at your volume (All tab)
+    return o;
+  });
+  var byK = {}; rows.forEach(function (r) { byK[r.k] = r; });
+  lines.forEach(function (l) {
+    var r = byK[l.sk];
+    if (!r) return;
+    var supM = l.inv ? l.inv.totalM : 0;
+    if (!sel) { r.dmp += l.dPurch; r.sup += supM; r.sup0 += l.gf || 0; r.lines.push(l); return; }
+    if (l.ptype === 'vehicle' && l.p.id === sel.p.id) { r.dmp += l.m.piece_adj; r.sup += supM; r.lines.push(l); }
+    else if (l.ptype === 'powertrain' && hasPwt) { r.dmp += l.w * l.m.piece_adj; if (pwtHere) r.sup += supM; r.lines.push(l); }
+  });
+  return {rows: rows, sel: sel, all: base.all, plants: base.plants, fitOk: base.fitOk, pwtHere: pwtHere && hasPwt};
+}
+function _renderP8ModuleTable(lines) {
+  var d = _p8ModuleCosts(lines, _p8ModTab === 'all' ? null : _p8ModTab);
+  if (_p8ModTab !== 'all' && !d.sel) { _p8ModTab = 'all'; d = _p8ModuleCosts(lines, null); }
+  var sel = d.sel, MO = 'font-family:DM Mono,monospace;';
+  var tab = function (id, label) {
+    var on = _p8ModTab === id;
+    return '<button onclick="_p8SetModTab(\'' + id + '\')" style="' + MO + 'font-size:8px;padding:5px 10px;cursor:pointer;border-radius:3px 3px 0 0;'
+      + 'border:1px solid ' + (on ? 'var(--border2)' : 'transparent') + ';border-bottom:none;margin-bottom:-1px;'
+      + 'background:' + (on ? 'var(--s2)' : 'transparent') + ';color:' + (on ? 'var(--gold)' : 'var(--muted2)') + ';font-weight:' + (on ? 700 : 400) + ';">' + label + '</button>';
+  };
+  var vps = d.all.filter(function (x) { return x.ptype === 'vehicle'; });
+  var tabs = vps.length > 1 ? '<div style="display:flex;flex-wrap:wrap;gap:2px;">' + tab('all', 'All cars')
+    + vps.map(function (x) {
+      return tab(x.p.id, '🚗 Built in ' + _esc(x.p.country_name || x.p.country_code || x.p.id) + ' · '
+        + Math.round(+x.p.target_capacity_k || +x.p.vehicle_capacity_yr || 0) + 'k/yr (' + Math.round(x.w * 100) + '%)');
+    }).join('') + '</div>' : '';
+  var COLS = 'minmax(0,1fr) 66px 84px 96px 104px 112px 92px 96px';
+  var f = function (v) { return Math.round(v).toLocaleString(); };
+  var fM = function (v) { return v < 10 ? v.toFixed(1) : f(v); };   // supplier €M: small lines keep a decimal
+  var delta = function (v, unit) {
+    var n = Math.round(v * (unit === 'M' ? 10 : 1)) / (unit === 'M' ? 10 : 1);
+    if (Math.abs(n) < (unit === 'M' ? 0.05 : 0.5)) return '';
+    return ' <span style="font-size:7px;color:' + (n > 0 ? 'var(--orange)' : 'var(--green)') + ';">' + (n > 0 ? '+' : '−') + '€'
+      + (unit === 'M' ? Math.abs(n).toFixed(1) + 'M' : Math.abs(n).toLocaleString()) + '</span>';
+  };
+  var cell = function (t, c, b) { return '<div style="text-align:right;white-space:nowrap;' + MO + 'font-size:8px;color:' + (c || 'var(--muted2)') + ';' + (b ? 'font-weight:700;' : '') + '">' + t + '</div>'; };
+  // where a module comes from: zone and supplier automation of the line(s) supplying it
+  var src = function (r) {
+    var seen = {}, out = [];
+    r.lines.forEach(function (l) {
+      var z = SP_ZONES.find(function (q) { return q.key === l.dec.zone; }) || {};
+      var t = (sel ? '' : _esc(l.p.country_code || '') + ': ') + (z.flag || '') + ' ' + (z.label || l.dec.zone) + ' · L' + (l.dec.automation || 2)
+        + (_spDecLock(l.sk, l.dec) ? ' 🔒' : '') + (l.pool && l.pool.variant ? ' · family contract' : '')
+        + (l.group > 1 ? ' · one order with ' + (l.group - 1) + ' other plant' + (l.group > 2 ? 's' : '') : '');
+      if (!seen[t]) { seen[t] = 1; out.push(t); }
+    });
+    return out.join(' · ');
+  };
+  var hdr = ['R&amp;D €M', 'Plant €M', 'Supplier €M', 'Bought parts €', 'Transformation €', 'TPC €', 'Ready'];
+  var out = '<div style="display:grid;grid-template-columns:' + COLS + ';gap:8px;padding:6px 10px 5px;' + MO + 'font-size:7px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;">'
+    + '<div>Module · sourced from</div>' + hdr.map(function (t) { return '<div style="text-align:right;">' + t + '</div>'; }).join('') + '</div>';
+  var T = {rd: 0, plant: 0, sup: 0, sup0: 0, dmp: 0, dmp0: 0, make: 0, make0: 0};
+  d.rows.forEach(function (r) {
+    var meta = OEM_COST_MOD_META[r.k] || {label: r.k, color: 'var(--text)'}, tpc = r.dmp + r.make, tpc0 = r.dmp0 + r.make0;
+    Object.keys(T).forEach(function (q) { T[q] += r[q]; });
+    var opener = r.lines.length ? r.lines[0].p.id : null;
+    out += '<div ' + (opener ? 'onclick="_p8wOpen(\'' + opener + '\')" title="Click to change this module\'s sourcing" ' : '')
+      + 'style="display:grid;grid-template-columns:' + COLS + ';gap:8px;align-items:center;padding:7px 10px;border-bottom:1px solid rgba(255,255,255,.04);background:var(--s2);border-left:3px solid ' + meta.color + ';' + (opener ? 'cursor:pointer;' : '') + '">'
+      + '<div style="overflow:hidden;"><div style="display:flex;align-items:center;gap:6px;"><span style="width:6px;height:6px;border-radius:1px;background:' + meta.color + ';flex-shrink:0;"></span>'
+      + '<span style="' + MO + 'font-size:9px;font-weight:700;color:var(--white);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + meta.label + '</span></div>'
+      + '<div style="' + MO + 'font-size:7px;color:var(--muted2);margin:2px 0 0 12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + (src(r) || '—') + '</div></div>'
+      + cell('€' + f(r.rd) + 'M')
+      + cell(r.plant > 0 ? '€' + f(r.plant) + 'M' : '—')
+      + cell(r.sup > 0 ? '€' + fM(r.sup) + 'M' + (sel ? '' : delta(r.sup - r.sup0, 'M')) : '—')
+      + cell('€' + f(r.dmp) + delta(r.dmp - r.dmp0), 'var(--text)')
+      + cell('€' + f(r.make), 'var(--text)')
+      + '<div style="text-align:right;white-space:nowrap;font-family:Orbitron,sans-serif;font-size:11px;font-weight:700;color:' + meta.color + ';">€' + f(tpc) + delta(tpc - tpc0) + '</div>'
+      + '<div style="text-align:right;' + MO + 'font-size:8px;white-space:nowrap;">' + _propSopCell(r.k) + '</div></div>';
+  });
+  var _sv = _prop.study || {}, sopL = _sv.start_year ? 'Q' + (_sv.start_quarter || 1) + ' ' + _sv.start_year : '—';
+  var tpcT = T.dmp + T.make, tpcT0 = T.dmp0 + T.make0;
+  out += '<div style="display:grid;grid-template-columns:' + COLS + ';gap:8px;align-items:center;padding:8px 10px;background:var(--s3);border-top:1px solid rgba(200,164,60,.3);">'
+    + '<div style="' + MO + 'font-size:9px;font-weight:700;color:var(--gold);">TOTAL</div>'
+    + cell('€' + f(T.rd) + 'M', 'var(--white)', 1)
+    + cell('€' + f(T.plant) + 'M', 'var(--white)', 1)
+    + cell('€' + f(T.sup) + 'M' + (sel ? '' : delta(T.sup - T.sup0, 'M')), 'var(--white)', 1)
+    + cell('€' + f(T.dmp) + delta(T.dmp - T.dmp0), 'var(--white)', 1)
+    + cell('€' + f(T.make), 'var(--white)', 1)
+    + '<div style="text-align:right;white-space:nowrap;font-family:Orbitron,sans-serif;font-size:12px;font-weight:800;color:var(--gold);">€' + f(tpcT) + delta(tpcT - tpcT0) + '</div>'
+    + cell('SOP ' + sopL, 'var(--white)', 1) + '</div>';
+  var pwtNote = d.pwtHere ? ' (the powertrain plants\' lines are shown on the plant with the most volume)' : '';
+  var note = sel
+    ? 'The cars built in ' + _esc(sel.p.country_name || sel.p.country_code) + ', their powertrain modules included (from the powertrain plants, weighted by their volume). Small figures = change vs §7: the sourcing adjustment of the line that supplies each module (supplier labour, freight, duty). Supplier capex = the capex of those lines' + pwtNote + '. Transformation, R&amp;D and plant capex are §7\'s.'
+    : 'Small figures = change vs §7. Bought parts: each module\'s sourcing adjustment (supplier labour, freight, duty), weighted by the share of the cars each plant builds or supplies; supplier capex: what reserving charges, vs a greenfield supplier line at your volume (contracts already held, a family contract, automation, tooling in place). Transformation, R&amp;D and plant capex are §7\'s. These totals are what §9 and §10 use. Click a module to change its sourcing.';
+  return '<div style="margin:2px 0 4px;' + MO + 'font-size:8px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);">Module cost &amp; investment — after sourcing</div>'
+    + tabs + '<div style="border:1px solid var(--border2);border-radius:' + (tabs ? '0 4px 4px 4px' : '4px') + ';overflow:hidden;">' + out + '</div>'
+    + '<div style="' + MO + 'font-size:7.5px;color:var(--muted2);margin-top:5px;line-height:1.5;">' + note + '</div>';
+}
 function _renderSupplyPlanSection(){
   var lines = _spBridgeLines(true), tot = _calcSupplyPlanTotals();
   var MO = 'font-family:DM Mono,monospace;';
   if (!lines.length) return '<div style="' + MO + 'font-size:9px;color:var(--muted2);font-style:italic;padding:6px 0;">No confirmed plants yet: allocate plants in §7 first.</div>';
-  var pw = _spPlantCostWeighted(), dm = _computeDmpMake();
-  var base = {
-    purch: dm.dmp + pw.buy,
-    make: dm.make + pw.make,
-    rd: ['platform', 'pwt', 'epwt', 'battery', 'tophat', 'eands'].reduce(function (a, k) { return a + _slotRdM(_prop[k]); }, 0),
-    plant: _propPlantCapexM(),
-    sup: lines.reduce(function (a, l) { return a + (l.gf || 0); }, 0)
-  };
-  var fin = {purch: base.purch + tot.totalAdj, sup: lines.reduce(function (a, l) { return a + (l.inv ? l.inv.totalM : 0); }, 0)};
   var eur = function (v) { return '€' + Math.round(v).toLocaleString(); };
   var dEur = function (v) { var n = Math.round(v); return n === 0 ? '€0' : (n > 0 ? '+€' : '−€') + Math.abs(n).toLocaleString(); };
   var mM = function (v) { return '€' + v.toFixed(1) + 'M'; };
   var dM = function (v) { return Math.abs(v) < 0.05 ? '€0.0M' : (v > 0 ? '+€' : '−€') + Math.abs(v).toFixed(1) + 'M'; };
   var col = function (v) { return v > 0.5 ? 'var(--orange)' : v < -0.5 ? 'var(--green)' : 'var(--muted2)'; };
-  var colM = function (v) { return v > 0.05 ? 'var(--orange)' : v < -0.05 ? 'var(--green)' : 'var(--muted2)'; };
-  var COLS = 'minmax(0,1fr) 96px 104px 64px 78px 86px';
-  var cell = function (t, c, b) { return '<div style="text-align:right;white-space:nowrap;color:' + (c || 'var(--text)') + ';' + (b ? 'font-weight:700;' : '') + '">' + t + '</div>'; };
-  var dash = cell('—', 'var(--muted)');
-  var row = function (inner, bg, extra) {
-    return '<div ' + (extra || '') + ' style="display:grid;grid-template-columns:' + COLS + ';gap:8px;align-items:center;padding:6px 10px;' + MO + 'font-size:9px;border-bottom:1px solid var(--border2);' + (bg || '') + '">' + inner + '</div>';
-  };
-  var h = '<div style="background:var(--s2);border-radius:4px;border:1px solid var(--border2);overflow:hidden;">';
-  h += row('<div style="color:var(--muted);font-size:7.5px;letter-spacing:1px;text-transform:uppercase;">🔧 Sourcing — module by module</div>'
-    + ['Purchasing €/car', 'Transformation €/car', 'R&amp;D', 'Plant capex', 'Supplier capex'].map(function (t) {
-        return '<div style="text-align:right;color:var(--muted);font-size:7.5px;letter-spacing:.5px;text-transform:uppercase;">' + t + '</div>'; }).join(''),
-    'background:var(--s1);');
-  h += row('<div style="color:var(--gold);font-weight:700;">Proposal so far <span style="font-weight:400;color:var(--muted2);">· before sourcing (§2–§7; supplier capex = greenfield: capacity + tooling at your volume)</span></div>'
-    + cell(eur(base.purch), 'var(--gold)', 1) + cell(eur(base.make), 'var(--gold)', 1) + cell(mM(base.rd), 'var(--gold)', 1)
-    + cell(mM(base.plant), 'var(--gold)', 1) + cell(mM(base.sup), 'var(--gold)', 1), 'background:var(--goldl);');
-  var seenPlant = {};
-  lines.forEach(function (l) {
-    if (!seenPlant[l.p.id]) {
-      seenPlant[l.p.id] = true;
-      var _ct = (INDUSTRIAL_COUNTRIES[l.p.region] || []).find(function (c) { return c.code === l.p.country_code; }) || {};
-      var share = l.w < 0.999 ? ' · ' + Math.round(l.w * 100) + '% of the cars' : '';
-      h += row('<div style="grid-column:1/-1;display:flex;align-items:center;justify-content:space-between;gap:8px;">'
-        + '<span style="color:var(--gold);font-weight:600;">' + (l.ptype === 'vehicle' ? '🏭' : '⚙') + ' ' + (_ct.flag || '') + ' ' + _esc(l.p.country_name || l.p.country_code || l.p.region)
-        + ' <span style="color:var(--muted2);font-weight:400;">· ' + l.ptype + ' plant · ' + Math.round(l.p.vehicle_capacity_yr || 0) + 'k/yr' + share + '</span></span>'
-        + '<button onclick="_p8wOpen(\'' + l.p.id + '\')" style="' + MO + 'font-size:8px;padding:3px 10px;border-radius:3px;border:1px solid rgba(200,164,60,.5);background:var(--goldl);color:var(--gold);cursor:pointer;">Open</button></div>',
-        'background:var(--s1);');
-    }
-    var z = SP_ZONES.find(function (q) { return q.key === l.dec.zone; }) || {}, al = SP_AUTO_LEVELS.find(function (a) { return a.key === l.dec.automation; }) || {};
-    var tags = (_spDecLock(l.sk, l.dec) ? ' 🔒' : '') + (l.pool && l.pool.variant ? ' · family contract' : '') + (l.dec.share_existing && _spDecLock(l.sk, l.dec) ? ' · reusing capacity' : '')
-      + (l.group > 1 ? ' · one contract with ' + (l.group - 1) + ' other plant' + (l.group > 2 ? 's' : '') : '');
-    h += row('<div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding-left:10px;">'
-      + '<span style="font-size:7.5px;color:var(--muted2);letter-spacing:.5px;">' + (_SP_TYPE_LABELS[l.sk] || l.sk.toUpperCase()) + '</span> '
-      + '<b style="color:var(--white);">' + _esc(_spSlotLabel(l.sk)) + '</b>'
-      + ' <span style="color:var(--text);">· ' + (z.flag || '') + ' ' + (z.label || l.dec.zone) + ' · L' + l.dec.automation + ' ' + (al.label || '') + tags + '</span></div>'
-      + cell(dEur(l.dPurch), col(l.dPurch)) + dash + dash + dash
-      + cell(l.inv ? dM(l.dSup) : '—', l.inv ? colM(l.dSup) : 'var(--muted)'),
-      'cursor:pointer;', 'onclick="_p8wOpen(\'' + l.p.id + '\')" title="Click to change this plant\'s sourcing"');
-  });
-  h += row('<div style="color:var(--cyan);font-weight:700;">Final <span style="font-weight:400;color:var(--muted2);">· after sourcing (what §9 / §10 use; supplier capex = what reserving charges)</span></div>'
-    + cell(eur(fin.purch), 'var(--cyan)', 1) + cell(eur(base.make), 'var(--cyan)', 1) + cell(mM(base.rd), 'var(--cyan)', 1)
-    + cell(mM(base.plant), 'var(--cyan)', 1) + cell(mM(fin.sup), 'var(--cyan)', 1), 'background:rgba(50,204,192,.06);border-bottom:none;');
-  h += '</div>';
-  h += '<div style="' + MO + 'font-size:7.5px;color:var(--muted2);margin-top:5px;">Sourcing moves purchasing (supplier labour, freight and duty, × the plant\'s share of the cars) and supplier capex (vs greenfield: contracts already held, a family contract, automation, tooling in place). Transformation, R&amp;D and plant capex are set in §2–§7 (with several vehicle plants, transformation is weighted by each plant\'s share of the cars). Click a module or Open to change a plant\'s sourcing.</div>';
+  var h = _renderP8ModuleTable(lines);
 
   // exploded view: each module's absolute final amounts
   var open = !!_spPanelExpanded.detail;
   h += '<div onclick="_spTogglePanel(\'detail\')" style="cursor:pointer;margin-top:10px;' + MO + 'font-size:8px;letter-spacing:1px;text-transform:uppercase;color:var(--muted);">'
-    + (open ? '▾' : '▸') + ' Exploded view — final amounts per module</div>';
+    + (open ? '▾' : '▸') + ' Sourcing detail — each plant and module line</div>';
   if (open) {
     var TH = 'text-align:right;padding:4px 6px;color:var(--muted);font-size:7px;letter-spacing:.5px;text-transform:uppercase;white-space:nowrap;border-bottom:1px solid var(--border2);';
     var TD = 'text-align:right;padding:4px 6px;white-space:nowrap;border-bottom:1px solid rgba(255,255,255,.04);';
@@ -31800,7 +31859,7 @@ function _renderSupplyPlanSection(){
         + '<td style="' + TD + '">' + disc + '</td></tr>';
     });
     h += '</tbody></table></div>';
-    h += '<div style="' + MO + 'font-size:7.5px;color:var(--muted2);margin-top:4px;">Landed €/car is per piece at that plant; the bridge above weights it by the plant\'s share of the cars. Plants sourcing a module from the same zone place one order: its supplier capex is priced on their combined volume and split by volume.</div>';
+    h += '<div style="' + MO + 'font-size:7.5px;color:var(--muted2);margin-top:4px;">Landed €/car is per piece at that plant; the table above charges it to the cars that plant builds or supplies. Plants sourcing a module from the same zone place one order: its supplier capex is priced on their combined volume and split by volume.</div>';
   }
 
   // sourcing profile, supply risk, payment timing
