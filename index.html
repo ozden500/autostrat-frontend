@@ -33396,9 +33396,12 @@ function calcPropBizCase() {
       // (_AFTERSALES_E.carValue at the hurdle), after tax. Not in EBIT: it arrives over 15 years.
       // lifecycle cost-downs: engineering is expensed, tooling is cash like the programme's
       var lcEngM=_lcPath.eng[pi]||0, lcCapM=_lcPath.capex[pi]||0;
-      var ebitM=gpM-sgaM-rdMq-marketingM-launchM-_newMkt.runQ-lcEngM, fcfM=ebitM*0.75+asTailM*0.75-lcCapM;
+      // The sales network / entry fees of countries the team has not entered are not charged here (2026-11-03):
+      // entering a country is a company decision (Commercial → Markets) whose costs the books carry there;
+      // tile 1 flags the regions that have no network yet.
+      var ebitM=gpM-sgaM-rdMq-marketingM-launchM-lcEngM, fcfM=ebitM*0.75+asTailM*0.75-lcCapM;
       fcfArr.push({yr:yr,rev:revM,cogs:cogsM,gp:gpM,ebit:ebitM,fcf:fcfM,mktg:marketingM+launchM,asTail:asTailM,units:unitsQ,
-                   lcSave:unitsQ*lcSave/1e6,lcEng:lcEngM,lcCap:lcCapM});
+                   lcSave:unitsQ*lcSave/1e6,lcEng:lcEngM,lcCap:lcCapM,sga:sgaM,rdS:rdMq});
     }
   })
 
@@ -33426,7 +33429,7 @@ function calcPropBizCase() {
   if(_ops._plantFit&&_ops._plantFit.ok)toolingM=+_ops._plantFit.capex_m||0;
   var _plantM=toolingM, _supM=+_ops._sourcingCapexM||0;   // §10 investment tile
   if(_ops._sourcingCapexM)toolingM+=_ops._sourcingCapexM;
-  var totalInvM=rdM+toolingM+_newMkt.entryM;
+  var totalInvM=rdM+toolingM;
 
   // NPV
   var rateP    = SESSION_DISCOUNT_RATE || 8;
@@ -33513,10 +33516,27 @@ function calcPropBizCase() {
   _propBcView.other = _cmd.eur + _varDelta;
   _propBcView.plant = _u ? (_bv.plant || 0) / _u : 0; _propBcView.buy = _u ? (_bv.buy || 0) / _u : 0;
   _propBcView.logi = _u ? (_bv.logi || 0) / _u : 0;
+  // §10 NPV bridge: variable margin → fixed costs → EBIT → tax → free cash flow, each over the life and
+  // discounted as calcNPV does (quarterly, from the first quarter on sale), then the investment at SOP
+  _propBcView.bridge = (function () {
+    var rq = Math.pow(1 + rateP / 100, 0.25) - 1, und = {}, pv = {};
+    var K = ['gp', 'sga', 'rdS', 'launch', 'lcEng', 'ebit', 'tax', 'as', 'lcCap', 'fcf'], yrs = [], byYr = {};
+    K.forEach(function (k) { und[k] = 0; pv[k] = 0; });
+    fcfArr.forEach(function (f, t) {
+      var df = 1 / Math.pow(1 + rq, t + 1);
+      var c = {gp: f.gp, sga: -(f.sga || 0), rdS: -(f.rdS || 0), launch: -(f.mktg || 0), lcEng: -(f.lcEng || 0),
+               ebit: f.ebit, tax: -0.25 * f.ebit, as: 0.75 * (f.asTail || 0), lcCap: -(f.lcCap || 0), fcf: f.fcf};
+      K.forEach(function (k) { und[k] += c[k]; pv[k] += c[k] * df; });
+      var y = byYr[f.yr] || (yrs.push(f.yr), byYr[f.yr] = {yr: f.yr, n: 0, units: 0, rev: 0, ebit: 0, tax: 0, oth: 0, fcf: 0, dfcf: 0, df: 0});
+      y.n++; y.units += f.units || 0; y.rev += f.rev || 0; y.ebit += f.ebit; y.tax += c.tax; y.oth += c.as + c.lcCap;
+      y.fcf += f.fcf; y.dfcf += f.fcf * df; y.df += df;
+    });
+    return {und: und, pv: pv, q: fcfArr.length, years: yrs.map(function (yr) { return byYr[yr]; })};
+  })();
   // §10 executive tiles: MSRP, freight, duty per car, the in-house share, investments, best year
   _propBcView.msrp = _bv.msrp || 0; _propBcView.make = _dmpMake.make || 0;
   _propBcView.fr = _u ? (_bv.fr || 0) / _u : 0; _propBcView.duty = _u ? (_bv.duty || 0) / _u : 0;
-  _propBcView.rdM = rdM; _propBcView.plantM = _plantM; _propBcView.supM = _supM; _propBcView.entryM = _newMkt.entryM;
+  _propBcView.rdM = rdM; _propBcView.plantM = _plantM; _propBcView.supM = _supM; _propBcView.newMkt = _newMkt;
   _propBcView.peakU = (function () { var by = {}; fcfArr.forEach(function (f) { by[f.yr] = (by[f.yr] || 0) + (f.units || 0); });
     return Math.max.apply(null, [0].concat(Object.keys(by).map(function (y) { return by[y]; }))); })();
 
@@ -33585,7 +33605,7 @@ function calcPropBizCase() {
           : '');
     var _bcAsm=(_newMkt.countries.length
           ? '<div style="font-family:DM Mono,monospace;font-size:10px;color:var(--gold);margin-top:10px;">'
-            + 'Includes market entry for ' + _newMkt.countries.length + ' countries your team is not in yet ('
+            + 'Not included: market entry for ' + _newMkt.countries.length + ' countries your team is not in yet (' 
             + _newMkt.countries.slice(0, 8).join(', ') + (_newMkt.countries.length > 8 ? '…' : '') + '): €'
             + Math.round(_newMkt.entryM) + 'M upfront and €' + Math.round(_newMkt.runQ) + 'M/qtr network. '
             + 'Enter them on Commercial → 🌍 Markets, ' + _MKTNET_E.ENTRY_LEAD_Q + ' quarters before SOP.</div>'
@@ -33750,7 +33770,7 @@ function _propBcAsmTable(a) {
       'held at this quarter\u2019s prices; \u00b120%: NPV ' + e(a.cmdSens[1].npv) + 'M / ' + e(a.cmdSens[0].npv) + 'M', 'Engineering \u2192 Lifecycle (supply contracts)'] : null,
     ['Lifecycle cost-downs', (v.lc > 0 ? '\u2212' : '') + e(v.lc) + '/car', v.units ? '\u2212' + life(v.lc) : '\u2014', lcSel, 'Engineering \u2192 Lifecycle (yearly budget)'],
     ['Launch campaign', '\u2014', e(a.launchM) + 'M', 'standard budget, first two quarters', 'Commercial \u2192 Launches, each round'],
-    a.nEntry ? ['Market entry', '\u2014', e(a.entryM) + 'M + ' + e(a.runQ) + 'M/qtr', a.nEntry + ' countries not entered yet', 'Commercial \u2192 Markets'] : null,
+    a.nEntry ? ['Market entry (not in this case)', '\u2014', e(a.entryM) + 'M + ' + e(a.runQ) + 'M/qtr', a.nEntry + ' countries with no sales network yet; a company decision, charged in the books when you enter', 'Commercial \u2192 Markets'] : null,
     a.asTail > 0 ? ['Aftersales parts (in cash flow only)', '\u2014', '+' + e(a.asTail) + 'M', 'genuine-parts contribution over 15 years', 'Commercial \u2192 Aftersales'] : null
   ].filter(Boolean);
   var TH = 'text-align:left;padding:5px 8px;' + DM + 'font-size:7px;letter-spacing:1px;text-transform:uppercase;color:var(--muted);font-weight:400;border-bottom:1px solid var(--border);';
@@ -33776,8 +33796,103 @@ function _p10Toggle(i) {
   _P10.open[i] = !_P10.open[i];
   var d = document.getElementById('prop-bc-det-' + i), b = document.getElementById('prop-bc-lnk-' + i);
   if (d) d.style.display = _P10.open[i] ? 'block' : 'none';
-  if (b) b.textContent = _P10.open[i] ? 'details ▾' : 'details ▸';
+  if (b) b.textContent = i === 7 ? '\u24d8 how the NPV is built ' + (_P10.open[i] ? '\u25be' : '\u25b8') : (_P10.open[i] ? 'details ▾' : 'details ▸');
   if (_P10.open[i] && d && d.scrollIntoView) d.scrollIntoView({block: 'nearest', behavior: 'smooth'});
+}
+// §10 NPV bridge (2026-11-03): from the variable margin to the NPV, each line over the life, at present
+// value and per car, then which lines take the case below zero (display only; calcPropBizCase's figures).
+function _propBcBridgeHtml(v) {
+  var b = v && v.bridge;
+  if (!b) return '';
+  var DM = 'font-family:DM Mono,monospace;', u = v.units || 0;
+  var eM = function (x) { var a = Math.abs(x); return (x < -0.05 ? '\u2212\u20ac' : '\u20ac') + (a >= 100 ? Math.round(a) : Math.round(a * 10) / 10).toLocaleString() + 'M'; };
+  var eC = function (x) { return u ? (x < 0 ? '\u2212\u20ac' : '\u20ac') + Math.round(Math.abs(x) * 1e6 / u).toLocaleString() : '\u2014'; };
+  var inv = v.invM || 0, disc = b.pv.fcf - b.und.fcf;
+  var lines = [
+    ['Variable margin', 'cars \u00d7 (net revenue \u2212 variable cost): ' + Math.round(u).toLocaleString() + ' \u00d7 ' + eC(b.und.gp), 'gp', 'var(--green)'],
+    ['\u2212 Head-office overhead', 'the admin this model adds to the team (SG&amp;A)', 'sga'],
+    ['\u2212 Sustaining engineering', '4% of revenue, for updates over the life', 'rdS'],
+    ['\u2212 Launch campaign', 'standard budget, first two quarters', 'launch'],
+    ['\u2212 Lifecycle engineering', 'cost-down projects (planning assumption)', 'lcEng'],
+    ['= EBIT', 'operating profit of the model', 'ebit', null, true],
+    ['\u2212 Tax', '25% of EBIT (a loss saves tax)', 'tax'],
+    ['+ Aftersales parts', 'genuine-parts contribution, after tax', 'as'],
+    ['\u2212 Lifecycle tooling', 'cost-down tooling', 'lcCap'],
+    ['= Free cash flow', 'cash the model returns, quarter by quarter', 'fcf', null, true]
+  ];
+  var TH = 'padding:5px 8px;' + DM + 'font-size:8px;letter-spacing:1px;text-transform:uppercase;color:var(--muted);font-weight:400;border-bottom:1px solid var(--border);text-align:right;white-space:nowrap;';
+  var td = function (x, col, bold, al) { return '<td style="padding:5px 8px;' + DM + 'font-size:10.5px;text-align:' + (al || 'right') + ';color:' + (col || 'var(--text)') + ';' + (bold ? 'font-weight:700;' : '') + 'white-space:nowrap;">' + x + '</td>'; };
+  var h = '<div style="border:1px solid var(--border2);border-left:3px solid var(--cyan);border-radius:4px;background:var(--s1);padding:12px 14px;">'
+    + '<div style="' + DM + 'font-size:8px;letter-spacing:1.3px;text-transform:uppercase;color:var(--cyan);margin-bottom:8px;">How the NPV is built</div>'
+    + '<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;min-width:720px;"><thead><tr><th style="' + TH + 'text-align:left;">Line</th><th style="' + TH + 'text-align:left;">What it is</th>'
+    + '<th style="' + TH + '">Over the life</th><th style="' + TH + '">Per car</th><th style="' + TH + '">Present value</th></tr></thead><tbody>';
+  lines.forEach(function (l) {
+    var k = l[2], a = b.und[k], p = b.pv[k];
+    if (!l[4] && k !== 'gp' && Math.abs(a) < 0.05) return;
+    var col = l[3] || (l[4] ? (a >= 0 ? 'var(--green)' : 'var(--red)') : (a < 0 ? 'var(--orange)' : 'var(--text)'));
+    h += '<tr style="border-bottom:1px solid var(--border);' + (l[4] ? 'background:var(--s2);' : '') + '">' + td(l[0], l[4] ? 'var(--white)' : 'var(--muted2)', l[4], 'left')
+      + '<td style="padding:5px 8px;' + DM + 'font-size:9.5px;color:var(--muted2);">' + l[1] + '</td>' + td(eM(a), col, l[4]) + td(eC(a), col) + td(eM(p), col, l[4]) + '</tr>';
+  });
+  h += '<tr style="border-bottom:1px solid var(--border);">' + td('Discounting', 'var(--muted2)', false, 'left')
+    + '<td style="padding:5px 8px;' + DM + 'font-size:9.5px;color:var(--muted2);">later cash is worth less: ' + v.rate.toFixed(1) + '% a year</td>'
+    + td('', null) + td('', null) + td(eM(disc), 'var(--orange)') + '</tr>';
+  var invTxt = 'R&amp;D ' + eM(v.rdM || 0) + ' \u00b7 plant ' + eM(v.plantM || 0) + ' \u00b7 supplier ' + eM(v.supM || 0);
+  h += '<tr style="border-bottom:1px solid var(--border);">' + td('\u2212 Investment', 'var(--muted2)', false, 'left')
+    + '<td style="padding:5px 8px;' + DM + 'font-size:9.5px;color:var(--muted2);">' + invTxt + '</td>' + td(eM(-inv), 'var(--orange)') + td(eC(-inv), 'var(--orange)') + td(eM(-inv), 'var(--orange)') + '</tr>';
+  var npvU = b.und.fcf - inv, nc = v.npv >= 0 ? 'var(--green)' : 'var(--red)';
+  h += '<tr style="background:var(--s2);">' + td('= NPV', 'var(--white)', true, 'left')
+    + '<td style="padding:5px 8px;' + DM + 'font-size:9.5px;color:var(--muted2);">free cash flow \u2212 investment; the present-value column is the NPV</td>'
+    + td(eM(npvU), npvU >= 0 ? 'var(--green)' : 'var(--red)', true) + td(eC(npvU), npvU >= 0 ? 'var(--green)' : 'var(--red)') + td(eM(v.npv), nc, true) + '</tr></tbody></table></div>';
+  // where the margin goes: each drain as a share of the variable margin (present value)
+  var gp = b.pv.gp, drains = [
+    ['the head-office overhead', -b.pv.sga], ['sustaining engineering', -b.pv.rdS], ['the launch campaign', -b.pv.launch],
+    ['lifecycle engineering', -b.pv.lcEng],
+    ['tax', -b.pv.tax], ['lifecycle tooling', -b.pv.lcCap], ['discounting', -disc],
+    ['the investment', inv]
+  ].filter(function (x) { return x[1] > 0.5; }).sort(function (a, c) { return c[1] - a[1]; });
+  var pctOf = function (x) { return gp > 0 ? ' (' + Math.round(x / gp * 100) + '% of the margin)' : ''; };
+  var txt = 'At present value the variable margin brings <b style="color:var(--green);">' + eM(gp) + '</b>. ';
+  txt += v.npv >= 0 ? 'After everything below it, ' + eM(v.npv) + ' is left: the case creates value. The largest charges: '
+                    : 'It goes negative because the charges below it take more than it brings. The largest: ';
+  txt += drains.slice(0, 3).map(function (x) { return '<b style="color:var(--orange);">' + x[0] + ' ' + eM(-x[1]) + '</b>' + pctOf(x[1]); }).join('; ') + '.';
+  var nm = v.newMkt || {};
+  if ((nm.countries || []).length)
+    txt += ' Not in this case: entering the ' + nm.countries.length + ' countries where your team has no sales network yet (' + eM(nm.entryM)
+      + ' upfront + ' + eM(nm.runQ) + ' a quarter, \u26a0 on tile 1). That is a company decision on Commercial \u2192 Markets, and the books charge it there.';
+  h += '<div style="' + DM + 'font-size:10.5px;color:var(--text);line-height:1.6;margin-top:10px;">' + txt + '</div>';
+  return h + '</div>';
+}
+// §10 yearly free cash flow and discounted cash flow (tile 6 details): the investment at SOP, then each year's
+// FCF discounted quarter by quarter as calcNPV does; the cumulative DCF ends at the NPV.
+function _propBcCashFlowHtml(v) {
+  var b = v && v.bridge;
+  if (!b || !(b.years || []).length) return '';
+  var DM = 'font-family:DM Mono,monospace;', inv = v.invM || 0;
+  var eM = function (x) { var a = Math.abs(x); return (x < -0.05 ? '\u2212' : '') + (a >= 100 ? Math.round(a) : Math.round(a * 10) / 10).toLocaleString(); };
+  var col = function (x) { return x < -0.05 ? 'var(--red)' : 'var(--text)'; };
+  var TH = 'padding:5px 8px;' + DM + 'font-size:8px;letter-spacing:1px;text-transform:uppercase;color:var(--muted);font-weight:400;border-bottom:1px solid var(--border);text-align:right;white-space:nowrap;';
+  var td = function (x, c, bold, al) { return '<td style="padding:5px 8px;' + DM + 'font-size:10.5px;text-align:' + (al || 'right') + ';color:' + (c || 'var(--text)') + ';' + (bold ? 'font-weight:700;' : '') + 'white-space:nowrap;">' + x + '</td>'; };
+  var h = '<div style="border:1px solid var(--border2);border-left:3px solid var(--cyan);border-radius:4px;background:var(--s1);padding:12px 14px;margin-bottom:12px;">'
+    + '<div style="' + DM + 'font-size:8px;letter-spacing:1.3px;text-transform:uppercase;color:var(--cyan);margin-bottom:8px;">Cash flow by year (€M)</div>'
+    + '<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;min-width:760px;"><thead><tr>'
+    + ['Year', 'Cars', 'Net revenue', 'EBIT', 'Tax', 'Aftersales \u2212 tooling', 'Free cash flow', 'Discount factor', 'Discounted FCF', 'Cumulative DCF']
+      .map(function (x, i) { return '<th style="' + TH + (i ? '' : 'text-align:left;') + '">' + x + '</th>'; }).join('') + '</tr></thead><tbody>';
+  var cum = -inv, t = {units: 0, rev: 0, ebit: 0, tax: 0, oth: 0, fcf: 0, dfcf: 0};
+  h += '<tr style="border-bottom:1px solid var(--border);">' + td('Investment', 'var(--muted2)', false, 'left') + td('') + td('') + td('') + td('') + td('')
+    + td(eM(-inv), 'var(--orange)') + td('1.000', 'var(--muted2)') + td(eM(-inv), 'var(--orange)') + td(eM(cum), col(cum)) + '</tr>';
+  b.years.forEach(function (y) {
+    cum += y.dfcf;
+    ['units', 'rev', 'ebit', 'tax', 'oth', 'fcf', 'dfcf'].forEach(function (k) { t[k] += y[k]; });
+    h += '<tr style="border-bottom:1px solid var(--border);">' + td(y.yr + (y.n < 4 ? ' <span style="color:var(--muted);">(' + y.n + 'q)</span>' : ''), 'var(--muted2)', false, 'left')
+      + td(Math.round(y.units).toLocaleString()) + td(eM(y.rev)) + td(eM(y.ebit), col(y.ebit)) + td(eM(y.tax), col(y.tax)) + td(eM(y.oth), col(y.oth))
+      + td(eM(y.fcf), col(y.fcf), true) + td((y.df / y.n).toFixed(3), 'var(--muted2)') + td(eM(y.dfcf), col(y.dfcf), true) + td(eM(cum), col(cum)) + '</tr>';
+  });
+  h += '<tr style="background:var(--s2);">' + td('Total', 'var(--white)', true, 'left') + td(Math.round(t.units).toLocaleString(), null, true) + td(eM(t.rev), null, true)
+    + td(eM(t.ebit), col(t.ebit), true) + td(eM(t.tax), col(t.tax), true) + td(eM(t.oth), col(t.oth), true) + td(eM(t.fcf - inv), col(t.fcf - inv), true)
+    + td('') + td(eM(t.dfcf - inv), v.npv >= 0 ? 'var(--green)' : 'var(--red)', true) + td('= NPV ' + eM(v.npv), v.npv >= 0 ? 'var(--green)' : 'var(--red)', true) + '</tr></tbody></table></div>'
+    + '<div style="' + DM + 'font-size:9px;color:var(--muted2);margin-top:6px;line-height:1.5;">Free cash flow = EBIT \u2212 25% tax + aftersales parts after tax \u2212 lifecycle tooling. '
+    + 'Each quarter is discounted at ' + v.rate.toFixed(1) + '% a year from SOP (the factor shown is the year\u2019s average); the investment counts in full at SOP. Totals include the investment.</div>';
+  return h + '</div>';
 }
 function _propBcExecHtml(v, parts, extra) {
   var DM = 'font-family:DM Mono,monospace;';
@@ -33807,11 +33922,22 @@ function _propBcExecHtml(v, parts, extra) {
   var regs = Object.keys(v.mk || {}).map(function (r) { return {r: r, u: v.mk[r].units || 0}; }).filter(function (x) { return x.u > 0; })
     .sort(function (a, b) { return b.u - a.u; });
   var maxR = Math.max.apply(null, [1].concat(regs.map(function (x) { return x.u; })));
+  var nm = v.newMkt || {}, noNet = {};   // countries the team has not entered, by region
+  (nm.by || []).forEach(function (c) { (noNet[c.region] = noNet[c.region] || []).push(c); });
+  var warn = function (r) {
+    var cs = noNet[(r || '').toUpperCase()];
+    if (!cs || !cs.length) return '';
+    var en = cs.reduce(function (a, c) { return a + (c.entryM || 0); }, 0), run = cs.reduce(function (a, c) { return a + (c.runQ || 0); }, 0);
+    return ' <span title="' + ('No existing sales network in ' + cs.length + ' of this region\u2019s countries: ' + cs.map(function (c) { return c.name; }).join(', ')
+      + '. Entering them costs about ' + eM(en) + ' upfront and ' + eM(run) + ' a quarter (Commercial \u2192 Markets, ' + _MKTNET_E.ENTRY_LEAD_Q
+      + ' quarters before SOP). Not included in this business case; without entry the cars cannot be sold there.').replace(/"/g, '&quot;')
+      + '" style="cursor:help;color:var(--orange);font-weight:700;">\u26a0</span>';
+  };
   var t1 = big(Math.round(u).toLocaleString(), 'var(--cyan)', 'cars over the model’s life' + (v.peakU ? ' · best year ' + k(v.peakU) : ''))
     + regs.map(function (x) {
       var lab = ((typeof SALES_MARKETS !== 'undefined' ? SALES_MARKETS : []).find(function (s) { return s.region === x.r; }) || {label: x.r}).label;
       return '<div style="display:grid;grid-template-columns:minmax(0,1fr) 90px 52px;gap:8px;align-items:center;padding:2px 0;">'
-        + '<span style="color:var(--muted2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + lab + '</span>'
+        + '<span style="color:var(--muted2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + lab + warn(x.r) + '</span>'
         + '<span style="height:7px;background:var(--border2);border-radius:2px;"><span style="display:block;height:100%;width:' + Math.round(x.u / maxR * 100) + '%;background:var(--cyan);border-radius:2px;opacity:.75;"></span></span>'
         + '<span style="text-align:right;">' + k(x.u) + ' <span style="color:var(--muted2);">' + Math.round(x.u / Math.max(1, u) * 100) + '%</span></span></div>';
     }).join('');
@@ -33826,7 +33952,6 @@ function _propBcExecHtml(v, parts, extra) {
   var inv = [['R&amp;D', v.rdM, 'var(--orange)', 'Development of the new and derived modules (reused modules were paid by their own programme).'],
              ['Plant', v.plantM, 'var(--purple)', 'Your share of the lines, expansions and retooling in your plants (§7).'],
              ['Supplier', v.supM, 'var(--cyan)', 'Tooling and capacity your suppliers need for this car (§8), paid by you.']];
-  if (v.entryM > 0) inv.push(['Market entry', v.entryM, 'var(--gold)', 'Entry fees for countries your team has not entered yet.']);
   var t3 = big(eM(v.invM), 'var(--white)', 'invested before and around SOP')
     + '<div style="display:flex;height:8px;border-radius:2px;overflow:hidden;gap:1px;margin-bottom:6px;">'
     + inv.map(function (x) { return x[1] > 0 ? '<div style="flex:' + x[1] + ';background:' + x[2] + ';opacity:.8;"></div>' : ''; }).join('') + '</div>'
@@ -33855,7 +33980,9 @@ function _propBcExecHtml(v, parts, extra) {
   var t6 = big((v.npv < 0 ? '−' : '') + eM(v.npv).replace('−', ''), nc, 'NPV at ' + v.rate.toFixed(1) + '% discount rate')
     + row('NPV / invested capital', ratio !== null ? ratio.toFixed(2) + '×' : '—', nc, 'NPV ÷ total investment: value created per euro invested (above 0 = creates value).')
     + row('IRR', v.irr !== null ? v.irr.toFixed(1) + '%' : '—', v.irr !== null && v.irr >= v.rate ? 'var(--green)' : 'var(--red)', 'Return the investment earns; compare with the ' + v.rate.toFixed(1) + '% hurdle.')
-    + row('Payback', v.paybackQ ? v.paybackQ + ' quarters' : 'never', v.paybackQ ? null : 'var(--red)', 'Quarters from SOP until the cumulative cash flow repays the investment.');
+    + row('Payback', v.paybackQ ? v.paybackQ + ' quarters' : 'never', v.paybackQ ? null : 'var(--red)', 'Quarters from SOP until the cumulative cash flow repays the investment.')
+    + (v.bridge ? '<button id="prop-bc-lnk-7" onclick="_p10Toggle(7)" style="margin-top:8px;' + DM + 'font-size:9.5px;background:none;border:1px solid var(--border2);border-radius:3px;color:var(--gold);cursor:pointer;padding:3px 8px;">'
+      + '\u24d8 how the NPV is built ' + (_P10.open[7] ? '\u25be' : '\u25b8') + '</button>' : '');
   var d = typeof _propBcDriver === 'function' ? _propBcDriver(v) : null;
   var h = '<div style="display:flex;align-items:center;flex-wrap:wrap;gap:6px 14px;margin-bottom:12px;padding:10px 14px;border-radius:4px;border:1px solid '
     + (good ? 'rgba(74,222,128,.35)' : 'rgba(239,68,68,.45)') + ';background:' + (good ? 'rgba(74,222,128,.05)' : 'rgba(239,68,68,.06)') + ';">'
@@ -33865,7 +33992,7 @@ function _propBcExecHtml(v, parts, extra) {
     + tile(1, 'Volumes by region', 'var(--cyan)', t1) + tile(2, 'Price → net revenue', 'var(--gold)', t2) + tile(3, 'Investments', 'var(--purple)', t3)
     + tile(4, 'Variable cost €/car', 'var(--orange)', t4) + tile(5, 'Variable margin', 'var(--green)', t5) + tile(6, 'Financial metrics', 'var(--cyan)', t6) + '</div>';
   h += '<div style="' + DM + 'font-size:9px;color:var(--muted2);margin-top:8px;">Per-car figures are lifetime averages over every car sold. Open “details” on a tile for the year-by-year and market-by-market build-up; ⓘ explains a figure.</div>';
-  var det = [parts[0], parts[1], parts[2], parts[3], parts[4], (parts[5] || '') + (extra || '')];
+  var det = [parts[0], parts[1], parts[2], parts[3], parts[4], _propBcCashFlowHtml(v) + (parts[5] || '') + (extra || ''), _propBcBridgeHtml(v)];
   det.forEach(function (x, j) {
     var i = j + 1;
     h += '<div id="prop-bc-det-' + i + '" style="display:' + (_P10.open[i] ? 'block' : 'none') + ';margin-top:12px;">' + (x || '') + '</div>';
@@ -35011,7 +35138,8 @@ function _mktMovesList() {
 function _mktLabel(qabs) { return (2025 + Math.floor(qabs / 4)) + ' Q' + (((qabs % 4) + 4) % 4 + 1); }
 
 // §10: entry fees and network running costs of the countries this proposal's regions
-// would newly need (the team's existing network is shared, so it is not charged again).
+// would newly need (the team's existing network is shared). Since 2026-11-03 §10 only flags them
+// (tile 1 ⚠, the assumptions table); they are not in the NPV.
 // Uses the last Markets state fetched; fetches it once if missing and recalculates.
 function _propNewMarketCosts() {
   var d = _mktTab.data;
@@ -35029,8 +35157,9 @@ function _propNewMarketCosts() {
     .map(function(m){ return (m.region || '').toUpperCase(); });
   var out = {entryM: 0, runQ: 0, countries: [], known: true};
   (d.countries || []).forEach(function(c) {
-    if (regs.indexOf(c.region) < 0 || c.status !== 'none') return;
+    if (regs.indexOf(c.region) < 0 || c.status !== 'none' || c.blocked) return;   // closed to the team: no entry, no network
     out.entryM += c.entry_fee_m; out.runQ += c.ref_spend_m; out.countries.push(c.code);
+    (out.by = out.by || []).push({code: c.code, name: c.name || c.code, region: c.region, entryM: c.entry_fee_m, runQ: c.ref_spend_m});
   });
   return out;
 }
