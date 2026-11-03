@@ -17429,6 +17429,34 @@ function _geoLoad(force) {
   return _GEO.p;
 }
 function _geoBloc() { return !!(_GEO.data && _GEO.data.on && _GEO.data.bloc_member); }
+// Sanctioned markets on the maps (2026-11-03): why a market is hatched ('' = not). Russia while the sanctions
+// rules are on; with `sell`, also the bloc's markets while the team is cut off by secondary sanctions.
+function _geoSanctionWhy(cc, sell) {
+  var g = _GEO.data || {};
+  if (!g.on) return '';
+  if (cc === 'RU') return g.bloc_member ? 'Russia: sanctioned, closed to your team (head office in the sanctions bloc)'
+    : 'Russia: sanctioned market (open to your team; head office outside the bloc)';
+  if (sell && g.cutoff_until !== null && g.cutoff_until !== undefined && (g.sanction_markets || []).indexOf(cc) >= 0)
+    return 'Cut off by secondary sanctions until ' + (g.cutoff_until_label || g.cutoff_until);
+  return '';
+}
+// Red hatching over a map's sanctioned countries: the pattern once per svg, the countries in group g on top
+// (no pointer events, so the map's own tooltips still answer). ccOf(feature) = market code. Returns how many.
+function _geoHatch(svg, g, path, features, ccOf, sell) {
+  var hit = (features || []).filter(function (f) { return _geoSanctionWhy(ccOf(f), sell); });
+  if (!hit.length) return 0;
+  if (svg.select('#geo-hatch').empty())
+    svg.append('defs').html('<pattern id="geo-hatch" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">'
+      + '<rect width="6" height="6" fill="#2a2f3a"/><line x1="0" y1="0" x2="0" y2="6" stroke="#e0564f" stroke-width="2.2" stroke-opacity="0.85"/></pattern>');
+  g.append('g').style('pointer-events', 'none').selectAll('path').data(hit).enter().append('path')
+    .attr('d', path).attr('fill', 'url(#geo-hatch)').attr('stroke', '#e0564f').attr('stroke-width', 0.6).attr('vector-effect', 'non-scaling-stroke');
+  return hit.length;
+}
+function _geoHatchKey(t) {
+  return '<span style="display:inline-flex;align-items:center;gap:5px;"><span style="width:10px;height:10px;background:repeating-linear-gradient(45deg,#2a2f3a 0 2px,#e0564f 2px 4px);"></span>' + (t || 'sanctioned') + '</span>';
+}
+// One tooltip line for a sanctioned market ('' when not)
+function _geoSanctionTip(cc, sell) { var w = _geoSanctionWhy(cc, sell); return w ? '<span style="color:var(--red);">▨ ' + w + '</span><br>' : ''; }
 
 // instructor: the bloc switch and the import levies (presets, from a future quarter)
 var _geoAdmin = {data: null};
@@ -21210,9 +21238,11 @@ function _shpDrawMap() {
       var rg = mreg[f.properties.mkt];
       if (!rg) return hide();
       var from = (regFrom[rg] || []).map(function (x) { return byId[x.plant_id] ? pname(byId[x.plant_id]) + ' ' + k1(x.units) : ''; }).filter(Boolean);
-      show(ev, '<b>' + rg + '</b>' + (from.length ? ' · ' + k1(regU[rg]) + ' cars in ' + routes.label + '<br>from ' + from.join(' · ') : '<br>no cars shipped here in ' + (routes.label || 'the last quarter')));
+      show(ev, _geoSanctionTip(f.properties.mkt, true) + '<b>' + rg + '</b>' + (from.length ? ' · ' + k1(regU[rg]) + ' cars in ' + routes.label + '<br>from ' + from.join(' · ') : '<br>no cars shipped here in ' + (routes.label || 'the last quarter')));
     })
     .on('mouseleave', hide);
+  _geoHatch(svg, svg, path, _mktMap.world.features, function (f) { return f.properties.mkt; }, true);
+  if (!_GEO.data) _geoLoad().then(function () { if ((_GEO.data || {}).on) _shpDrawMap(); });
   // plant positions: on the country, side by side when a country has more than one
   var maxHall = Math.max.apply(null, [1].concat(plants.map(function (p) { return p.hall_k || 0; })));
   var rad = function (p) { return 7 + 9 * Math.sqrt(Math.max(0, p.hall_k || 0) / maxHall); };
@@ -27338,6 +27368,7 @@ function _p9e(x) { return '€' + Math.round(x).toLocaleString(); }
 function _p9Mkt(region) { return ((_prop.commercial && _prop.commercial.markets) || []).find(function (m) { return m.region === region; }); }
 
 function buildCommercialSection() {
+  if (!_GEO.data && sessionId && teamId) _geoLoad().then(function () { _p9mDraw(); });   // sanctioned markets on the map
   if (!_mktTab.data && !_mktTab._fetchingFor9 && sessionId && teamId) {
     _mktTab._fetchingFor9 = true;
     fetch(API_URL + '/sessions/' + sessionId + '/teams/' + teamId + '/markets')
@@ -27540,8 +27571,14 @@ function _p9mDraw() {
     .attr('d', path)
     .attr('fill', function (f) { var L = life[mreg[f.properties.mkt]]; return L && L.v > 0 ? (L.gm > 0 ? ramp(L.gm / maxG) : '#6b2a2a') : '#3a3f49'; })
     .attr('stroke', '#0b2033').attr('stroke-width', 0.5).attr('vector-effect', 'non-scaling-stroke')
-    .on('mousemove', function (ev, f) { var r = mreg[f.properties.mkt]; if (r) show(ev, regTip(r)); else hide(); })
+    .on('mousemove', function (ev, f) {
+      var r = mreg[f.properties.mkt];
+      if (r) show(ev, _geoSanctionTip(f.properties.mkt, true) + regTip(r)); else hide();
+    })
     .on('mouseleave', hide);
+  // sanctioned markets hatched over their fill (Russia while the sanctions rules are on; the bloc's markets
+  // while the team is cut off by secondary sanctions)
+  var nHatch = _geoHatch(svg, gMap, path, _mktMap.world.features, function (f) { return f.properties.mkt; }, true);
   var marks = [], pos = {};
   plants.forEach(function (p) {
     var same = plants.filter(function (q) { return q.country_code === p.country_code; });
@@ -27631,6 +27668,7 @@ function _p9mDraw() {
       + it(dot('var(--green)'), '≥85%') + it(dot('var(--orange)'), 'less') + it(dot('var(--red)'), 'idle')
       + it('<span style="width:60px;height:8px;border-radius:2px;background:linear-gradient(90deg,#1d4a4c,#32ccc0,#c9fbf5);"></span>', 'lifetime gross margin, 0 – €' + maxG.toFixed(0) + 'M')
       + it('<span style="width:10px;height:10px;background:#6b2a2a;"></span>', 'loses money')
+      + (nHatch ? _geoHatchKey() : '')
       + it('<span style="width:16px;height:3px;background:' + _SHP_EXPORT_C + ';"></span>', 'cars shipped to another region')
       + '<span>hover for figures · ctrl + wheel to zoom</span></div>';
   }
@@ -29683,7 +29721,11 @@ function _p7mDraw() {
     .attr('stroke', '#163049').attr('stroke-width', 0.4).attr('vector-effect', 'non-scaling-stroke');
   gMap.append('g').selectAll('path').data(_mktMap.world.features).enter().append('path')
     .attr('d', path).attr('fill', function (f) { return hosts[f.properties.mkt] ? '#4b6c92' : '#3a3f49'; })
-    .attr('stroke', '#0b2033').attr('stroke-width', 0.5).attr('vector-effect', 'non-scaling-stroke');
+    .attr('stroke', '#0b2033').attr('stroke-width', 0.5).attr('vector-effect', 'non-scaling-stroke')
+    .on('mousemove', function (ev, f) { var t = _geoSanctionTip(f.properties.mkt); if (t) show(ev, t); else hide(); })
+    .on('mouseleave', hide);
+  var nHatch = _geoHatch(svg, gMap, path, _mktMap.world.features, function (f) { return f.properties.mkt; });
+  if (!_GEO.data) _geoLoad().then(function () { if ((_GEO.data || {}).on) _p7mDraw(); });
   // markers (screen space: they keep their size when zoomed), side by side within one country
   var maxHall = Math.max.apply(null, [1].concat(plants.map(function (p) { return p.hall_k || 0; })));
   var rad = function (p) { return 8 + 8 * Math.sqrt(Math.max(0, p.hall_k || 0) / maxHall); };
@@ -29764,7 +29806,7 @@ function _p7mDraw() {
       + (need > 0 ? ring('var(--orange)', false, 'less') : '') + ring('var(--red)', false, 'full')
       + ring('var(--muted2)', true, 'being built') + ring('#e8c060', false, 'allocated')
       + '<span><span style="color:#e8c060;">◆</span> a line of this car\u2019s ' + (view === 'vehicle' ? 'platform / top hat' : 'powertrain') + ' family is already there</span>'
-      + '<span>size = plant capacity · click a plant to open it</span></div>';
+      + '<span>size = plant capacity · click a plant to open it</span>' + (nHatch ? _geoHatchKey() : '') + '</div>';
   }
 }
 
@@ -32547,6 +32589,7 @@ function _srcMapDraw() {
     .attr('vector-effect', 'non-scaling-stroke')
     .on('mousemove', function (ev, f) { var z = zoneAt(f); if (!z) return hide(); show(ev, zoneTip(z)); })
     .on('mouseleave', hide);
+  _geoHatch(svg, gMap, path, countries, function (f) { return ccOfIso[_srcIsoOf(f)]; });
   var topo = st && st.topo, geoms = st && st.obj.geometries;
   if (topo) {
     var zg = function (g) { return _ZONE_BY_COUNTRY[ccOfIso[_srcIsoOf(g)]]; };
@@ -34812,7 +34855,7 @@ function _drawMarketsMap() {
         : 'You: ' + c.status + ' · coverage ' + Math.round((c.network_strength || 0) * 100) + '% · €' + (c.running_cost_m || 0).toFixed(1) + 'M/qtr')
         + _mktRivalTip(f.properties.mkt);
       var r = host.getBoundingClientRect();
-      tip.style('display', 'block').html('<b>' + name + '</b><br>' + st)
+      tip.style('display', 'block').html(_geoSanctionTip(f.properties.mkt, true) + '<b>' + name + '</b><br>' + st)
         .style('left', (ev.clientX - r.left + 12) + 'px').style('top', (ev.clientY - r.top + 12) + 'px');
     })
     .on('mouseleave', function(){ tip.style('display', 'none'); })
@@ -34820,6 +34863,8 @@ function _drawMarketsMap() {
       var c = byCode[f.properties.mkt]; if (!c) return;
       _mktTab.openReg[c.region] = true; _mktTab.focus = c.code; _renderMarketsTab();
     });
+  _geoHatch(svg, svg, path, _mktMap.world.features, function (f) { return f.properties.mkt; }, true);
+  if (!_GEO.data) _geoLoad().then(function () { if ((_GEO.data || {}).on) _drawMarketsMap(); });
   if (!_mktTab.hideMoves) _drawMarketMoves(svg, path, tip, host, byCode);
 }
 
