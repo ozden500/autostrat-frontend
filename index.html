@@ -1918,6 +1918,9 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
       <!-- SOP conflict panel — shown when modules aren't ready before SOP -->
       <div id="prop-sop-conflict" style="display:none;margin-bottom:12px;"></div>
 
+      <!-- Approval queue: when this proposal must be approved (POST …/approve-by) -->
+      <div id="prop-approve-by"></div>
+
       <!-- Final submit -->
       <div style="padding:16px;background:var(--s2);border-radius:4px;border:1px solid var(--border2);display:flex;align-items:center;gap:16px;">
         <div style="flex:1;">
@@ -1969,6 +1972,9 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
 
   <!-- Gantt chart -->
   <div class="gantt-wrap" id="gantt-wrap"><div style="padding:24px;color:var(--muted2);font-size:12px;">No vehicles in plan yet.</div></div>
+
+  <!-- Approval queue (docs/APPROVAL_QUEUE_SPEC.md): submitted proposals by approve-by quarter -->
+  <div id="plan-approval-queue"></div>
 
   <!-- Vehicle Portfolio Table -->
   <div class="card" style="padding:0;overflow:hidden;">
@@ -11924,6 +11930,7 @@ async function loadVehiclePlan() {
     }
     buildVehicleGantt();
     buildVehicleTable();
+    loadApprovalQueue();
     // Load any already-cleared market results for the latest round
     loadMarketResults().catch(function(){});
   } catch(e){ console.warn('loadVehiclePlan:',e); }
@@ -11939,13 +11946,14 @@ function statusBadge(status) {
     planned:  '<span class="vstatus-plan">PLANNED</span>',
     on_sale:  '<span class="vstatus-approved">ON SALE</span>',
     ended:    '<span style="font-size:8px;padding:2px 8px;border-radius:2px;background:rgba(224,58,82,.1);border:1px solid rgba(224,58,82,.3);color:var(--red);">ENDED</span>',
+    late:     '<span style="font-size:8px;padding:2px 8px;border-radius:2px;background:rgba(224,58,82,.1);border:1px solid rgba(224,58,82,.3);color:var(--red);" title="Missed its approve-by quarter: revise the SOP and submit again">LATE – TO BE REVISED</span>',
   };
   return map[status] || '<span class="vstatus-study">' + (status||'').toUpperCase() + '</span>';
 }
 
 function statusBarColor(status) {
   return {study:'#4a5568', plan:'var(--gold)', approved:'var(--green)',
-          draft:'#4a5568', planned:'var(--gold)', on_sale:'var(--green)', ended:'var(--red)'}[status] || '#4a5568';
+          draft:'#4a5568', planned:'var(--gold)', on_sale:'var(--green)', ended:'var(--red)', late:'var(--red)'}[status] || '#4a5568';
 }
 
 // ── KANBAN CARDS ───────────────────────────────────────────
@@ -26153,7 +26161,7 @@ function buildReviewSection() {
   }
 
   // Header banner: module readiness vs SOP (_propSopCheck fills it after the render)
-  h += '<div id="prop-sop6">' + _propSopHtml() + '</div>';
+  h += '<div id="prop-sop6">' + _propSopHtml() + '</div><div id="prop-aq6"></div>';
   h += '<div style="background:linear-gradient(135deg,rgba(200,164,60,.10) 0%,rgba(0,0,0,0) 55%);border:1px solid rgba(200,164,60,.22);border-radius:6px;padding:14px 20px;margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;">';
   h += '<div style="display:flex;align-items:center;gap:18px;">' +
     _VIS.car({body:_propVisBody(), segment:_prop.study && _prop.study.segment_code,
@@ -26993,6 +27001,7 @@ function _propSopCheck() {
   if (_prop._sop6 && _prop._sop6.sig === sig && (_prop._sop6.data || _prop._sop6.pend)) { _propSopPaint(); return; }
   var me = _prop._sop6 = {sig: sig, pend: true, data: null};
   _propSopPaint();
+  _propAqCheck('prop-aq6', false);
   fetch(API_URL + '/sessions/' + sessionId + '/teams/' + teamId + '/sop-readiness', {
     method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)})
     .then(function (r) { return r.ok ? r.json() : null; })
@@ -27072,6 +27081,132 @@ async function _propSopMove(newQ) {
   // \u00a77 already placed: re-check the fit over the new life
   if (_prop.operations && _prop.operations._plantFit && typeof _shpPropCheck === 'function') { try { _shpPropCheck(); } catch (e) {} }
   buildReviewSection();
+}
+
+// ── Approval queue (2026-11-04, docs/APPROVAL_QUEUE_SPEC.md) ────────────────────────────────────
+// A submitted proposal waits on Product Plan and is approved in its approve-by quarter: SOP − the
+// longest lead time of its modules' R&D, plant lines and supplier tooling (one lead time per module
+// type, set by the instructor; a capacity increase only takes one quarter). The backend derives it
+// (financial_engine.approval_queue); these only show it. Shown only when the session runs the queue.
+var _AQ_KIND = {rd: 'R&D', line: 'plant line', tooling: 'supplier tooling'};
+var _AQ_BASIS = {'new': 'new', derivative: 'derivative', new_line: 'new line', retool: 'retool',
+                 capacity: 'capacity increase', new_tooling: 'new tooling'};
+var _AQ_MT = {platform: 'Platform', ice_pwt: 'Engine', pwt: 'Engine', epwt: 'e-Motor', battery: 'Battery',
+              tophat: 'Top hat', eands: 'E&S'};
+var _AQ_STATE = {waiting: ['WAITING', 'var(--muted2)'], approve_now: ['APPROVE NOW', 'var(--green)'],
+                 after_donor: ['AFTER ITS DONOR', 'var(--gold)'], overdue: ['OVERDUE', 'var(--red)'],
+                 late: ['LATE \u2013 TO BE REVISED', 'var(--red)']};
+function _aqItemTxt(b) {
+  if (!b) return 'nothing to wait for';
+  return (_AQ_MT[b.module_type] || b.module_type) + ' ' + (_AQ_KIND[b.kind] || b.kind) + ' (' + (_AQ_BASIS[b.basis] || b.basis)
+    + '), ' + b.lt_q + ' qtr' + (b.lt_q !== 1 ? 's' : '');
+}
+function _aqNames(d) { var n = {}; ((d && d.queue) || []).forEach(function (r) { n[r.vehicle_id] = r.name; }); return n; }
+
+// §6 / §10: the proposal's approve-by if it were submitted now. §6 counts R&D and any §7 plan already
+// saved; §10 adds the §8 orders (the §8 table's items).
+var _propAq = {};
+function _propAqSlots() {
+  // §10: every slot has a module row by now (a design is saved as a draft at §7 → §8)
+  var designs = _propSopSlots(), out = [];
+  ['platform', 'pwt', 'epwt', 'battery', 'tophat', 'eands'].forEach(function (k) {
+    var p = _prop[k];
+    if (!p || !p.mode) return;
+    if (p.module && p.module.id) { if (k !== 'battery' || designs.some(function (x) { return x.slot === k; })) out.push({slot: k, module_id: p.module.id}); return; }
+    var x = designs.filter(function (d) { return d.slot === k; })[0];
+    if (x) out.push(x);
+  });
+  return out;
+}
+function _propAqCheck(elId, withSupply) {
+  var v = _prop.study, el = document.getElementById(elId);
+  if (!el) return;
+  if (!v || !v.id || !sessionId || !teamId || !v.start_year) { el.innerHTML = ''; return; }
+  var body = {vehicle_id: v.id, sop_year: v.start_year, sop_quarter: v.start_quarter || 1,
+              slots: withSupply ? _propAqSlots() : _propSopSlots()};
+  if (withSupply && typeof _spReserveItems === 'function') {
+    try { var it = _spReserveItems(); if (it && it.length) body.supply_items = it; } catch (e) {}
+  }
+  var me = _propAq[elId] = {pend: true};
+  fetch(API_URL + '/sessions/' + sessionId + '/teams/' + teamId + '/approve-by', {
+    method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)})
+    .then(function (r) { return r.ok ? r.json() : null; })
+    .then(function (d) {
+      if (_propAq[elId] !== me) return;
+      me.pend = false; me.data = d;
+      var e2 = document.getElementById(elId); if (e2) e2.innerHTML = _propAqHtml(d, withSupply);
+    })
+    .catch(function () { if (_propAq[elId] === me) me.pend = false; });
+}
+function _propAqHtml(d, withSupply) {
+  if (!d || !d.enabled || !d.candidate) return '';
+  var c = d.candidate, names = _aqNames(d), MN = 'font-family:DM Mono,monospace;', bad = !d.ok;
+  var h = '<div style="background:rgba(255,255,255,.03);border:1px solid ' + (bad ? 'rgba(239,68,68,.45)' : 'rgba(255,255,255,.08)')
+    + ';border-radius:4px;padding:10px 12px;margin-bottom:12px;">'
+    + '<div style="' + MN + 'font-size:7px;letter-spacing:2px;color:' + (bad ? 'var(--red)' : 'var(--muted2)') + ';margin-bottom:6px;">'
+    + (bad ? '\u26a0 ' : '') + 'APPROVAL QUEUE \u00b7 APPROVE IN ' + c.approve_by.toUpperCase() + '</div>'
+    + '<div style="font-size:11px;color:var(--text);line-height:1.5;">Once submitted, the proposal waits on Product Plan and is approved in <b style="color:var(--gold);">'
+    + c.approve_by + '</b>, not earlier (SOP ' + c.sop + ' less ' + c.lead_q + ' qtr' + (c.lead_q !== 1 ? 's' : '') + ').'
+    + ' Set by: ' + _aqItemTxt(c.binding) + '.';
+  if (c.approve_by_qabs !== c.own_qabs) h += ' Pulled forward by ' + c.pulled_by.map(function (x) { return _esc(names[x] || x); }).join(', ') + '.';
+  if (c.depends_on.length) h += ' Approved after ' + c.depends_on.map(function (x) { return _esc(names[x] || x); }).join(', ') + ', whose module it uses.';
+  h += '</div>';
+  var its = c.items.filter(function (i) { return i.lt_q > 0; }).sort(function (a, b) { return b.lt_q - a.lt_q; });
+  if (its.length) {
+    h += '<div style="margin-top:6px;">' + its.map(function (i) {
+      return '<div style="display:flex;justify-content:space-between;gap:10px;padding:2px 0;border-bottom:1px solid rgba(255,255,255,.04);' + MN + 'font-size:9px;">'
+        + '<span style="color:var(--text);">' + _aqItemTxt(i).replace(/, \d+ qtrs?$/, '') + '</span>'
+        + '<span style="color:var(--muted2);">' + i.lt_q + ' qtr' + (i.lt_q !== 1 ? 's' : '') + ' \u2192 by ' + _propQLbl(c.sop_qabs - i.lt_q) + '</span></div>';
+    }).join('') + '</div>';
+  }
+  if (!withSupply) h += '<div style="' + MN + 'font-size:9px;color:var(--muted2);margin-top:5px;">Plant lines (\u00a77) and supplier tooling (\u00a78) can move it earlier: \u00a710 shows the final date.</div>';
+  (d.problems || []).forEach(function (p) {
+    h += '<div style="font-size:11px;color:var(--red);margin-top:6px;">\u26a0 ' + _esc(p) + '</div>';
+  });
+  return h + '</div>';
+}
+
+// Product Plan: the queue, earliest approve-by first
+var _aqData = null;
+async function loadApprovalQueue() {
+  var el = document.getElementById('plan-approval-queue');
+  if (!el || !sessionId || !teamId) return;
+  try {
+    var r = await fetch(API_URL + '/sessions/' + sessionId + '/teams/' + teamId + '/approval-queue');
+    _aqData = r.ok ? await r.json() : null;
+  } catch (e) { _aqData = null; }
+  el.innerHTML = _aqQueueHtml(_aqData);
+}
+function _aqQueueHtml(d) {
+  if (!d || !d.enabled || !(d.queue || []).length) return '';
+  var names = _aqNames(d), MN = 'font-family:DM Mono,monospace;';
+  var h = '<div class="card" style="padding:0;overflow:hidden;margin-bottom:14px;">'
+    + '<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;padding:12px 16px;border-bottom:1px solid var(--border);">'
+    + '<div class="card-title" style="margin:0;">Approval queue \u2014 <span style="color:var(--gold);">' + d.queue.length + '</span> proposal' + (d.queue.length !== 1 ? 's' : '') + '</div>'
+    + '<div style="' + MN + 'font-size:9px;color:var(--muted2);">Now ' + d.now + ' \u00b7 each proposal is approved in its approve-by quarter, not earlier</div></div>'
+    + '<div style="overflow-x:auto;"><table class="plan-tbl"><thead><tr>'
+    + ['Proposal', 'SOP', 'Approve by', 'Set by', 'Approved after', 'NPV (submitted)', 'State', ''].map(function (t) { return '<th class="plan-th">' + t + '</th>'; }).join('')
+    + '</tr></thead><tbody>';
+  d.queue.forEach(function (r) {
+    var st = _AQ_STATE[r.state] || [r.state, 'var(--muted2)'];
+    var npv = r.business_case && r.business_case.npv_m != null ? Math.round(r.business_case.npv_m) : null;
+    var ab = '<b style="color:' + (r.state === 'approve_now' ? 'var(--green)' : r.state === 'overdue' || r.state === 'late' ? 'var(--red)' : 'var(--text)') + ';">' + r.approve_by + '</b>';
+    if (r.pulled_by.length) ab += '<div style="font-size:8px;color:var(--gold);">pulled forward by ' + r.pulled_by.map(function (x) { return _esc(names[x] || x); }).join(', ') + '</div>';
+    var stTxt = '<span style="' + MN + 'font-size:8px;padding:2px 8px;border-radius:2px;border:1px solid ' + st[1] + ';color:' + st[1] + ';white-space:nowrap;">' + st[0] + '</span>';
+    if (r.state === 'late' || r.state === 'overdue') stTxt += '<div style="font-size:8px;color:var(--muted2);margin-top:2px;">earliest SOP now ' + r.earliest_sop + '</div>';
+    if (r.sop_before_donor.length) stTxt += '<div style="font-size:8px;color:var(--red);margin-top:2px;">SOP before its donor</div>';
+    h += '<tr class="plan-tr">'
+      + '<td class="plan-td">' + _esc(r.name || '') + '</td>'
+      + '<td class="plan-td mono center">' + r.sop + '</td>'
+      + '<td class="plan-td mono center">' + ab + '</td>'
+      + '<td class="plan-td mono">' + _aqItemTxt(r.binding) + '</td>'
+      + '<td class="plan-td mono">' + (r.depends_on.length ? r.depends_on.map(function (x) { return _esc(names[x] || x); }).join(', ') : '\u2014') + '</td>'
+      + '<td class="plan-td right">' + (npv == null ? '\u2014' : '<span class="' + (npv >= 0 ? 'plan-npv-pos' : 'plan-npv-neg') + '">' + (npv < 0 ? '-' : '') + '\u20ac' + Math.abs(npv).toLocaleString() + 'M</span>') + '</td>'
+      + '<td class="plan-td center">' + stTxt + '</td>'
+      + '<td class="plan-td"><button class="plan-act-bc" data-vid="' + r.vehicle_id + '" data-action="bc">BC \u2192</button></td>'
+      + '</tr>';
+  });
+  return h + '</tbody></table></div></div>';
 }
 
 function advanceToCommercial() {
@@ -33074,6 +33209,7 @@ async function advanceToBizCase() {
     } catch(e) { console.warn('ops save failed', e); }
   }
   calcPropBizCase();
+  _propAqCheck('prop-approve-by', true);
 }
 
 // The proposal's warranty inputs, as financial_engine.vehicle_warranty_inputs derives them for
