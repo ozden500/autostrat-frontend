@@ -27110,6 +27110,17 @@ function _aqNames(d) { var n = {}; ((d && d.queue) || []).forEach(function (r) {
 
 // §6 / §10: the proposal's approve-by if it were submitted now. §6 counts R&D and any §7 plan already
 // saved; §10 adds the §8 orders (the §8 table's items).
+var _aqSessFlag = {};
+async function _aqSessionOn() {      // does this session run the approval queue (sessions.approval_queue)
+  if (!sessionId) return false;
+  if (_aqSessFlag[sessionId] == null) {
+    try {
+      var r = await fetch(API_URL + '/sessions/' + sessionId);
+      _aqSessFlag[sessionId] = !!(((await r.json()).session || {}).approval_queue);
+    } catch (e) { return false; }
+  }
+  return _aqSessFlag[sessionId];
+}
 var _propAq = {};
 function _propAqSlots() {
   // §10: every slot has a module row by now (a design is saved as a draft at §7 → §8)
@@ -27402,6 +27413,12 @@ function buildComponentsSourcingSection() {
   _srcMapDraw();
   _mzcLoadCapacity();
   _geoLoad().then(function () { _refreshSupplyPlanArea(); });   // the Russia zone's sanctions status
+  _aqSessionOn().then(function (on) {
+    var b = document.getElementById('prop-ops-confirm-sourcing-btn');
+    if (!on || !b) return;
+    b.textContent = 'Save sourcing plan & continue → Commercial Plan';
+    if (b.previousElementSibling) b.previousElementSibling.textContent = 'Saved as a plan: the supplier contracts are signed when the proposal is approved, in its approve-by quarter, and paid from then to SOP.';
+  });
 }
 
 // ── §9 Commercial plan: quick setup (2026-11-02) ──
@@ -32064,6 +32081,7 @@ async function confirmSourcingPlan() {
   // the §8 table's lines, one item per module x zone contract (_spReserveItems)
   var items = _spReserveItems();
   if (!items.length) { toast('⚠ Confirm plant allocations with capacity first'); return false; }
+  if (await _aqSessionOn()) return _spSavePlan(vid, items);
 
   var btn = document.getElementById('prop-ops-confirm-sourcing-btn');
   if (btn) { btn.disabled = true; btn.textContent = 'Reserving capacity…'; }
@@ -32118,6 +32136,24 @@ async function confirmSourcingPlan() {
     if (btn) { btn.disabled = false; btn.textContent = 'Reserve capacity & continue → Commercial Plan'; }
   }
   return false;
+}
+
+// Approval-queue sessions (docs/APPROVAL_QUEUE_SPEC.md): §8 is a plan until approval. The orders are saved
+// on the proposal (operations_plan.supply_items) and signed when it is approved (main._sign_contracts_on_
+// approval); the capex §10 counts is the table's estimate until then.
+async function _spSavePlan(vid, items) {
+  var est = 0;
+  try { _spBridgeLines(true).forEach(function (l) { if (l.inv) est += l.inv.totalM || 0; }); } catch (e) {}
+  _prop.operations.supply_items = items;
+  _prop.operations._sourcingCapexM = Math.round(est * 1000) / 1000;
+  try {
+    var r = await fetch(API_URL + '/vehicles/' + vid, {method: 'PATCH', headers: {'Content-Type': 'application/json'},
+                                                        body: JSON.stringify({operations_plan: _prop.operations})});
+    if (!r.ok) { toast('⚠ Could not save the sourcing plan'); return false; }
+  } catch (e) { toast('⚠ Could not save the sourcing plan'); return false; }
+  toast('✓ Sourcing plan saved' + (est > 0 ? ' · about €' + est.toFixed(1) + 'M of supplier capex' : '')
+        + ' · the contracts are signed when the proposal is approved');
+  return true;
 }
 
 // §8 has one way on: reserve the supplier capacity (the module_zone_contracts the books charge),
