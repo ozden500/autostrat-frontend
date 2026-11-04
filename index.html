@@ -12459,6 +12459,7 @@ function openBCModal(vehicleId) {
   var reviseBtn  = document.getElementById('bc-revise-btn');
   if (approveBtn) approveBtn.style.display = v.status === 'plan'     ? 'block' : 'none';
   if (reviseBtn)  reviseBtn.style.display  = v.status === 'approved' ? 'block' : 'none';
+  _aqApproveBtn(v);
 
   var sopConflictEl = document.getElementById('bc-sop-conflict');
   if (sopConflictEl) sopConflictEl.style.display = 'none';
@@ -12654,7 +12655,11 @@ async function approveBCVehicle(acceptedSop) {
   try {
     var patch = {status: 'approved'};
     var sopYear, sopQuarter;
-    if (acceptedSop) {
+    if (_aqData && _aqData.enabled && !acceptedSop) {
+      // approval queue: the server checks the quarter and starts the modules now (their ready dates
+      // are parked while they wait, so the readiness pre-check below would read them as late)
+      sopYear = _bcVehicle.start_year; sopQuarter = _bcVehicle.start_quarter;
+    } else if (acceptedSop) {
       // Team already confirmed pushing the launch quarter back far enough to
       // cover every blocking module's ready date -- a later SOP can only
       // resolve existing blockers, never create new ones, so re-checking is
@@ -23296,7 +23301,7 @@ async function loadVehicleProposal() {
     _propICEPWTConfigs = (await iceRes.json()).configs || [];
     _propEPWTConfigs   = (await epwtRes.json()).configs|| [];
     const studies  = vehicles.filter(function(v) {
-      return v.status === 'study' || v.status === 'draft';
+      return v.status === 'study' || v.status === 'draft' || v.status === 'late';
     });
     renderStudyList(studies);
     // Reset if no study selected yet
@@ -27166,6 +27171,44 @@ function _propAqHtml(d, withSupply) {
   return h + '</div>';
 }
 
+// BC modal (approval-queue sessions): Approve only in the approve-by quarter, donors first
+function _aqApproveBtn(v) {
+  var btn = document.getElementById('bc-approve-btn');
+  if (!btn) return;
+  btn.disabled = false; btn.title = ''; btn.style.opacity = '';
+  btn.textContent = '\u2713 APPROVE VEHICLE';
+  if (!_aqData || !_aqData.enabled || v.status !== 'plan') return;
+  var r = (_aqData.queue || []).filter(function (x) { return x.vehicle_id === v.id; })[0];
+  if (!r || r.state === 'approve_now') return;
+  var names = _aqNames(_aqData);
+  btn.disabled = true; btn.style.opacity = '.5';
+  btn.textContent = r.state === 'waiting' ? 'APPROVE IN ' + r.approve_by.toUpperCase()
+    : r.state === 'after_donor' ? 'APPROVE ITS DONOR FIRST' : 'MISSED ' + r.approve_by.toUpperCase();
+  btn.title = r.state === 'waiting' ? 'Approved in its approve-by quarter, not earlier: SOP ' + r.sop + ' less ' + _aqItemTxt(r.binding)
+    : r.state === 'after_donor' ? 'Approve ' + r.depends_on.map(function (x) { return names[x] || x; }).join(', ') + ' first: this proposal uses its module'
+    : 'Revise the SOP (earliest ' + r.earliest_sop + ') and submit again';
+}
+// Product Plan: a late proposal moves to the earliest SOP it can still make (EOP by as much) and is
+// submitted again; approve-by is then this quarter. A full revision goes through the proposal (§1).
+async function _aqResubmit(vid) {
+  var r = _aqData && (_aqData.queue || []).filter(function (x) { return x.vehicle_id === vid; })[0];
+  var v = activeVehicles.filter(function (x) { return x.id === vid; })[0];
+  if (!r || !v || !v.start_year) return;
+  var newQ = r.earliest_sop_qabs, sopQ = (v.start_year - 2025) * 4 + (v.start_quarter || 1) - 1, shift = newQ - sopQ;
+  var body = {status: 'plan', start_year: 2025 + Math.floor(newQ / 4), start_quarter: newQ % 4 + 1};
+  if (v.end_year) {
+    var e = (v.end_year - 2025) * 4 + (v.end_quarter || 4) - 1 + shift;
+    body.end_year = 2025 + Math.floor(e / 4); body.end_quarter = e % 4 + 1;
+  }
+  try {
+    var res = await fetch(API_URL + '/vehicles/' + vid, {method: 'PATCH', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)});
+    var d = await res.json();
+    if (!res.ok || !d.success) { toast('\u26a0 ' + (d.detail || 'Could not resubmit')); return; }
+  } catch (e) { toast('\u26a0 Could not resubmit'); return; }
+  toast('\u2713 ' + v.name + ': SOP moved to ' + _propQLbl(newQ) + ' and submitted again \u2014 approve it this quarter. The business case keeps its old dates: re-run it in the proposal (\u00a71) if they matter.');
+  await loadVehiclePlan();
+}
+
 // Product Plan: the queue, earliest approve-by first
 var _aqData = null;
 async function loadApprovalQueue() {
@@ -27193,7 +27236,7 @@ function _aqQueueHtml(d) {
     var ab = '<b style="color:' + (r.state === 'approve_now' ? 'var(--green)' : r.state === 'overdue' || r.state === 'late' ? 'var(--red)' : 'var(--text)') + ';">' + r.approve_by + '</b>';
     if (r.pulled_by.length) ab += '<div style="font-size:8px;color:var(--gold);">pulled forward by ' + r.pulled_by.map(function (x) { return _esc(names[x] || x); }).join(', ') + '</div>';
     var stTxt = '<span style="' + MN + 'font-size:8px;padding:2px 8px;border-radius:2px;border:1px solid ' + st[1] + ';color:' + st[1] + ';white-space:nowrap;">' + st[0] + '</span>';
-    if (r.state === 'late' || r.state === 'overdue') stTxt += '<div style="font-size:8px;color:var(--muted2);margin-top:2px;">earliest SOP now ' + r.earliest_sop + '</div>';
+    if (r.state === 'late' || r.state === 'overdue') stTxt += '<div style="font-size:8px;color:var(--muted2);margin-top:2px;">' + (r.late && r.late.reason ? _esc(r.late.reason) + ' · ' : '') + 'earliest SOP now ' + r.earliest_sop + '</div>';
     if (r.sop_before_donor.length) stTxt += '<div style="font-size:8px;color:var(--red);margin-top:2px;">SOP before its donor</div>';
     h += '<tr class="plan-tr">'
       + '<td class="plan-td">' + _esc(r.name || '') + '</td>'
@@ -27203,8 +27246,9 @@ function _aqQueueHtml(d) {
       + '<td class="plan-td mono">' + (r.depends_on.length ? r.depends_on.map(function (x) { return _esc(names[x] || x); }).join(', ') : '\u2014') + '</td>'
       + '<td class="plan-td right">' + (npv == null ? '\u2014' : '<span class="' + (npv >= 0 ? 'plan-npv-pos' : 'plan-npv-neg') + '">' + (npv < 0 ? '-' : '') + '\u20ac' + Math.abs(npv).toLocaleString() + 'M</span>') + '</td>'
       + '<td class="plan-td center">' + stTxt + '</td>'
-      + '<td class="plan-td"><button class="plan-act-bc" data-vid="' + r.vehicle_id + '" data-action="bc">BC \u2192</button></td>'
-      + '</tr>';
+      + '<td class="plan-td" style="white-space:nowrap;"><button class="plan-act-bc" data-vid="' + r.vehicle_id + '" data-action="bc">BC \u2192</button>'
+      + (r.state === 'late' ? ' <button class="plan-act-revise" onclick="_aqResubmit(\'' + r.vehicle_id + '\')" title="Move SOP and EOP to the earliest quarters it can still make and submit again">Move SOP to ' + r.earliest_sop + ' &amp; resubmit</button>' : '')
+      + '</td></tr>';
   });
   return h + '</tbody></table></div></div>';
 }
