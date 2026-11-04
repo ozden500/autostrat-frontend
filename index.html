@@ -2772,6 +2772,7 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
     <div class="bc-modal-body">
 
       <div id="bc-sop-conflict" style="display:none;margin-bottom:14px;"></div>
+      <div id="bc-aq-reval"></div>
 
       <!-- Headline KPIs -->
       <div class="bc-kpi-row">
@@ -27184,7 +27185,8 @@ function _propAqHtml(d, withSupply) {
 
 // BC modal (approval-queue sessions): Approve only in the approve-by quarter, donors first
 function _aqApproveBtn(v) {
-  var btn = document.getElementById('bc-approve-btn');
+  var btn = document.getElementById('bc-approve-btn'), rv = document.getElementById('bc-aq-reval');
+  if (rv) rv.innerHTML = _aqRevalHtml(v);
   if (!btn) return;
   btn.disabled = false; btn.title = ''; btn.style.opacity = '';
   btn.textContent = '\u2713 APPROVE VEHICLE';
@@ -27198,6 +27200,36 @@ function _aqApproveBtn(v) {
   btn.title = r.state === 'waiting' ? 'Approved in its approve-by quarter, not earlier: SOP ' + r.sop + ' less ' + _aqItemTxt(r.binding)
     : r.state === 'after_donor' ? 'Approve ' + r.depends_on.map(function (x) { return names[x] || x; }).join(', ') + ' first: this proposal uses its module'
     : 'Revise the SOP (earliest ' + r.earliest_sop + ') and submit again';
+}
+// The approval re-run (R6): the submitted case's quarterly cash flows re-valued at today's commodity prices
+// (per car vs the case's basis, after tax, as §10's commodity sensitivity does) and its IRR against today's
+// hurdle (max of the case's rate and the team's WACC). Volumes, prices and other costs stay as submitted.
+function _aqRevalHtml(v) {
+  if (!_aqData || !_aqData.enabled || !v || (v.status !== 'plan' && v.status !== 'late')) return '';
+  var r = (_aqData.queue || []).filter(function (x) { return x.vehicle_id === v.id; })[0];
+  var bc = (v.rolled_up_specs || {}).business_case || (r && r.business_case);
+  if (!r || !bc) return '';
+  var rv = r.revalue || {}, d = rv.commodity_delta_eur || 0, MN = 'font-family:DM Mono,monospace;';
+  var f = function (x) { return x == null ? '\u2014' : (x < 0 ? '-' : '') + '\u20ac' + Math.abs(Math.round(x)).toLocaleString() + 'M'; };
+  var p = function (x) { return x == null ? '\u2014' : x.toFixed(1) + '%'; };
+  var npvNow = null, irrNow = null;
+  if (bc.fcf_q && bc.fcf_q.length) {
+    var arr = bc.fcf_q.map(function (x, i) { return x - 0.75 * ((bc.units_q || [])[i] || 0) * d / 1e6; });
+    npvNow = calcNPV(arr, bc.total_inv_m || 0, bc.rate_pct || SESSION_DISCOUNT_RATE || 8);
+    irrNow = arr.some(function (x) { return x > 0; }) && bc.total_inv_m > 0 ? calcIRR(arr, bc.total_inv_m) : null;
+  }
+  var hurdle = rv.hurdle_pct, below = irrNow != null && hurdle != null && irrNow < hurdle;
+  var h = '<div style="background:rgba(255,255,255,.03);border:1px solid ' + (below || (npvNow != null && npvNow < 0) ? 'rgba(239,68,68,.45)' : 'rgba(255,255,255,.08)')
+    + ';border-radius:4px;padding:10px 12px;margin-bottom:14px;">'
+    + '<div style="' + MN + 'font-size:7px;letter-spacing:2px;color:var(--muted2);margin-bottom:6px;">BUSINESS CASE AT APPROVAL \u00b7 ' + _esc(_aqData.now || '') + '</div>'
+    + '<div style="display:flex;gap:18px;flex-wrap:wrap;' + MN + 'font-size:11px;color:var(--text);">'
+    + '<span>NPV ' + f(bc.npv_m) + (npvNow != null ? ' \u2192 <b style="color:' + (npvNow >= 0 ? 'var(--cyan)' : 'var(--red)') + ';">' + f(npvNow) + '</b>' : '') + '</span>'
+    + '<span>IRR ' + p(bc.irr_pct) + (bc.fcf_q ? ' \u2192 <b style="color:' + (below ? 'var(--red)' : 'var(--green)') + ';">' + p(irrNow) + '</b>' : '') + (hurdle != null ? ' vs hurdle ' + p(hurdle) : '') + '</span>'
+    + '<span>Commodities ' + (d >= 0 ? '+' : '-') + '\u20ac' + Math.abs(Math.round(d)).toLocaleString() + ' a car since submission</span></div>'
+    + '<div style="font-size:10px;color:var(--muted2);margin-top:5px;">' + (bc.fcf_q
+      ? 'Re-valued at today\u2019s commodity prices and cost of capital; volumes, prices and other costs as submitted.'
+      : 'Submitted before cash flows were kept with the case: the change in commodity cost and the hurdle are shown, not a new NPV.') + '</div></div>';
+  return h;
 }
 // Product Plan: a late proposal moves to the earliest SOP it can still make (EOP by as much) and is
 // submitted again; approve-by is then this quarter. A full revision goes through the proposal (§1).
@@ -30212,6 +30244,16 @@ function _p7wCostHtml() {
         + '<input type="checkbox"' + (w.signed ? ' checked' : '') + ' onchange="_p7wSign(this.checked)"> ' + acc + '</label>';
       if (!w.signed) bad = true;   // Confirm once signed off
     }
+  }
+  // a plant still being built must be ready by the car's SOP (approval refuses it too): move the SOP or pick another
+  var _sopQ = _prop.study && _prop.study.start_year ? (_prop.study.start_year - 2025) * 4 + (_prop.study.start_quarter || 1) - 1 : null;
+  if (_sopQ != null && (w.sp.ready_qabs || 0) > _sopQ) {
+    bad = true;
+    h += '<div style="margin-top:8px;padding:8px 10px;border-radius:3px;background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.35);font-size:11px;color:var(--text);">'
+      + '<b style="color:var(--red);">\u2717 Not ready by SOP.</b> This plant is ready in ' + _propQLbl(w.sp.ready_qabs) + '; the car\u2019s SOP is ' + _propQLbl(_sopQ)
+      + '. Move the SOP (EOP moves with it) or pick another plant.'
+      + '<div style="margin-top:6px;"><button onclick="_p7wClose();_propSopMove(' + w.sp.ready_qabs + ')" style="' + MN + 'font-size:10px;padding:6px 12px;border-radius:3px;border:1px solid rgba(56,212,134,.5);background:rgba(56,212,134,.12);color:var(--green);cursor:pointer;">'
+      + '\u2713 Move SOP to ' + _propQLbl(w.sp.ready_qabs) + '</button></div></div>';
   }
   h += '</div><div style="display:flex;gap:8px;margin-top:12px;">'
     + '<button onclick="_p7wConfirm()"' + (bad ? ' disabled' : '') + ' style="' + MN + 'flex:1;font-size:11px;padding:9px;border-radius:3px;border:1px solid rgba(200,164,60,.5);'
@@ -33921,6 +33963,8 @@ function calcPropBizCase() {
   if (typeof _prop !== 'undefined' && _prop) {
     _prop._bizcase = {npv_m: npv, irr_pct: irr, rate_pct: rateP, payback_q: paybackQ || null,
                       total_inv_m: totalInvM, computed_at: new Date().toISOString(),
+                      fcf_q: fcfOnly.map(function(x){ return Math.round(x * 1000) / 1000; }),
+                      units_q: fcfArr.map(function(x){ return Math.round(x.units || 0); }),
                       commodity_eur: _cmd.eur, commodity_qabs: _cmd.qabs,
                       co2_eur_per_car: _co2Sum.units > 0 ? _co2Sum.eur / _co2Sum.units : 0, co2_preset: _co2.preset,
                       commodity_sens: _cmdSens.map(function(x){ return {f: x.f, npv_m: x.npv, irr_pct: x.irr}; }),
