@@ -5987,7 +5987,7 @@ var _MODINV_LABELS = {platform:'PLATFORM', pwt:'ICE POWERTRAIN', epwt:'e-MOTOR (
                       battery:'BATTERY', tophat:'TOP HAT', eands:'ELECTRONICS & SOFTWARE'};
 var _MODINV_PROPKEY = {platform:'platform', pwt:'pwt', epwt:'epwt', battery:'battery', tophat:'tophat', eands:'eands'};
 function _moduleInvestCard(mod, pwtOverride) {
-  var specs = (_prop[_MODINV_PROPKEY[mod]] && _prop[_MODINV_PROPKEY[mod]].specs) || {};
+  var specs = _prop[_MODINV_PROPKEY[mod]] ? _propEngineSpecs(_MODINV_PROPKEY[mod]) : {};
   var seg   = (_prop.study && _prop.study.segment_code) || 'c_segment';
   var bt    = _getBodyType();
   var size  = specs.size || _getPlatformSize();
@@ -25059,6 +25059,25 @@ var _DERIV_SPEC_LBL = {reliability: 'Reliability', comfort: 'Comfort', safety: '
                        adas_level: 'ADAS', sensor_suite: 'Sensors', connectivity: 'Connectivity',
                        infotainment: 'Infotainment', cybersecurity: 'Cyber'};
 
+// A slot's specs as the cost / investment engines read them (2026-11-05): the module's own stored specs for a
+// Reuse, else the designed specs on the stored scale (_propStoredSpecs: 0-1 ratings), over the slot's other keys
+// (config, size, chemistry). The sliders run 0-100 and the engines' d01 reads a value ≤ 1 as a fraction, so a
+// rating at 1% was priced as 100%; a Reuse slot carries specs {} and was priced with none. The server prices
+// the saved module (_line_capex_m, _mzc_invest): this keeps §2-§10 on the same figures.
+function _propEngineSpecs(k) {
+  var p = _prop[k] || {}, mod = p.module || null, raw = p.specs || {};
+  if (mod && (p.mode === 'reuse' || !Object.keys(raw).length)) {
+    var ms = Object.assign({}, mod.specs || {});
+    if (mod.config_key && !ms.config_key) ms.config_key = mod.config_key;
+    return ms;
+  }
+  var st = (k === 'pwt' && p.type === 'epwt') ? null : _propStoredSpecs(k);
+  if (!st) return raw;
+  var o = Object.assign({}, raw, st.specs);
+  if (st.ck && !o.config_key) o.config_key = st.ck;
+  return o;
+}
+
 // A designed slot as the module it creates: {modType, ck, specs} on the stored scale (0-1 ratings),
 // exactly what _savePropNew posts and the backend's derivative_terms checks.
 function _propStoredSpecs(propKey) {
@@ -28750,7 +28769,7 @@ var _MANUF_E = (function() {
 function _propModuleSpecs(){
   var out={};
   ['platform','tophat','pwt','epwt','battery','eands'].forEach(function(k){
-    var p=_prop[k]||{}; out[k]=p.specs||(p.module&&p.module.specs)||{};
+    out[k]=_prop[k]?_propEngineSpecs(k):{};
   });
   return out;
 }
@@ -29193,7 +29212,7 @@ function _calcFacilityInv(type,fac){
   // Per-module investment/work-content context (shared by all branches). Bottom-up model —
   // see docs/PLANT_INVESTMENT_REDESIGN_SPEC.md.
   var seg=(_prop.study&&_prop.study.segment_code)||'c_segment', bt=_getBodyType(), psz=_getPlatformSize();
-  function _msp(k){var p=_prop[k]||{};return p.specs||(p.module&&p.module.specs)||{};}
+  function _msp(k){return _prop[k]?_propEngineSpecs(k):{};}
   function _mCtx(k,capK,al,shr){return {specs:_msp(k),segment_code:seg,body_type:bt,platform_size:psz,pwt_type:pk,automation_level:al,platform_shared:shr,cap_k:capK};}
 
   if(type==='vehicle_plants'){
@@ -31408,21 +31427,21 @@ function _shpFamilyRoot(id, mods) {
 
 function _shpPropSlots() {
   var out = [];
-  var add = function (mt, s) {
+  var add = function (mt, s, key) {
     if (!s) return;
-    var m = s.module || {}, par = s.parent || null;
+    var m = s.module || {}, par = s.parent || null, es = _propEngineSpecs(key);
     out.push({ module_type: mt,
       module_id: s.mode === 'reuse' && m.id ? m.id : null,
       parent_module_id: s.mode === 'derivative' && par && par.id ? par.id : null,
       retool_f: s.mode === 'derivative' && s.deriv ? (s.deriv.retool_f || 0) : null,
       change: s.mode === 'derivative' && s.deriv && s.deriv.change != null ? s.deriv.change : null,   // its complexity on a shared line
-      config_key: m.config_key || (s.specs || {}).config_key || null, specs: s.specs || m.specs || {},
+      config_key: m.config_key || es.config_key || null, specs: es,
       family_root_id: _shpFamilyRoot(s.mode === 'reuse' ? m.id : s.mode === 'derivative' && par ? par.id : null) });
   };
-  add('platform', _prop.platform);
-  add('tophat', _prop.tophat);
-  if (_prop.pwt) add(_prop.pwt.type === 'epwt' ? 'epwt' : 'ice_pwt', _prop.pwt);
-  if (_prop.epwt && (!_prop.pwt || _prop.pwt.type !== 'epwt')) add('epwt', _prop.epwt);
+  add('platform', _prop.platform, 'platform');
+  add('tophat', _prop.tophat, 'tophat');
+  if (_prop.pwt) add(_prop.pwt.type === 'epwt' ? 'epwt' : 'ice_pwt', _prop.pwt, 'pwt');
+  if (_prop.epwt && (!_prop.pwt || _prop.pwt.type !== 'epwt')) add('epwt', _prop.epwt, 'epwt');
   return out;
 }
 
