@@ -27369,8 +27369,9 @@ async function _savePropNew(slot, modType, ck, specs, autoName) {
     if (d.success && d.module_id) {
       if (!slot.module) slot.module = {};
       slot.module.id = d.module_id;
+      slot.module.name = (d.module && d.module.name) || autoName;   // the server keeps names unique in the team
       slot.module._sig = sig;
-      toast('\u23f3 New ' + modType + ' module queued: ' + autoName);
+      toast('\u23f3 New ' + modType + ' module queued: ' + slot.module.name);
       return true;
     }
     console.warn('createPropModule failed', modType, d.detail || d);
