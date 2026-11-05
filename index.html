@@ -11158,12 +11158,14 @@ async function buildEngineeringDashboard() {
   if (!el || !teamId) return;
   el.innerHTML = '<div style="text-align:center;padding:40px;color:var(--muted2);font-family:DM Mono,monospace;font-size:11px;">Loading...</div>';
   try {
-    var [mr, vr, pr, cfgR] = await Promise.all([
+    var [mr, vr, pr, cfgR, wlD] = await Promise.all([
       fetch(API_URL+'/teams/'+teamId+'/modules'),
       fetch(API_URL+'/teams/'+teamId+'/vehicles'),
       fetch(API_URL+'/teams/'+teamId+'/modules/pipeline'),
       sessionId ? fetch(API_URL+'/sessions/'+sessionId+'/config').catch(()=>null) : Promise.resolve(null),
+      _engWlFetch(_engWl.draft),
     ]);
+    _engWl.data = wlD;
     var md = await mr.json(); var mods = md.modules||[];
     teamModuleLibrary = mods;
     var vd = await vr.json(); var vehicles = vd.vehicles||[];
@@ -11223,6 +11225,319 @@ function _engIdleNote() {
     + 'Engineers cost the same whether they work or not. Put them on improvement projects '
     + '(<a href="#" onclick="engView(\'lifecycle\');return false;" style="color:var(--gold);">Lifecycle → engineering cap</a>), start modules or a new programme, or reduce headcount on '
     + '<a href="#" onclick="engView(\'capacity\');return false;" style="color:var(--gold);">Capacity</a>.</div>';
+}
+
+// ── Engineering workload (GET/POST …/eng-workload = financial_engine.team_eng_workload) ──
+// Two layers from the open quarter: approved modules at the team's phasing (and what the capacity will
+// actually grant: the throttle) and the approval queue at the standard pace from each proposal's
+// approve-by; lifecycle engineering is reserved first. The phasing panel sets each approved module's load
+// per quarter (0 … 1.5× the standard pace, PUT …/module-phasing); edits preview through the POST.
+var _engWl = {data: null, draft: {}, timer: null, seq: 0};
+var _ENG_WL_COL = {approved: '#26a89f', queued: '#b08f30', lifecycle: '#4a5568', granted: '#dce8f8', cap: '#38d486'};
+
+async function _engWlFetch(draft) {
+  if (!sessionId || !teamId) return null;
+  var url = API_URL + '/sessions/' + sessionId + '/teams/' + teamId + '/eng-workload';
+  try {
+    var r = draft && Object.keys(draft).length
+      ? await fetch(url, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({phasing: draft})})
+      : await fetch(url, {cache: 'no-store'});
+    return r.ok ? await r.json() : null;
+  } catch (e) { return null; }
+}
+
+function _engWlCard(kind) {
+  var t = kind === 'fte' ? 'ENGINEERING WORKLOAD — FTE-MONTHS / QUARTER' : 'R&amp;D SPEND PROFILE — €M / QUARTER';
+  var sw = function (c, lbl, hatch) {
+    return '<span style="display:flex;align-items:center;gap:5px;font-family:DM Mono,monospace;font-size:9px;color:var(--text);">'
+      + '<span style="width:11px;height:9px;border-radius:1px;display:inline-block;background:' + (hatch
+        ? 'repeating-linear-gradient(45deg,' + c + ' 0 2px,' + c + '55 2px 4px)' : c) + ';"></span>' + lbl + '</span>';
+  };
+  var ln = function (c, lbl, dash) {
+    return '<span style="display:flex;align-items:center;gap:5px;font-family:DM Mono,monospace;font-size:9px;color:var(--text);">'
+      + '<span style="width:14px;height:0;border-top:2px ' + (dash ? 'dashed' : 'solid') + ' ' + c + ';display:inline-block;"></span>' + lbl + '</span>';
+  };
+  var h = '<div style="background:var(--s2);border-radius:4px;border:1px solid var(--border2);margin-bottom:14px;overflow:hidden;">'
+    + '<div style="padding:10px 14px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">'
+    + '<span style="font-family:DM Mono,monospace;font-size:8px;letter-spacing:2px;color:var(--muted);text-transform:uppercase;">' + t + '</span>'
+    + '<span style="font-family:DM Mono,monospace;font-size:8px;color:var(--muted2);">from the open quarter · approved at your phasing · queued from its approve-by</span></div>'
+    + '<div style="padding:12px 14px;"><div id="eng-wl-chart-' + kind + '" style="position:relative;min-height:170px;"></div>'
+    + '<div style="display:flex;gap:14px;flex-wrap:wrap;margin-top:8px;">';
+  if (kind === 'fte') h += sw(_ENG_WL_COL.lifecycle, 'Lifecycle projects (reserved first)');
+  h += sw(_ENG_WL_COL.approved, 'Approved modules (your phasing)') + sw(_ENG_WL_COL.queued, 'In the approval queue', true);
+  if (kind === 'fte') h += ln(_ENG_WL_COL.granted, 'What your capacity delivers') + ln(_ENG_WL_COL.cap, 'Capacity', true)
+    + '<span style="display:flex;align-items:center;gap:5px;font-family:DM Mono,monospace;font-size:9px;color:var(--text);"><span style="width:10px;height:8px;border:1.5px solid var(--red);display:inline-block;"></span>Over capacity</span>';
+  else if (_engWl.data && _engWl.data.budget_limit_m) h += ln('rgba(250,204,21,.85)', 'R&amp;D budget cap', true);
+  return h + '</div></div></div>';
+}
+
+function _engWlNice(v) {
+  if (v <= 0) return 1;
+  var p = Math.pow(10, Math.floor(Math.log10(v))), f = v / p;
+  return (f <= 1 ? 1 : f <= 2 ? 2 : f <= 2.5 ? 2.5 : f <= 5 ? 5 : 10) * p;
+}
+
+function _engWlSvg(kind, wl, W) {
+  var H = 176, PL = 50, PR = 12, PT = 10, PB = 22, n = wl.quarters.length;
+  var cW = W - PL - PR, cH = H - PT - PB, slot = cW / n, bw = Math.max(4, Math.min(34, slot - 6));
+  var fte = kind === 'fte', lc = fte ? (wl.lifecycle_fte || 0) : 0;
+  var a = fte ? wl.approved_fte : wl.approved_rd, qd = fte ? wl.queued_fte : wl.queued_rd;
+  var cap = fte ? wl.capacity_fte : wl.budget_limit_m;
+  var max = 0;
+  for (var i = 0; i < n; i++) max = Math.max(max, lc + a[i] + qd[i], fte ? lc + wl.granted_fte[i] : 0);
+  if (cap) max = Math.max(max, cap * 1.05);
+  max = _engWlNice(max * 1.02);
+  var y = function (v) { return PT + cH * (1 - v / max); };
+  var fmt = function (v) { return fte ? Math.round(v).toLocaleString() : '€' + Math.round(v) + 'M'; };
+  var s = '<svg width="' + W + '" height="' + H + '" style="display:block;font-family:DM Mono,monospace;">'
+    + '<defs><pattern id="eng-wl-hatch-' + kind + '" width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">'
+    + '<rect width="5" height="5" fill="' + _ENG_WL_COL.queued + '" fill-opacity=".38"/><rect width="2" height="5" fill="' + _ENG_WL_COL.queued + '"/></pattern></defs>';
+  for (var g = 0; g <= 4; g++) {
+    var gv = max * g / 4, gy = y(gv);
+    s += '<line x1="' + PL + '" x2="' + (W - PR) + '" y1="' + gy + '" y2="' + gy + '" stroke="rgba(255,255,255,' + (g ? '.05' : '.15') + ')"/>'
+      + '<text x="' + (PL - 6) + '" y="' + (gy + 3) + '" text-anchor="end" font-size="8" fill="#566070">' + fmt(gv) + '</text>';
+  }
+  var pts = [];
+  for (var j = 0; j < n; j++) {
+    var x = PL + j * slot + (slot - bw) / 2, base = 0;
+    var seg = function (v, fill) {
+      if (v <= 0) return '';
+      var y1 = y(base + v), y0 = y(base), hh = Math.max(1, y0 - y1 - (base > 0 ? 1 : 0));
+      base += v;
+      return '<rect x="' + x.toFixed(1) + '" y="' + y1.toFixed(1) + '" width="' + bw.toFixed(1) + '" height="' + hh.toFixed(1) + '" fill="' + fill + '"/>';
+    };
+    s += seg(lc, _ENG_WL_COL.lifecycle) + seg(a[j], _ENG_WL_COL.approved) + seg(qd[j], 'url(#eng-wl-hatch-' + kind + ')');
+    if (fte && cap && base > cap + 0.5)
+      s += '<rect x="' + (x - 1.5).toFixed(1) + '" y="' + (y(base) - 1.5).toFixed(1) + '" width="' + (bw + 3).toFixed(1) + '" height="' + (y(0) - y(base) + 1.5).toFixed(1) + '" fill="none" stroke="#e03a52" stroke-width="1.5" rx="1"/>';
+    if (fte) pts.push((x + bw / 2).toFixed(1) + ',' + y(lc + wl.granted_fte[j]).toFixed(1));
+    var qa = wl.quarters[j];
+    if (j === 0 || qa % 4 === 0)
+      s += '<text x="' + (x + bw / 2).toFixed(1) + '" y="' + (H - 6) + '" text-anchor="' + (j === 0 ? 'start' : 'middle') + '" font-size="8" fill="#566070">' + _esc(wl.labels[j]) + '</text>';
+  }
+  if (fte && pts.length) s += '<polyline points="' + pts.join(' ') + '" fill="none" stroke="' + _ENG_WL_COL.granted + '" stroke-width="1.5" stroke-opacity=".85"/>';
+  if (cap) {
+    var cy = y(cap), cc = fte ? _ENG_WL_COL.cap : 'rgba(250,204,21,.85)';
+    s += '<line x1="' + PL + '" x2="' + (W - PR) + '" y1="' + cy + '" y2="' + cy + '" stroke="' + cc + '" stroke-width="1.5" stroke-dasharray="5 3"/>'
+      + '<text x="' + (W - PR - 2) + '" y="' + (cy - 4) + '" text-anchor="end" font-size="8" fill="#b8c8e0">' + (fte ? 'Capacity ' : 'Budget ') + fmt(cap) + '</text>';
+  }
+  for (var k = 0; k < n; k++)
+    s += '<rect x="' + (PL + k * slot).toFixed(1) + '" y="' + PT + '" width="' + slot.toFixed(1) + '" height="' + cH + '" fill="transparent" '
+      + 'onmousemove="_engWlTip(event,\'' + kind + '\',' + k + ')" onmouseleave="_engWlTipHide()"/>';
+  return s + '</svg>';
+}
+
+function _engWlTip(ev, kind, i) {
+  var wl = _engWl.data;
+  if (!wl) return;
+  var tip = document.getElementById('eng-wl-tip');
+  if (!tip) {
+    tip = document.createElement('div');
+    tip.id = 'eng-wl-tip';
+    tip.style.cssText = 'position:fixed;z-index:60;pointer-events:none;background:#0c0f18;border:1px solid rgba(255,255,255,.14);border-radius:4px;padding:8px 10px;font-family:DM Mono,monospace;font-size:10px;color:#b8c8e0;max-width:320px;line-height:1.55;box-shadow:0 4px 14px rgba(0,0,0,.5);';
+    document.body.appendChild(tip);
+  }
+  var fte = kind === 'fte', q = String(wl.quarters[i]);
+  var fmt = function (v) { return fte ? Math.round(v).toLocaleString() + ' FTE-mo' : '€' + v.toFixed(1) + 'M'; };
+  var of = function (m) { return ((m.plan_pct || {})[q] || 0) / 100 * (fte ? m.fte_total : m.rd_total_m); };
+  var list = function (queued) {
+    return wl.modules.filter(function (m) { return !!m.queued === queued && of(m) > 0.005; }).map(function (m) {
+      var cars = (m.vehicles || []).map(function (v) { return v.name; }).join(', ');
+      return '<div style="padding-left:10px;color:#566070;">' + _esc(m.name) + (cars ? ' · ' + _esc(cars) : '') + ': <span style="color:#b8c8e0;">' + fmt(of(m)) + '</span></div>';
+    }).join('');
+  };
+  var lc = fte ? (wl.lifecycle_fte || 0) : 0, a = (fte ? wl.approved_fte : wl.approved_rd)[i], qd = (fte ? wl.queued_fte : wl.queued_rd)[i];
+  var sw = function (c, hatch) { return '<span style="display:inline-block;width:9px;height:8px;margin-right:5px;background:' + (hatch ? 'repeating-linear-gradient(45deg,' + c + ' 0 2px,' + c + '55 2px 4px)' : c) + ';"></span>'; };
+  var h = '<div style="color:#dce8f8;margin-bottom:3px;">' + _esc(wl.labels[i]) + '</div>';
+  if (fte && lc > 0) h += '<div>' + sw(_ENG_WL_COL.lifecycle) + 'Lifecycle projects ' + fmt(lc) + '</div>';
+  h += '<div>' + sw(_ENG_WL_COL.approved) + 'Approved ' + fmt(a) + '</div>' + list(false);
+  h += '<div>' + sw(_ENG_WL_COL.queued, true) + 'In the approval queue ' + fmt(qd) + '</div>' + list(true);
+  if (fte) {
+    h += '<div style="margin-top:3px;">Capacity delivers ' + fmt(lc + wl.granted_fte[i]) + (wl.granted_fte[i] + 1 < a ? ' <span style="color:#e03a52;">(approved work slips)</span>' : '') + '</div>';
+    if (wl.capacity_fte) {
+      var tot = lc + a + qd;
+      h += '<div>Capacity ' + fmt(wl.capacity_fte) + (tot > wl.capacity_fte + 0.5 ? ' · <span style="color:#e03a52;">over by ' + fmt(tot - wl.capacity_fte) + '</span>' : '') + '</div>';
+    }
+  }
+  tip.innerHTML = h;
+  tip.style.display = 'block';
+  var x = ev.clientX + 14, yy = ev.clientY + 14;
+  if (x + 330 > window.innerWidth) x = ev.clientX - 334;
+  if (yy + tip.offsetHeight > window.innerHeight - 8) yy = ev.clientY - tip.offsetHeight - 10;
+  tip.style.left = x + 'px'; tip.style.top = yy + 'px';
+}
+function _engWlTipHide() { var t = document.getElementById('eng-wl-tip'); if (t) t.style.display = 'none'; }
+
+function _engWlDraw() {
+  var wl = _engWl.data;
+  ['rd', 'fte'].forEach(function (k) {
+    var el = document.getElementById('eng-wl-chart-' + k);
+    if (!el) return;
+    el.innerHTML = wl ? _engWlSvg(k, wl, Math.max(320, el.clientWidth || 700))
+      : '<div style="font-family:DM Mono,monospace;font-size:10px;color:var(--muted2);padding:30px 0;text-align:center;">Workload projection unavailable</div>';
+  });
+  var p = document.getElementById('eng-wl-phasing');
+  if (p) {
+    var fid = document.activeElement && document.activeElement.id;
+    p.innerHTML = wl ? _engWlPhasingHtml(wl) : '';
+    if (fid && fid.indexOf('eng-ph-') === 0) { var fe = document.getElementById(fid); if (fe) { fe.focus(); if (fe.select) fe.select(); } }
+  }
+}
+
+// a module's load factor in quarter q: the draft's, else the stored plan's, else 1 (standard)
+function _engWlF(m, q) {
+  var d = _engWl.draft[m.id];
+  var src = d || m.phasing || {};
+  var v = src[String(q)];
+  return v == null ? 1 : +v;
+}
+function _engWlWindow(m, wl) {      // the quarters a module may be planned in: now to the quarter before its SOP
+  var last = m.needed_by_qabs != null ? m.needed_by_qabs - 1 : Math.max(m.done_qabs || 0, wl.q_now + 2 * m.lt);
+  var out = [];
+  for (var q = wl.q_now; q <= last && q < wl.q_now + 16; q++) out.push(q);
+  return out;
+}
+
+function _engWlPhasingHtml(wl) {
+  var mods = wl.modules.filter(function (m) { return !m.queued; });
+  var nQ = wl.modules.length - mods.length;
+  var MN = 'font-family:DM Mono,monospace;';
+  var h = '<div style="background:var(--s2);border-radius:4px;border:1px solid var(--border2);margin-bottom:14px;overflow:hidden;">'
+    + '<div style="padding:10px 14px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">'
+    + '<span style="' + MN + 'font-size:8px;letter-spacing:2px;color:var(--muted);text-transform:uppercase;">R&amp;D PHASING — % OF EACH MODULE’S WORK PER QUARTER</span>';
+  var dirty = Object.keys(_engWl.draft).length > 0;
+  if (!wl.locked && mods.length)
+    h += '<span style="display:flex;gap:6px;">'
+      + '<button onclick="_engWlDiscard()"' + (dirty ? '' : ' disabled') + ' style="' + MN + 'font-size:10px;padding:5px 10px;border-radius:3px;border:1px solid var(--border2);background:transparent;color:var(--text);cursor:pointer;opacity:' + (dirty ? 1 : .4) + ';">Discard</button>'
+      + '<button onclick="_engWlSave()"' + (dirty ? '' : ' disabled') + ' style="' + MN + 'font-size:10px;padding:5px 12px;border-radius:3px;border:1px solid rgba(56,212,134,.5);background:rgba(56,212,134,.12);color:var(--green);cursor:pointer;opacity:' + (dirty ? 1 : .4) + ';">✓ Save phasing</button></span>';
+  h += '</div><div style="padding:12px 14px;">'
+    + '<div style="font-size:11px;color:var(--muted2);line-height:1.6;margin-bottom:10px;">The standard pace is the same share every quarter (100% ÷ lead time). '
+    + 'You may pause a module (0%) or speed it up to 1.5× the standard pace in any quarter, as long as it is still complete the quarter before its car’s SOP. '
+    + 'Work costs the same in total; front-loading spends it earlier. Your capacity still decides what is delivered: a quarter over capacity slows every module in it, by priority.'
+    + (nQ ? ' Proposals in the approval queue (' + nQ + ' module' + (nQ === 1 ? '' : 's') + ') run at the standard pace from their approval and are phased once approved.' : '') + '</div>';
+  if (!mods.length) return h + '<div style="' + MN + 'font-size:10px;color:var(--muted2);">No approved module in development to phase.</div></div></div>';
+  // programmes: each module under the earliest-SOP approved car using it
+  var progs = {}, order = [];
+  mods.forEach(function (m) {
+    var vs = (m.vehicles || []).filter(function (v) { return v.status === 'approved' || v.status === 'on_sale'; })
+      .sort(function (x, y) { return (x.sop_qabs || 999) - (y.sop_qabs || 999); });
+    var k = vs.length ? vs[0].id : '_lab';
+    if (!progs[k]) { progs[k] = {name: vs.length ? vs[0].name : 'Module Lab (no car)', sop: vs.length ? vs[0].sop_qabs : null, mods: []}; order.push(k); }
+    progs[k].mods.push(m);
+  });
+  order.sort(function (x, y) { return (progs[x].sop || 999) - (progs[y].sop || 999); });
+  var last = wl.q_now;
+  mods.forEach(function (m) {
+    var w = _engWlWindow(m, wl);
+    last = Math.max(last, w[w.length - 1] || wl.q_now, Math.min(wl.q_now + 15, m.done_granted_qabs || 0));
+  });
+  var cols = []; for (var q = wl.q_now; q <= last; q++) cols.push(q);
+  var lbl = function (q) { return 'Q' + (q % 4 + 1) + ' ' + (2025 + Math.floor(q / 4)); };
+  h += '<div style="overflow-x:auto;"><table style="border-collapse:collapse;' + MN + 'font-size:10px;color:var(--text);min-width:100%;">'
+    + '<thead><tr><th style="text-align:left;padding:4px 8px 6px 0;color:var(--muted2);font-weight:400;">Module</th>'
+    + '<th style="text-align:right;padding:4px 8px 6px;color:var(--muted2);font-weight:400;white-space:nowrap;">Done so far</th>';
+  cols.forEach(function (q) { h += '<th style="padding:4px 3px 6px;color:var(--muted2);font-weight:400;white-space:nowrap;">' + lbl(q) + '</th>'; });
+  h += '<th style="text-align:left;padding:4px 8px 6px;color:var(--muted2);font-weight:400;white-space:nowrap;">Complete (plan · capacity)</th></tr></thead><tbody>';
+  order.forEach(function (k, pi) {
+    var pg = progs[k];
+    h += '<tr><td colspan="' + (cols.length + 3) + '" style="padding:10px 0 4px;border-top:1px solid var(--border);">'
+      + '<span style="color:var(--white);">' + _esc(pg.name) + '</span>' + (pg.sop != null ? ' <span style="color:var(--muted2);">· SOP ' + lbl(pg.sop) + '</span>' : '')
+      + (wl.locked ? '' : ' <span style="margin-left:8px;">'
+        + ['std:Standard', 'front:Front-load', 'back:Back-load'].map(function (p) {
+          var kv = p.split(':');
+          return '<button onclick="_engWlPreset(\'' + k + '\',\'' + kv[0] + '\')" style="' + MN + 'font-size:9px;padding:2px 7px;margin-right:4px;border-radius:3px;border:1px solid var(--border2);background:transparent;color:var(--text);cursor:pointer;">' + kv[1] + '</button>';
+        }).join('') + '</span>') + '</td></tr>';
+    pg.mods.forEach(function (m) {
+      var w = _engWlWindow(m, wl), inW = {}; w.forEach(function (q) { inW[q] = 1; });
+      var need = m.needed_by_qabs != null ? m.needed_by_qabs - 1 : null;
+      var lateP = need != null && (m.done_qabs == null || m.done_qabs > need);
+      var lateG = need != null && (m.done_granted_qabs == null || m.done_granted_qabs > need);
+      var cum = m.progress_pct;
+      h += '<tr><td style="padding:3px 8px 3px 0;white-space:nowrap;">' + _esc(m.name)
+        + ' <span style="color:var(--muted2);">' + (_ENG_MOD_LABELS[m.module_type] || m.module_type) + ' · ' + m.lt + 'q · std ' + (+m.std_pct).toFixed(1) + '%</span></td>'
+        + '<td style="text-align:right;padding:3px 8px;color:var(--muted2);">' + Math.round(m.progress_pct) + '%</td>';
+      cols.forEach(function (q) {
+        var pp = (m.plan_pct || {})[String(q)] || 0;
+        cum += pp;
+        if (!inW[q]) { h += '<td></td>'; return; }
+        var f = _engWlF(m, q), val = Math.round(f * m.std_pct * 10) / 10;
+        var set = f !== 1;
+        // past the planned completion nothing is left to do: an empty cell unless the team set one
+        var src = _engWl.draft[m.id] || m.phasing || {};
+        if (m.done_qabs != null && q > m.done_qabs && src[String(q)] == null) val = '';
+        h += '<td style="padding:2px 3px;text-align:center;">'
+          + '<input id="eng-ph-' + m.id + '-' + q + '" type="number" min="0" max="' + (m.std_pct * (wl.phasing_max_f || 1.5)).toFixed(1) + '" step="0.5" value="' + val + '"'
+          + (wl.locked ? ' disabled' : '') + ' onchange="_engWlSet(\'' + m.id + '\',' + q + ',this.value)" '
+          + ' placeholder="–" style="width:52px;' + MN + 'font-size:10px;padding:3px 4px;border-radius:3px;text-align:right;background:var(--s3);color:' + (set ? 'var(--white)' : 'var(--muted2)') + ';border:1px solid ' + (set ? 'rgba(50,204,192,.45)' : 'var(--border2)') + ';">'
+          + '<div style="font-size:8px;color:var(--muted2);margin-top:1px;" title="cumulative progress, as planned">' + (pp > 0 ? Math.round(Math.min(100, cum)) + '%' : ' ') + '</div></td>';
+      });
+      h += '<td style="padding:3px 8px;white-space:nowrap;"><span style="color:' + (lateP ? 'var(--red)' : 'var(--text)') + ';">' + (m.done_qabs != null ? lbl(m.done_qabs) : 'never') + '</span>'
+        + ' · <span style="color:' + (lateG ? 'var(--red)' : 'var(--green)') + ';">' + (m.done_granted_qabs != null ? lbl(m.done_granted_qabs) : 'not within the horizon') + '</span>'
+        + (need != null ? ' <span style="color:var(--muted2);">· needed ' + lbl(need) + '</span>' : '') + '</td></tr>';
+    });
+  });
+  h += '</tbody></table></div>';
+  if (wl.locked) h += '<div style="' + MN + 'font-size:10px;color:var(--muted2);margin-top:8px;">This round has cleared: plan the phasing in the next one.</div>';
+  return h + '</div></div>';
+}
+
+function _engWlPreview() {
+  clearTimeout(_engWl.timer);
+  _engWl.timer = setTimeout(async function () {
+    var seq = ++_engWl.seq;
+    var d = await _engWlFetch(_engWl.draft);
+    if (d && seq === _engWl.seq) { _engWl.data = d; _engWlDraw(); }
+  }, 250);
+}
+function _engWlSet(mid, q, val) {
+  var wl = _engWl.data, m = wl && wl.modules.filter(function (x) { return x.id === mid; })[0];
+  if (!m) return;
+  var d = _engWl.draft[mid] || Object.assign({}, m.phasing || {});
+  var pct = parseFloat(val);
+  if (isNaN(pct)) delete d[String(q)];
+  else d[String(q)] = Math.max(0, Math.min(wl.phasing_max_f || 1.5, pct / m.std_pct));
+  _engWl.draft[mid] = d;
+  _engWlPreview();
+}
+// a programme's modules at once: standard pace, as early as possible (1.5× from now) or as late as possible
+function _engWlPreset(progKey, kind) {
+  var wl = _engWl.data;
+  if (!wl) return;
+  wl.modules.forEach(function (m) {
+    if (m.queued) return;
+    var vs = (m.vehicles || []).filter(function (v) { return v.status === 'approved' || v.status === 'on_sale'; })
+      .sort(function (x, y) { return (x.sop_qabs || 999) - (y.sop_qabs || 999); });
+    if ((vs.length ? vs[0].id : '_lab') !== progKey) return;
+    if (kind === 'std') { _engWl.draft[m.id] = {}; return; }
+    var w = _engWlWindow(m, wl), left = 100 - m.progress_pct, top = (wl.phasing_max_f || 1.5) * m.std_pct, d = {};
+    (kind === 'back' ? w.slice().reverse() : w).forEach(function (q) {
+      var take = Math.max(0, Math.min(top, left));
+      d[String(q)] = Math.round(take / m.std_pct * 10000) / 10000;
+      left -= take;
+    });
+    _engWl.draft[m.id] = d;
+  });
+  _engWlPreview();
+}
+async function _engWlDiscard() {
+  _engWl.draft = {};
+  _engWl.data = await _engWlFetch(null);
+  _engWlDraw();
+}
+async function _engWlSave() {
+  var ids = Object.keys(_engWl.draft), bad = [];
+  for (var i = 0; i < ids.length; i++) {
+    try {
+      var r = await fetch(API_URL + '/sessions/' + sessionId + '/teams/' + teamId + '/module-phasing', {
+        method: 'PUT', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({module_id: ids[i], phasing: _engWl.draft[ids[i]]})});
+      var d = await r.json();
+      if (!r.ok) { bad.push(d.detail || 'could not save'); continue; }
+      delete _engWl.draft[ids[i]];
+    } catch (e) { bad.push('could not save'); }
+  }
+  if (bad.length) toast('⚠ ' + bad.join(' · '));
+  else toast('✓ Phasing saved · ready dates re-projected');
+  buildEngineeringDashboard();
 }
 
 function _renderEngineeringDashboard(mods, vehicles, todayQabs, sessionCfg) {
@@ -11313,53 +11628,10 @@ function _renderEngineeringDashboard(mods, vehicles, todayQabs, sessionCfg) {
        + '(<a href="#" onclick="engView(\'lifecycle\');return false;" style="color:var(--gold);">Lifecycle</a>); the rest is idle.</div>';
   }
 
-  // ── Resource chart ──
+  // ── Workload charts (financial_engine.team_eng_workload): approved vs the approval queue, then phasing ──
   if (charts) {
-  h += '<div style="background:var(--s2);border-radius:4px;border:1px solid var(--border2);margin-bottom:14px;overflow:hidden;">';
-  h += '<div style="padding:10px 14px;border-bottom:1px solid var(--border);">';
-  h += '<span style="font-family:DM Mono,monospace;font-size:8px;letter-spacing:2px;color:var(--muted);text-transform:uppercase;">R&D RESOURCE PROFILE — €M / QUARTER</span>';
-  h += '</div>';
-  h += '<div style="padding:14px;">';
-  h += '<canvas id="eng-resource-canvas" height="140" style="width:100%;display:block;"></canvas>';
-  // legend
-  h += '<div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:8px;">';
-  _ENG_MOD_ORDER.forEach(function(t){
-    if(!mods.find(function(m){return m.module_type===t;})) return;
-    h += '<span style="display:flex;align-items:center;gap:4px;font-family:DM Mono,monospace;font-size:8px;color:var(--muted2);">'+
-      '<span style="width:10px;height:8px;border-radius:1px;background:'+_ENG_MOD_COLORS[t]+';display:inline-block;"></span>'+
-      _ENG_MOD_LABELS[t]+'</span>';
-  });
-  h += '<span style="display:flex;align-items:center;gap:4px;font-family:DM Mono,monospace;font-size:8px;color:rgba(255,100,100,.7);">'+
-    '<span style="width:1px;height:10px;background:rgba(255,100,100,.7);display:inline-block;"></span>TODAY</span>';
-  if (sessionCfg && sessionCfg.rd_budget_per_team_per_qtr_m != null)
-    h += '<span style="display:flex;align-items:center;gap:4px;font-family:DM Mono,monospace;font-size:8px;color:rgba(250,204,21,.8);">'+
-      '<span style="display:inline-block;width:10px;height:1.5px;background:rgba(250,204,21,.8);border-top:1.5px dashed rgba(250,204,21,.8);"></span>BUDGET CAP €'+sessionCfg.rd_budget_per_team_per_qtr_m+'M</span>';
-  h += '</div></div></div>';
-
-  // ── FTE demand chart ──
-  if (!_engState._restored) { _restoreEngState(); _engState._restored=true; _updateBlendedFTERate(); }
-  var capMetrics = _calcCapacityMetrics();
-  h += '<div style="background:var(--s2);border-radius:4px;border:1px solid var(--border2);margin-bottom:14px;overflow:hidden;">';
-  h += '<div style="padding:10px 14px;border-bottom:1px solid var(--border);">';
-  h += '<span style="font-family:DM Mono,monospace;font-size:8px;letter-spacing:2px;color:var(--muted);text-transform:uppercase;">ENGINEERING FTE DEMAND — FTE-MO / QUARTER</span>';
-  h += '</div>';
-  h += '<div style="padding:14px;">';
-  h += '<canvas id="eng-fte-canvas" height="140" style="width:100%;display:block;"></canvas>';
-  // legend
-  h += '<div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:8px;">';
-  _ENG_MOD_ORDER.forEach(function(t){
-    if(!mods.find(function(m){return m.module_type===t;})) return;
-    h += '<span style="display:flex;align-items:center;gap:4px;font-family:DM Mono,monospace;font-size:8px;color:var(--muted2);">'+
-      '<span style="width:10px;height:8px;border-radius:1px;background:'+_ENG_MOD_COLORS[t]+';display:inline-block;"></span>'+
-      _ENG_MOD_LABELS[t]+'</span>';
-  });
-  h += '<span style="display:flex;align-items:center;gap:4px;font-family:DM Mono,monospace;font-size:8px;color:rgba(255,100,100,.7);">'+
-    '<span style="width:1px;height:10px;background:rgba(255,100,100,.7);display:inline-block;"></span>TODAY</span>';
-  h += '<span style="display:flex;align-items:center;gap:4px;font-family:DM Mono,monospace;font-size:8px;color:rgba(56,212,134,.8);">'+
-    '<span style="display:inline-block;width:10px;height:1.5px;background:rgba(56,212,134,.8);border-top:1.5px dashed rgba(56,212,134,.8);"></span>CAPACITY '+capMetrics.qtrCapFteMo+' FTE-MO/QTR</span>';
-  h += '<span style="display:flex;align-items:center;gap:4px;font-family:DM Mono,monospace;font-size:8px;color:rgba(239,68,68,.85);">'+
-    '<span style="display:inline-block;width:10px;height:8px;border:1.5px solid rgba(239,68,68,.85);"></span>OVER CAPACITY</span>';
-  h += '</div></div></div>';
+    if (!_engState._restored) { _restoreEngState(); _engState._restored=true; _updateBlendedFTERate(); }
+    h += _engWlCard('rd') + _engWlCard('fte') + '<div id="eng-wl-phasing"></div>';
   }
 
   // ── Vehicle-module matrix: models in production or to come; ended ones fold into a line ──
@@ -11379,10 +11651,7 @@ function _renderEngineeringDashboard(mods, vehicles, todayQabs, sessionCfg) {
   }
 
   el.innerHTML = h;
-  if (charts) setTimeout(function(){
-    _drawResourceChart(mods, todayQabs, sessionCfg);
-    _drawFteChart(mods, todayQabs, capMetrics.qtrCapFteMo);
-  }, 60);
+  if (charts) setTimeout(_engWlDraw, 60);
 }
 
 function _buildModuleGantt(mods, vehicles, todayQabs, sessionCfg) {
@@ -11503,204 +11772,6 @@ function _buildModuleGantt(mods, vehicles, todayQabs, sessionCfg) {
     '<span style="width:1.5px;height:10px;background:rgba(255,100,100,.7);display:inline-block;"></span>TODAY</span>';
   h+='</div></div>';
   return h;
-}
-
-function _drawResourceChart(mods, todayQabs, sessionCfg) {
-  sessionCfg = sessionCfg || {};
-  var canvas=document.getElementById('eng-resource-canvas');
-  if(!canvas) return;
-  canvas.width=canvas.offsetWidth||700;
-  var W=canvas.width, H=canvas.height;
-  var ctx=canvas.getContext('2d');
-  ctx.clearRect(0,0,W,H);
-
-  var active=mods.filter(function(m){return m.submitted_year&&m.ready_year&&m.development_status!=='cancelled';});
-  if(!active.length){
-    ctx.fillStyle='rgba(150,150,150,.3)'; ctx.font='11px DM Mono,monospace'; ctx.textAlign='center';
-    ctx.fillText('No active module developments',W/2,H/2); return;
-  }
-
-  // Quarter range
-  var allQ=[todayQabs];
-  active.forEach(function(m){
-    allQ.push((m.submitted_year-2025)*4+(m.submitted_quarter-1));
-    allQ.push((m.ready_year-2025)*4+(m.ready_quarter-1));
-  });
-  var qMin=Math.max(0,Math.min.apply(null,allQ)-1);
-  var qMax=Math.max.apply(null,allQ)+2;
-  if(qMax-qMin<8) qMax=qMin+8;
-  var numQ=qMax-qMin;
-
-  // Spend per quarter per type
-  var spend={};
-  active.forEach(function(m){
-    var lt=Math.max(1,m.lead_time_quarters||1);
-    var rdPerQ=parseFloat(m.total_rd_spend_m||0)/lt;
-    for(var q=(m.submitted_year-2025)*4+(m.submitted_quarter-1); q<(m.ready_year-2025)*4+(m.ready_quarter-1); q++){
-      if(!spend[q]) spend[q]={};
-      spend[q][m.module_type]=(spend[q][m.module_type]||0)+rdPerQ;
-    }
-  });
-
-  var maxTotal=0;
-  for(var q=qMin;q<qMax;q++){
-    var tot=_ENG_MOD_ORDER.reduce(function(s,t){return s+(spend[q]&&spend[q][t]||0);},0);
-    if(tot>maxTotal) maxTotal=tot;
-  }
-  if(maxTotal===0) maxTotal=10;
-
-  var PL=38,PB=22,PT=8,PR=10;
-  var cW=W-PL-PR, cH=H-PT-PB;
-  var bW=Math.max(4,Math.floor(cW/numQ)-2);
-
-  // Grid + Y labels
-  ctx.strokeStyle='rgba(255,255,255,.05)';
-  ctx.fillStyle='rgba(150,150,150,.5)';
-  ctx.font='8px DM Mono,monospace';
-  ctx.textAlign='right';
-  for(var yi=0;yi<=4;yi++){
-    var yVal=maxTotal*yi/4;
-    var yPx=PT+cH*(1-yi/4);
-    ctx.beginPath(); ctx.moveTo(PL,yPx); ctx.lineTo(W-PR,yPx); ctx.stroke();
-    ctx.fillText(Math.round(yVal)+'M',PL-3,yPx+3);
-  }
-
-  // Stacked bars
-  for(var q2=qMin;q2<qMax;q2++){
-    var xPx=PL+(q2-qMin)*(cW/numQ);
-    var stackBase=PT+cH;
-    _ENG_MOD_ORDER.forEach(function(type){
-      var val=spend[q2]&&spend[q2][type]||0;
-      if(val<=0) return;
-      var bH=Math.max(1,val/maxTotal*cH);
-      var alpha=q2>todayQabs?'55':'cc';
-      ctx.fillStyle=_ENG_MOD_COLORS[type]+alpha;
-      ctx.fillRect(Math.round(xPx),Math.round(stackBase-bH),bW,Math.ceil(bH));
-      stackBase-=bH;
-    });
-    // X label
-    ctx.fillStyle='rgba(150,150,150,.5)';
-    ctx.font='7px DM Mono,monospace'; ctx.textAlign='center';
-    ctx.fillText(_qLabel(q2),xPx+bW/2,H-5);
-  }
-
-  // Today line
-  var todayX=PL+(todayQabs-qMin+0.5)*(cW/numQ);
-  ctx.strokeStyle='rgba(255,80,80,.6)'; ctx.lineWidth=1.5;
-  ctx.setLineDash([3,2]);
-  ctx.beginPath(); ctx.moveTo(todayX,PT); ctx.lineTo(todayX,PT+cH); ctx.stroke();
-  ctx.setLineDash([]);
-
-  // Budget ceiling line
-  var rdBudget=sessionCfg.rd_budget_per_team_per_qtr_m;
-  if(rdBudget!=null&&rdBudget>0&&rdBudget<=maxTotal*1.5){
-    var budgetY=PT+cH*(1-rdBudget/maxTotal);
-    if(budgetY>=PT&&budgetY<=PT+cH){
-      ctx.strokeStyle='rgba(250,204,21,.8)'; ctx.lineWidth=1.5;
-      ctx.setLineDash([5,3]);
-      ctx.beginPath(); ctx.moveTo(PL,budgetY); ctx.lineTo(W-PR,budgetY); ctx.stroke();
-      ctx.setLineDash([]);
-      ctx.fillStyle='rgba(250,204,21,.8)'; ctx.font='8px DM Mono,monospace'; ctx.textAlign='left';
-      ctx.fillText('Budget cap €'+rdBudget+'M',PL+3,budgetY-3);
-    }
-  }
-}
-
-function _drawFteChart(mods, todayQabs, capFteMo) {
-  var canvas=document.getElementById('eng-fte-canvas');
-  if(!canvas) return;
-  canvas.width=canvas.offsetWidth||700;
-  var W=canvas.width, H=canvas.height;
-  var ctx=canvas.getContext('2d');
-  ctx.clearRect(0,0,W,H);
-
-  var active=mods.filter(function(m){return m.submitted_year&&m.ready_year&&m.development_status!=='cancelled';});
-  if(!active.length){
-    ctx.fillStyle='rgba(150,150,150,.3)'; ctx.font='11px DM Mono,monospace'; ctx.textAlign='center';
-    ctx.fillText('No active module developments',W/2,H/2); return;
-  }
-
-  // Quarter range
-  var allQ=[todayQabs];
-  active.forEach(function(m){
-    allQ.push((m.submitted_year-2025)*4+(m.submitted_quarter-1));
-    allQ.push((m.ready_year-2025)*4+(m.ready_quarter-1));
-  });
-  var qMin=Math.max(0,Math.min.apply(null,allQ)-1);
-  var qMax=Math.max.apply(null,allQ)+2;
-  if(qMax-qMin<8) qMax=qMin+8;
-  var numQ=qMax-qMin;
-
-  var demand=_calcFteDemandByQuarter(active);
-
-  var maxTotal=0;
-  for(var q=qMin;q<qMax;q++){
-    var tot=_ENG_MOD_ORDER.reduce(function(s,t){return s+(demand[q]&&demand[q][t]||0);},0);
-    if(tot>maxTotal) maxTotal=tot;
-  }
-  if(capFteMo>maxTotal) maxTotal=capFteMo;
-  if(maxTotal===0) maxTotal=10;
-
-  var PL=38,PB=22,PT=8,PR=10;
-  var cW=W-PL-PR, cH=H-PT-PB;
-  var bW=Math.max(4,Math.floor(cW/numQ)-2);
-
-  // Grid + Y labels
-  ctx.strokeStyle='rgba(255,255,255,.05)';
-  ctx.fillStyle='rgba(150,150,150,.5)';
-  ctx.font='8px DM Mono,monospace';
-  ctx.textAlign='right';
-  for(var yi=0;yi<=4;yi++){
-    var yVal=maxTotal*yi/4;
-    var yPx=PT+cH*(1-yi/4);
-    ctx.beginPath(); ctx.moveTo(PL,yPx); ctx.lineTo(W-PR,yPx); ctx.stroke();
-    ctx.fillText(Math.round(yVal),PL-3,yPx+3);
-  }
-
-  // Stacked bars — quarters over capacity get a red outline so overload is visible per-quarter
-  for(var q2=qMin;q2<qMax;q2++){
-    var xPx=PL+(q2-qMin)*(cW/numQ);
-    var stackBase=PT+cH;
-    var qTotal=_ENG_MOD_ORDER.reduce(function(s,t){return s+(demand[q2]&&demand[q2][t]||0);},0);
-    var overCap=capFteMo>0&&qTotal>capFteMo;
-    _ENG_MOD_ORDER.forEach(function(type){
-      var val=demand[q2]&&demand[q2][type]||0;
-      if(val<=0) return;
-      var bH=Math.max(1,val/maxTotal*cH);
-      var alpha=q2>todayQabs?'55':'cc';
-      ctx.fillStyle=_ENG_MOD_COLORS[type]+alpha;
-      ctx.fillRect(Math.round(xPx),Math.round(stackBase-bH),bW,Math.ceil(bH));
-      stackBase-=bH;
-    });
-    if(overCap){
-      ctx.strokeStyle='rgba(239,68,68,.85)'; ctx.lineWidth=1.5;
-      ctx.strokeRect(Math.round(xPx),Math.round(stackBase),bW,Math.ceil(PT+cH-stackBase));
-    }
-    // X label
-    ctx.fillStyle='rgba(150,150,150,.5)';
-    ctx.font='7px DM Mono,monospace'; ctx.textAlign='center';
-    ctx.fillText(_qLabel(q2),xPx+bW/2,H-5);
-  }
-
-  // Today line
-  var todayX=PL+(todayQabs-qMin+0.5)*(cW/numQ);
-  ctx.strokeStyle='rgba(255,80,80,.6)'; ctx.lineWidth=1.5;
-  ctx.setLineDash([3,2]);
-  ctx.beginPath(); ctx.moveTo(todayX,PT); ctx.lineTo(todayX,PT+cH); ctx.stroke();
-  ctx.setLineDash([]);
-
-  // Capacity line
-  if(capFteMo>0&&capFteMo<=maxTotal*1.5){
-    var capY=PT+cH*(1-capFteMo/maxTotal);
-    if(capY>=PT&&capY<=PT+cH){
-      ctx.strokeStyle='rgba(56,212,134,.8)'; ctx.lineWidth=1.5;
-      ctx.setLineDash([5,3]);
-      ctx.beginPath(); ctx.moveTo(PL,capY); ctx.lineTo(W-PR,capY); ctx.stroke();
-      ctx.setLineDash([]);
-      ctx.fillStyle='rgba(56,212,134,.8)'; ctx.font='8px DM Mono,monospace'; ctx.textAlign='left';
-      ctx.fillText('Capacity '+Math.round(capFteMo)+' FTE-mo/qtr',PL+3,capY-3);
-    }
-  }
 }
 
 function _buildVehicleModuleMatrix(mods, vehicles) {
