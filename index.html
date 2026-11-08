@@ -2579,7 +2579,7 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
         <label style="font-size:12px;color:#94a3b8;display:block;margin-bottom:6px;">R&amp;D budget cap <span style="color:var(--muted2)">(€M / quarter / team)</span></label>
         <input id="cfg-rd-budget" type="number" min="0" step="0.5" placeholder="unlimited"
           style="width:100%;background:var(--s2);border:1px solid var(--border);border-radius:6px;color:#f1f5f9;padding:9px 12px;font-size:14px;font-family:'DM Mono',monospace"/>
-        <div style="font-size:10px;color:var(--muted2);margin-top:4px;">If exceeded, development slows: the latest approved programme first (players&rsquo; teams) or every module alike (AI teams).</div>
+        <div style="font-size:10px;color:var(--muted2);margin-top:4px;">If exceeded, development slows: the modules with the most slack first (players&rsquo; teams) or every module alike (AI teams).</div>
       </div>
       <div>
         <label style="font-size:12px;color:#94a3b8;display:block;margin-bottom:6px;">Engineering FTE cap <span style="color:var(--muted2)">(FTE-months / quarter / team — NOT headcount)</span></label>
@@ -11236,10 +11236,11 @@ var _engWl = {data: null, draft: {}, timer: null, seq: 0};
 var _ENG_WL_COL = {approved: '#26a89f', queued: '#b08f30', lifecycle: '#4a5568', granted: '#dce8f8', cap: '#38d486'};
 // why a module runs at this quarter's speed (financial_engine.schedule_module_speeds)
 var _ENG_SPEED_REASON = {
-  auto: ['Auto · standard', 'var(--muted2)'], standard: ['Standard', 'var(--muted2)'], team: ['Your speed', 'var(--text)'],
-  ahead: ['Pulled ahead', 'var(--green)'], sop_min: ['SOP minimum', '#7fb2ff'], slowed: ['Slowed · capacity', '#e8a33a'],
-  sop_risk: ['SOP at risk', 'var(--red)']
+  auto: ['Auto', 'var(--text)'], standard: ['Standard', 'var(--muted2)'], set: ['Fixed speed', 'var(--text)'],
+  max: ['Max', 'var(--green)'], std: ['Std', 'var(--text)'], min: ['Min · latest start', '#7fb2ff'], hold: ['On hold', '#e8a33a'],
+  slowed: ['Cut · over capacity', '#e8a33a']
 };
+var _ENG_MODES = [['auto', 'Auto'], ['max', 'Max'], ['std', 'Std'], ['min', 'Min'], ['hold', 'Hold']];
 
 async function _engWlFetch(draft) {
   if (!sessionId || !teamId) return null;
@@ -11393,9 +11394,9 @@ function _engWlDraw() {
   }
 }
 
-// the speed a module is set to: the draft's, else what the team saved (null = auto)
-function _engWlSpeed(m) {
-  return Object.prototype.hasOwnProperty.call(_engWl.draft, m.id) ? _engWl.draft[m.id] : m.speed_team;
+// the mode a module is set to: the draft's, else what the team saved (null = auto; a number = a fixed speed from before modes)
+function _engWlMode(m) {
+  return Object.prototype.hasOwnProperty.call(_engWl.draft, m.id) ? _engWl.draft[m.id] : m.mode;
 }
 function _engWlProgKey(m) {      // the earliest-SOP approved car using a module
   var vs = (m.vehicles || []).filter(function (v) { return v.status === 'approved' || v.status === 'on_sale'; })
@@ -11407,79 +11408,81 @@ function _engWlPhasingHtml(wl) {
   var mods = wl.modules.filter(function (m) { return !m.queued; });
   var nQ = wl.modules.length - mods.length;
   var MN = 'font-family:DM Mono,monospace;';
+  var btn = function (onclick, label, on, extra) {
+    return '<button onclick="' + onclick + '"' + (on ? '' : ' disabled') + ' style="' + MN + 'font-size:10px;padding:5px 10px;border-radius:3px;border:1px solid ' + (extra || 'var(--border2)') + ';background:transparent;color:var(--text);cursor:pointer;opacity:' + (on ? 1 : .4) + ';">' + label + '</button>';
+  };
   var h = '<div style="background:var(--s2);border-radius:4px;border:1px solid var(--border2);margin-bottom:14px;overflow:hidden;">'
     + '<div style="padding:10px 14px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">'
-    + '<span style="' + MN + 'font-size:8px;letter-spacing:2px;color:var(--muted);text-transform:uppercase;">R&amp;D EXECUTION SPEED — % OF THE STANDARD PACE</span>';
+    + '<span style="' + MN + 'font-size:8px;letter-spacing:2px;color:var(--muted);text-transform:uppercase;">R&amp;D EXECUTION PLAN — LEAST SLACK FIRST</span>';
   var dirty = Object.keys(_engWl.draft).length > 0;
+  var cap = wl.capacity_mod_fte, over = cap != null && wl.manual_fte_now > cap + 0.5;
+  var anyManual = mods.some(function (m) { return _engWlMode(m) != null; });
   if (!wl.locked && mods.length && wl.auto)
     h += '<span style="display:flex;gap:6px;">'
-      + '<button onclick="_engWlDiscard()"' + (dirty ? '' : ' disabled') + ' style="' + MN + 'font-size:10px;padding:5px 10px;border-radius:3px;border:1px solid var(--border2);background:transparent;color:var(--text);cursor:pointer;opacity:' + (dirty ? 1 : .4) + ';">Discard</button>'
-      + '<button onclick="_engWlSave()"' + (dirty ? '' : ' disabled') + ' style="' + MN + 'font-size:10px;padding:5px 12px;border-radius:3px;border:1px solid rgba(56,212,134,.5);background:rgba(56,212,134,.12);color:var(--green);cursor:pointer;opacity:' + (dirty ? 1 : .4) + ';">✓ Save speeds</button></span>';
+      + btn('_engWlReset()', '↺ Reset to auto', anyManual && !dirty)
+      + btn('_engWlDiscard()', 'Discard', dirty)
+      + '<button onclick="_engWlSave()"' + (dirty && !over ? '' : ' disabled') + ' style="' + MN + 'font-size:10px;padding:5px 12px;border-radius:3px;border:1px solid rgba(56,212,134,.5);background:rgba(56,212,134,.12);color:var(--green);cursor:pointer;opacity:' + (dirty && !over ? 1 : .4) + ';">✓ Save</button></span>';
   h += '</div><div style="padding:12px 14px;">'
     + '<div style="font-size:11px;color:var(--muted2);line-height:1.6;margin-bottom:10px;">'
-    + 'The standard pace does the same share of a module every quarter (100% ÷ lead time). Set a speed from 0% (pause) to 150%; it holds for the rest of the work until you change it. '
-    + 'Modules on <b style="color:var(--text);">Auto</b> follow the model: with free engineers it pulls work ahead (earliest SOP first); when engineers are short it slows the latest approved programme first, never below the speed its SOP needs. '
-    + 'A paused or slowed module restarts as late as its SOP allows. Your own speed is never raised, but it is slowed at the round close if your engineers cannot deliver it. Total cost is the same; a faster pace spends it earlier.'
+    + 'The model plans each module backwards from its SOP at the maximum speed (150% of the standard pace); the quarters left in front of that plan are its <b style="color:var(--text);">slack</b> (negative = late even at maximum). '
+    + 'Modules on <b style="color:var(--text);">Auto</b> are ranked by slack, the least first, and each takes the most it can of this quarter’s engineers until none are left. '
+    + 'Override a module with <b style="color:var(--text);">Max</b> (150%, or the work left), <b style="color:var(--text);">Std</b> (100%), <b style="color:var(--text);">Min</b> (only what its SOP needs now: it starts as late as possible) or <b style="color:var(--text);">Hold</b> (0% until you lift it; the car’s launch slips). '
+    + 'Your modes take engineers first and may not need more than you have; Auto modules fill what is left. A mode carries to later quarters until you change it. Total cost is the same; faster work spends it earlier.'
     + (nQ ? ' Proposals in the approval queue (' + nQ + ' module' + (nQ === 1 ? '' : 's') + ') run at the standard pace from their approval.' : '') + '</div>';
   if (!mods.length) return h + '<div style="' + MN + 'font-size:10px;color:var(--muted2);">No approved module in development.</div></div></div>';
-  if (!wl.auto) return h + '<div style="' + MN + 'font-size:10px;color:var(--muted2);">Execution speeds apply to a team run by players.</div></div></div>';
-  var progs = {}, order = [];
-  mods.forEach(function (m) {
-    var v = _engWlProgKey(m), k = v ? v.id : '_lab';
-    if (!progs[k]) { progs[k] = {name: v ? v.name : 'Module Lab (no car)', sop: v ? v.sop_qabs : null, mods: []}; order.push(k); }
-    progs[k].mods.push(m);
-  });
-  order.sort(function (x, y) { return (progs[x].sop || 999) - (progs[y].sop || 999); });
+  if (!wl.auto) return h + '<div style="' + MN + 'font-size:10px;color:var(--muted2);">The execution plan applies to a team run by players.</div></div></div>';
+  if (cap != null) {
+    var fmtN = function (v) { return Math.round(v).toLocaleString(); };
+    h += '<div style="' + MN + 'font-size:10px;margin-bottom:10px;padding:7px 10px;border-radius:3px;background:var(--s3);border:1px solid ' + (over ? 'rgba(224,58,82,.5)' : 'var(--border2)') + ';">'
+      + 'This quarter: ' + fmtN(wl.planned_fte_now) + ' of ' + fmtN(cap) + ' FTE-months planned'
+      + ' · <span style="color:' + ((wl.unused_fte_now || 0) > 0.5 ? 'var(--gold)' : 'var(--muted2)') + ';">' + fmtN(wl.unused_fte_now || 0) + ' unused</span>'
+      + ' · your modes ' + fmtN(wl.manual_fte_now)
+      + (over ? ' <span style="color:var(--red);">· ' + fmtN(wl.manual_fte_now - cap) + ' over capacity: set another module to Min or Hold</span>' : '')
+      + '</div>';
+  }
   var last = wl.q_now;
   mods.forEach(function (m) { last = Math.max(last, Math.min(wl.q_now + 15, Math.max(m.done_qabs || 0, (m.needed_by_qabs || 0) - 1))); });
   var cols = []; for (var q = wl.q_now; q <= last; q++) cols.push(q);
   var lbl = function (q) { return 'Q' + (q % 4 + 1) + ' ' + (2025 + Math.floor(q / 4)); };
   var th = function (t, al) { return '<th style="text-align:' + (al || 'left') + ';padding:4px 8px 6px;color:var(--muted2);font-weight:400;white-space:nowrap;">' + t + '</th>'; };
   h += '<div style="overflow-x:auto;"><table style="border-collapse:collapse;' + MN + 'font-size:10px;color:var(--text);min-width:100%;">'
-    + '<thead><tr><th style="text-align:left;padding:4px 8px 6px 0;color:var(--muted2);font-weight:400;">Module</th>'
-    + th('Done', 'right') + th('Your speed') + th('This quarter') + th('Minimum', 'right');
+    + '<thead><tr>' + th('#', 'right') + '<th style="text-align:left;padding:4px 8px 6px 0;color:var(--muted2);font-weight:400;">Module</th>'
+    + th('Done', 'right') + th('Slack', 'right') + th('Mode') + th('This quarter') + th('Min', 'right');
   cols.forEach(function (q) { h += '<th style="padding:4px 2px 6px;color:var(--muted2);font-weight:400;white-space:nowrap;font-size:8px;">' + lbl(q) + '</th>'; });
   h += th('Complete') + '</tr></thead><tbody>';
-  var nC = cols.length + 6;
-  order.forEach(function (k) {
-    var pg = progs[k];
-    h += '<tr><td colspan="' + nC + '" style="padding:10px 0 4px;border-top:1px solid var(--border);">'
-      + '<span style="color:var(--white);">' + _esc(pg.name) + '</span>' + (pg.sop != null ? ' <span style="color:var(--muted2);">· SOP ' + lbl(pg.sop) + '</span>' : '')
-      + (wl.locked ? '' : ' <span style="margin-left:8px;">'
-        + ['auto:Auto', 'max:Max 150%', 'pause:Pause (latest start)'].map(function (p) {
-          var kv = p.split(':');
-          return '<button onclick="_engWlPreset(\'' + k + '\',\'' + kv[0] + '\')" style="' + MN + 'font-size:9px;padding:2px 7px;margin-right:4px;border-radius:3px;border:1px solid var(--border2);background:transparent;color:var(--text);cursor:pointer;">' + kv[1] + '</button>';
-        }).join('') + '</span>') + '</td></tr>';
-    pg.mods.forEach(function (m) {
-      var sp = _engWlSpeed(m), isAuto = sp == null;
-      var need = m.needed_by_qabs != null ? m.needed_by_qabs - 1 : null;
-      var late = need != null && (m.done_qabs == null || m.done_qabs > need);
-      var rs = _ENG_SPEED_REASON[m.reason] || ['', 'var(--muted2)'];
-      var cum = m.progress_pct;
-      h += '<tr><td style="padding:3px 8px 3px 0;white-space:nowrap;">' + _esc(m.name)
-        + ' <span style="color:var(--muted2);">' + (_ENG_MOD_LABELS[m.module_type] || m.module_type) + ' · ' + m.lt + 'q · 100% = ' + (+m.std_pct).toFixed(1) + '%/q</span></td>'
-        + '<td style="text-align:right;padding:3px 8px;color:var(--muted2);">' + Math.round(m.progress_pct) + '%</td>'
-        + '<td style="padding:3px 8px;white-space:nowrap;">'
-        + '<input id="eng-sp-' + m.id + '" type="number" min="' + Math.ceil(m.floor_now * 100) + '" max="' + Math.round((wl.phasing_max_f || 1.5) * 100) + '" step="5" value="' + (isAuto ? '' : Math.round(sp * 100)) + '"'
-        + (wl.locked ? ' disabled' : '') + ' onchange="_engWlSet(\'' + m.id + '\',this.value)" placeholder="auto"'
-        + ' style="width:56px;' + MN + 'font-size:10px;padding:3px 4px;border-radius:3px;text-align:right;background:var(--s3);color:' + (isAuto ? 'var(--muted2)' : 'var(--white)') + ';border:1px solid ' + (isAuto ? 'var(--border2)' : 'rgba(50,204,192,.45)') + ';">'
-        + ' <label style="color:var(--muted2);cursor:pointer;"><input type="checkbox"' + (isAuto ? ' checked' : '') + (wl.locked ? ' disabled' : '')
-        + ' onchange="_engWlSetAuto(\'' + m.id + '\',this.checked)" style="vertical-align:middle;margin:0 3px 0 4px;">Auto</label></td>'
-        + '<td style="padding:3px 8px;white-space:nowrap;">' + Math.round(m.speed_now * 100) + '% <span style="color:' + rs[1] + ';">· ' + rs[0] + '</span></td>'
-        + '<td style="text-align:right;padding:3px 8px;color:var(--muted2);">' + (m.floor_now > 0 ? Math.ceil(m.floor_now * 100) + '%' : '–') + '</td>';
-      cols.forEach(function (q) {
-        var pp = (m.plan_pct || {})[String(q)] || 0;
-        cum += pp;
-        var bad = need != null && q > need && pp > 0;
-        h += '<td style="padding:2px;text-align:center;font-size:9px;color:' + (bad ? 'var(--red)' : pp > 0 ? 'var(--text)' : 'var(--muted2)') + ';" title="planned progress this quarter · cumulative ' + Math.round(Math.min(100, cum)) + '%">'
-          + (pp > 0 ? (Math.round(pp * 10) / 10) + '%' : (q <= (m.done_qabs || -1) ? '0' : '')) + '</td>';
-      });
-      h += '<td style="padding:3px 8px;white-space:nowrap;"><span style="color:' + (late ? 'var(--red)' : 'var(--green)') + ';">' + (m.done_qabs != null ? lbl(m.done_qabs) : 'not within the horizon') + '</span>'
-        + (need != null ? ' <span style="color:var(--muted2);">· needed ' + lbl(need) + '</span>' : '') + '</td></tr>';
+  mods.slice().sort(function (a, b) { return (a.rank || 999) - (b.rank || 999); }).forEach(function (m) {
+    var mode = _engWlMode(m), car = _engWlProgKey(m);
+    var need = m.needed_by_qabs != null ? m.needed_by_qabs - 1 : null;
+    var late = need != null && (m.done_qabs == null || m.done_qabs > need);
+    var rs = _ENG_SPEED_REASON[m.reason] || ['', 'var(--muted2)'];
+    var cum = m.progress_pct;
+    var seg = _ENG_MODES.map(function (mm) {
+      var on = (mm[0] === 'auto' && mode == null) || mm[0] === mode;
+      return '<button' + (wl.locked ? ' disabled' : '') + ' onclick="_engWlSet(\'' + m.id + '\',\'' + mm[0] + '\')" style="' + MN + 'font-size:9px;padding:2px 6px;border:1px solid ' + (on ? 'rgba(50,204,192,.6)' : 'var(--border2)') + ';background:' + (on ? 'rgba(50,204,192,.16)' : 'transparent') + ';color:' + (on ? 'var(--white)' : 'var(--muted2)') + ';cursor:pointer;margin-right:-1px;">' + mm[1] + '</button>';
+    }).join('') + (typeof mode === 'number' ? ' <span style="color:var(--muted2);">(' + Math.round(mode * 100) + '%)</span>' : '');
+    h += '<tr style="border-top:1px solid var(--border);">'
+      + '<td style="text-align:right;padding:4px 8px;color:var(--muted2);">' + (m.rank || '') + '</td>'
+      + '<td style="padding:4px 8px 4px 0;white-space:nowrap;">' + _esc(m.name)
+      + ' <span style="color:var(--muted2);">' + (_ENG_MOD_LABELS[m.module_type] || m.module_type) + ' · ' + m.lt + 'q</span>'
+      + '<div style="font-size:9px;color:var(--muted2);">' + (car ? _esc(car.name) + ' · SOP ' + lbl(car.sop_qabs) : 'no car yet') + '</div></td>'
+      + '<td style="text-align:right;padding:4px 8px;color:var(--muted2);">' + Math.round(m.progress_pct) + '%</td>'
+      + '<td style="text-align:right;padding:4px 8px;color:' + (m.slack_q != null && m.slack_q < 0 ? 'var(--red)' : 'var(--text)') + ';">' + (m.slack_q == null ? '∞' : m.slack_q.toFixed(1) + 'q') + '</td>'
+      + '<td style="padding:4px 8px;white-space:nowrap;">' + seg + '</td>'
+      + '<td style="padding:4px 8px;white-space:nowrap;">' + Math.round(m.speed_now * 100) + '% <span style="color:' + rs[1] + ';">· ' + rs[0] + (m.reason === 'auto' && m.speed_now < 0.005 ? ' · waiting' : '') + '</span>'
+      + (m.sop_risk ? ' <span style="color:var(--red);">· SOP at risk</span>' : '') + '</td>'
+      + '<td style="text-align:right;padding:4px 8px;color:var(--muted2);">' + (m.floor_now > 0 ? Math.ceil(m.floor_now * 100) + '%' : '–') + '</td>';
+    cols.forEach(function (q) {
+      var pp = (m.plan_pct || {})[String(q)] || 0;
+      cum += pp;
+      var bad = need != null && q > need && pp > 0;
+      h += '<td style="padding:2px;text-align:center;font-size:9px;color:' + (bad ? 'var(--red)' : pp > 0 ? 'var(--text)' : 'var(--muted2)') + ';" title="planned progress this quarter · cumulative ' + Math.round(Math.min(100, cum)) + '%">'
+        + (pp > 0 ? (Math.round(pp * 10) / 10) + '%' : (q <= (m.done_qabs || -1) ? '0' : '')) + '</td>';
     });
+    h += '<td style="padding:4px 8px;white-space:nowrap;"><span style="color:' + (late ? 'var(--red)' : 'var(--green)') + ';">' + (m.done_qabs != null ? lbl(m.done_qabs) : (mode === 'hold' ? 'on hold' : 'not within the horizon')) + '</span>'
+      + (need != null ? ' <span style="color:var(--muted2);">· needed ' + lbl(need) + '</span>' : '') + '</td></tr>';
   });
   h += '</tbody></table></div>';
-  if (wl.locked) h += '<div style="' + MN + 'font-size:10px;color:var(--muted2);margin-top:8px;">This round has cleared: set speeds in the next one.</div>';
+  if (wl.locked) h += '<div style="' + MN + 'font-size:10px;color:var(--muted2);margin-top:8px;">This round has cleared: set modes in the next one.</div>';
   return h + '</div></div>';
 }
 
@@ -11489,40 +11492,13 @@ function _engWlPreview() {
     var seq = ++_engWl.seq;
     var d = await _engWlFetch(_engWl.draft);
     if (d && seq === _engWl.seq) { _engWl.data = d; _engWlDraw(); }
-  }, 250);
+  }, 200);
 }
-function _engWlMod(mid) {
-  var wl = _engWl.data;
-  return wl && wl.modules.filter(function (x) { return x.id === mid; })[0];
-}
-function _engWlSet(mid, val) {
-  var m = _engWlMod(mid);
+function _engWlSet(mid, mode) {
+  var wl = _engWl.data, m = wl && wl.modules.filter(function (x) { return x.id === mid; })[0];
   if (!m) return;
-  var pct = parseFloat(val);
-  if (isNaN(pct)) _engWl.draft[mid] = null;
-  else {
-    var f = Math.max(0, Math.min(_engWl.data.phasing_max_f || 1.5, pct / 100));
-    if (f < m.floor_now - 1e-6) { toast('⚠ ' + m.name + ' needs at least ' + Math.ceil(m.floor_now * 100) + '% this quarter for its SOP'); f = Math.ceil(m.floor_now * 100) / 100; }
-    _engWl.draft[mid] = f;
-  }
-  _engWlPreview();
-}
-function _engWlSetAuto(mid, on) {
-  var m = _engWlMod(mid);
-  if (!m) return;
-  _engWl.draft[mid] = on ? null : Math.max(1, Math.ceil(m.floor_now * 100) / 100);
-  _engWlPreview();
-}
-// a programme's modules at once: back to auto, the maximum speed, or a pause (each restarts as late as its SOP allows)
-function _engWlPreset(progKey, kind) {
-  var wl = _engWl.data;
-  if (!wl) return;
-  wl.modules.forEach(function (m) {
-    if (m.queued) return;
-    var v = _engWlProgKey(m);
-    if ((v ? v.id : '_lab') !== progKey) return;
-    _engWl.draft[m.id] = kind === 'auto' ? null : kind === 'max' ? (wl.phasing_max_f || 1.5) : Math.ceil(m.floor_now * 100) / 100;
-  });
+  var v = mode === 'auto' ? null : mode;
+  if (v === m.mode) delete _engWl.draft[mid]; else _engWl.draft[mid] = v;
   _engWlPreview();
 }
 async function _engWlDiscard() {
@@ -11530,20 +11506,32 @@ async function _engWlDiscard() {
   _engWl.data = await _engWlFetch(null);
   _engWlDraw();
 }
+async function _engWlReset() {
+  try {
+    var r = await fetch(API_URL + '/sessions/' + sessionId + '/teams/' + teamId + '/module-phasing/reset', {method: 'POST'});
+    var d = await r.json();
+    if (!r.ok) { toast('⚠ ' + (d.detail || 'could not reset')); return; }
+    toast('✓ Back to the auto plan · ready dates re-projected');
+  } catch (e) { toast('⚠ could not reset'); return; }
+  _engWl.draft = {};
+  buildEngineeringDashboard();
+}
 async function _engWlSave() {
-  var ids = Object.keys(_engWl.draft), bad = [];
+  // lowering modes first frees engineers for the raises that follow
+  var rankOf = function (v) { return v === 'hold' ? 0 : v === 'min' ? 1 : v == null ? 2 : v === 'std' ? 3 : 4; };
+  var ids = Object.keys(_engWl.draft).sort(function (a, b) { return rankOf(_engWl.draft[a]) - rankOf(_engWl.draft[b]); }), bad = [];
   for (var i = 0; i < ids.length; i++) {
     try {
       var r = await fetch(API_URL + '/sessions/' + sessionId + '/teams/' + teamId + '/module-phasing', {
         method: 'PUT', headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({module_id: ids[i], speed: _engWl.draft[ids[i]]})});
+        body: JSON.stringify({module_id: ids[i], mode: _engWl.draft[ids[i]]})});
       var d = await r.json();
       if (!r.ok) { bad.push(d.detail || 'could not save'); continue; }
       delete _engWl.draft[ids[i]];
     } catch (e) { bad.push('could not save'); }
   }
   if (bad.length) toast('⚠ ' + bad.join(' · '));
-  else toast('✓ Speeds saved · ready dates re-projected');
+  else toast('✓ Plan saved · ready dates re-projected');
   buildEngineeringDashboard();
 }
 
@@ -11862,7 +11850,7 @@ function _buildVehicleModuleMatrix(mods, vehicles) {
 var _sessionEngProdFactor = null; // null = use per-team calc; set from session config
 
 // Each module's speed this quarter comes from the server's plan (financial_engine.schedule_module_speeds,
-// via GET eng-workload): the team's execution speeds fitted to capacity, latest approved slowed first.
+// via GET eng-workload): least slack first, the team's modes (Max / Std / Min / Hold) taking capacity first.
 // The drag ranking and its browser-side allocation preview were removed on 2026-11-07.
 async function loadModulePipeline() {
   if (!teamId) return;
@@ -11903,8 +11891,8 @@ async function loadModulePipeline() {
     const MN = "font-family:'DM Mono',monospace;";
     const cap = wl && wl.capacity_fte != null ? Math.round(wl.capacity_fte - (wl.lifecycle_fte || 0)) : null;
     let html = `<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding-bottom:8px;margin-bottom:4px;border-bottom:1px solid var(--border2);flex-wrap:wrap;">
-      <span style="${MN}font-size:8px;color:var(--muted2);text-transform:uppercase;letter-spacing:1px;">This quarter · when engineers are short the latest approved programme slows first</span>
-      <span style="${MN}font-size:8px;color:var(--muted2);">${cap != null ? 'For modules: ' + cap.toLocaleString() + ' FTE-mo/qtr · ' : ''}<a onclick="engView('dashboard')" style="color:var(--gold);cursor:pointer;">Set execution speeds →</a></span>
+      <span style="${MN}font-size:8px;color:var(--muted2);text-transform:uppercase;letter-spacing:1px;">This quarter · least slack first: the module that can wait least gets engineers first</span>
+      <span style="${MN}font-size:8px;color:var(--muted2);">${cap != null ? 'For modules: ' + cap.toLocaleString() + ' FTE-mo/qtr · ' : ''}<a onclick="engView('dashboard')" style="color:var(--gold);cursor:pointer;">Set execution modes →</a></span>
     </div>`;
 
     html += sorted.map(function(m) {
@@ -11918,7 +11906,7 @@ async function loadModulePipeline() {
         badge = 'WAITING FOR APPROVAL'; sc = 'var(--muted2)';
       } else if (r.id) {
         const rs = _ENG_SPEED_REASON[r.reason] || ['', 'var(--muted2)'];
-        badge = Math.round((r.speed_now || 0) * 100) + '% · ' + rs[0] + (r.speed_team != null && r.reason !== 'team' ? ' (set ' + Math.round(r.speed_team * 100) + '%)' : '');
+        badge = '#' + (r.rank || '–') + ' · ' + Math.round((r.speed_now || 0) * 100) + '% · ' + rs[0] + (r.slack_q != null ? ' · slack ' + r.slack_q.toFixed(1) + 'q' : '') + (r.sop_risk ? ' · SOP AT RISK' : '');
         sc = rs[1];
         incrPct = Math.min(Math.round((r.speed_now || 0) * 100 / lt), 100 - pct);
       } else {
