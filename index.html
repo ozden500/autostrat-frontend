@@ -2579,7 +2579,7 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
         <label style="font-size:12px;color:#94a3b8;display:block;margin-bottom:6px;">R&amp;D budget cap <span style="color:var(--muted2)">(€M / quarter / team)</span></label>
         <input id="cfg-rd-budget" type="number" min="0" step="0.5" placeholder="unlimited"
           style="width:100%;background:var(--s2);border:1px solid var(--border);border-radius:6px;color:#f1f5f9;padding:9px 12px;font-size:14px;font-family:'DM Mono',monospace"/>
-        <div style="font-size:10px;color:var(--muted2);margin-top:4px;">If exceeded, module progress slows proportionally or by priority.</div>
+        <div style="font-size:10px;color:var(--muted2);margin-top:4px;">If exceeded, development slows: the latest approved programme first (players&rsquo; teams) or every module alike (AI teams).</div>
       </div>
       <div>
         <label style="font-size:12px;color:#94a3b8;display:block;margin-bottom:6px;">Engineering FTE cap <span style="color:var(--muted2)">(FTE-months / quarter / team — NOT headcount)</span></label>
@@ -11234,13 +11234,19 @@ function _engIdleNote() {
 // per quarter (0 … 1.5× the standard pace, PUT …/module-phasing); edits preview through the POST.
 var _engWl = {data: null, draft: {}, timer: null, seq: 0};
 var _ENG_WL_COL = {approved: '#26a89f', queued: '#b08f30', lifecycle: '#4a5568', granted: '#dce8f8', cap: '#38d486'};
+// why a module runs at this quarter's speed (financial_engine.schedule_module_speeds)
+var _ENG_SPEED_REASON = {
+  auto: ['Auto · standard', 'var(--muted2)'], standard: ['Standard', 'var(--muted2)'], team: ['Your speed', 'var(--text)'],
+  ahead: ['Pulled ahead', 'var(--green)'], sop_min: ['SOP minimum', '#7fb2ff'], slowed: ['Slowed · capacity', '#e8a33a'],
+  sop_risk: ['SOP at risk', 'var(--red)']
+};
 
 async function _engWlFetch(draft) {
   if (!sessionId || !teamId) return null;
   var url = API_URL + '/sessions/' + sessionId + '/teams/' + teamId + '/eng-workload';
   try {
     var r = draft && Object.keys(draft).length
-      ? await fetch(url, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({phasing: draft})})
+      ? await fetch(url, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({speeds: draft})})
       : await fetch(url, {cache: 'no-store'});
     return r.ok ? await r.json() : null;
   } catch (e) { return null; }
@@ -11260,13 +11266,13 @@ function _engWlCard(kind) {
   var h = '<div style="background:var(--s2);border-radius:4px;border:1px solid var(--border2);margin-bottom:14px;overflow:hidden;">'
     + '<div style="padding:10px 14px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">'
     + '<span style="font-family:DM Mono,monospace;font-size:8px;letter-spacing:2px;color:var(--muted);text-transform:uppercase;">' + t + '</span>'
-    + '<span style="font-family:DM Mono,monospace;font-size:8px;color:var(--muted2);">from the open quarter · approved at your phasing · queued from its approve-by</span></div>'
+    + '<span style="font-family:DM Mono,monospace;font-size:8px;color:var(--muted2);">from the open quarter · approved at the model’s plan · queued from its approve-by</span></div>'
     + '<div style="padding:12px 14px;"><div id="eng-wl-chart-' + kind + '" style="position:relative;min-height:170px;"></div>'
     + '<div style="display:flex;gap:14px;flex-wrap:wrap;margin-top:8px;">';
   if (kind === 'fte') h += sw(_ENG_WL_COL.lifecycle, 'Lifecycle projects (reserved first)');
-  h += sw(_ENG_WL_COL.approved, 'Approved modules (your phasing)') + sw(_ENG_WL_COL.queued, 'In the approval queue', true);
-  if (kind === 'fte') h += ln(_ENG_WL_COL.granted, 'What your capacity delivers') + ln(_ENG_WL_COL.cap, 'Capacity', true)
-    + '<span style="display:flex;align-items:center;gap:5px;font-family:DM Mono,monospace;font-size:9px;color:var(--text);"><span style="width:10px;height:8px;border:1.5px solid var(--red);display:inline-block;"></span>Over capacity</span>';
+  h += sw(_ENG_WL_COL.approved, 'Approved modules (model plan)') + sw(_ENG_WL_COL.queued, 'In the approval queue', true);
+  if (kind === 'fte') h += ln(_ENG_WL_COL.granted, 'Your speeds as set') + ln(_ENG_WL_COL.cap, 'Capacity', true)
+    + '<span style="display:flex;align-items:center;gap:5px;font-family:DM Mono,monospace;font-size:9px;color:var(--text);"><span style="width:10px;height:8px;border:1.5px solid var(--red);display:inline-block;"></span>Over capacity if the queue is approved</span>';
   else if (_engWl.data && _engWl.data.budget_limit_m) h += ln('rgba(250,204,21,.85)', 'R&amp;D budget cap', true);
   return h + '</div></div></div>';
 }
@@ -11282,9 +11288,12 @@ function _engWlSvg(kind, wl, W) {
   var cW = W - PL - PR, cH = H - PT - PB, slot = cW / n, bw = Math.max(4, Math.min(34, slot - 6));
   var fte = kind === 'fte', lc = fte ? (wl.lifecycle_fte || 0) : 0;
   var a = fte ? wl.approved_fte : wl.approved_rd, qd = fte ? wl.queued_fte : wl.queued_rd;
+  var req = wl.requested_fte || [];
   var cap = fte ? wl.capacity_fte : wl.budget_limit_m;
+  // the "as set" line only when the model changed something
+  var showReq = fte && req.some(function (v, i) { return Math.abs(v - a[i]) > 1; });
   var max = 0;
-  for (var i = 0; i < n; i++) max = Math.max(max, lc + a[i] + qd[i], fte ? lc + wl.granted_fte[i] : 0);
+  for (var i = 0; i < n; i++) max = Math.max(max, lc + a[i] + qd[i], showReq ? lc + req[i] : 0);
   if (cap) max = Math.max(max, cap * 1.05);
   max = _engWlNice(max * 1.02);
   var y = function (v) { return PT + cH * (1 - v / max); };
@@ -11309,12 +11318,12 @@ function _engWlSvg(kind, wl, W) {
     s += seg(lc, _ENG_WL_COL.lifecycle) + seg(a[j], _ENG_WL_COL.approved) + seg(qd[j], 'url(#eng-wl-hatch-' + kind + ')');
     if (fte && cap && base > cap + 0.5)
       s += '<rect x="' + (x - 1.5).toFixed(1) + '" y="' + (y(base) - 1.5).toFixed(1) + '" width="' + (bw + 3).toFixed(1) + '" height="' + (y(0) - y(base) + 1.5).toFixed(1) + '" fill="none" stroke="#e03a52" stroke-width="1.5" rx="1"/>';
-    if (fte) pts.push((x + bw / 2).toFixed(1) + ',' + y(lc + wl.granted_fte[j]).toFixed(1));
+    if (showReq) pts.push((x + bw / 2).toFixed(1) + ',' + y(lc + req[j]).toFixed(1));
     var qa = wl.quarters[j];
     if (j === 0 || qa % 4 === 0)
       s += '<text x="' + (x + bw / 2).toFixed(1) + '" y="' + (H - 6) + '" text-anchor="' + (j === 0 ? 'start' : 'middle') + '" font-size="8" fill="#566070">' + _esc(wl.labels[j]) + '</text>';
   }
-  if (fte && pts.length) s += '<polyline points="' + pts.join(' ') + '" fill="none" stroke="' + _ENG_WL_COL.granted + '" stroke-width="1.5" stroke-opacity=".85"/>';
+  if (pts.length) s += '<polyline points="' + pts.join(' ') + '" fill="none" stroke="' + _ENG_WL_COL.granted + '" stroke-width="1.5" stroke-opacity=".85"/>';
   if (cap) {
     var cy = y(cap), cc = fte ? _ENG_WL_COL.cap : 'rgba(250,204,21,.85)';
     s += '<line x1="' + PL + '" x2="' + (W - PR) + '" y1="' + cy + '" y2="' + cy + '" stroke="' + cc + '" stroke-width="1.5" stroke-dasharray="5 3"/>'
@@ -11352,10 +11361,11 @@ function _engWlTip(ev, kind, i) {
   h += '<div>' + sw(_ENG_WL_COL.approved) + 'Approved ' + fmt(a) + '</div>' + list(false);
   h += '<div>' + sw(_ENG_WL_COL.queued, true) + 'In the approval queue ' + fmt(qd) + '</div>' + list(true);
   if (fte) {
-    h += '<div style="margin-top:3px;">Capacity delivers ' + fmt(lc + wl.granted_fte[i]) + (wl.granted_fte[i] + 1 < a ? ' <span style="color:#e03a52;">(approved work slips)</span>' : '') + '</div>';
+    var rq = (wl.requested_fte || [])[i];
+    if (rq != null && Math.abs(rq - a) > 1) h += '<div style="margin-top:3px;">Your speeds as set ' + fmt(lc + rq) + ' <span style="color:#566070;">(the model fits them to capacity)</span></div>';
     if (wl.capacity_fte) {
       var tot = lc + a + qd;
-      h += '<div>Capacity ' + fmt(wl.capacity_fte) + (tot > wl.capacity_fte + 0.5 ? ' · <span style="color:#e03a52;">over by ' + fmt(tot - wl.capacity_fte) + '</span>' : '') + '</div>';
+      h += '<div>Capacity ' + fmt(wl.capacity_fte) + (tot > wl.capacity_fte + 0.5 ? ' · <span style="color:#e03a52;">over by ' + fmt(tot - wl.capacity_fte) + ' if the queue is approved</span>' : '') + '</div>';
     }
   }
   tip.innerHTML = h;
@@ -11379,22 +11389,18 @@ function _engWlDraw() {
   if (p) {
     var fid = document.activeElement && document.activeElement.id;
     p.innerHTML = wl ? _engWlPhasingHtml(wl) : '';
-    if (fid && fid.indexOf('eng-ph-') === 0) { var fe = document.getElementById(fid); if (fe) { fe.focus(); if (fe.select) fe.select(); } }
+    if (fid && fid.indexOf('eng-sp-') === 0) { var fe = document.getElementById(fid); if (fe) { fe.focus(); if (fe.select) fe.select(); } }
   }
 }
 
-// a module's load factor in quarter q: the draft's, else the stored plan's, else 1 (standard)
-function _engWlF(m, q) {
-  var d = _engWl.draft[m.id];
-  var src = d || m.phasing || {};
-  var v = src[String(q)];
-  return v == null ? 1 : +v;
+// the speed a module is set to: the draft's, else what the team saved (null = auto)
+function _engWlSpeed(m) {
+  return Object.prototype.hasOwnProperty.call(_engWl.draft, m.id) ? _engWl.draft[m.id] : m.speed_team;
 }
-function _engWlWindow(m, wl) {      // the quarters a module may be planned in: now to the quarter before its SOP
-  var last = m.needed_by_qabs != null ? m.needed_by_qabs - 1 : Math.max(m.done_qabs || 0, wl.q_now + 2 * m.lt);
-  var out = [];
-  for (var q = wl.q_now; q <= last && q < wl.q_now + 16; q++) out.push(q);
-  return out;
+function _engWlProgKey(m) {      // the earliest-SOP approved car using a module
+  var vs = (m.vehicles || []).filter(function (v) { return v.status === 'approved' || v.status === 'on_sale'; })
+    .sort(function (x, y) { return (x.sop_qabs || 999) - (y.sop_qabs || 999); });
+  return vs.length ? vs[0] : null;
 }
 
 function _engWlPhasingHtml(wl) {
@@ -11403,80 +11409,77 @@ function _engWlPhasingHtml(wl) {
   var MN = 'font-family:DM Mono,monospace;';
   var h = '<div style="background:var(--s2);border-radius:4px;border:1px solid var(--border2);margin-bottom:14px;overflow:hidden;">'
     + '<div style="padding:10px 14px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">'
-    + '<span style="' + MN + 'font-size:8px;letter-spacing:2px;color:var(--muted);text-transform:uppercase;">R&amp;D PHASING — % OF EACH MODULE’S WORK PER QUARTER</span>';
+    + '<span style="' + MN + 'font-size:8px;letter-spacing:2px;color:var(--muted);text-transform:uppercase;">R&amp;D EXECUTION SPEED — % OF THE STANDARD PACE</span>';
   var dirty = Object.keys(_engWl.draft).length > 0;
-  if (!wl.locked && mods.length)
+  if (!wl.locked && mods.length && wl.auto)
     h += '<span style="display:flex;gap:6px;">'
       + '<button onclick="_engWlDiscard()"' + (dirty ? '' : ' disabled') + ' style="' + MN + 'font-size:10px;padding:5px 10px;border-radius:3px;border:1px solid var(--border2);background:transparent;color:var(--text);cursor:pointer;opacity:' + (dirty ? 1 : .4) + ';">Discard</button>'
-      + '<button onclick="_engWlSave()"' + (dirty ? '' : ' disabled') + ' style="' + MN + 'font-size:10px;padding:5px 12px;border-radius:3px;border:1px solid rgba(56,212,134,.5);background:rgba(56,212,134,.12);color:var(--green);cursor:pointer;opacity:' + (dirty ? 1 : .4) + ';">✓ Save phasing</button></span>';
+      + '<button onclick="_engWlSave()"' + (dirty ? '' : ' disabled') + ' style="' + MN + 'font-size:10px;padding:5px 12px;border-radius:3px;border:1px solid rgba(56,212,134,.5);background:rgba(56,212,134,.12);color:var(--green);cursor:pointer;opacity:' + (dirty ? 1 : .4) + ';">✓ Save speeds</button></span>';
   h += '</div><div style="padding:12px 14px;">'
-    + '<div style="font-size:11px;color:var(--muted2);line-height:1.6;margin-bottom:10px;">The standard pace is the same share every quarter (100% ÷ lead time). '
-    + 'You may pause a module (0%) or speed it up to 1.5× the standard pace in any quarter, as long as it is still complete the quarter before its car’s SOP. '
-    + 'Work costs the same in total; front-loading spends it earlier. Your capacity still decides what is delivered: a quarter over capacity slows every module in it, by priority.'
-    + (nQ ? ' Proposals in the approval queue (' + nQ + ' module' + (nQ === 1 ? '' : 's') + ') run at the standard pace from their approval and are phased once approved.' : '') + '</div>';
-  if (!mods.length) return h + '<div style="' + MN + 'font-size:10px;color:var(--muted2);">No approved module in development to phase.</div></div></div>';
-  // programmes: each module under the earliest-SOP approved car using it
+    + '<div style="font-size:11px;color:var(--muted2);line-height:1.6;margin-bottom:10px;">'
+    + 'The standard pace does the same share of a module every quarter (100% ÷ lead time). Set a speed from 0% (pause) to 150%; it holds for the rest of the work until you change it. '
+    + 'Modules on <b style="color:var(--text);">Auto</b> follow the model: with free engineers it pulls work ahead (earliest SOP first); when engineers are short it slows the latest approved programme first, never below the speed its SOP needs. '
+    + 'A paused or slowed module restarts as late as its SOP allows. Your own speed is never raised, but it is slowed at the round close if your engineers cannot deliver it. Total cost is the same; a faster pace spends it earlier.'
+    + (nQ ? ' Proposals in the approval queue (' + nQ + ' module' + (nQ === 1 ? '' : 's') + ') run at the standard pace from their approval.' : '') + '</div>';
+  if (!mods.length) return h + '<div style="' + MN + 'font-size:10px;color:var(--muted2);">No approved module in development.</div></div></div>';
+  if (!wl.auto) return h + '<div style="' + MN + 'font-size:10px;color:var(--muted2);">Execution speeds apply to a team run by players.</div></div></div>';
   var progs = {}, order = [];
   mods.forEach(function (m) {
-    var vs = (m.vehicles || []).filter(function (v) { return v.status === 'approved' || v.status === 'on_sale'; })
-      .sort(function (x, y) { return (x.sop_qabs || 999) - (y.sop_qabs || 999); });
-    var k = vs.length ? vs[0].id : '_lab';
-    if (!progs[k]) { progs[k] = {name: vs.length ? vs[0].name : 'Module Lab (no car)', sop: vs.length ? vs[0].sop_qabs : null, mods: []}; order.push(k); }
+    var v = _engWlProgKey(m), k = v ? v.id : '_lab';
+    if (!progs[k]) { progs[k] = {name: v ? v.name : 'Module Lab (no car)', sop: v ? v.sop_qabs : null, mods: []}; order.push(k); }
     progs[k].mods.push(m);
   });
   order.sort(function (x, y) { return (progs[x].sop || 999) - (progs[y].sop || 999); });
   var last = wl.q_now;
-  mods.forEach(function (m) {
-    var w = _engWlWindow(m, wl);
-    last = Math.max(last, w[w.length - 1] || wl.q_now, Math.min(wl.q_now + 15, m.done_granted_qabs || 0));
-  });
+  mods.forEach(function (m) { last = Math.max(last, Math.min(wl.q_now + 15, Math.max(m.done_qabs || 0, (m.needed_by_qabs || 0) - 1))); });
   var cols = []; for (var q = wl.q_now; q <= last; q++) cols.push(q);
   var lbl = function (q) { return 'Q' + (q % 4 + 1) + ' ' + (2025 + Math.floor(q / 4)); };
+  var th = function (t, al) { return '<th style="text-align:' + (al || 'left') + ';padding:4px 8px 6px;color:var(--muted2);font-weight:400;white-space:nowrap;">' + t + '</th>'; };
   h += '<div style="overflow-x:auto;"><table style="border-collapse:collapse;' + MN + 'font-size:10px;color:var(--text);min-width:100%;">'
     + '<thead><tr><th style="text-align:left;padding:4px 8px 6px 0;color:var(--muted2);font-weight:400;">Module</th>'
-    + '<th style="text-align:right;padding:4px 8px 6px;color:var(--muted2);font-weight:400;white-space:nowrap;">Done so far</th>';
-  cols.forEach(function (q) { h += '<th style="padding:4px 3px 6px;color:var(--muted2);font-weight:400;white-space:nowrap;">' + lbl(q) + '</th>'; });
-  h += '<th style="text-align:left;padding:4px 8px 6px;color:var(--muted2);font-weight:400;white-space:nowrap;">Complete (plan · capacity)</th></tr></thead><tbody>';
-  order.forEach(function (k, pi) {
+    + th('Done', 'right') + th('Your speed') + th('This quarter') + th('Minimum', 'right');
+  cols.forEach(function (q) { h += '<th style="padding:4px 2px 6px;color:var(--muted2);font-weight:400;white-space:nowrap;font-size:8px;">' + lbl(q) + '</th>'; });
+  h += th('Complete') + '</tr></thead><tbody>';
+  var nC = cols.length + 6;
+  order.forEach(function (k) {
     var pg = progs[k];
-    h += '<tr><td colspan="' + (cols.length + 3) + '" style="padding:10px 0 4px;border-top:1px solid var(--border);">'
+    h += '<tr><td colspan="' + nC + '" style="padding:10px 0 4px;border-top:1px solid var(--border);">'
       + '<span style="color:var(--white);">' + _esc(pg.name) + '</span>' + (pg.sop != null ? ' <span style="color:var(--muted2);">· SOP ' + lbl(pg.sop) + '</span>' : '')
       + (wl.locked ? '' : ' <span style="margin-left:8px;">'
-        + ['std:Standard', 'front:Front-load', 'back:Back-load'].map(function (p) {
+        + ['auto:Auto', 'max:Max 150%', 'pause:Pause (latest start)'].map(function (p) {
           var kv = p.split(':');
           return '<button onclick="_engWlPreset(\'' + k + '\',\'' + kv[0] + '\')" style="' + MN + 'font-size:9px;padding:2px 7px;margin-right:4px;border-radius:3px;border:1px solid var(--border2);background:transparent;color:var(--text);cursor:pointer;">' + kv[1] + '</button>';
         }).join('') + '</span>') + '</td></tr>';
     pg.mods.forEach(function (m) {
-      var w = _engWlWindow(m, wl), inW = {}; w.forEach(function (q) { inW[q] = 1; });
+      var sp = _engWlSpeed(m), isAuto = sp == null;
       var need = m.needed_by_qabs != null ? m.needed_by_qabs - 1 : null;
-      var lateP = need != null && (m.done_qabs == null || m.done_qabs > need);
-      var lateG = need != null && (m.done_granted_qabs == null || m.done_granted_qabs > need);
+      var late = need != null && (m.done_qabs == null || m.done_qabs > need);
+      var rs = _ENG_SPEED_REASON[m.reason] || ['', 'var(--muted2)'];
       var cum = m.progress_pct;
       h += '<tr><td style="padding:3px 8px 3px 0;white-space:nowrap;">' + _esc(m.name)
-        + ' <span style="color:var(--muted2);">' + (_ENG_MOD_LABELS[m.module_type] || m.module_type) + ' · ' + m.lt + 'q · std ' + (+m.std_pct).toFixed(1) + '%</span></td>'
-        + '<td style="text-align:right;padding:3px 8px;color:var(--muted2);">' + Math.round(m.progress_pct) + '%</td>';
+        + ' <span style="color:var(--muted2);">' + (_ENG_MOD_LABELS[m.module_type] || m.module_type) + ' · ' + m.lt + 'q · 100% = ' + (+m.std_pct).toFixed(1) + '%/q</span></td>'
+        + '<td style="text-align:right;padding:3px 8px;color:var(--muted2);">' + Math.round(m.progress_pct) + '%</td>'
+        + '<td style="padding:3px 8px;white-space:nowrap;">'
+        + '<input id="eng-sp-' + m.id + '" type="number" min="' + Math.ceil(m.floor_now * 100) + '" max="' + Math.round((wl.phasing_max_f || 1.5) * 100) + '" step="5" value="' + (isAuto ? '' : Math.round(sp * 100)) + '"'
+        + (wl.locked ? ' disabled' : '') + ' onchange="_engWlSet(\'' + m.id + '\',this.value)" placeholder="auto"'
+        + ' style="width:56px;' + MN + 'font-size:10px;padding:3px 4px;border-radius:3px;text-align:right;background:var(--s3);color:' + (isAuto ? 'var(--muted2)' : 'var(--white)') + ';border:1px solid ' + (isAuto ? 'var(--border2)' : 'rgba(50,204,192,.45)') + ';">'
+        + ' <label style="color:var(--muted2);cursor:pointer;"><input type="checkbox"' + (isAuto ? ' checked' : '') + (wl.locked ? ' disabled' : '')
+        + ' onchange="_engWlSetAuto(\'' + m.id + '\',this.checked)" style="vertical-align:middle;margin:0 3px 0 4px;">Auto</label></td>'
+        + '<td style="padding:3px 8px;white-space:nowrap;">' + Math.round(m.speed_now * 100) + '% <span style="color:' + rs[1] + ';">· ' + rs[0] + '</span></td>'
+        + '<td style="text-align:right;padding:3px 8px;color:var(--muted2);">' + (m.floor_now > 0 ? Math.ceil(m.floor_now * 100) + '%' : '–') + '</td>';
       cols.forEach(function (q) {
         var pp = (m.plan_pct || {})[String(q)] || 0;
         cum += pp;
-        if (!inW[q]) { h += '<td></td>'; return; }
-        var f = _engWlF(m, q), val = Math.round(f * m.std_pct * 10) / 10;
-        var set = f !== 1;
-        // past the planned completion nothing is left to do: an empty cell unless the team set one
-        var src = _engWl.draft[m.id] || m.phasing || {};
-        if (m.done_qabs != null && q > m.done_qabs && src[String(q)] == null) val = '';
-        h += '<td style="padding:2px 3px;text-align:center;">'
-          + '<input id="eng-ph-' + m.id + '-' + q + '" type="number" min="0" max="' + (m.std_pct * (wl.phasing_max_f || 1.5)).toFixed(1) + '" step="0.5" value="' + val + '"'
-          + (wl.locked ? ' disabled' : '') + ' onchange="_engWlSet(\'' + m.id + '\',' + q + ',this.value)" '
-          + ' placeholder="–" style="width:52px;' + MN + 'font-size:10px;padding:3px 4px;border-radius:3px;text-align:right;background:var(--s3);color:' + (set ? 'var(--white)' : 'var(--muted2)') + ';border:1px solid ' + (set ? 'rgba(50,204,192,.45)' : 'var(--border2)') + ';">'
-          + '<div style="font-size:8px;color:var(--muted2);margin-top:1px;" title="cumulative progress, as planned">' + (pp > 0 ? Math.round(Math.min(100, cum)) + '%' : ' ') + '</div></td>';
+        var bad = need != null && q > need && pp > 0;
+        h += '<td style="padding:2px;text-align:center;font-size:9px;color:' + (bad ? 'var(--red)' : pp > 0 ? 'var(--text)' : 'var(--muted2)') + ';" title="planned progress this quarter · cumulative ' + Math.round(Math.min(100, cum)) + '%">'
+          + (pp > 0 ? (Math.round(pp * 10) / 10) + '%' : (q <= (m.done_qabs || -1) ? '0' : '')) + '</td>';
       });
-      h += '<td style="padding:3px 8px;white-space:nowrap;"><span style="color:' + (lateP ? 'var(--red)' : 'var(--text)') + ';">' + (m.done_qabs != null ? lbl(m.done_qabs) : 'never') + '</span>'
-        + ' · <span style="color:' + (lateG ? 'var(--red)' : 'var(--green)') + ';">' + (m.done_granted_qabs != null ? lbl(m.done_granted_qabs) : 'not within the horizon') + '</span>'
+      h += '<td style="padding:3px 8px;white-space:nowrap;"><span style="color:' + (late ? 'var(--red)' : 'var(--green)') + ';">' + (m.done_qabs != null ? lbl(m.done_qabs) : 'not within the horizon') + '</span>'
         + (need != null ? ' <span style="color:var(--muted2);">· needed ' + lbl(need) + '</span>' : '') + '</td></tr>';
     });
   });
   h += '</tbody></table></div>';
-  if (wl.locked) h += '<div style="' + MN + 'font-size:10px;color:var(--muted2);margin-top:8px;">This round has cleared: plan the phasing in the next one.</div>';
+  if (wl.locked) h += '<div style="' + MN + 'font-size:10px;color:var(--muted2);margin-top:8px;">This round has cleared: set speeds in the next one.</div>';
   return h + '</div></div>';
 }
 
@@ -11488,33 +11491,37 @@ function _engWlPreview() {
     if (d && seq === _engWl.seq) { _engWl.data = d; _engWlDraw(); }
   }, 250);
 }
-function _engWlSet(mid, q, val) {
-  var wl = _engWl.data, m = wl && wl.modules.filter(function (x) { return x.id === mid; })[0];
+function _engWlMod(mid) {
+  var wl = _engWl.data;
+  return wl && wl.modules.filter(function (x) { return x.id === mid; })[0];
+}
+function _engWlSet(mid, val) {
+  var m = _engWlMod(mid);
   if (!m) return;
-  var d = _engWl.draft[mid] || Object.assign({}, m.phasing || {});
   var pct = parseFloat(val);
-  if (isNaN(pct)) delete d[String(q)];
-  else d[String(q)] = Math.max(0, Math.min(wl.phasing_max_f || 1.5, pct / m.std_pct));
-  _engWl.draft[mid] = d;
+  if (isNaN(pct)) _engWl.draft[mid] = null;
+  else {
+    var f = Math.max(0, Math.min(_engWl.data.phasing_max_f || 1.5, pct / 100));
+    if (f < m.floor_now - 1e-6) { toast('⚠ ' + m.name + ' needs at least ' + Math.ceil(m.floor_now * 100) + '% this quarter for its SOP'); f = Math.ceil(m.floor_now * 100) / 100; }
+    _engWl.draft[mid] = f;
+  }
   _engWlPreview();
 }
-// a programme's modules at once: standard pace, as early as possible (1.5× from now) or as late as possible
+function _engWlSetAuto(mid, on) {
+  var m = _engWlMod(mid);
+  if (!m) return;
+  _engWl.draft[mid] = on ? null : Math.max(1, Math.ceil(m.floor_now * 100) / 100);
+  _engWlPreview();
+}
+// a programme's modules at once: back to auto, the maximum speed, or a pause (each restarts as late as its SOP allows)
 function _engWlPreset(progKey, kind) {
   var wl = _engWl.data;
   if (!wl) return;
   wl.modules.forEach(function (m) {
     if (m.queued) return;
-    var vs = (m.vehicles || []).filter(function (v) { return v.status === 'approved' || v.status === 'on_sale'; })
-      .sort(function (x, y) { return (x.sop_qabs || 999) - (y.sop_qabs || 999); });
-    if ((vs.length ? vs[0].id : '_lab') !== progKey) return;
-    if (kind === 'std') { _engWl.draft[m.id] = {}; return; }
-    var w = _engWlWindow(m, wl), left = 100 - m.progress_pct, top = (wl.phasing_max_f || 1.5) * m.std_pct, d = {};
-    (kind === 'back' ? w.slice().reverse() : w).forEach(function (q) {
-      var take = Math.max(0, Math.min(top, left));
-      d[String(q)] = Math.round(take / m.std_pct * 10000) / 10000;
-      left -= take;
-    });
-    _engWl.draft[m.id] = d;
+    var v = _engWlProgKey(m);
+    if ((v ? v.id : '_lab') !== progKey) return;
+    _engWl.draft[m.id] = kind === 'auto' ? null : kind === 'max' ? (wl.phasing_max_f || 1.5) : Math.ceil(m.floor_now * 100) / 100;
   });
   _engWlPreview();
 }
@@ -11529,14 +11536,14 @@ async function _engWlSave() {
     try {
       var r = await fetch(API_URL + '/sessions/' + sessionId + '/teams/' + teamId + '/module-phasing', {
         method: 'PUT', headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({module_id: ids[i], phasing: _engWl.draft[ids[i]]})});
+        body: JSON.stringify({module_id: ids[i], speed: _engWl.draft[ids[i]]})});
       var d = await r.json();
       if (!r.ok) { bad.push(d.detail || 'could not save'); continue; }
       delete _engWl.draft[ids[i]];
     } catch (e) { bad.push('could not save'); }
   }
   if (bad.length) toast('⚠ ' + bad.join(' · '));
-  else toast('✓ Phasing saved · ready dates re-projected');
+  else toast('✓ Speeds saved · ready dates re-projected');
   buildEngineeringDashboard();
 }
 
@@ -11851,47 +11858,15 @@ function _buildVehicleModuleMatrix(mods, vehicles) {
   return h;
 }
 
-// ── Pipeline drag-and-drop state ──────────────────────────────
-var _pipeSorted = [];
-var _pipeDragIdx = null;
+// ── Development pipeline (Module Lab) ─────────────────────────
 var _sessionEngProdFactor = null; // null = use per-team calc; set from session config
 
-function _pipeDragStart(e, idx) {
-  _pipeDragIdx = idx;
-  e.dataTransfer.effectAllowed = 'move';
-}
-function _pipeDragOver(e, idx) {
-  e.preventDefault();
-  e.dataTransfer.dropEffect = 'move';
-  document.querySelectorAll('[data-pipe-idx]').forEach(function(el) {
-    el.style.outline = '';
-  });
-  var el = document.querySelector('[data-pipe-idx="'+idx+'"]');
-  if (el) el.style.outline = '1px solid rgba(139,92,246,.6)';
-}
-function _pipeDragLeave() {
-  document.querySelectorAll('[data-pipe-idx]').forEach(function(el) { el.style.outline = ''; });
-}
-async function _pipeDrop(e, targetIdx) {
-  e.preventDefault();
-  document.querySelectorAll('[data-pipe-idx]').forEach(function(el) { el.style.outline = ''; });
-  if (_pipeDragIdx === null || _pipeDragIdx === targetIdx) { _pipeDragIdx = null; return; }
-  var moved = _pipeSorted.splice(_pipeDragIdx, 1)[0];
-  _pipeSorted.splice(targetIdx, 0, moved);
-  _pipeDragIdx = null;
-  var updates = _pipeSorted.map(function(m, i) { return { id: m.id, priority_order: i + 1 }; });
-  try {
-    await fetch(API_URL+'/teams/'+teamId+'/modules/priorities', {
-      method:'PATCH', headers:{'Content-Type':'application/json'}, body:JSON.stringify(updates)
-    });
-  } catch(err) { console.warn('_pipeDrop save:', err); }
-  await loadModulePipeline();
-}
-
+// Each module's speed this quarter comes from the server's plan (financial_engine.schedule_module_speeds,
+// via GET eng-workload): the team's execution speeds fitted to capacity, latest approved slowed first.
+// The drag ranking and its browser-side allocation preview were removed on 2026-11-07.
 async function loadModulePipeline() {
   if (!teamId) return;
   try {
-    // Refresh session prod factor so pipeline simulation matches backend behaviour
     if (sessionId) {
       try {
         const cfgR = await fetch(`${API_URL}/sessions/${sessionId}/config`, {cache:'no-store'});
@@ -11902,7 +11877,10 @@ async function loadModulePipeline() {
         }
       } catch(e) {}
     }
-    const res=await fetch(`${API_URL}/teams/${teamId}/modules/pipeline`, {cache:'no-store'});
+    const [res, wl] = await Promise.all([
+      fetch(`${API_URL}/teams/${teamId}/modules/pipeline`, {cache:'no-store'}),
+      _engWlFetch(null)
+    ]);
     const data=await res.json();
     const pipeline=data.pipeline||[];
     const pipeEl=document.getElementById('mod-pipeline-list');
@@ -11910,73 +11888,57 @@ async function loadModulePipeline() {
     if(pipeline.length===0){ emptyEl.style.display='block'; pipeEl.innerHTML=''; return; }
     emptyEl.style.display='none';
 
-    // Sort by priority_order ascending, then by name — this IS the allocation order
-    _pipeSorted=[...pipeline].sort((a,b)=>{
-      const pa=(a.priority_order??999), pb=(b.priority_order??999);
-      return pa!==pb?pa-pb:(a.name||'').localeCompare(b.name||'');
+    const rowOf = {};
+    ((wl && wl.modules) || []).forEach(function(r) { rowOf[r.id] = r; });
+    // approved modules in approval order (the order capacity is protected in), the queue after them
+    const key = function(m) {
+      const r = rowOf[m.id] || {}, o = r.order || [1e6, '~'];
+      return [r.queued ? 1 : 0, o[0], String(o[1] || ''), m.name || ''];
+    };
+    const sorted = [...pipeline].sort(function(a, b) {
+      const ka = key(a), kb = key(b);
+      for (let i = 0; i < ka.length; i++) if (ka[i] !== kb[i]) return ka[i] < kb[i] ? -1 : 1;
+      return 0;
     });
-
-    // Simulate next-round allocation: strict waterfall in rank order
-    const cap = _calcCapacityMetrics().qtrCapFteMo;
-    const pf  = _prodFactor();
-    const allocMap = {};
-    let rem = cap;
-    _pipeSorted.forEach(function(m) {
-      const lt  = Math.max(1, parseFloat(m.lead_time_quarters||4));
-      const fte = Math.round(parseFloat(m.total_rd_spend_m||0) * 0.60 * 1e6 / 13333 / lt * pf);
-      const alloc = Math.min(fte, Math.max(0, rem)); rem -= alloc;
-      const mult  = fte > 0 ? alloc / fte : 1.0;
-      allocMap[m.id] = { mult, fte, status: mult>=0.99?'FULL':mult>0?'THROTTLED':'FROZEN' };
-    });
-
-    let html = `<div style="display:flex;justify-content:space-between;align-items:center;padding-bottom:8px;margin-bottom:4px;border-bottom:1px solid var(--border2);">
-      <span style="font-family:'DM Mono',monospace;font-size:8px;color:var(--muted2);text-transform:uppercase;letter-spacing:1px;">Drag to reprioritize · top gets resources first</span>
-      <span style="font-family:'DM Mono',monospace;font-size:8px;color:var(--muted2);">Capacity: ${cap} FTE-mo/qtr</span>
+    const MN = "font-family:'DM Mono',monospace;";
+    const cap = wl && wl.capacity_fte != null ? Math.round(wl.capacity_fte - (wl.lifecycle_fte || 0)) : null;
+    let html = `<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding-bottom:8px;margin-bottom:4px;border-bottom:1px solid var(--border2);flex-wrap:wrap;">
+      <span style="${MN}font-size:8px;color:var(--muted2);text-transform:uppercase;letter-spacing:1px;">This quarter · when engineers are short the latest approved programme slows first</span>
+      <span style="${MN}font-size:8px;color:var(--muted2);">${cap != null ? 'For modules: ' + cap.toLocaleString() + ' FTE-mo/qtr · ' : ''}<a onclick="engView('dashboard')" style="color:var(--gold);cursor:pointer;">Set execution speeds →</a></span>
     </div>`;
 
-    html += _pipeSorted.map(function(m, idx) {
-      const pip=m.pipeline||{};
+    html += sorted.map(function(m) {
+      const pip=m.pipeline||{}, r=rowOf[m.id]||{};
       const pct=Math.min(100,Math.round(parseFloat(pip.progress_pct||0)));
       const remaining=pip.quarters_remaining??'?';
-      const rdReq=parseFloat(pip.rd_budget_required_per_qtr_m||0);
-      const readyLabel=m.ready_year?`Est. ready Y${m.ready_year-2024}Q${m.ready_quarter}`:'—';
-
-      const alloc=allocMap[m.id]||{mult:1.0,fte:0,status:'FULL'};
       const lt=Math.max(1,parseFloat(m.lead_time_quarters||4));
-      const incrPct=Math.min(Math.round(100/lt*alloc.mult), 100-pct);
-      const sc=alloc.status==='FULL'?'#22c55e':alloc.status==='FROZEN'?'#ef4444':'#f97316';
-      const allocLabel=alloc.status==='THROTTLED'?`▶ ${Math.round(alloc.mult*100)}%`
-                      :alloc.status==='FROZEN'?'▶ FROZEN':'▶ FULL';
-      const allocBg=alloc.status==='FULL'?'rgba(34,197,94,.12)':alloc.status==='FROZEN'?'rgba(239,68,68,.12)':'rgba(249,115,22,.12)';
-      const rankLabel=`<span style="font-family:'DM Mono',monospace;font-size:8px;color:var(--muted2);min-width:18px;text-align:center;">#${idx+1}</span>`;
-      const allocBadge=`<span style="background:${allocBg};color:${sc};font-family:'DM Mono',monospace;font-size:8px;padding:1px 6px;border-radius:3px;letter-spacing:.5px;">${allocLabel}</span>`;
-
-      return `<div data-pipe-idx="${idx}"
-          draggable="true"
-          ondragstart="_pipeDragStart(event,${idx})"
-          ondragover="_pipeDragOver(event,${idx})"
-          ondragleave="_pipeDragLeave()"
-          ondrop="_pipeDrop(event,${idx})"
-          style="padding:10px 0;border-bottom:1px solid var(--border);display:flex;gap:8px;align-items:flex-start;cursor:grab;" id="pipe-row-${m.id}">
-        <div style="color:var(--muted2);font-size:14px;padding-top:2px;user-select:none;cursor:grab;" title="Drag to reorder">⠿</div>
-        <div style="flex:1;min-width:0;">
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px;">
-            <span style="display:flex;align-items:center;gap:6px;">
-              ${rankLabel}
-              <span style="font-size:11px;font-weight:600;">${m.name||'—'}${_devBadge(m)}</span>
-            </span>
+      const readyLabel=m.ready_year?`Est. ready Y${m.ready_year-2024}Q${m.ready_quarter}`:'—';
+      let badge, sc, incrPct = 0;
+      if (r.queued) {
+        badge = 'WAITING FOR APPROVAL'; sc = 'var(--muted2)';
+      } else if (r.id) {
+        const rs = _ENG_SPEED_REASON[r.reason] || ['', 'var(--muted2)'];
+        badge = Math.round((r.speed_now || 0) * 100) + '% · ' + rs[0] + (r.speed_team != null && r.reason !== 'team' ? ' (set ' + Math.round(r.speed_team * 100) + '%)' : '');
+        sc = rs[1];
+        incrPct = Math.min(Math.round((r.speed_now || 0) * 100 / lt), 100 - pct);
+      } else {
+        badge = 'STANDARD'; sc = 'var(--muted2)'; incrPct = Math.min(Math.round(100 / lt), 100 - pct);
+      }
+      const badgeHtml=`<span style="border:1px solid var(--border2);color:${sc};${MN}font-size:8px;padding:1px 6px;border-radius:3px;letter-spacing:.5px;white-space:nowrap;">${badge}</span>`;
+      return `<div style="padding:10px 0;border-bottom:1px solid var(--border);" id="pipe-row-${m.id}">
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:5px;flex-wrap:wrap;">
+            <span style="font-size:11px;font-weight:600;">${_esc(m.name||'—')}${_devBadge(m)}</span>
             <div style="display:flex;align-items:center;gap:6px;">
-              ${allocBadge}
-              <span style="font-family:'DM Mono',monospace;font-size:9px;color:var(--gold);">${pct}%</span>
-              <span style="font-family:'DM Mono',monospace;font-size:9px;color:var(--muted2);">${remaining} qtrs left</span>
+              ${badgeHtml}
+              <span style="${MN}font-size:9px;color:var(--gold);">${pct}%</span>
+              <span style="${MN}font-size:9px;color:var(--muted2);">${remaining} qtrs left</span>
             </div>
           </div>
           <div style="height:5px;background:var(--border2);border-radius:2px;overflow:hidden;margin-bottom:5px;display:flex;">
             <div style="height:100%;width:${pct}%;background:var(--gold);flex-shrink:0;"></div>
-            <div style="height:100%;width:${incrPct}%;background:${sc};opacity:0.65;flex-shrink:0;"></div>
+            <div style="height:100%;width:${Math.max(0, incrPct)}%;background:#26a89f;opacity:0.75;flex-shrink:0;" title="progress this quarter at the planned speed"></div>
           </div>
-          <div style="font-family:'DM Mono',monospace;font-size:8px;color:var(--muted2);">${m.module_type||''} · ${m.config_key||''} · €${rdReq.toFixed(1)}M/qtr req · ${alloc.fte} FTE-mo needed · ${readyLabel}</div>
-        </div>
+          <div style="${MN}font-size:8px;color:var(--muted2);">${m.module_type||''} · ${m.config_key||''} · ${lt}q lead time · ${readyLabel}${r.needed_by_qabs != null ? ' · SOP Q' + (r.needed_by_qabs % 4 + 1) + ' ' + (2025 + Math.floor(r.needed_by_qabs / 4)) : ''}</div>
       </div>`;
     }).join('');
 
