@@ -11445,42 +11445,56 @@ function _engWlPhasingHtml(wl) {
   var cols = []; for (var q = wl.q_now; q <= last; q++) cols.push(q);
   var lbl = function (q) { return 'Q' + (q % 4 + 1) + ' ' + (2025 + Math.floor(q / 4)); };
   var th = function (t, al) { return '<th style="text-align:' + (al || 'left') + ';padding:4px 8px 6px;color:var(--muted2);font-weight:400;white-space:nowrap;">' + t + '</th>'; };
+  var fmtF = function (v) { return Math.round(v).toLocaleString(); };
   h += '<div style="overflow-x:auto;"><table style="border-collapse:collapse;' + MN + 'font-size:10px;color:var(--text);min-width:100%;">'
     + '<thead><tr>' + th('#', 'right') + '<th style="text-align:left;padding:4px 8px 6px 0;color:var(--muted2);font-weight:400;">Module</th>'
     + th('Done', 'right') + th('Slack', 'right') + th('Mode') + th('This quarter') + th('Min', 'right');
-  cols.forEach(function (q) { h += '<th style="padding:4px 2px 6px;color:var(--muted2);font-weight:400;white-space:nowrap;font-size:8px;">' + lbl(q) + '</th>'; });
-  h += th('Complete') + '</tr></thead><tbody>';
+  cols.forEach(function (q) { h += '<th style="text-align:right;padding:4px 4px 6px;color:var(--muted2);font-weight:400;white-space:nowrap;font-size:8px;">' + lbl(q) + '</th>'; });
+  h += th('Needed by') + th('Complete by') + '</tr></thead><tbody>';
+  var colTot = cols.map(function () { return 0; });
   mods.slice().sort(function (a, b) { return (a.rank || 999) - (b.rank || 999); }).forEach(function (m) {
     var mode = _engWlMode(m), car = _engWlProgKey(m);
     var need = m.needed_by_qabs != null ? m.needed_by_qabs - 1 : null;
     var late = need != null && (m.done_qabs == null || m.done_qabs > need);
     var rs = _ENG_SPEED_REASON[m.reason] || ['', 'var(--muted2)'];
     var cum = m.progress_pct;
-    var seg = _ENG_MODES.map(function (mm) {
-      var on = (mm[0] === 'auto' && mode == null) || mm[0] === mode;
-      return '<button' + (wl.locked ? ' disabled' : '') + ' onclick="_engWlSet(\'' + m.id + '\',\'' + mm[0] + '\')" style="' + MN + 'font-size:9px;padding:2px 6px;border:1px solid ' + (on ? 'rgba(50,204,192,.6)' : 'var(--border2)') + ';background:' + (on ? 'rgba(50,204,192,.16)' : 'transparent') + ';color:' + (on ? 'var(--white)' : 'var(--muted2)') + ';cursor:pointer;margin-right:-1px;">' + mm[1] + '</button>';
-    }).join('') + (typeof mode === 'number' ? ' <span style="color:var(--muted2);">(' + Math.round(mode * 100) + '%)</span>' : '');
+    var cur = mode == null ? 'auto' : (typeof mode === 'number' ? 'num' : mode);
+    var sel = '<select' + (wl.locked ? ' disabled' : '') + ' onchange="_engWlSet(\'' + m.id + '\',this.value)" style="' + MN + 'font-size:10px;padding:2px 4px;border-radius:3px;background:var(--s3);color:' + (cur === 'auto' ? 'var(--text)' : 'var(--white)') + ';border:1px solid ' + (cur === 'auto' ? 'var(--border2)' : 'rgba(50,204,192,.6)') + ';">'
+      + (cur === 'num' ? '<option value="num" selected disabled>Fixed ' + Math.round(mode * 100) + '%</option>' : '')
+      + _ENG_MODES.map(function (mm) { return '<option value="' + mm[0] + '"' + (mm[0] === cur ? ' selected' : '') + '>' + mm[1] + '</option>'; }).join('')
+      + '</select>';
     h += '<tr style="border-top:1px solid var(--border);">'
       + '<td style="text-align:right;padding:4px 8px;color:var(--muted2);">' + (m.rank || '') + '</td>'
       + '<td style="padding:4px 8px 4px 0;white-space:nowrap;">' + _esc(m.name)
       + ' <span style="color:var(--muted2);">' + (_ENG_MOD_LABELS[m.module_type] || m.module_type) + ' · ' + m.lt + 'q</span>'
-      + '<div style="font-size:9px;color:var(--muted2);">' + (car ? _esc(car.name) + ' · SOP ' + lbl(car.sop_qabs) : 'no car yet') + '</div></td>'
+      + '<div style="font-size:9px;color:var(--muted2);">' + (car ? _esc(car.name) : 'no car yet') + '</div></td>'
       + '<td style="text-align:right;padding:4px 8px;color:var(--muted2);">' + Math.round(m.progress_pct) + '%</td>'
       + '<td style="text-align:right;padding:4px 8px;color:' + (m.slack_q != null && m.slack_q < 0 ? 'var(--red)' : 'var(--text)') + ';">' + (m.slack_q == null ? '∞' : m.slack_q.toFixed(1) + 'q') + '</td>'
-      + '<td style="padding:4px 8px;white-space:nowrap;">' + seg + '</td>'
+      + '<td style="padding:4px 8px;">' + sel + '</td>'
       + '<td style="padding:4px 8px;white-space:nowrap;">' + Math.round(m.speed_now * 100) + '% <span style="color:' + rs[1] + ';">· ' + rs[0] + (m.reason === 'auto' && m.speed_now < 0.005 ? ' · waiting' : '') + '</span>'
       + (m.sop_risk ? ' <span style="color:var(--red);">· SOP at risk</span>' : '') + '</td>'
       + '<td style="text-align:right;padding:4px 8px;color:var(--muted2);">' + (m.floor_now > 0 ? Math.ceil(m.floor_now * 100) + '%' : '–') + '</td>';
-    cols.forEach(function (q) {
+    cols.forEach(function (q, j) {
       var pp = (m.plan_pct || {})[String(q)] || 0;
       cum += pp;
+      var fte = pp / 100 * (m.fte_total || 0);
+      colTot[j] += fte;
       var bad = need != null && q > need && pp > 0;
-      h += '<td style="padding:2px;text-align:center;font-size:9px;color:' + (bad ? 'var(--red)' : pp > 0 ? 'var(--text)' : 'var(--muted2)') + ';" title="planned progress this quarter · cumulative ' + Math.round(Math.min(100, cum)) + '%">'
-        + (pp > 0 ? (Math.round(pp * 10) / 10) + '%' : (q <= (m.done_qabs || -1) ? '0' : '')) + '</td>';
+      h += '<td style="padding:2px 4px;text-align:right;font-size:9px;color:' + (bad ? 'var(--red)' : pp > 0 ? 'var(--text)' : 'var(--muted2)') + ';" title="' + (Math.round(pp * 10) / 10) + '% of the module this quarter · cumulative ' + Math.round(Math.min(100, cum)) + '%">'
+        + (pp > 0 ? fmtF(fte) : (q <= (m.done_qabs || -1) ? '0' : '')) + '</td>';
     });
-    h += '<td style="padding:4px 8px;white-space:nowrap;"><span style="color:' + (late ? 'var(--red)' : 'var(--green)') + ';">' + (m.done_qabs != null ? lbl(m.done_qabs) : (mode === 'hold' ? 'on hold' : 'not within the horizon')) + '</span>'
-      + (need != null ? ' <span style="color:var(--muted2);">· needed ' + lbl(need) + '</span>' : '') + '</td></tr>';
+    h += '<td style="padding:4px 8px;white-space:nowrap;">' + (need != null ? lbl(need) + '<div style="font-size:9px;color:var(--muted2);">SOP ' + lbl(m.needed_by_qabs) + '</div>' : '<span style="color:var(--muted2);">–</span>') + '</td>'
+      + '<td style="padding:4px 8px;white-space:nowrap;"><span style="color:' + (late ? 'var(--red)' : need != null ? 'var(--green)' : 'var(--text)') + ';">' + (m.done_qabs != null ? lbl(m.done_qabs) : (mode === 'hold' ? 'on hold' : 'not within the horizon')) + '</span>'
+      + (late && m.done_qabs != null ? '<div style="font-size:9px;color:var(--red);">' + (m.done_qabs - need) + 'q late · SOP ' + lbl(m.done_qabs + 1) + '</div>' : '') + '</td></tr>';
   });
+  // the quarter's total against what the team has for modules (capacity less the lifecycle reserve)
+  var capQ = cap;
+  h += '<tr style="border-top:1px solid var(--border2);"><td></td><td colspan="6" style="padding:5px 8px 5px 0;color:var(--muted2);">Total FTE-months' + (capQ != null ? ' · for modules ' + fmtF(capQ) + ' a quarter' : '') + '</td>';
+  colTot.forEach(function (v) {
+    var o = capQ != null && v > capQ + 0.5;
+    h += '<td style="padding:5px 4px;text-align:right;font-size:9px;color:' + (o ? 'var(--red)' : 'var(--white)') + ';">' + (v > 0.5 ? fmtF(v) : '') + '</td>';
+  });
+  h += '<td colspan="2"></td></tr>';
   h += '</tbody></table></div>';
   if (wl.locked) h += '<div style="' + MN + 'font-size:10px;color:var(--muted2);margin-top:8px;">This round has cleared: set modes in the next one.</div>';
   return h + '</div></div>';
