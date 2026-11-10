@@ -34636,12 +34636,8 @@ async function confirmProposal(acceptedSop) {
         toast('\u2713 Proposal submitted \u2014 vehicle moved to PLAN');
       }
       // Activate any 'draft' modules created at the \u00a77\u21928 transition for this
-      // proposal. SEQUENTIALLY, and awaited: each activation assigns the module
-      // its engineering priority by reading the ones already in development, so
-      // firing all five at once had every request read an empty list and land on
-      // priority 1. The throttle then funded whichever row the DB returned first
-      // and the platform could be starved while a powertrain took the quarter.
-      // The backend resequences defensively too, but that is a net, not a plan.
+      // proposal, one at a time and awaited (the engineering plan ranks them by slack,
+      // financial_engine.schedule_module_speeds; no priority is assigned any more).
       await (async function(){
         var _mids = [platformId, pwtId, epwtId, batteryId, tophatId, eandsId].filter(Boolean);
         for (var _i = 0; _i < _mids.length; _i++) {
