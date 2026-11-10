@@ -386,6 +386,12 @@ input[type=text]:focus,input[type=number]:focus{outline:none;border-color:var(--
 .plan-act-eop{font-family:'DM Mono',monospace;font-size:8px;padding:3px 8px;border-radius:2px;
   border:1px solid rgba(240,180,41,.35);background:rgba(240,180,41,.06);color:var(--gold);cursor:pointer;}
 .plan-act-eop:hover{background:rgba(240,180,41,.16);}
+.plan-act-mca{font-family:'DM Mono',monospace;font-size:8px;padding:3px 8px;border-radius:2px;
+  border:1px solid rgba(74,144,226,.4);background:rgba(74,144,226,.07);color:#6aa8f0;cursor:pointer;}
+.plan-act-mca:hover{background:rgba(74,144,226,.18);}
+.mca-row td{font-size:10px;color:var(--muted2);border-top:none;}
+.mca-spec{display:grid;grid-template-columns:96px 1fr 120px;gap:8px;align-items:center;font-size:11px;margin:5px 0;}
+.mca-spec input[type=range]{width:100%;}
 .eop-pv{display:grid;grid-template-columns:1fr auto;gap:5px 14px;font-size:11px;margin:12px 0 4px;}
 .eop-pv .k{color:var(--muted2);} .eop-pv .v{font-family:'DM Mono',monospace;text-align:right;}
 .eop-note{font-size:10px;color:var(--muted2);line-height:1.5;margin-top:8px;}
@@ -3005,6 +3011,27 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
     <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px;">
       <button class="btn-mm-cancel" onclick="closeEopModal()">CANCEL</button>
       <button class="btn-mm-save" id="eop-save" onclick="saveEop()">SAVE</button>
+    </div>
+  </div>
+</div>
+
+<div class="model-modal" id="mcaModal">
+  <div class="mm-panel" style="max-width:560px;width:92vw;max-height:88vh;overflow-y:auto;">
+    <div class="mm-title">MID-CYCLE ACTION</div>
+    <div class="mm-sub" id="mca-sub">—</div>
+    <div class="eop-note" style="margin-top:0">A new top hat, derived from the current one, replaces it from the change-over
+      quarter: buyers see the better design and a younger model. It is a business case: submit it, then approve it by its
+      approve-by quarter (the new top hat's development and supplier tooling must be done by the change-over).</div>
+    <div style="font-size:10px;color:var(--muted2);margin:12px 0 4px;letter-spacing:.08em;">NEW TOP HAT (within the derivative range)</div>
+    <div id="mca-specs"></div>
+    <div class="mm-grid" style="margin-top:10px;">
+      <div class="mm-field"><label>Change-over quarter</label><select id="mca-co" onchange="_mcaPreview(false)"></select></div>
+      <div class="mm-field"><label>Price change at change-over (%)</label><input type="number" id="mca-price" step="0.5" value="0" onchange="_mcaPreview(false)"></div>
+    </div>
+    <div id="mca-preview"></div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px;">
+      <button class="btn-mm-cancel" onclick="closeMcaModal()">CLOSE</button>
+      <button class="btn-mm-save" id="mca-save" onclick="saveMca()">SUBMIT</button>
     </div>
   </div>
 </div>
@@ -10195,10 +10222,10 @@ function _renderLifecycleTab() {
   if (L && L.enabled)
     h += _plmStripBox('yearly budget · refresh marketing · engineering cap · hurdle · emphasis. Each carries forward; at clearing the simulation funds the best projects your settings allow.',
                       _plmLifecycleStatus(L));
-  h += _plmHow('Models in production keep improving: <b>cost-downs</b>, <b>quality fixes</b>, <b>material substitutions</b> and refreshes (special series, facelift), '
+  h += _plmHow('Models in production keep improving: <b>cost-downs</b>, <b>quality fixes</b>, <b>material substitutions</b> and special series, '
      + 'funded each year from a lifecycle budget. You set the budget, the engineering you can spare and the return you demand; the simulation picks the projects by benefit ÷ cost. '
      + 'Each project goes through engineering, then tooling and supplier approval (PPAP), then change-over (50% of the effect), then live. Nothing pays off before change-over. '
-     + 'Material prices and supply contracts are on the <a href="#" onclick="engView(\'materials\');return false;" style="color:var(--gold);">Materials</a> tab.');
+     + 'Material prices and supply contracts are on the <a href="#" onclick="engView(\'materials\');return false;" style="color:var(--gold);">Materials</a> tab. A facelift (a new top hat) is a <b>mid-cycle action</b>, a business case of its own: Product Plan → MCA.');
   if ((L || d).locked) h += '<div style="color:var(--gold);font-size:10px;margin-bottom:10px;">🔒 ' + _esc((L || d).label) + ' has cleared. Decide again when the next round starts.</div>';
   h += _plmPortfolioHtml(F.head, F.th, F.td, F.eur, F.deur, F.col);
   h += '</div>';
@@ -11964,6 +11991,7 @@ async function loadVehiclePlan() {
       const maxY=allYrs.length?Math.max(...allYrs,currentRoundYear+5):currentRoundYear+5;
       planSub.textContent=`Product lifecycle · Study → Plan → Approved · Portfolio roadmap ${minY}–${maxY}`;
     }
+    await _loadPlanMcas();
     buildVehicleGantt();
     buildVehicleTable();
     loadApprovalQueue();
@@ -13210,6 +13238,12 @@ function buildVehicleTable() {
     var eopBtn = v._normStatus === 'approved'
       ? '<button class="plan-act-eop" data-vid="'+vid+'" data-action="eop" title="Extend or bring forward the end of production">EOP</button>'
       : '';
+    // Mid-cycle action: a new top hat (derivative of the current one) from a change-over quarter
+    var _hasOpenMca = (_planMcas[vid] || []).some(function(m){ return m.status === 'plan' || m.status === 'late'
+      || (m.status === 'approved' && m.changeover_qabs >= _curQ); });
+    var mcaBtn = v._normStatus === 'approved' && v.tophat_module_id && !_hasOpenMca
+      ? '<button class="plan-act-mca" data-vid="'+vid+'" data-action="mca" title="Mid-cycle action: refresh the top hat from a change-over quarter (business case)">MCA</button>'
+      : '';
 
     // Discount input — editable for approved/on_sale vehicles
     var discVal = parseFloat(v.discount_pct||0).toFixed(1);
@@ -13237,9 +13271,9 @@ function buildVehicleTable() {
       + '<td class="plan-td center">'+statusBadge(v.status)+'</td>'
       + discCell
       + '<td class="plan-td" style="white-space:nowrap;display:flex;gap:4px;align-items:center;">'
-        + bcBtn + eopBtn + statusBtn + delBtn
+        + bcBtn + eopBtn + mcaBtn + statusBtn + delBtn
       + '</td>'
-      + '</tr>';
+      + '</tr>' + _mcaSubRows(v);
   }).join('');
 }
 
@@ -13330,6 +13364,200 @@ async function saveEop() {
     save.textContent = 'SAVE';
     if (document.getElementById('eopModal').classList.contains('open')) _eopPreview();   // refused: re-check
   }
+}
+
+// ── Mid-cycle actions (docs/MCA_SPEC.md) ──
+// A model in production gets a derivative of its top hat that replaces the current one from a
+// change-over quarter: designed and valued here, approved on Product Plan. Rules and the business
+// case live in the backend only (POST …/mca-preview), so there is no JS twin.
+var _planMcas = {}, _mcaVid = null, _mcaOk = false, _mcaSeq = 0, _mcaTimer = null, _mcaLast = null, _mcaInit = null;
+var _MCA_SPECS = [
+  {k: 'reliability', l: 'Reliability', pct: true}, {k: 'comfort', l: 'Comfort', pct: true},
+  {k: 'safety', l: 'Safety', pct: true}, {k: 'premiumness', l: 'Premiumness', pct: false},
+  {k: 'roominess', l: 'Roominess', pct: false}];
+async function _loadPlanMcas() {
+  _planMcas = {};
+  if (!sessionId || !teamId) return;
+  try {
+    var r = await fetch(API_URL + '/sessions/' + sessionId + '/teams/' + teamId + '/mcas');
+    var d = await r.json();
+    (d.mcas || []).forEach(function(m){ (_planMcas[m.vehicle_id] = _planMcas[m.vehicle_id] || []).push(m); });
+  } catch (e) { console.warn('mcas:', e); }
+}
+function _mcaStatusBadge(m, curQ) {
+  if (m.status === 'approved') {
+    var live = m.changeover_qabs <= curQ;
+    return '<span class="vstatus-approved">' + (live ? 'LIVE' : 'APPROVED') + '</span>';
+  }
+  return statusBadge(m.status);
+}
+function _mcaSubRows(v) {
+  var ms = (_planMcas[v.id] || []).filter(function(m){ return m.status !== 'cancelled'; });
+  if (!ms.length) return '';
+  var curQ = (currentRoundYear - 2025) * 4 + currentRoundQuarter - 1;
+  return ms.map(function(m){
+    var npv = m.npv_m != null ? (m.npv_m >= 0 ? '' : '-') + '€' + Math.abs(Math.round(m.npv_m)) + 'M' : '—';
+    var slip = m.planned_changeover_qabs != null && m.changeover_qabs > m.planned_changeover_qabs
+      ? ' <span style="color:var(--gold)" title="The new top hat is not ready in time">(planned ' + _qLabel(m.planned_changeover_qabs) + ')</span>' : '';
+    var acts = '';
+    if (m.status === 'plan' && m.approve_by_qabs != null && curQ <= m.approve_by_qabs)
+      acts += '<button class="plan-act-bc" data-vid="' + v.id + '" data-mid="' + m.id + '" data-action="mca-approve">Approve</button>';
+    if (m.status === 'plan' || m.status === 'late')
+      acts += '<button class="plan-act-mca" data-vid="' + v.id + '" data-action="mca">Revise</button>';
+    if (m.status !== 'approved' || m.changeover_qabs > curQ)
+      acts += '<button class="plan-act-del" data-vid="' + v.id + '" data-mid="' + m.id + '" data-action="mca-cancel" title="Cancel this mid-cycle action">✕</button>';
+    return '<tr class="plan-tr mca-row"><td class="plan-td" colspan="5" style="padding-left:70px;">'
+      + '↳ Mid-cycle action' + (m.source === 'ai' ? ' (AI)' : '') + ' · new top hat'
+      + (m.age_credit_q ? ' · ' + Math.round(m.age_credit_q) + ' q younger' : '')
+      + (m.price_move_pct ? ' · price ' + (m.price_move_pct > 0 ? '+' : '') + (m.price_move_pct * 100).toFixed(1) + '%' : '')
+      + '</td>'
+      + '<td class="plan-td mono center" colspan="2">change-over ' + (m.changeover_label || '—') + slip + '</td>'
+      + '<td class="plan-td mono center" colspan="2">' + (m.status === 'plan' && m.approve_by_label ? 'approve by ' + m.approve_by_label : '') + '</td>'
+      + '<td class="plan-td"></td>'
+      + '<td class="plan-td right"><span class="' + ((m.npv_m || 0) >= 0 ? 'plan-npv-pos' : 'plan-npv-neg') + '">' + npv + '</span></td>'
+      + '<td class="plan-td center">' + _mcaStatusBadge(m, curQ) + '</td>'
+      + '<td class="plan-td"></td>'
+      + '<td class="plan-td" style="white-space:nowrap;display:flex;gap:4px;align-items:center;">' + acts + '</td></tr>';
+  }).join('');
+}
+function _mcaScale(raw) { return raw != null && parseFloat(raw) > 1 ? 100 : 1; }
+function openMcaModal(vid) {
+  var v = activeVehicles.find(function(x){ return x.id === vid; });
+  if (!v) return;
+  _mcaVid = vid; _mcaLast = null;
+  var open = (_planMcas[vid] || []).find(function(m){ return m.status === 'plan' || m.status === 'late'; });
+  _mcaInit = open ? {specs: open.child_specs || {}, changeover_qabs: open.status === 'late' ? null : open.changeover_qabs,
+                     price_move_pct: open.price_move_pct || 0} : {specs: {}, changeover_qabs: null, price_move_pct: 0};
+  document.getElementById('mca-sub').textContent = v.name + ' · SOP Q' + v.start_quarter + ' ' + v.start_year +
+    ' · EOP Q' + v.end_quarter + ' ' + v.end_year + (open ? ' · revising the submitted action' : '');
+  document.getElementById('mca-specs').innerHTML = '<div class="eop-note">Loading the current top hat…</div>';
+  document.getElementById('mca-co').innerHTML = '';
+  document.getElementById('mca-price').value = ((_mcaInit.price_move_pct || 0) * 100).toFixed(1);
+  document.getElementById('mcaModal').classList.add('open');
+  _mcaPreview(true);
+}
+function closeMcaModal() { document.getElementById('mcaModal').classList.remove('open'); }
+function _mcaBody(first) {
+  var body = {team_id: teamId, specs: {}, price_move_pct: (parseFloat(document.getElementById('mca-price').value) || 0) / 100};
+  if (first) {
+    body.specs = _mcaInit.specs || {};
+    if (_mcaInit.changeover_qabs != null) body.changeover_qabs = _mcaInit.changeover_qabs;
+    return body;
+  }
+  var d = _mcaLast;
+  _MCA_SPECS.forEach(function(s){
+    var el = document.getElementById('mca-s-' + s.k);
+    if (!el || !d) return;
+    var raw = (d.donor.specs || {})[s.k];
+    var val = parseFloat(el.value);
+    body.specs[s.k] = s.pct ? Math.round(val * _mcaScale(raw) * 10000) / 10000 : val;
+  });
+  var co = document.getElementById('mca-co').value;
+  if (co) body.changeover_qabs = parseInt(co);
+  return body;
+}
+function _mcaRenderControls(d) {
+  var h = '';
+  _MCA_SPECS.forEach(function(s){
+    var lim = (d.child.limits || {})[s.k];
+    if (!lim) return;
+    var raw = (d.donor.specs || {})[s.k], cur = (d.child.specs || {})[s.k];
+    var sc = s.pct ? _mcaScale(raw) : 1;
+    var base = raw != null ? parseFloat(raw) / sc : (lim[0] + lim[1]) / 2;
+    var now = cur != null ? parseFloat(cur) / sc : base;
+    var lo = s.pct ? Math.max(0, lim[0]) : lim[0], hi = s.pct ? Math.min(1, lim[1]) : lim[1];
+    var step = (hi - lo) / 60;
+    h += '<div class="mca-spec"><span>' + s.l + '</span>'
+      + '<input type="range" id="mca-s-' + s.k + '" min="' + lo + '" max="' + hi + '" step="' + step + '" value="' + now + '"'
+      + ' oninput="document.getElementById(\'mca-v-' + s.k + '\').textContent=_mcaFmt(this.value,' + s.pct + ')+\' (was \'+_mcaFmt(' + base + ',' + s.pct + ')+\')\';_mcaQueue()">'
+      + '<span class="mono" id="mca-v-' + s.k + '">' + _mcaFmt(now, s.pct) + ' (was ' + _mcaFmt(base, s.pct) + ')</span></div>';
+  });
+  document.getElementById('mca-specs').innerHTML = h || '<div class="eop-note">This top hat has no derivative envelope.</div>';
+  var sel = document.getElementById('mca-co'), o = '';
+  for (var q = d.earliest_changeover_qabs; q <= d.eop_qabs - d.min_left_q; q++)
+    o += '<option value="' + q + '"' + (q === d.changeover_qabs ? ' selected' : '') + '>' + _qLabel(q) + '</option>';
+  sel.innerHTML = o || '<option value="">no quarter left</option>';
+  var pr = document.getElementById('mca-price');
+  pr.min = (d.price_move_range[0] * 100); pr.max = (d.price_move_range[1] * 100);
+}
+function _mcaFmt(x, pct) { x = parseFloat(x); return pct ? Math.round(x * 1000) / 10 + '' : (Math.round(x * 100) / 100) + ''; }
+function _mcaQueue() { clearTimeout(_mcaTimer); _mcaTimer = setTimeout(function(){ _mcaPreview(false); }, 350); }
+async function _mcaPreview(first) {
+  var box = document.getElementById('mca-preview'), save = document.getElementById('mca-save');
+  _mcaOk = false; save.disabled = true; save.style.opacity = .5;
+  box.innerHTML = '<div class="eop-note">Calculating…</div>';
+  var seq = ++_mcaSeq;      // only the latest design renders
+  try {
+    var r = await fetch(API_URL + '/sessions/' + sessionId + '/vehicles/' + _mcaVid + '/mca-preview', {
+      method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(_mcaBody(first))});
+    var d = await r.json();
+    if (seq !== _mcaSeq) return;
+    if (!r.ok) { box.innerHTML = '<div class="eop-note" style="color:var(--red)">' + _esc(d.detail || 'Not allowed') + '</div>'; return; }
+    _mcaLast = d;
+    if (first) _mcaRenderControls(d);
+    var m = function(x){ return '€' + (Math.round((x || 0) * 10) / 10).toLocaleString() + 'M'; };
+    var e = function(x){ return (x >= 0 ? '+' : '−') + '€' + Math.abs(Math.round(x || 0)).toLocaleString(); };
+    var bc = d.business_case || {}, c = d.child || {}, t = c.terms || {};
+    var h = '<div class="eop-pv">';
+    h += _eopRow('New top hat: change · R&amp;D · lead', Math.round((t.change || 0) * 100) + '% · ' + m(c.rd_m) + ' · ' + c.lead_time_q + ' q');
+    h += _eopRow('Change-over · approve by', d.changeover_label + ' · ' + d.approve_by_label,
+                 d.approve_by_qabs <= d.qabs ? 'var(--gold)' : '');
+    h += _eopRow('Age at change-over · made younger by', d.age_at_changeover_q + ' q · ' + Math.round(d.age_credit_q) + ' q', 'var(--green)');
+    var sb = d.specs_before || {}, sa = d.specs_after || {};
+    ['reliability', 'comfort', 'safety', 'premiumness'].forEach(function(k){
+      if (sa[k] == null || sb[k] == null) return;
+      var dd = sa[k] - sb[k];
+      if (Math.abs(dd) < 1e-6) return;
+      h += _eopRow('Car ' + k, _mcaFmt(sb[k], false) + ' → ' + _mcaFmt(sa[k], false), dd > 0 ? 'var(--green)' : 'var(--red)');
+    });
+    h += _eopRow('Utility from the design + price', (d.d_util_spec >= 0 ? '+' : '') + d.d_util_spec.toFixed(2) + ' pts');
+    h += _eopRow('Unit cost change', e(d.tpc_delta_eur) + ' / car', d.tpc_delta_eur > 0 ? 'var(--red)' : 'var(--green)');
+    h += _eopRow('Margin per car before → after', '€' + Math.round(bc.margin_car_before_eur || 0).toLocaleString() + ' → €' + Math.round(bc.margin_car_after_eur || 0).toLocaleString());
+    h += _eopRow('Launch warranty (4 q)', e(d.wty_launch_eur_car) + ' / car', d.wty_launch_eur_car > 0 ? 'var(--red)' : '');
+    h += _eopRow('Supplier tooling · line variant', m(d.capex.tooling_m) + ' · ' + m(d.capex.line_m), 'var(--red)');
+    h += _eopRow('Extra cars to EOP', (bc.d_units_total || 0).toLocaleString(), 'var(--green)');
+    h += _eopRow('NPV at ' + ((bc.rate_pa || 0) * 100).toFixed(1) + '% · IRR', m(bc.npv_m) + ' · ' + (bc.irr_pa != null ? (bc.irr_pa * 100).toFixed(1) + '%' : '—'),
+                 (bc.npv_m || 0) >= 0 ? 'var(--green)' : 'var(--red)');
+    h += _eopRow('Payback', bc.payback_q ? bc.payback_q + ' q' : '—');
+    h += '</div>';
+    h += '<div class="eop-note">Basis: ' + (d.market.basis === 'plan' ? 'the plan (no cleared quarter yet)' : 'its last cleared quarters')
+      + ', ' + Math.round(d.market.units_q).toLocaleString() + ' cars a quarter, segment share ' + (d.market.share * 100).toFixed(1) + '%.</div>';
+    (d.problems || []).forEach(function(p){ h += '<div class="eop-note" style="color:var(--red)">' + _esc(p) + '</div>'; });
+    box.innerHTML = h;
+    _mcaOk = !!d.ok;
+    save.disabled = !_mcaOk; save.style.opacity = _mcaOk ? 1 : .5;
+  } catch (err) {
+    if (seq === _mcaSeq) box.innerHTML = '<div class="eop-note" style="color:var(--red)">Preview failed: ' + _esc(err.message) + '</div>';
+  }
+}
+async function saveMca() {
+  if (!_mcaOk) return;
+  var save = document.getElementById('mca-save');
+  _mcaOk = false; save.disabled = true; save.textContent = 'SUBMITTING…'; save.style.opacity = .5;
+  try {
+    var r = await fetch(API_URL + '/sessions/' + sessionId + '/vehicles/' + _mcaVid + '/mca', {
+      method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(_mcaBody(false))});
+    var d = await r.json();
+    if (!r.ok) { toast('⚠ ' + (d.detail || 'Mid-cycle action refused')); return; }
+    toast('✓ Mid-cycle action submitted · approve by ' + d.approve_by_label);
+    closeMcaModal();
+    await loadVehiclePlan();
+  } catch (e) { toast('⚠ Mid-cycle action failed: ' + e.message); }
+  finally {
+    save.textContent = 'SUBMIT';
+    if (document.getElementById('mcaModal').classList.contains('open')) _mcaPreview(false);
+  }
+}
+async function _mcaSetStatus(mid, status) {
+  if (status === 'cancelled' && !confirm('Cancel this mid-cycle action?\n\nIts new top hat stops development; R&D already spent is not refunded.')) return;
+  try {
+    var r = await fetch(API_URL + '/sessions/' + sessionId + '/mca/' + mid, {
+      method: 'PATCH', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({status: status})});
+    var d = await r.json();
+    if (!r.ok) { toast('⚠ ' + (d.detail || 'Refused')); return; }
+    toast(status === 'approved' ? '✓ Mid-cycle action approved · change-over ' + _qLabel(d.changeover_qabs) : '✓ Mid-cycle action cancelled');
+    await loadVehiclePlan();
+  } catch (e) { toast('⚠ ' + e.message); }
 }
 
 async function updateVehicleDiscount(vid, val) {
@@ -14913,12 +15141,15 @@ document.addEventListener('click', function(e) {
   var action = btn.getAttribute('data-action');
   if (!action) return;
   // vid is only required for vehicle-specific actions
-  if (!vid && ['bc','approve','revise','delete','study-submit','eop'].indexOf(action) >= 0) return;
+  if (!vid && ['bc','approve','revise','delete','study-submit','eop','mca','mca-approve','mca-cancel'].indexOf(action) >= 0) return;
   if (action === 'bc')           { openBCModal(vid); }
   if (action === 'approve')      { promoteVehicle(vid, 'approved'); }
   if (action === 'revise')       { if (confirm('Send this model back to PLAN?\n\nIts approval is withdrawn: it will not go on sale until its business case is approved again.')) promoteVehicle(vid, 'plan'); }
   if (action === 'delete')       { deleteVehicle(vid); }
   if (action === 'eop')          { openEopModal(vid); }
+  if (action === 'mca')          { openMcaModal(vid); }
+  if (action === 'mca-approve')  { _mcaSetStatus(btn.getAttribute('data-mid'), 'approved'); }
+  if (action === 'mca-cancel')   { _mcaSetStatus(btn.getAttribute('data-mid'), 'cancelled'); }
   if (action === 'study-submit')       { submitStudyProposal(vid); }
   if (action === 'prop-select-study') { selectStudy(vid); }
   if (action === 'prop-mod-mode') {
@@ -33993,7 +34224,7 @@ function calcPropBizCase() {
                  + Math.round(capT) + 'M tooling + €' + Math.round(engT) + 'M engineering. '
                  + (_lcPlan === 'std' ? 'Standard = the largest project that clears the allocator\'s hurdle (' + _LIFECYCLE_E.HURDLE.toFixed(1) + '× its cost), one at a time from SOP.'
                     : 'Every project this size, while it repays its cost.'))
-            + ' Quality, material, special-series and facelift projects are not in §10.</div>';
+            + ' Quality, material and special-series projects are not in §10; a facelift is a mid-cycle action with its own business case.</div>';
         })()
       + '<div style="font-family:DM Mono,monospace;font-size:10px;color:var(--muted2);margin-top:4px;">'
         + 'Launch campaign (planning assumption): standard budget €' + Math.round(_lcStd) + 'M = '
