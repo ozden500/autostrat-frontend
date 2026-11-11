@@ -13521,7 +13521,7 @@ async function _mcaPreview(first) {
     h += _eopRow('Payback', bc.payback_q ? bc.payback_q + ' q' : '—');
     h += '</div>';
     h += '<div class="eop-note">Basis: ' + (d.market.basis === 'plan' ? 'the plan (no cleared quarter yet)' : 'its last cleared quarters')
-      + ', ' + Math.round(d.market.units_q).toLocaleString() + ' cars a quarter, segment share ' + (d.market.share * 100).toFixed(1) + '%.</div>';
+      + ', ' + Math.round(d.market.units_q).toLocaleString() + ' cars a quarter, segment share ' + (d.market.share * 100).toFixed(1) + '%; rivals held as they are (if they refresh too, you win fewer buyers).</div>';
     (d.problems || []).forEach(function(p){ h += '<div class="eop-note" style="color:var(--red)">' + _esc(p) + '</div>'; });
     box.innerHTML = h;
     _mcaOk = !!d.ok;
