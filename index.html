@@ -635,6 +635,9 @@ input[type=text]:focus,input[type=number]:focus{outline:none;border-color:var(--
 .gantt-quarter-lines{position:absolute;inset:0;pointer-events:none;}
 .gantt-q-line{position:absolute;top:0;bottom:0;width:1px;background:rgba(255,255,255,.05);}
 .gantt-today{position:absolute;top:-4px;bottom:-4px;width:2px;background:var(--gold);opacity:.7;border-radius:1px;}
+.gantt-mca{position:absolute;top:0;bottom:0;width:0;border-left:2px dashed var(--mca-c);z-index:2;cursor:help;}
+.gantt-mca span{position:absolute;top:50%;left:-1px;transform:translate(-50%,-50%);width:14px;height:14px;border-radius:50%;
+  background:var(--bg);border:1.5px solid var(--mca-c);color:var(--mca-c);font-size:9px;line-height:11px;text-align:center;font-weight:700;}
 
 /* model edit modal */
 .model-modal{
@@ -13072,7 +13075,7 @@ function buildVehicleGantt() {
         const dashStyle= v.status==='study'?'repeating-linear-gradient(90deg,'+bc+' 0,'+bc+' 8px,transparent 8px,transparent 14px)':'';
         const bg = v.status==='study'?dashStyle:bc;
         barHtml=`<div class="gantt-bar-track"><div class="gantt-today" style="left:${todayPct}%"></div>
-          <div class="gantt-bar${active?' active-bar':''}" style="left:${lp}%;width:${wp}%;background:${bg};opacity:${opacity};">${sq}→${eq}</div></div>`;
+          <div class="gantt-bar${active?' active-bar':''}" style="left:${lp}%;width:${wp}%;background:${bg};opacity:${opacity};">${sq}→${eq}</div>${_ganttMcaMarks(v, qStart, numQ)}</div>`;
       }
     } else {
       barHtml='<div style="height:22px;background:var(--s3);border-radius:2px;display:flex;align-items:center;padding:0 8px;"><span style="font-size:9px;color:var(--muted2)">No dates set</span></div>';
@@ -13085,6 +13088,24 @@ function buildVehicleGantt() {
       <div class="gantt-bar-cell">${barHtml}</div></div>`;
   });
   wrap.innerHTML=html;
+}
+// MCA change-over markers on a model's roadmap bar (from _planMcas, loaded by loadVehiclePlan):
+// green = approved / live, gold = planned, red = late; a slip shows the planned quarter in the tooltip.
+function _ganttMcaMarks(v, qStart, numQ) {
+  var ms = (_planMcas[v.id] || []).filter(function(m){ return m.status !== 'cancelled' && m.changeover_qabs != null; });
+  return ms.map(function(m){
+    var qi = qIdx(_qLabel(m.changeover_qabs));
+    if (qi < 0) return '';
+    var pct = (qi - qStart) / numQ * 100;
+    if (pct < 0 || pct > 100) return '';
+    var c = m.status === 'approved' ? 'var(--green)' : (m.status === 'late' ? 'var(--red)' : 'var(--gold)');
+    var tip = 'Mid-cycle action' + (m.source === 'ai' ? ' (AI)' : '') + ' · ' + m.status
+      + ' · change-over ' + _qLabel(m.changeover_qabs)
+      + (m.planned_changeover_qabs != null && m.changeover_qabs > m.planned_changeover_qabs ? ' (slipped from ' + _qLabel(m.planned_changeover_qabs) + ')' : '')
+      + (m.status === 'plan' && m.approve_by_label ? ' · approve by ' + m.approve_by_label : '')
+      + (m.npv_m != null ? ' · NPV €' + Math.round(m.npv_m) + 'M' : '');
+    return '<div class="gantt-mca" style="left:' + pct.toFixed(2) + '%;--mca-c:' + c + ';" title="' + tip + '"><span>M</span></div>';
+  }).join('');
 }
 
 // ── SUMMARY TABLE ──────────────────────────────────────────
