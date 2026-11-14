@@ -1967,14 +1967,11 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
       <span style="font-size:9px;color:var(--muted2);">investment committed</span>
     </div>
     <div style="flex:1;"></div>
-    <div class="plan-year-select" id="plan-yr-tabs">
-      <div class="plan-yr active" onclick="planYr('all',this)">ALL</div>
-      <div class="plan-yr" onclick="planYr('2025',this)">2025</div>
-      <div class="plan-yr" onclick="planYr('2026',this)">2026</div>
-      <div class="plan-yr" onclick="planYr('2027',this)">2027</div>
-      <div class="plan-yr" onclick="planYr('2028',this)">2028</div>
-      <div class="plan-yr" onclick="planYr('2029',this)">2029</div>
-      <div class="plan-yr" onclick="planYr('2030',this)">2030</div>
+    <div class="plan-year-select" title="Roadmap window">
+      <div class="plan-yr" onclick="ganttShift(-1)" title="One year back">◀</div>
+      <div class="plan-yr active" id="gantt-win-label" style="cursor:default;"></div>
+      <div class="plan-yr" onclick="ganttShift(1)" title="One year forward">▶</div>
+      <div class="plan-yr" id="gantt-win-today" onclick="ganttShift(0)" title="Back to the default window" style="visibility:hidden;">TODAY</div>
     </div>
     <button class="btn-add-model" onclick="openStudyModal()">＋ New Product Study</button>
   </div>
@@ -11968,7 +11965,6 @@ async function loadVehiclePlan() {
     const res=await fetch(`${API_URL}/teams/${teamId}/vehicles`);
     const data=await res.json();
     activeVehicles=data.vehicles||[];
-    _rebuildYearTabs();
     const planSub=document.getElementById('plan-sub');
     if(planSub){
       const allYrs=activeVehicles.flatMap(v=>[v.start_year,v.end_year]).filter(Boolean);
@@ -12992,54 +12988,41 @@ async function deleteVehicle(vehicleId) {
 }
 
 // ── GANTT CHART ────────────────────────────────────────────
+// Fixed roadmap window of GANTT_YEARS calendar years, by default one year of history, the current
+// year and six ahead; ◀ / ▶ move it a year, Today resets it (2026-11-14, replaced the year tabs).
+// Bars outside the window are clipped at its edges, their label keeps the real dates.
+var GANTT_YEARS = 8, _ganttY0 = null;
+function ganttShift(dy) {
+  _ganttY0 = dy === 0 ? null : (_ganttY0 == null ? currentRoundYear - 1 : _ganttY0) + dy;
+  buildVehicleGantt();
+}
 function buildVehicleGantt() {
   const wrap=document.getElementById('gantt-wrap'); if(!wrap) return;
-
-  // Apply year filter
-  const activeYrBtn = document.querySelector('#plan-yr-tabs .plan-yr.active');
-  const filterYr = activeYrBtn ? activeYrBtn.textContent : 'all';
-  let vehicles = activeVehicles;
-  if (filterYr !== 'ALL' && filterYr !== 'all') {
-    vehicles = activeVehicles.filter(v =>
-      (v.start_year && String(v.start_year) === filterYr) ||
-      (v.end_year   && String(v.end_year)   === filterYr) ||
-      (v.start_year <= parseInt(filterYr) && v.end_year >= parseInt(filterYr))
-    );
-  }
-
-  if(vehicles.length===0){ wrap.innerHTML='<div style="padding:24px;color:var(--muted2);font-size:12px;">No vehicles match the selected filter.</div>'; return; }
+  const vehicles = activeVehicles;
+  const y0 = _ganttY0 == null ? currentRoundYear - 1 : _ganttY0;
+  const lbl = document.getElementById('gantt-win-label');
+  if (lbl) lbl.textContent = y0 + ' – ' + (y0 + GANTT_YEARS - 1);
+  const todayBtn = document.getElementById('gantt-win-today');
+  if (todayBtn) todayBtn.style.visibility = _ganttY0 == null ? 'hidden' : 'visible';
+  if(vehicles.length===0){ wrap.innerHTML='<div style="padding:24px;color:var(--muted2);font-size:12px;">No vehicles in plan yet.</div>'; return; }
   const colsTemplate='180px 80px 90px 1fr';
   const todayQI = getCurrentQI();
 
-  // Compute dynamic window from vehicle SOP/EOP dates (mirrors _buildModuleGantt)
-  // Quarter index = qabs (Q1 2025 = 0); a model in production before 2025 (history) has a negative
-  // start: it does not widen the window, its bar is clipped at the left edge.
+  // Quarter index = qabs (Q1 2025 = 0; history before 2025 is negative).
   const qa = (y, q) => (parseInt(y) - 2025) * 4 + (parseInt(q) - 1);
-  const allQI = [todayQI];
-  vehicles.forEach(v => {
-    if (v.start_year && v.start_quarter) { const i=qa(v.start_year, v.start_quarter); if(i>=0) allQI.push(i); }
-    if (v.end_year   && v.end_quarter)   { const i=qa(v.end_year, v.end_quarter);     if(i>=0) allQI.push(i); }
-  });
-  const defEopI = qIdx(`Q4 ${currentRoundYear+6}`); if(defEopI>=0) allQI.push(defEopI);
-  const rawMin = Math.min(...allQI), rawMax = Math.max(...allQI);
-  const qStart = Math.max(0, rawMin-1);
-  let   qEnd   = rawMax+2;
-  if (qEnd-qStart < 12) qEnd = qStart+12;
-  const numQ   = qEnd-qStart;
+  const qStart = qa(y0, 1), numQ = GANTT_YEARS * 4, qEnd = qStart + numQ - 1;
   const toLeft  = qi => Math.max(0, (qi-qStart)/numQ*100);
-  const toWidth = (qiS,qiE) => Math.max(1.5, (qiE-qiS+1)/numQ*100);
-  const todayPct = (todayQI-qStart+0.5)/numQ*100;
-
-  // Dynamic year header
-  const startYear = 2025+Math.floor(qStart/4), endYear = 2025+Math.floor((qEnd-1)/4);
-  const years = []; for(let y=startYear; y<=endYear; y++) years.push(y);
+  const toWidth = (qiS,qiE) => Math.max(1.5, (Math.min(qiE,qEnd)-qiS+1)/numQ*100);
+  const todayIn = todayQI >= qStart && todayQI <= qEnd;
+  const todayLine = todayIn ? `<div class="gantt-today" style="left:${(todayQI-qStart+0.5)/numQ*100}%"></div>` : '';
+  const years = []; for(let y=y0; y<y0+GANTT_YEARS; y++) years.push(y);
 
   let html=`<div class="gantt-header" style="grid-template-columns:${colsTemplate};">
     <div class="gantt-cell gh">Vehicle</div>
     <div class="gantt-cell gh">Brand</div>
     <div class="gantt-cell gh">Status</div>
     <div class="gantt-cell gh" style="padding:0;"><div style="display:grid;grid-template-columns:repeat(${years.length},1fr);width:100%;">
-      ${years.map(y=>`<div style="padding:7px 0;text-align:center;font-family:'DM Mono',monospace;font-size:8px;color:var(--muted);border-left:1px solid var(--border);">${y}</div>`).join('')}
+      ${years.map(y=>`<div style="padding:7px 0;text-align:center;font-family:'DM Mono',monospace;font-size:8px;color:${y===currentRoundYear?'var(--gold)':'var(--muted)'};border-left:1px solid var(--border);">${y}</div>`).join('')}
     </div></div></div>`;
 
   vehicles.forEach(v=>{
@@ -13051,14 +13034,16 @@ function buildVehicleGantt() {
     if(v.start_year&&v.start_quarter){
       const sq=`Q${v.start_quarter} ${v.start_year}`, eq=v.end_year?`Q${v.end_quarter} ${v.end_year}`:`Q4 ${currentRoundYear+6}`;
       const si=qa(v.start_year, v.start_quarter), ei=v.end_year?qa(v.end_year, v.end_quarter):qa(currentRoundYear+6, 4);
-      if(ei>=qStart){
+      if(ei>=qStart && si<=qEnd){
         const lp=toLeft(si), wp=toWidth(Math.max(si,qStart),ei);
         const active=si<=todayQI&&ei>=todayQI;
         const opacity = v.status==='approved'?1:(v.status==='plan'?0.7:0.4);
         const dashStyle= v.status==='study'?'repeating-linear-gradient(90deg,'+bc+' 0,'+bc+' 8px,transparent 8px,transparent 14px)':'';
         const bg = v.status==='study'?dashStyle:bc;
-        barHtml=`<div class="gantt-bar-track"><div class="gantt-today" style="left:${todayPct}%"></div>
-          <div class="gantt-bar${active?' active-bar':''}" style="left:${lp}%;width:${wp}%;background:${bg};opacity:${opacity};">${sq}→${eq}</div>${_ganttMcaMarks(v, qStart, numQ)}</div>`;
+        barHtml=`<div class="gantt-bar-track">${todayLine}
+          <div class="gantt-bar${active?' active-bar':''}" style="left:${lp}%;width:${wp}%;background:${bg};opacity:${opacity};" title="${sq} → ${eq}">${sq}→${eq}</div>${_ganttMcaMarks(v, qStart, numQ)}</div>`;
+      } else {
+        barHtml=`<div class="gantt-bar-track">${todayLine}<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:${si>qEnd?'flex-end':'flex-start'};padding:0 8px;font-family:'DM Mono',monospace;font-size:8px;color:var(--muted2);">${si>qEnd?sq+'→'+eq+' ▶':'◀ '+sq+'→'+eq}</div></div>`;
       }
     } else {
       barHtml='<div style="height:22px;background:var(--s3);border-radius:2px;display:flex;align-items:center;padding:0 8px;"><span style="font-size:9px;color:var(--muted2)">No dates set</span></div>';
@@ -15195,27 +15180,6 @@ document.addEventListener('click', function(e) {
   }
 });
 
-
-function planYr(yr, el) {
-  document.querySelectorAll('#plan-yr-tabs .plan-yr').forEach(b=>b.classList.remove('active'));
-  el.classList.add('active');
-  buildVehicleGantt();
-}
-
-function _rebuildYearTabs() {
-  const container=document.getElementById('plan-yr-tabs'); if(!container) return;
-  const yearSet=new Set();
-  activeVehicles.forEach(v=>{
-    const sy=v.start_year||currentRoundYear, ey=v.end_year||(currentRoundYear+8);
-    for(let y=sy;y<=ey;y++) yearSet.add(y);
-  });
-  for(let y=currentRoundYear;y<=currentRoundYear+3;y++) yearSet.add(y);
-  const years=Array.from(yearSet).sort((a,b)=>a-b);
-  const activeText=(container.querySelector('.plan-yr.active')||{}).textContent||'ALL';
-  container.innerHTML=
-    `<div class="plan-yr${activeText==='ALL'?' active':''}" onclick="planYr('all',this)">ALL</div>`+
-    years.map(y=>`<div class="plan-yr${String(y)===activeText?' active':''}" onclick="planYr('${y}',this)">${y}</div>`).join('');
-}
 
 // ── AUTO-TRANSITION HELPERS ──────────────────────────────
 
@@ -17498,7 +17462,7 @@ function updateRoundDisplay(roundData) {
   if (el('lb-sub'))          el('lb-sub').textContent          = `Cumulative · Round ${rNum} · 12 OEMs`;
   // Refresh Vehicle Plan Gantt today-marker if the page is visible
   const planPage=el('page-plan');
-  if(planPage && planPage.style.display!=='none') { buildVehicleGantt(); _rebuildYearTabs(); }
+  if(planPage && planPage.style.display!=='none') { buildVehicleGantt(); }
 }
 
 
