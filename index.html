@@ -635,9 +635,9 @@ input[type=text]:focus,input[type=number]:focus{outline:none;border-color:var(--
 .gantt-quarter-lines{position:absolute;inset:0;pointer-events:none;}
 .gantt-q-line{position:absolute;top:0;bottom:0;width:1px;background:rgba(255,255,255,.05);}
 .gantt-today{position:absolute;top:-4px;bottom:-4px;width:2px;background:var(--gold);opacity:.7;border-radius:1px;}
-.gantt-mca{position:absolute;top:0;bottom:0;width:0;border-left:2px dashed var(--mca-c);z-index:2;cursor:help;}
-.gantt-mca span{position:absolute;top:50%;left:-1px;transform:translate(-50%,-50%);width:14px;height:14px;border-radius:50%;
-  background:var(--bg);border:1.5px solid var(--mca-c);color:var(--mca-c);font-size:9px;line-height:11px;text-align:center;font-weight:700;}
+.gantt-mca{position:absolute;top:0;bottom:0;width:0;z-index:2;cursor:help;}
+.gantt-mca span{position:absolute;top:50%;left:0;transform:translate(-50%,-50%);width:17px;height:17px;border-radius:50%;
+  background:var(--bg);border:1.5px solid var(--mca-c);color:var(--mca-c);font-size:12px;line-height:14px;text-align:center;font-weight:700;}
 
 /* model edit modal */
 .model-modal{
@@ -13032,10 +13032,13 @@ function buildVehicleGantt() {
   const todayQI = getCurrentQI();
 
   // Compute dynamic window from vehicle SOP/EOP dates (mirrors _buildModuleGantt)
+  // Quarter index = qabs (Q1 2025 = 0); a model in production before 2025 (history) has a negative
+  // start: it does not widen the window, its bar is clipped at the left edge.
+  const qa = (y, q) => (parseInt(y) - 2025) * 4 + (parseInt(q) - 1);
   const allQI = [todayQI];
   vehicles.forEach(v => {
-    if (v.start_year && v.start_quarter) { const i=qIdx(`Q${v.start_quarter} ${v.start_year}`); if(i>=0) allQI.push(i); }
-    if (v.end_year   && v.end_quarter)   { const i=qIdx(`Q${v.end_quarter} ${v.end_year}`);     if(i>=0) allQI.push(i); }
+    if (v.start_year && v.start_quarter) { const i=qa(v.start_year, v.start_quarter); if(i>=0) allQI.push(i); }
+    if (v.end_year   && v.end_quarter)   { const i=qa(v.end_year, v.end_quarter);     if(i>=0) allQI.push(i); }
   });
   const defEopI = qIdx(`Q4 ${currentRoundYear+6}`); if(defEopI>=0) allQI.push(defEopI);
   const rawMin = Math.min(...allQI), rawMax = Math.max(...allQI);
@@ -13067,9 +13070,9 @@ function buildVehicleGantt() {
     let barHtml='';
     if(v.start_year&&v.start_quarter){
       const sq=`Q${v.start_quarter} ${v.start_year}`, eq=v.end_year?`Q${v.end_quarter} ${v.end_year}`:`Q4 ${currentRoundYear+6}`;
-      const si=qIdx(sq), ei=qIdx(eq);
-      if(si>=0&&ei>=0){
-        const lp=toLeft(si), wp=toWidth(si,ei);
+      const si=qa(v.start_year, v.start_quarter), ei=v.end_year?qa(v.end_year, v.end_quarter):qa(currentRoundYear+6, 4);
+      if(ei>=qStart){
+        const lp=toLeft(si), wp=toWidth(Math.max(si,qStart),ei);
         const active=si<=todayQI&&ei>=todayQI;
         const opacity = v.status==='approved'?1:(v.status==='plan'?0.7:0.4);
         const dashStyle= v.status==='study'?'repeating-linear-gradient(90deg,'+bc+' 0,'+bc+' 8px,transparent 8px,transparent 14px)':'';
@@ -13094,9 +13097,7 @@ function buildVehicleGantt() {
 function _ganttMcaMarks(v, qStart, numQ) {
   var ms = (_planMcas[v.id] || []).filter(function(m){ return m.status !== 'cancelled' && m.changeover_qabs != null; });
   return ms.map(function(m){
-    var qi = qIdx(_qLabel(m.changeover_qabs));
-    if (qi < 0) return '';
-    var pct = (qi - qStart) / numQ * 100;
+    var pct = (m.changeover_qabs - qStart + 0.5) / numQ * 100;   // middle of the change-over quarter
     if (pct < 0 || pct > 100) return '';
     var c = m.status === 'approved' ? 'var(--green)' : (m.status === 'late' ? 'var(--red)' : 'var(--gold)');
     var tip = 'Mid-cycle action' + (m.source === 'ai' ? ' (AI)' : '') + ' · ' + m.status
@@ -13104,7 +13105,7 @@ function _ganttMcaMarks(v, qStart, numQ) {
       + (m.planned_changeover_qabs != null && m.changeover_qabs > m.planned_changeover_qabs ? ' (slipped from ' + _qLabel(m.planned_changeover_qabs) + ')' : '')
       + (m.status === 'plan' && m.approve_by_label ? ' · approve by ' + m.approve_by_label : '')
       + (m.npv_m != null ? ' · NPV €' + Math.round(m.npv_m) + 'M' : '');
-    return '<div class="gantt-mca" style="left:' + pct.toFixed(2) + '%;--mca-c:' + c + ';" title="' + tip + '"><span>M</span></div>';
+    return '<div class="gantt-mca" style="left:' + pct.toFixed(2) + '%;--mca-c:' + c + ';" title="' + tip + '"><span>↻</span></div>';
   }).join('');
 }
 
