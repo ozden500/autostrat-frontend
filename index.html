@@ -358,10 +358,6 @@ input[type=text]:focus,input[type=number]:focus{outline:none;border-color:var(--
 .plan-tr:hover{background:var(--s2);}
 .plan-tr:last-child{border-bottom:none;}
 .plan-td{padding:9px 12px;font-size:11px;color:var(--text);vertical-align:middle;}
-/* Actions (Approve / BC / Revise) stay in view when the portfolio table is wider than the page */
-#plan-main-table th:last-child,#plan-main-table td:last-child{position:sticky;right:0;z-index:1;background:var(--s1);box-shadow:-8px 0 8px -6px rgba(0,0,0,.6);}
-#plan-main-table thead th:last-child{background:var(--s2);}
-#plan-main-table .plan-tr:hover td:last-child{background:var(--s2);}
 .plan-td.mono{font-family:'DM Mono',monospace;}
 .plan-td.right{text-align:right;}
 .plan-td.center{text-align:center;}
@@ -1976,50 +1972,27 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
     <button class="btn-add-model" onclick="openStudyModal()">＋ New Product Study</button>
   </div>
 
+  <!-- Portfolio roadmap: filter and sort (the Portfolio table was merged into the chart 2026-11-15) -->
+  <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:8px;">
+    <div class="card-title" style="margin:0;">Portfolio — <span id="plan-vehicle-count" style="color:var(--gold);">0</span> vehicles</div>
+    <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
+      <span style="font-family:'DM Mono',monospace;font-size:8px;color:var(--muted2);">Filter:</span>
+      <button class="plan-filter-btn active" onclick="setPlanFilter('all',this)">ALL</button>
+      <button class="plan-filter-btn" onclick="setPlanFilter('study',this)">STUDY</button>
+      <button class="plan-filter-btn" onclick="setPlanFilter('plan',this)">PLAN</button>
+      <button class="plan-filter-btn" onclick="setPlanFilter('approved',this)">APPROVED</button>
+      <span style="font-family:'DM Mono',monospace;font-size:8px;color:var(--muted2);margin-left:10px;">Sort:</span>
+      <select onchange="setPlanSort(this.value)" style="background:var(--s2);border:1px solid var(--border2);color:var(--text);font-family:'DM Mono',monospace;font-size:9px;padding:3px 6px;border-radius:2px;">
+        <option value="sop">SOP</option><option value="eop">EOP</option><option value="name">Name</option><option value="segment">Segment</option><option value="status">Status</option>
+      </select>
+    </div>
+  </div>
   <!-- Gantt chart -->
   <div class="gantt-wrap" id="gantt-wrap"><div style="padding:24px;color:var(--muted2);font-size:12px;">No vehicles in plan yet.</div></div>
 
   <!-- Approval queue (docs/APPROVAL_QUEUE_SPEC.md): submitted proposals by approve-by quarter -->
   <div id="plan-approval-queue"></div>
 
-  <!-- Vehicle Portfolio Table -->
-  <div class="card" style="padding:0;overflow:hidden;">
-    <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid var(--border);">
-      <div class="card-title" style="margin:0;">Portfolio — <span id="plan-vehicle-count" style="color:var(--gold);">0</span> vehicles</div>
-      <div style="display:flex;gap:6px;align-items:center;">
-        <span style="font-family:'DM Mono',monospace;font-size:8px;color:var(--muted2);">Filter:</span>
-        <button class="plan-filter-btn active" onclick="setPlanFilter('all',this)">ALL</button>
-        <button class="plan-filter-btn" onclick="setPlanFilter('study',this)">STUDY</button>
-        <button class="plan-filter-btn" onclick="setPlanFilter('plan',this)">PLAN</button>
-        <button class="plan-filter-btn" onclick="setPlanFilter('approved',this)">APPROVED</button>
-      </div>
-    </div>
-    <div style="overflow-x:auto;">
-      <table class="plan-tbl" id="plan-main-table">
-        <thead>
-          <tr id="plan-tbl-head">
-            <th class="plan-th sortable" onclick="sortPlanTable('name')">Vehicle <span class="sort-icon" id="sort-name">↕</span></th>
-            <th class="plan-th sortable" onclick="sortPlanTable('segment')">Segment <span class="sort-icon" id="sort-segment">↕</span></th>
-            <th class="plan-th sortable" onclick="sortPlanTable('brand')">Brand <span class="sort-icon" id="sort-brand">↕</span></th>
-            <th class="plan-th sortable" onclick="sortPlanTable('body')">Body <span class="sort-icon" id="sort-body">↕</span></th>
-            <th class="plan-th sortable" onclick="sortPlanTable('pwt')">PWT <span class="sort-icon" id="sort-pwt">↕</span></th>
-            <th class="plan-th sortable" onclick="sortPlanTable('sop')">SOP <span class="sort-icon" id="sort-sop">↕</span></th>
-            <th class="plan-th sortable" onclick="sortPlanTable('eop')">EOP <span class="sort-icon" id="sort-eop">↕</span></th>
-            <th class="plan-th sortable" onclick="sortPlanTable('life')">Life (q) <span class="sort-icon" id="sort-life">↕</span></th>
-            <th class="plan-th sortable" onclick="sortPlanTable('tpc')">Unit TPC <span class="sort-icon" id="sort-tpc">↕</span></th>
-            <th class="plan-th sortable" onclick="sortPlanTable('gm')">Gross Margin <span class="sort-icon" id="sort-gm">↕</span></th>
-            <th class="plan-th sortable" onclick="sortPlanTable('npv')">NPV (est.) <span class="sort-icon" id="sort-npv">↕</span></th>
-            <th class="plan-th sortable" onclick="sortPlanTable('status')">Status <span class="sort-icon" id="sort-status">↕</span></th>
-            <th class="plan-th" title="Sales discount applied at market clearing">Discount %</th>
-            <th class="plan-th">Actions</th>
-          </tr>
-        </thead>
-        <tbody id="plan-tbl-body">
-          <tr><td colspan="13" style="color:var(--muted2);text-align:center;padding:24px;">No vehicles defined yet.</td></tr>
-        </tbody>
-      </table>
-    </div>
-  </div>
 
 </div>
 
@@ -11974,7 +11947,6 @@ async function loadVehiclePlan() {
     }
     await _loadPlanMcas();
     buildVehicleGantt();
-    buildVehicleTable();
     loadApprovalQueue();
   } catch(e){ console.warn('loadVehiclePlan:',e); }
 }
@@ -12988,72 +12960,125 @@ async function deleteVehicle(vehicleId) {
 }
 
 // ── GANTT CHART ────────────────────────────────────────────
-// Fixed roadmap window of GANTT_YEARS calendar years, by default one year of history, the current
-// year and six ahead; ◀ / ▶ move it a year, Today resets it (2026-11-14, replaced the year tabs).
-// Bars outside the window are clipped at its edges, their label keeps the real dates.
-var GANTT_YEARS = 8, _ganttY0 = null;
+// The Product Plan roadmap is the portfolio view (2026-11-15: the Portfolio table was merged into it):
+// one row per model (picture, name, segment · brand · body · powertrain, status, SOP→EOP bar with the
+// MCA ↻ markers, actions) and a line per mid-cycle action under it. Fixed window of GANTT_YEARS
+// calendar years, by default last year, this year and six ahead; ◀ / ▶ move it, TODAY resets it.
+// Bars outside the window are clipped at its edges; their label keeps the real dates.
+var GANTT_YEARS = 8, _ganttY0 = null, _planFilter = 'all', _planSort = 'sop';
+var _PLAN_LEGACY = {draft:'study', planned:'plan', on_sale:'approved'};
 function ganttShift(dy) {
   _ganttY0 = dy === 0 ? null : (_ganttY0 == null ? currentRoundYear - 1 : _ganttY0) + dy;
   buildVehicleGantt();
 }
+function setPlanFilter(f, el) {
+  _planFilter = f;
+  document.querySelectorAll('.plan-filter-btn').forEach(function(b){ b.classList.remove('active'); });
+  if (el) el.classList.add('active');
+  buildVehicleGantt();
+}
+function setPlanSort(k) { _planSort = k; buildVehicleGantt(); }
+function _planQa(y, q) { return (parseInt(y) - 2025) * 4 + (parseInt(q) - 1); }
+// The model's action buttons (data-action, handled by the document click delegation)
+function _planRowActions(v, st, curQ) {
+  var vid = v.id, h = '';
+  if (st === 'plan' || st === 'approved')
+    h += '<button class="plan-act-bc" data-vid="'+vid+'" data-action="bc" title="Business case (approve it here)">BC →</button>';
+  // A model past its SOP is in production: it can only be ended through EOP (notice, supplier
+  // cancellation, write-off), never sent back to plan or deleted (the server refuses both too)
+  var inProd = st === 'approved' && v.start_year && _planQa(v.start_year, v.start_quarter || 1) <= curQ;
+  if (st === 'approved')
+    h += '<button class="plan-act-eop" data-vid="'+vid+'" data-action="eop" title="Extend or bring forward the end of production">EOP</button>';
+  // Mid-cycle action: a new top hat (derivative of the current one) from a change-over quarter
+  var openMca = (_planMcas[vid] || []).some(function(m){ return m.status === 'plan' || m.status === 'late'
+    || (m.status === 'approved' && m.changeover_qabs >= curQ); });
+  if (st === 'approved' && v.tophat_module_id && !openMca)
+    h += '<button class="plan-act-mca" data-vid="'+vid+'" data-action="mca" title="Mid-cycle action: refresh the top hat from a change-over quarter (business case)">MCA</button>';
+  if (st === 'approved' && !inProd)
+    h += '<button class="plan-act-revise" data-vid="'+vid+'" data-action="revise" title="Back to plan: re-open the business case before SOP">← Revise</button>';
+  if (!inProd)
+    h += '<button class="plan-act-del" data-vid="'+vid+'" data-action="delete" title="Delete this model">✕</button>';
+  return h;
+}
 function buildVehicleGantt() {
   const wrap=document.getElementById('gantt-wrap'); if(!wrap) return;
-  const vehicles = activeVehicles;
   const y0 = _ganttY0 == null ? currentRoundYear - 1 : _ganttY0;
   const lbl = document.getElementById('gantt-win-label');
   if (lbl) lbl.textContent = y0 + ' – ' + (y0 + GANTT_YEARS - 1);
   const todayBtn = document.getElementById('gantt-win-today');
   if (todayBtn) todayBtn.style.visibility = _ganttY0 == null ? 'hidden' : 'visible';
-  if(vehicles.length===0){ wrap.innerHTML='<div style="padding:24px;color:var(--muted2);font-size:12px;">No vehicles in plan yet.</div>'; return; }
-  const colsTemplate='180px 80px 90px 1fr';
-  const todayQI = getCurrentQI();
+  let vehicles = activeVehicles.filter(v => _planFilter === 'all' || (_PLAN_LEGACY[v.status] || v.status) === _planFilter);
+  const countEl = document.getElementById('plan-vehicle-count');
+  if (countEl) countEl.textContent = vehicles.length;
+  if(vehicles.length===0){ wrap.innerHTML='<div style="padding:24px;color:var(--muted2);font-size:12px;">'
+    + (activeVehicles.length ? 'No models with status ' + _planFilter.toUpperCase() + '.' : 'No vehicles in plan yet.') + '</div>'; return; }
+  const sortFns = {
+    sop:     v => v.start_year ? _planQa(v.start_year, v.start_quarter || 1) : 9999,
+    eop:     v => v.end_year ? _planQa(v.end_year, v.end_quarter || 4) : 9999,
+    name:    v => (v.name || '').toLowerCase(),
+    segment: v => v.segment_code || '',
+    status:  v => { const s = ({study:0, plan:1, approved:2})[_PLAN_LEGACY[v.status] || v.status]; return s == null ? 3 : s; },
+  };
+  const sf = sortFns[_planSort] || sortFns.sop;
+  vehicles = vehicles.slice().sort((a,b) => { const x=sf(a), y=sf(b); return x<y?-1:x>y?1:(a.name||'').localeCompare(b.name||''); });
 
-  // Quarter index = qabs (Q1 2025 = 0; history before 2025 is negative).
-  const qa = (y, q) => (parseInt(y) - 2025) * 4 + (parseInt(q) - 1);
+  const colsTemplate='250px 90px 1fr 200px';
+  const todayQI = getCurrentQI(), curQ = todayQI;
+  const qa = _planQa;
   const qStart = qa(y0, 1), numQ = GANTT_YEARS * 4, qEnd = qStart + numQ - 1;
   const toLeft  = qi => Math.max(0, (qi-qStart)/numQ*100);
   const toWidth = (qiS,qiE) => Math.max(1.5, (Math.min(qiE,qEnd)-qiS+1)/numQ*100);
   const todayIn = todayQI >= qStart && todayQI <= qEnd;
   const todayLine = todayIn ? `<div class="gantt-today" style="left:${(todayQI-qStart+0.5)/numQ*100}%"></div>` : '';
   const years = []; for(let y=y0; y<y0+GANTT_YEARS; y++) years.push(y);
+  const MN = "font-family:'DM Mono',monospace;";
 
   let html=`<div class="gantt-header" style="grid-template-columns:${colsTemplate};">
     <div class="gantt-cell gh">Vehicle</div>
-    <div class="gantt-cell gh">Brand</div>
     <div class="gantt-cell gh">Status</div>
     <div class="gantt-cell gh" style="padding:0;"><div style="display:grid;grid-template-columns:repeat(${years.length},1fr);width:100%;">
-      ${years.map(y=>`<div style="padding:7px 0;text-align:center;font-family:'DM Mono',monospace;font-size:8px;color:${y===currentRoundYear?'var(--gold)':'var(--muted)'};border-left:1px solid var(--border);">${y}</div>`).join('')}
-    </div></div></div>`;
+      ${years.map(y=>`<div style="padding:7px 0;text-align:center;${MN}font-size:8px;color:${y===currentRoundYear?'var(--gold)':'var(--muted)'};border-left:1px solid var(--border);">${y}</div>`).join('')}
+    </div></div>
+    <div class="gantt-cell gh">Actions</div></div>`;
 
   vehicles.forEach(v=>{
+    const st  = _PLAN_LEGACY[v.status] || v.status;
+    const rs  = v.rolled_up_specs || {};
     const sc  = SEG_COLORS[v.segment_code]||'var(--muted)';
     const sn  = SEG_NAMES[v.segment_code] ||v.segment_code;
     const bc  = statusBarColor(v.status);
-    const brand = v.brand_id ? (BRAND_DATA[v.brand_id]?.name||v.brand_id) : '—';
+    const brand = v.brand_id ? ((BRAND_DATA[v.brand_id]||{}).name||v.brand_id) : (rs.brand_name||'');
+    const sub = [sn, brand, rs.body_type, rs.pwt_type].filter(Boolean).map(_esc).join(' · ');
     let barHtml='';
     if(v.start_year&&v.start_quarter){
       const sq=`Q${v.start_quarter} ${v.start_year}`, eq=v.end_year?`Q${v.end_quarter} ${v.end_year}`:`Q4 ${currentRoundYear+6}`;
       const si=qa(v.start_year, v.start_quarter), ei=v.end_year?qa(v.end_year, v.end_quarter):qa(currentRoundYear+6, 4);
+      const lifeQ = ei - si + 1;
+      const npv = rs.business_case && rs.business_case.npv_m != null ? Math.round(rs.business_case.npv_m) : null;
+      const tip = v.name + ' · ' + sq + ' → ' + eq + ' · ' + lifeQ + ' quarters'
+        + (v.total_unit_tpc_eur ? ' · unit cost €' + Math.round(v.total_unit_tpc_eur).toLocaleString() : '')
+        + (npv != null ? ' · NPV (business case) €' + npv.toLocaleString() + 'M' : '');
       if(ei>=qStart && si<=qEnd){
         const lp=toLeft(si), wp=toWidth(Math.max(si,qStart),ei);
         const active=si<=todayQI&&ei>=todayQI;
-        const opacity = v.status==='approved'?1:(v.status==='plan'?0.7:0.4);
-        const dashStyle= v.status==='study'?'repeating-linear-gradient(90deg,'+bc+' 0,'+bc+' 8px,transparent 8px,transparent 14px)':'';
-        const bg = v.status==='study'?dashStyle:bc;
+        const opacity = st==='approved'?1:(st==='plan'?0.7:0.4);
+        const bg = st==='study'?'repeating-linear-gradient(90deg,'+bc+' 0,'+bc+' 8px,transparent 8px,transparent 14px)':bc;
         barHtml=`<div class="gantt-bar-track">${todayLine}
-          <div class="gantt-bar${active?' active-bar':''}" style="left:${lp}%;width:${wp}%;background:${bg};opacity:${opacity};" title="${sq} → ${eq}">${sq}→${eq}</div>${_ganttMcaMarks(v, qStart, numQ)}</div>`;
+          <div class="gantt-bar${active?' active-bar':''}" style="left:${lp}%;width:${wp}%;background:${bg};opacity:${opacity};" title="${_esc(tip)}">${sq}→${eq} · ${lifeQ}q</div>${_ganttMcaMarks(v, qStart, numQ)}</div>`;
       } else {
-        barHtml=`<div class="gantt-bar-track">${todayLine}<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:${si>qEnd?'flex-end':'flex-start'};padding:0 8px;font-family:'DM Mono',monospace;font-size:8px;color:var(--muted2);">${si>qEnd?sq+'→'+eq+' ▶':'◀ '+sq+'→'+eq}</div></div>`;
+        barHtml=`<div class="gantt-bar-track" title="${_esc(tip)}">${todayLine}<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:${si>qEnd?'flex-end':'flex-start'};padding:0 8px;${MN}font-size:8px;color:var(--muted2);">${si>qEnd?sq+'→'+eq+' ▶':'◀ '+sq+'→'+eq}</div></div>`;
       }
     } else {
       barHtml='<div style="height:22px;background:var(--s3);border-radius:2px;display:flex;align-items:center;padding:0 8px;"><span style="font-size:9px;color:var(--muted2)">No dates set</span></div>';
     }
     html+=`<div class="gantt-row" style="grid-template-columns:${colsTemplate};">
-      <div class="gantt-cell"><div class="gantt-seg-dot" style="background:${sc}"></div>
-        <div><div class="gantt-model-name">${v.name}</div><div style="font-family:'DM Mono',monospace;font-size:8px;color:var(--muted2);">${sn}</div></div></div>
-      <div class="gantt-cell" style="font-family:'DM Mono',monospace;font-size:9px;color:var(--muted2);">${brand}</div>
+      <div class="gantt-cell" style="gap:8px;">${_VIS.vehicle(v, 44)}
+        <div style="min-width:0;"><div class="gantt-model-name"><span class="gantt-seg-dot" style="display:inline-block;background:${sc}"></span>${_esc(v.name)}</div>
+        <div style="${MN}font-size:8px;color:var(--muted2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${sub}">${sub}</div></div></div>
       <div class="gantt-cell">${statusBadge(v.status)}</div>
-      <div class="gantt-bar-cell">${barHtml}</div></div>`;
+      <div class="gantt-bar-cell">${barHtml}</div>
+      <div class="gantt-cell" style="gap:4px;flex-wrap:wrap;">${_planRowActions(v, st, curQ)}</div></div>`;
+    html += _mcaLines(v, colsTemplate, curQ);
   });
   wrap.innerHTML=html;
 }
@@ -13073,197 +13098,6 @@ function _ganttMcaMarks(v, qStart, numQ) {
     return '<div class="gantt-mca" style="left:' + pct.toFixed(2) + '%;--mca-c:' + c + ';" title="' + tip + '"><span>↻</span></div>';
   }).join('');
 }
-
-// ── SUMMARY TABLE ──────────────────────────────────────────
-// ── SORT STATE ─────────────────────────────────────────────
-var _planSortCol = 'name';
-var _planSortDir = 1; // 1=asc, -1=desc
-var _planFilter  = 'all';
-
-function setPlanFilter(f, el) {
-  _planFilter = f;
-  document.querySelectorAll('.plan-filter-btn').forEach(b => b.classList.remove('active'));
-  el.classList.add('active');
-  buildVehicleTable();
-}
-
-function sortPlanTable(col) {
-  if (_planSortCol === col) {
-    _planSortDir *= -1;
-  } else {
-    _planSortCol = col;
-    _planSortDir = 1;
-  }
-  // Update sort icons
-  document.querySelectorAll('.sort-icon').forEach(el => el.textContent = '⇕');
-  const iconEl = document.getElementById('sort-' + col);
-  if (iconEl) iconEl.textContent = _planSortDir === 1 ? '↑' : '↓';
-  buildVehicleTable();
-}
-
-function _quickNPV(v) {
-  // Fast NPV estimate for sorting — same logic as compact BC
-  var tpcNum  = v.total_unit_tpc_eur || 0;
-  var segPrice = {a_segment:12,b_segment:18,c_segment:26,d_segment:38,e_segment:55,
-    f_segment:90,mpv:32,pickup:45,sports:55,c_van:28,d_van:40,e_van:55};
-  var priceK  = segPrice[v.segment_code] || 25;
-  var units   = 8000;
-  var revM    = units * priceK * 1000 * OEM_NET_REVENUE_SHARE / 1e6;
-  var cogsM   = tpcNum > 0 ? units * tpcNum / 1e6 : revM * 0.72;
-  var gpM     = revM - cogsM;
-  var sgaM    = _OVERHEAD_E.modelIncrementM(revM);   // head office this model adds
-  var rdM     = revM * 0.04;
-  var fcfM    = (gpM - sgaM - rdM) * 0.75; // after 25% tax
-  var sopQ = (v.start_year && v.start_quarter) ? (v.start_year-2025)*4+v.start_quarter-1 : 4;
-  var eopQ = (v.end_year   && v.end_quarter)   ? (v.end_year  -2025)*4+v.end_quarter  -1 : 20;
-  var lifeQ = Math.max(eopQ-sopQ, 1);
-  var investM = tpcNum > 0 ? Math.round(tpcNum * units * 0.15 / 1e6) : 80;
-  var r = 0.0194; // 8% annual quarterly
-  var pv = 0;
-  for (var t = 1; t <= lifeQ; t++) pv += fcfM / Math.pow(1+r, t);
-  return Math.round(pv - investM);
-}
-
-function _quickGM(v) {
-  var tpcNum  = v.total_unit_tpc_eur || 0;
-  var segPrice = {a_segment:12,b_segment:18,c_segment:26,d_segment:38,e_segment:55,
-    f_segment:90,mpv:32,pickup:45,sports:55,c_van:28,d_van:40,e_van:55};
-  var priceK  = segPrice[v.segment_code] || 25;
-  var priceEur = priceK * 1000 * OEM_NET_REVENUE_SHARE;
-  if (!tpcNum || !priceEur) return null;
-  return Math.round((priceEur - tpcNum) / priceEur * 100);
-}
-
-function buildVehicleTable() {
-  const tbody = document.getElementById('plan-tbl-body');
-  const countEl = document.getElementById('plan-vehicle-count');
-  if (!tbody) return;
-
-  const legacyMap = {draft:'study', planned:'plan', on_sale:'approved'};
-
-  // Filter
-  let vehicles = activeVehicles.map(v => ({
-    ...v,
-    _normStatus: legacyMap[v.status] || v.status,
-    _npv:  _quickNPV(v),
-    _gm:   _quickGM(v),
-    _lifeQ: Math.max(
-      ((v.end_year  -2025)*4+(v.end_quarter  ||0)) -
-      ((v.start_year-2025)*4+(v.start_quarter||0)), 0),
-    _sopNum: v.start_year ? v.start_year*10+v.start_quarter : 99999,
-    _eopNum: v.end_year   ? v.end_year  *10+v.end_quarter   : 99999,
-  }));
-
-  if (_planFilter !== 'all') {
-    vehicles = vehicles.filter(v => v._normStatus === _planFilter);
-  }
-
-  if (countEl) countEl.textContent = vehicles.length;
-
-  if (vehicles.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="14" style="color:var(--muted2);text-align:center;padding:24px;">No vehicles' +
-      (_planFilter !== 'all' ? ' with status ' + _planFilter.toUpperCase() : '') + '.</td></tr>';
-    return;
-  }
-
-  // Sort
-  const sortFns = {
-    name:    v => (v.name||'').toLowerCase(),
-    segment: v => v.segment_code||'',
-    brand:   v => (v.brand_id||(v.rolled_up_specs&&v.rolled_up_specs.brand_name)||'').toLowerCase(),
-    body:    v => ((v.rolled_up_specs&&v.rolled_up_specs.body_type)||'').toLowerCase(),
-    pwt:     v => ((v.rolled_up_specs&&v.rolled_up_specs.pwt_type)||v.pwt_module_id||'').toLowerCase(),
-    sop:     v => v._sopNum,
-    eop:     v => v._eopNum,
-    life:    v => v._lifeQ,
-    tpc:     v => v.total_unit_tpc_eur || 0,
-    gm:      v => v._gm || -999,
-    npv:     v => v._npv,
-    status:  v => v._normStatus,
-  };
-  const fn = sortFns[_planSortCol] || sortFns.name;
-  vehicles.sort((a,b) => {
-    const av = fn(a), bv = fn(b);
-    if (av < bv) return -1 * _planSortDir;
-    if (av > bv) return  1 * _planSortDir;
-    return 0;
-  });
-
-  // Render rows
-  tbody.innerHTML = vehicles.map(v => {
-    const sc    = SEG_COLORS[v.segment_code] || 'var(--muted)';
-    const sn    = SEG_NAMES[v.segment_code]  || v.segment_code;
-    const brand = v.brand_id
-      ? (BRAND_DATA[v.brand_id]||{}).name || v.brand_id
-      : ((v.rolled_up_specs&&v.rolled_up_specs.brand_name)||'—');
-    const body  = (v.rolled_up_specs&&v.rolled_up_specs.body_type) || '—';
-    const pwt   = v.pwt_module_id ? '✓ Module' : ((v.rolled_up_specs&&v.rolled_up_specs.pwt_type)||'—');
-    const sop   = v.start_year ? 'Q'+v.start_quarter+' '+v.start_year : '—';
-    const eop   = v.end_year   ? 'Q'+v.end_quarter  +' '+v.end_year   : '—';
-    const lifeQ = v._lifeQ > 0 ? v._lifeQ+'q' : '—';
-    const tpc   = v.total_unit_tpc_eur ? '€'+Math.round(v.total_unit_tpc_eur).toLocaleString() : '—';
-    const gm    = v._gm !== null ? v._gm+'%' : '—';
-    const gmCol = v._gm !== null ? (v._gm > 20 ? 'var(--green)' : v._gm > 10 ? 'var(--gold)' : 'var(--red)') : 'var(--muted2)';
-    const npv   = v._npv;
-    const npvStr = '€'+Math.abs(npv)+'M';
-    const npvCls = npv >= 0 ? 'plan-npv-pos' : 'plan-npv-neg';
-    const npvSign = npv >= 0 ? '' : '-';
-
-    // Action buttons — data-vid avoids onclick quoting issues
-    var vid = v.id;
-    var bcBtn = (v._normStatus === 'plan' || v._normStatus === 'approved')
-      ? '<button class="plan-act-bc" data-vid="'+vid+'" data-action="bc">BC →</button>'
-      : '';
-    // A model past its SOP is in production: it can only be ended through EOP (notice, supplier
-    // cancellation, write-off), never sent back to plan or deleted (the server refuses both too)
-    var _curQ = (currentRoundYear - 2025) * 4 + currentRoundQuarter - 1;
-    var inProd = v._normStatus === 'approved' && v.start_year && ((v.start_year - 2025) * 4 + (v.start_quarter || 1) - 1) <= _curQ;
-    var statusBtn = v._normStatus === 'approved' && !inProd
-      ? '<button class="plan-act-revise" data-vid="'+vid+'" data-action="revise" title="Back to plan: re-open the business case before SOP">← Revise</button>'
-      : '';  // Approval only via Business Case modal
-    var delBtn = inProd ? '' : '<button class="plan-act-del" data-vid="'+vid+'" data-action="delete">✕</button>';
-    var eopBtn = v._normStatus === 'approved'
-      ? '<button class="plan-act-eop" data-vid="'+vid+'" data-action="eop" title="Extend or bring forward the end of production">EOP</button>'
-      : '';
-    // Mid-cycle action: a new top hat (derivative of the current one) from a change-over quarter
-    var _hasOpenMca = (_planMcas[vid] || []).some(function(m){ return m.status === 'plan' || m.status === 'late'
-      || (m.status === 'approved' && m.changeover_qabs >= _curQ); });
-    var mcaBtn = v._normStatus === 'approved' && v.tophat_module_id && !_hasOpenMca
-      ? '<button class="plan-act-mca" data-vid="'+vid+'" data-action="mca" title="Mid-cycle action: refresh the top hat from a change-over quarter (business case)">MCA</button>'
-      : '';
-
-    // Discount input — editable for approved/on_sale vehicles
-    var discVal = parseFloat(v.discount_pct||0).toFixed(1);
-    var discCell = (v._normStatus === 'approved')
-      ? '<td class="plan-td" style="text-align:center;">'
-          + '<input type="number" min="-30" max="40" step="0.5" value="'+discVal+'"'
-          + ' onchange="updateVehicleDiscount(\''+vid+'\',this.value)"'
-          + ' style="width:56px;background:var(--s2);border:1px solid var(--border2);border-radius:2px;'
-          + 'color:var(--gold);font-family:DM Mono,monospace;font-size:10px;text-align:center;padding:3px 4px;">'
-          + '</td>'
-      : '<td class="plan-td mono center" style="color:var(--muted2);">'+discVal+'%</td>';
-
-    return '<tr class="plan-tr">'
-      + '<td class="plan-td plan-name-cell"><div style="display:flex;align-items:center;gap:8px;">'+_VIS.vehicle(v, 54)+'<span>'+v.name+'</span></div></td>'
-      + '<td class="plan-td"><span style="color:'+sc+';font-size:10px;">'+sn+'</span></td>'
-      + '<td class="plan-td mono">'+brand+'</td>'
-      + '<td class="plan-td mono">'+body+'</td>'
-      + '<td class="plan-td mono">'+pwt+'</td>'
-      + '<td class="plan-td mono center">'+sop+'</td>'
-      + '<td class="plan-td mono center">'+eop+'</td>'
-      + '<td class="plan-td mono center">'+lifeQ+'</td>'
-      + '<td class="plan-td mono right">'+tpc+'</td>'
-      + '<td class="plan-td mono right" style="color:'+gmCol+';">'+gm+'</td>'
-      + '<td class="plan-td right"><span class="'+npvCls+'">'+npvSign+npvStr+'</span></td>'
-      + '<td class="plan-td center">'+statusBadge(v.status)+'</td>'
-      + discCell
-      + '<td class="plan-td" style="white-space:nowrap;display:flex;gap:4px;align-items:center;">'
-        + bcBtn + eopBtn + mcaBtn + statusBtn + delBtn
-      + '</td>'
-      + '</tr>' + _mcaSubRows(v);
-  }).join('');
-}
-
 
 // ── EOP extension / early stop (docs/EOP_EXTENSION_SPEC.md) ──
 var _eopVid = null, _eopOk = false, _eopSeq = 0;
@@ -13378,12 +13212,14 @@ function _mcaStatusBadge(m, curQ) {
   }
   return statusBadge(m.status);
 }
-function _mcaSubRows(v) {
+// One line per mid-cycle action under its model on the roadmap: what it does, status, change-over
+// (slip), approve-by, NPV and its actions (Approve / Revise / ✕).
+function _mcaLines(v, colsTemplate, curQ) {
   var ms = (_planMcas[v.id] || []).filter(function(m){ return m.status !== 'cancelled'; });
   if (!ms.length) return '';
-  var curQ = (currentRoundYear - 2025) * 4 + currentRoundQuarter - 1;
+  var MN = "font-family:'DM Mono',monospace;";
   return ms.map(function(m){
-    var npv = m.npv_m != null ? (m.npv_m >= 0 ? '' : '-') + '€' + Math.abs(Math.round(m.npv_m)) + 'M' : '—';
+    var npv = m.npv_m != null ? (m.npv_m >= 0 ? '' : '-') + '€' + Math.abs(Math.round(m.npv_m)).toLocaleString() + 'M' : '—';
     var slip = m.planned_changeover_qabs != null && m.changeover_qabs > m.planned_changeover_qabs
       ? ' <span style="color:var(--gold)" title="The new top hat is not ready in time">(planned ' + _qLabel(m.planned_changeover_qabs) + ')</span>' : '';
     var acts = '';
@@ -13393,18 +13229,17 @@ function _mcaSubRows(v) {
       acts += '<button class="plan-act-mca" data-vid="' + v.id + '" data-action="mca">Revise</button>';
     if (m.status !== 'approved' || m.changeover_qabs > curQ)
       acts += '<button class="plan-act-del" data-vid="' + v.id + '" data-mid="' + m.id + '" data-action="mca-cancel" title="Cancel this mid-cycle action">✕</button>';
-    return '<tr class="plan-tr mca-row"><td class="plan-td" colspan="5" style="padding-left:70px;">'
-      + '↳ Mid-cycle action' + (m.source === 'ai' ? ' (AI)' : '') + ' · new top hat'
+    var what = '↻ Mid-cycle action' + (m.source === 'ai' ? ' (AI)' : '') + ' · new top hat'
       + (m.age_credit_q ? ' · ' + Math.round(m.age_credit_q) + ' q younger' : '')
-      + (m.price_move_pct ? ' · price ' + (m.price_move_pct > 0 ? '+' : '') + (m.price_move_pct * 100).toFixed(1) + '%' : '')
-      + '</td>'
-      + '<td class="plan-td mono center" colspan="2">change-over ' + (m.changeover_label || '—') + slip + '</td>'
-      + '<td class="plan-td mono center" colspan="2">' + (m.status === 'plan' && m.approve_by_label ? 'approve by ' + m.approve_by_label : '') + '</td>'
-      + '<td class="plan-td"></td>'
-      + '<td class="plan-td right"><span class="' + ((m.npv_m || 0) >= 0 ? 'plan-npv-pos' : 'plan-npv-neg') + '">' + npv + '</span></td>'
-      + '<td class="plan-td center">' + _mcaStatusBadge(m, curQ) + '</td>'
-      + '<td class="plan-td"></td>'
-      + '<td class="plan-td" style="white-space:nowrap;display:flex;gap:4px;align-items:center;">' + acts + '</td></tr>';
+      + (m.price_move_pct ? ' · price ' + (m.price_move_pct > 0 ? '+' : '') + (m.price_move_pct * 100).toFixed(1) + '%' : '');
+    return '<div class="gantt-row mca-row" style="grid-template-columns:' + colsTemplate + ';">'
+      + '<div class="gantt-cell" style="padding-left:62px;font-size:10px;color:var(--muted2);">' + what + '</div>'
+      + '<div class="gantt-cell">' + _mcaStatusBadge(m, curQ) + '</div>'
+      + '<div class="gantt-cell" style="' + MN + 'font-size:9px;color:var(--muted2);gap:14px;">'
+        + '<span>change-over ' + (m.changeover_label || '—') + slip + '</span>'
+        + (m.status === 'plan' && m.approve_by_label ? '<span>approve by <b style="color:var(--text);">' + m.approve_by_label + '</b></span>' : '')
+        + '<span>NPV <span class="' + ((m.npv_m || 0) >= 0 ? 'plan-npv-pos' : 'plan-npv-neg') + '">' + npv + '</span></span></div>'
+      + '<div class="gantt-cell" style="gap:4px;">' + acts + '</div></div>';
   }).join('');
 }
 function _mcaScale(raw) { return raw != null && parseFloat(raw) > 1 ? 100 : 1; }
@@ -13545,23 +13380,6 @@ async function _mcaSetStatus(mid, status) {
     toast(status === 'approved' ? '✓ Mid-cycle action approved · change-over ' + _qLabel(d.changeover_qabs) : '✓ Mid-cycle action cancelled');
     await loadVehiclePlan();
   } catch (e) { toast('⚠ ' + e.message); }
-}
-
-async function updateVehicleDiscount(vid, val) {
-  var pct = Math.min(40, Math.max(-30, parseFloat(val) || 0));
-  try {
-    var r = await fetch(API_URL + '/vehicles/' + vid, {
-      method: 'PATCH',
-      headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({discount_pct: pct})
-    });
-    var d = await r.json();
-    if (d.success) {
-      var v = activeVehicles.find(function(x){return x.id===vid;});
-      if (v) v.discount_pct = pct;
-      toast('✓ Discount updated to '+pct.toFixed(1)+'%');
-    } else { toast('⚠ '+(d.detail||'Failed to update discount')); }
-  } catch(e) { toast('⚠ '+e.message); }
 }
 
 // ── COMMERCIAL PAGE ─────────────────────────────────────────
