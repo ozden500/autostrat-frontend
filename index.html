@@ -631,7 +631,13 @@ input[type=text]:focus,input[type=number]:focus{outline:none;border-color:var(--
 .gantt-quarter-lines{position:absolute;inset:0;pointer-events:none;}
 .gantt-q-line{position:absolute;top:0;bottom:0;width:1px;background:rgba(255,255,255,.05);}
 .gantt-today{position:absolute;top:-4px;bottom:-4px;width:2px;background:var(--gold);opacity:.7;border-radius:1px;}
-.gantt-mca{position:absolute;top:0;bottom:0;width:0;z-index:2;cursor:help;}
+.gantt-mca{position:absolute;top:0;bottom:0;width:0;z-index:2;cursor:pointer;}
+.gantt-mca:hover span{filter:brightness(1.4);}
+.gantt-lbl-out{position:absolute;top:0;bottom:0;display:flex;align-items:center;font-family:'DM Mono',monospace;font-size:8px;color:var(--muted2);white-space:nowrap;pointer-events:none;}
+#mca-pop{position:fixed;z-index:500;display:none;min-width:260px;max-width:340px;background:var(--s2);border:1px solid var(--border2);
+  border-radius:3px;box-shadow:0 8px 24px rgba(0,0,0,.5);padding:10px 12px;font-size:11px;color:var(--text);}
+#mca-pop .mp-row{display:flex;justify-content:space-between;gap:12px;font-family:'DM Mono',monospace;font-size:9px;color:var(--muted2);padding:2px 0;}
+#mca-pop .mp-row b{color:var(--text);font-weight:500;}
 .gantt-mca span{position:absolute;top:50%;left:0;transform:translate(-50%,-50%);width:17px;height:17px;border-radius:50%;
   background:var(--bg);border:1.5px solid var(--mca-c);color:var(--mca-c);font-size:12px;line-height:14px;text-align:center;font-weight:700;}
 
@@ -12987,6 +12993,8 @@ function _planRowActions(v, st, curQ) {
   // A model past its SOP is in production: it can only be ended through EOP (notice, supplier
   // cancellation, write-off), never sent back to plan or deleted (the server refuses both too)
   var inProd = st === 'approved' && v.start_year && _planQa(v.start_year, v.start_quarter || 1) <= curQ;
+  // Past its EOP the model has ended: nothing left to change, only its business case to read
+  if (st === 'approved' && v.end_year && _planQa(v.end_year, v.end_quarter || 4) < curQ) return h;
   if (st === 'approved')
     h += '<button class="plan-act-eop" data-vid="'+vid+'" data-action="eop" title="Extend or bring forward the end of production">EOP</button>';
   // Mid-cycle action: a new top hat (derivative of the current one) from a change-over quarter
@@ -13063,8 +13071,13 @@ function buildVehicleGantt() {
         const active=si<=todayQI&&ei>=todayQI;
         const opacity = st==='approved'?1:(st==='plan'?0.7:0.4);
         const bg = st==='study'?'repeating-linear-gradient(90deg,'+bc+' 0,'+bc+' 8px,transparent 8px,transparent 14px)':bc;
+        // A short bar cannot hold its dates: they go beside it (after it, or before it near the right edge)
+        const label = `${sq}→${eq} · ${lifeQ}q`, narrow = wp < 16;
+        const outLbl = !narrow ? '' : (lp + wp < 78
+          ? `<div class="gantt-lbl-out" style="left:calc(${lp+wp}% + 6px);">${label}</div>`
+          : `<div class="gantt-lbl-out" style="right:calc(${100-lp}% + 6px);">${label}</div>`);
         barHtml=`<div class="gantt-bar-track">${todayLine}
-          <div class="gantt-bar${active?' active-bar':''}" style="left:${lp}%;width:${wp}%;background:${bg};opacity:${opacity};" title="${_esc(tip)}">${sq}→${eq} · ${lifeQ}q</div>${_ganttMcaMarks(v, qStart, numQ)}</div>`;
+          <div class="gantt-bar${active?' active-bar':''}" style="left:${lp}%;width:${wp}%;background:${bg};opacity:${opacity};" title="${_esc(tip)}">${narrow?'':label}</div>${outLbl}${_ganttMcaMarks(v, qStart, numQ)}</div>`;
       } else {
         barHtml=`<div class="gantt-bar-track" title="${_esc(tip)}">${todayLine}<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:${si>qEnd?'flex-end':'flex-start'};padding:0 8px;${MN}font-size:8px;color:var(--muted2);">${si>qEnd?sq+'→'+eq+' ▶':'◀ '+sq+'→'+eq}</div></div>`;
       }
@@ -13078,7 +13091,6 @@ function buildVehicleGantt() {
       <div class="gantt-cell">${statusBadge(v.status)}</div>
       <div class="gantt-bar-cell">${barHtml}</div>
       <div class="gantt-cell" style="gap:4px;flex-wrap:wrap;">${_planRowActions(v, st, curQ)}</div></div>`;
-    html += _mcaLines(v, colsTemplate, curQ);
   });
   wrap.innerHTML=html;
 }
@@ -13095,7 +13107,7 @@ function _ganttMcaMarks(v, qStart, numQ) {
       + (m.planned_changeover_qabs != null && m.changeover_qabs > m.planned_changeover_qabs ? ' (slipped from ' + _qLabel(m.planned_changeover_qabs) + ')' : '')
       + (m.status === 'plan' && m.approve_by_label ? ' · approve by ' + m.approve_by_label : '')
       + (m.npv_m != null ? ' · NPV €' + Math.round(m.npv_m) + 'M' : '');
-    return '<div class="gantt-mca" style="left:' + pct.toFixed(2) + '%;--mca-c:' + c + ';" title="' + tip + '"><span>↻</span></div>';
+    return '<div class="gantt-mca" data-action="mca-pop" data-vid="' + v.id + '" data-mid="' + m.id + '" style="left:' + pct.toFixed(2) + '%;--mca-c:' + c + ';" title="' + tip + ' · click for actions"><span>↻</span></div>';
   }).join('');
 }
 
@@ -13212,36 +13224,50 @@ function _mcaStatusBadge(m, curQ) {
   }
   return statusBadge(m.status);
 }
-// One line per mid-cycle action under its model on the roadmap: what it does, status, change-over
-// (slip), approve-by, NPV and its actions (Approve / Revise / ✕).
-function _mcaLines(v, colsTemplate, curQ) {
-  var ms = (_planMcas[v.id] || []).filter(function(m){ return m.status !== 'cancelled'; });
-  if (!ms.length) return '';
-  var MN = "font-family:'DM Mono',monospace;";
-  return ms.map(function(m){
-    var npv = m.npv_m != null ? (m.npv_m >= 0 ? '' : '-') + '€' + Math.abs(Math.round(m.npv_m)).toLocaleString() + 'M' : '—';
-    var slip = m.planned_changeover_qabs != null && m.changeover_qabs > m.planned_changeover_qabs
-      ? ' <span style="color:var(--gold)" title="The new top hat is not ready in time">(planned ' + _qLabel(m.planned_changeover_qabs) + ')</span>' : '';
-    var acts = '';
-    if (m.status === 'plan' && m.approve_by_qabs != null && curQ <= m.approve_by_qabs)
-      acts += '<button class="plan-act-bc" data-vid="' + v.id + '" data-mid="' + m.id + '" data-action="mca-approve">Approve</button>';
-    if (m.status === 'plan' || m.status === 'late')
-      acts += '<button class="plan-act-mca" data-vid="' + v.id + '" data-action="mca">Revise</button>';
-    if (m.status !== 'approved' || m.changeover_qabs > curQ)
-      acts += '<button class="plan-act-del" data-vid="' + v.id + '" data-mid="' + m.id + '" data-action="mca-cancel" title="Cancel this mid-cycle action">✕</button>';
-    var what = '↻ Mid-cycle action' + (m.source === 'ai' ? ' (AI)' : '') + ' · new top hat'
-      + (m.age_credit_q ? ' · ' + Math.round(m.age_credit_q) + ' q younger' : '')
-      + (m.price_move_pct ? ' · price ' + (m.price_move_pct > 0 ? '+' : '') + (m.price_move_pct * 100).toFixed(1) + '%' : '');
-    return '<div class="gantt-row mca-row" style="grid-template-columns:' + colsTemplate + ';">'
-      + '<div class="gantt-cell" style="padding-left:62px;font-size:10px;color:var(--muted2);">' + what + '</div>'
-      + '<div class="gantt-cell">' + _mcaStatusBadge(m, curQ) + '</div>'
-      + '<div class="gantt-cell" style="' + MN + 'font-size:9px;color:var(--muted2);gap:14px;">'
-        + '<span>change-over ' + (m.changeover_label || '—') + slip + '</span>'
-        + (m.status === 'plan' && m.approve_by_label ? '<span>approve by <b style="color:var(--text);">' + m.approve_by_label + '</b></span>' : '')
-        + '<span>NPV <span class="' + ((m.npv_m || 0) >= 0 ? 'plan-npv-pos' : 'plan-npv-neg') + '">' + npv + '</span></span></div>'
-      + '<div class="gantt-cell" style="gap:4px;">' + acts + '</div></div>';
-  }).join('');
+// Clicking an MCA's ↻ on the roadmap opens this panel beside it: what the MCA does, status,
+// change-over (slip), approve-by, NPV and its actions (Approve / Revise / ✕). Replaced the MCA rows
+// under each model (2026-11-15).
+function _mcaPopHtml(v, m, curQ) {
+  var npv = m.npv_m != null ? (m.npv_m >= 0 ? '' : '-') + '€' + Math.abs(Math.round(m.npv_m)).toLocaleString() + 'M' : '—';
+  var slip = m.planned_changeover_qabs != null && m.changeover_qabs > m.planned_changeover_qabs
+    ? ' <span style="color:var(--gold)" title="The new top hat is not ready in time">(planned ' + _qLabel(m.planned_changeover_qabs) + ')</span>' : '';
+  var acts = '';
+  if (m.status === 'plan' && m.approve_by_qabs != null && curQ <= m.approve_by_qabs)
+    acts += '<button class="plan-act-bc" data-vid="' + v.id + '" data-mid="' + m.id + '" data-action="mca-approve">Approve</button>';
+  if (m.status === 'plan' || m.status === 'late')
+    acts += '<button class="plan-act-mca" data-vid="' + v.id + '" data-action="mca">Revise</button>';
+  if (m.status !== 'approved' || m.changeover_qabs > curQ)
+    acts += '<button class="plan-act-del" data-vid="' + v.id + '" data-mid="' + m.id + '" data-action="mca-cancel" title="Cancel this mid-cycle action">✕ Cancel</button>';
+  var row = function(k, val){ return '<div class="mp-row"><span>' + k + '</span><b>' + val + '</b></div>'; };
+  return '<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:6px;">'
+      + '<div style="font-weight:600;">↻ Mid-cycle action' + (m.source === 'ai' ? ' (AI)' : '') + '</div>' + _mcaStatusBadge(m, curQ) + '</div>'
+    + '<div style="font-size:10px;color:var(--muted2);margin-bottom:6px;">' + _esc(v.name) + ' · new top hat</div>'
+    + row('Change-over', (m.changeover_label || '—') + slip)
+    + (m.status === 'plan' && m.approve_by_label ? row('Approve by', m.approve_by_label) : '')
+    + (m.age_credit_q ? row('Age credit', Math.round(m.age_credit_q) + ' q younger') : '')
+    + (m.price_move_pct ? row('Price move', (m.price_move_pct > 0 ? '+' : '') + (m.price_move_pct * 100).toFixed(1) + '%') : '')
+    + row('NPV', '<span class="' + ((m.npv_m || 0) >= 0 ? 'plan-npv-pos' : 'plan-npv-neg') + '">' + npv + '</span>')
+    + (acts ? '<div style="display:flex;gap:4px;margin-top:8px;justify-content:flex-end;">' + acts + '</div>' : '');
 }
+function _mcaPop(el) {
+  var vid = el.getAttribute('data-vid'), mid = el.getAttribute('data-mid');
+  var v = activeVehicles.find(function(x){ return x.id === vid; });
+  var m = (_planMcas[vid] || []).find(function(x){ return x.id === mid; });
+  var pop = document.getElementById('mca-pop');
+  if (!pop) { pop = document.createElement('div'); pop.id = 'mca-pop'; document.body.appendChild(pop); }
+  if (!v || !m) { pop.style.display = 'none'; return; }
+  pop.innerHTML = _mcaPopHtml(v, m, getCurrentQI());
+  pop.style.display = 'block';
+  var r = el.getBoundingClientRect(), w = pop.offsetWidth, hgt = pop.offsetHeight;
+  var left = Math.min(Math.max(8, r.left - w / 2), window.innerWidth - w - 8);
+  var top = r.bottom + 6 + hgt > window.innerHeight ? r.top - hgt - 6 : r.bottom + 6;
+  pop.style.left = left + 'px'; pop.style.top = Math.max(8, top) + 'px';
+}
+function _mcaPopClose() { var p = document.getElementById('mca-pop'); if (p) p.style.display = 'none'; }
+document.addEventListener('click', function(e) {
+  if (!e.target.closest('#mca-pop') && !e.target.closest('[data-action="mca-pop"]')) _mcaPopClose();
+});
+window.addEventListener('scroll', _mcaPopClose, true);
 function _mcaScale(raw) { return raw != null && parseFloat(raw) > 1 ? 100 : 1; }
 function openMcaModal(vid) {
   var v = activeVehicles.find(function(x){ return x.id === vid; });
@@ -14952,9 +14978,10 @@ document.addEventListener('click', function(e) {
   if (action === 'revise')       { if (confirm('Send this model back to PLAN?\n\nIts approval is withdrawn: it will not go on sale until its business case is approved again.')) promoteVehicle(vid, 'plan'); }
   if (action === 'delete')       { deleteVehicle(vid); }
   if (action === 'eop')          { openEopModal(vid); }
-  if (action === 'mca')          { openMcaModal(vid); }
-  if (action === 'mca-approve')  { _mcaSetStatus(btn.getAttribute('data-mid'), 'approved'); }
-  if (action === 'mca-cancel')   { _mcaSetStatus(btn.getAttribute('data-mid'), 'cancelled'); }
+  if (action === 'mca-pop')      { _mcaPop(btn); }
+  if (action === 'mca')          { _mcaPopClose(); openMcaModal(vid); }
+  if (action === 'mca-approve')  { _mcaPopClose(); _mcaSetStatus(btn.getAttribute('data-mid'), 'approved'); }
+  if (action === 'mca-cancel')   { _mcaPopClose(); _mcaSetStatus(btn.getAttribute('data-mid'), 'cancelled'); }
   if (action === 'study-submit')       { submitStudyProposal(vid); }
   if (action === 'prop-select-study') { selectStudy(vid); }
   if (action === 'prop-mod-mode') {
