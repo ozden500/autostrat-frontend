@@ -633,7 +633,7 @@ input[type=text]:focus,input[type=number]:focus{outline:none;border-color:var(--
 .gantt-today{position:absolute;top:-4px;bottom:-4px;width:2px;background:var(--gold);opacity:.7;border-radius:1px;}
 .gantt-mca{position:absolute;top:0;bottom:0;width:0;z-index:2;cursor:pointer;}
 .gantt-mca:hover span{filter:brightness(1.4);}
-.gantt-lbl-out{position:absolute;top:0;bottom:0;display:flex;align-items:center;font-family:'DM Mono',monospace;font-size:8px;color:var(--muted2);white-space:nowrap;pointer-events:none;}
+.gantt-lbl-out{position:absolute;top:4px;bottom:4px;display:flex;align-items:center;background:var(--s3);padding:0 3px;z-index:1;font-family:'DM Mono',monospace;font-size:8px;color:var(--muted2);white-space:nowrap;pointer-events:none;}
 #mca-pop{position:fixed;z-index:500;display:none;min-width:260px;max-width:340px;background:var(--s2);border:1px solid var(--border2);
   border-radius:3px;box-shadow:0 8px 24px rgba(0,0,0,.5);padding:10px 12px;font-size:11px;color:var(--text);}
 #mca-pop .mp-row{display:flex;justify-content:space-between;gap:12px;font-family:'DM Mono',monospace;font-size:9px;color:var(--muted2);padding:2px 0;}
@@ -1988,7 +1988,7 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
       <button class="plan-filter-btn" onclick="setPlanFilter('plan',this)">PLAN</button>
       <button class="plan-filter-btn" onclick="setPlanFilter('approved',this)">APPROVED</button>
       <span style="font-family:'DM Mono',monospace;font-size:8px;color:var(--muted2);margin-left:10px;">Sort:</span>
-      <select onchange="setPlanSort(this.value)" style="background:var(--s2);border:1px solid var(--border2);color:var(--text);font-family:'DM Mono',monospace;font-size:9px;padding:3px 6px;border-radius:2px;">
+      <select onchange="setPlanSort(this.value)" style="width:auto;background:var(--s2);border:1px solid var(--border2);color:var(--text);font-family:'DM Mono',monospace;font-size:9px;padding:3px 6px;border-radius:2px;">
         <option value="sop">SOP</option><option value="eop">EOP</option><option value="name">Name</option><option value="segment">Segment</option><option value="status">Status</option>
       </select>
     </div>
@@ -11951,6 +11951,7 @@ async function loadVehiclePlan() {
       const maxY=allYrs.length?Math.max(...allYrs,currentRoundYear+5):currentRoundYear+5;
       planSub.textContent=`Product lifecycle · Study → Plan → Approved · Portfolio roadmap ${minY}–${maxY}`;
     }
+    buildVehicleGantt();          // the models at once; the MCA ↻ markers once their list is in
     await _loadPlanMcas();
     buildVehicleGantt();
     loadApprovalQueue();
@@ -13056,7 +13057,8 @@ function buildVehicleGantt() {
     const sn  = SEG_NAMES[v.segment_code] ||v.segment_code;
     const bc  = statusBarColor(v.status);
     const brand = v.brand_id ? ((BRAND_DATA[v.brand_id]||{}).name||v.brand_id) : (rs.brand_name||'');
-    const sub = [sn, brand, rs.body_type, rs.pwt_type].filter(Boolean).map(_esc).join(' · ');
+    const pwtL = rs.pwt_type ? ({ice_only:'ICE', bev_only:'BEV', ice_and_bev:'ICE + BEV'}[rs.pwt_type] || String(rs.pwt_type).replace(/_/g, ' ').toUpperCase()) : '';
+    const sub = [sn, brand, rs.body_type, pwtL].filter(Boolean).map(_esc).join(' · ');
     let barHtml='';
     if(v.start_year&&v.start_quarter){
       const sq=`Q${v.start_quarter} ${v.start_year}`, eq=v.end_year?`Q${v.end_quarter} ${v.end_year}`:`Q4 ${currentRoundYear+6}`;
@@ -13076,8 +13078,10 @@ function buildVehicleGantt() {
         const outLbl = !narrow ? '' : (lp + wp < 78
           ? `<div class="gantt-lbl-out" style="left:calc(${lp+wp}% + 6px);">${label}</div>`
           : `<div class="gantt-lbl-out" style="right:calc(${100-lp}% + 6px);">${label}</div>`);
+        // A ↻ on the bar would sit on the dates: they move to the bar's right end
+        const marks = _ganttMcaMarks(v, qStart, numQ);
         barHtml=`<div class="gantt-bar-track">${todayLine}
-          <div class="gantt-bar${active?' active-bar':''}" style="left:${lp}%;width:${wp}%;background:${bg};opacity:${opacity};" title="${_esc(tip)}">${narrow?'':label}</div>${outLbl}${_ganttMcaMarks(v, qStart, numQ)}</div>`;
+          <div class="gantt-bar${active?' active-bar':''}" style="left:${lp}%;width:${wp}%;background:${bg};opacity:${opacity};${marks?'justify-content:flex-end;':''}" title="${_esc(tip)}">${narrow?'':label}</div>${outLbl}${marks}</div>`;
       } else {
         barHtml=`<div class="gantt-bar-track" title="${_esc(tip)}">${todayLine}<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:${si>qEnd?'flex-end':'flex-start'};padding:0 8px;${MN}font-size:8px;color:var(--muted2);">${si>qEnd?sq+'→'+eq+' ▶':'◀ '+sq+'→'+eq}</div></div>`;
       }
