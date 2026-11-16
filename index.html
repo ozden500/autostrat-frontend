@@ -12974,6 +12974,8 @@ async function deleteVehicle(vehicleId) {
 // window gets no row (it returns when the window reaches it); bars crossing an edge are clipped there,
 // their label keeps the real dates. Status column and status filter dropped 2026-11-16.
 var GANTT_YEARS = 8, _ganttY0 = null, _planSort = 'sop';
+var MCA_MIN_LEFT_Q = 6;   // = financial_engine.MCA_MIN_LEFT_Q: change-over at least 6 q before EOP
+var _roundPhase = null;   // set by updateRoundDisplay; 'results' = this round has cleared
 var _PLAN_LEGACY = {draft:'study', planned:'plan', on_sale:'approved'};
 function ganttShift(dy) {
   _ganttY0 = dy === 0 ? null : (_ganttY0 == null ? currentRoundYear - 1 : _ganttY0) + dy;
@@ -13006,7 +13008,10 @@ function _planRowActions(v, st, curQ) {
     h += item('mca-pop', '#6aa8f0', 'Mid-cycle action · ' + (m.status === 'approved' ? 'approved' : m.status),
               'Change-over ' + (m.changeover_label || '—'), ' data-mid="' + m.id + '"');
   });
-  if (st === 'approved' && v.tophat_module_id && !open.length)
+  // Offered only while a change-over can still fit: the earliest is next quarter, the latest EOP − 6 q
+  // (MCA_MIN_LEFT_Q); a longer lead time is caught by the modal's preview
+  var eopQ = v.end_year ? _planQa(v.end_year, v.end_quarter || 4) : Infinity;
+  if (st === 'approved' && v.tophat_module_id && !open.length && eopQ - MCA_MIN_LEFT_Q >= curQ + 1)
     h += item('mca', '#6aa8f0', 'Mid-cycle action', 'Refresh the top hat from a change-over quarter');
   if (st === 'approved' && !inProd)
     h += item('revise', 'var(--muted2)', 'Back to plan', 'Re-open the business case before SOP');
@@ -13410,8 +13415,11 @@ async function _mcaPreview(first) {
     h += '<div class="eop-note">Basis: ' + (d.market.basis === 'plan' ? 'the plan (no cleared quarter yet)' : 'its last cleared quarters')
       + ', ' + Math.round(d.market.units_q).toLocaleString() + ' cars a quarter, segment share ' + (d.market.share * 100).toFixed(1) + '%; rivals held as they are (if they refresh too, you win fewer buyers).</div>';
     (d.problems || []).forEach(function(p){ h += '<div class="eop-note" style="color:var(--red)">' + _esc(p) + '</div>'; });
+    // The round has cleared: the design can be explored, but it is decided in the next round
+    var closed = _roundPhase === 'results';
+    if (closed) h += '<div class="eop-note" style="color:var(--gold)">This round has cleared: submit the mid-cycle action when the next round opens.</div>';
     box.innerHTML = h;
-    _mcaOk = !!d.ok;
+    _mcaOk = !!d.ok && !closed;
     save.disabled = !_mcaOk; save.style.opacity = _mcaOk ? 1 : .5;
   } catch (err) {
     if (seq === _mcaSeq) box.innerHTML = '<div class="eop-note" style="color:var(--red)">Preview failed: ' + _esc(err.message) + '</div>';
@@ -13425,7 +13433,10 @@ async function saveMca() {
     var r = await fetch(API_URL + '/sessions/' + sessionId + '/vehicles/' + _mcaVid + '/mca', {
       method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(_mcaBody(false))});
     var d = await r.json();
-    if (!r.ok) { toast('⚠ ' + (d.detail || 'Mid-cycle action refused')); return; }
+    if (!r.ok) {
+      if (r.status === 409) _roundPhase = 'results';   // the round cleared while the modal was open
+      toast('⚠ ' + (d.detail || 'Mid-cycle action refused')); return;
+    }
     toast('✓ Mid-cycle action submitted · approve by ' + d.approve_by_label);
     closeMcaModal();
     await loadVehiclePlan();
@@ -17333,6 +17344,7 @@ function updateRoundDisplay(roundData) {
   if (!roundData) return;
   currentRoundYear    = roundData.year    || 2025;
   currentRoundQuarter = roundData.quarter || 1;
+  if (roundData.phase) _roundPhase = roundData.phase;   // 'decision' | 'results' (decisions closed)
   const q    = `Q${roundData.quarter}`;
   const yr   = roundData.year;
   const rNum = roundData.round_number;
