@@ -27417,17 +27417,64 @@ async function loadApprovalQueue() {
   } catch (e) { _aqData = null; }
   el.innerHTML = _aqQueueHtml(_aqData);
 }
+// Mid-cycle actions waiting for approval (plan) or past their approve-by (late), from _planMcas: listed in
+// the queue beside the proposals, by approve-by (2026-11-16). Unlike a proposal, an MCA may be approved
+// any quarter up to its approve-by.
+function _aqMcaRows(curQ) {
+  var rows = [];
+  (activeVehicles || []).forEach(function (v) {
+    (_planMcas[v.id] || []).forEach(function (m) {
+      if (m.status !== 'plan' && m.status !== 'late') return;
+      rows.push({v: v, m: m, approve_by_qabs: m.approve_by_qabs != null ? m.approve_by_qabs : curQ});
+    });
+  });
+  return rows;
+}
+function _aqMcaRowHtml(x, curQ, MN) {
+  var v = x.v, m = x.m;
+  var late = m.status === 'late' || (m.approve_by_qabs != null && curQ > m.approve_by_qabs);
+  var now = !late && m.approve_by_qabs === curQ;
+  var st = late ? _AQ_STATE.late : now ? _AQ_STATE.approve_now : ['OPEN \u2013 APPROVE BY THEN', 'var(--gold)'];
+  var npv = m.npv_m != null ? Math.round(m.npv_m) : null;
+  var acts = '<button class="plan-act-mca" data-vid="' + v.id + '" data-mid="' + m.id + '" data-action="mca-pop" title="Details">\u21bb</button>';
+  if (!late) acts += ' <button class="plan-act-bc" data-vid="' + v.id + '" data-mid="' + m.id + '" data-action="mca-approve">Approve</button>';
+  acts += ' <button class="plan-act-revise" data-vid="' + v.id + '" data-action="mca">Revise</button>';
+  return '<tr class="plan-tr">'
+    + '<td class="plan-td">' + _esc(v.name || '') + '<div style="font-size:9px;color:#6aa8f0;">\u21bb mid-cycle action \u00b7 new top hat</div></td>'
+    + '<td class="plan-td mono center">' + (m.changeover_label || '\u2014') + '<div style="font-size:8px;color:var(--muted2);">change-over</div></td>'
+    + '<td class="plan-td mono center"><b style="color:' + (now ? 'var(--green)' : late ? 'var(--red)' : 'var(--text)') + ';">' + (m.approve_by_label || '\u2014') + '</b></td>'
+    + '<td class="plan-td mono">new top hat + tooling lead time</td>'
+    + '<td class="plan-td mono">\u2014</td>'
+    + '<td class="plan-td right">' + (npv == null ? '\u2014' : '<span class="' + (npv >= 0 ? 'plan-npv-pos' : 'plan-npv-neg') + '">' + (npv < 0 ? '-' : '') + '\u20ac' + Math.abs(npv).toLocaleString() + 'M</span>') + '</td>'
+    + '<td class="plan-td center"><span style="' + MN + 'font-size:8px;padding:2px 8px;border-radius:2px;border:1px solid ' + st[1] + ';color:' + st[1] + ';white-space:nowrap;">' + st[0] + '</span>'
+      + (late ? '<div style="font-size:8px;color:var(--muted2);margin-top:2px;">revise it to a later change-over</div>' : '') + '</td>'
+    + '<td class="plan-td" style="white-space:nowrap;">' + acts + '</td></tr>';
+}
 function _aqQueueHtml(d) {
-  if (!d || !d.enabled || !(d.queue || []).length) return '';
-  var names = _aqNames(d), MN = 'font-family:DM Mono,monospace;';
+  var curQ = getCurrentQI();
+  var props = d && d.enabled ? (d.queue || []) : [];
+  var mcas = _aqMcaRows(curQ);
+  if (!props.length && !mcas.length) return '';
+  var names = d ? _aqNames(d) : {}, MN = 'font-family:DM Mono,monospace;';
+  var count = [props.length ? props.length + ' proposal' + (props.length !== 1 ? 's' : '') : '',
+               mcas.length ? mcas.length + ' mid-cycle action' + (mcas.length !== 1 ? 's' : '') : ''].filter(Boolean).join(' \u00b7 ');
   var h = '<div class="card" style="padding:0;overflow:hidden;margin-bottom:14px;">'
     + '<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;padding:12px 16px;border-bottom:1px solid var(--border);">'
-    + '<div class="card-title" style="margin:0;">Approval queue \u2014 <span style="color:var(--gold);">' + d.queue.length + '</span> proposal' + (d.queue.length !== 1 ? 's' : '') + '</div>'
-    + '<div style="' + MN + 'font-size:9px;color:var(--muted2);">Now ' + d.now + ' \u00b7 each proposal is approved in its approve-by quarter, not earlier</div></div>'
+    + '<div class="card-title" style="margin:0;">Approval queue \u2014 <span style="color:var(--gold);">' + count + '</span></div>'
+    + '<div style="' + MN + 'font-size:9px;color:var(--muted2);">Now ' + ((d && d.now) || _qLabel(curQ))
+      + (props.length ? ' \u00b7 a proposal is approved in its approve-by quarter, not earlier' : '')
+      + (mcas.length ? ' \u00b7 a mid-cycle action any quarter up to its approve-by' : '') + '</div></div>'
     + '<div style="overflow-x:auto;"><table class="plan-tbl"><thead><tr>'
     + ['Proposal', 'SOP', 'Approve by', 'Set by', 'Approved after', 'NPV (submitted)', 'State', ''].map(function (t) { return '<th class="plan-th">' + t + '</th>'; }).join('')
     + '</tr></thead><tbody>';
-  d.queue.forEach(function (r) {
+  // Mid-cycle actions slot in before the first proposal with a later approve-by
+  var mi = 0;
+  mcas.sort(function (a, b) { return a.approve_by_qabs - b.approve_by_qabs; });
+  var flushMcas = function (upTo) {
+    while (mi < mcas.length && mcas[mi].approve_by_qabs <= upTo) h += _aqMcaRowHtml(mcas[mi++], curQ, MN);
+  };
+  props.forEach(function (r) {
+    flushMcas(r.approve_by_qabs != null ? r.approve_by_qabs : Infinity);
     var st = _AQ_STATE[r.state] || [r.state, 'var(--muted2)'];
     var npv = r.business_case && r.business_case.npv_m != null ? Math.round(r.business_case.npv_m) : null;
     var ab = '<b style="color:' + (r.state === 'approve_now' ? 'var(--green)' : r.state === 'overdue' || r.state === 'late' ? 'var(--red)' : 'var(--text)') + ';">' + r.approve_by + '</b>';
@@ -27447,6 +27494,7 @@ function _aqQueueHtml(d) {
       + (r.state === 'late' ? ' <button class="plan-act-revise" onclick="_aqResubmit(\'' + r.vehicle_id + '\')" title="Move SOP and EOP to the earliest quarters it can still make and submit again">Move SOP to ' + r.earliest_sop + ' &amp; resubmit</button>' : '')
       + '</td></tr>';
   });
+  flushMcas(Infinity);
   return h + '</tbody></table></div></div>';
 }
 
