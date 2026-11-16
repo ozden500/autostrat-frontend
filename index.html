@@ -361,11 +361,6 @@ input[type=text]:focus,input[type=number]:focus{outline:none;border-color:var(--
 .plan-td.mono{font-family:'DM Mono',monospace;}
 .plan-td.right{text-align:right;}
 .plan-td.center{text-align:center;}
-.plan-filter-btn{font-family:'DM Mono',monospace;font-size:8px;letter-spacing:.5px;
-  padding:3px 9px;border-radius:2px;border:1px solid var(--border2);
-  background:var(--s2);color:var(--muted2);cursor:pointer;transition:all .1s;}
-.plan-filter-btn:hover{color:var(--text);}
-.plan-filter-btn.active{background:var(--goldl);border-color:rgba(200,164,60,.4);color:var(--gold);}
 .plan-name-cell{font-weight:600;color:var(--white);}
 .plan-npv-pos{color:var(--cyan);font-family:'DM Mono',monospace;}
 .plan-npv-neg{color:var(--red);font-family:'DM Mono',monospace;}
@@ -1987,16 +1982,12 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
     <button class="btn-add-model" onclick="openStudyModal()">＋ New Product Study</button>
   </div>
 
-  <!-- Portfolio roadmap: filter and sort (the Portfolio table was merged into the chart 2026-11-15) -->
+  <!-- Portfolio roadmap: count and sort (the Portfolio table was merged into the chart 2026-11-15; the
+       status filter was dropped 2026-11-16: the bar colour shows the status) -->
   <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:8px;">
-    <div class="card-title" style="margin:0;">Portfolio — <span id="plan-vehicle-count" style="color:var(--gold);">0</span> vehicles</div>
+    <div class="card-title" style="margin:0;">Portfolio — <span id="plan-vehicle-count" style="color:var(--gold);">0</span></div>
     <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
-      <span style="font-family:'DM Mono',monospace;font-size:8px;color:var(--muted2);">Filter:</span>
-      <button class="plan-filter-btn active" onclick="setPlanFilter('all',this)">ALL</button>
-      <button class="plan-filter-btn" onclick="setPlanFilter('study',this)">STUDY</button>
-      <button class="plan-filter-btn" onclick="setPlanFilter('plan',this)">PLAN</button>
-      <button class="plan-filter-btn" onclick="setPlanFilter('approved',this)">APPROVED</button>
-      <span style="font-family:'DM Mono',monospace;font-size:8px;color:var(--muted2);margin-left:10px;">Sort:</span>
+      <span style="font-family:'DM Mono',monospace;font-size:8px;color:var(--muted2);">Sort:</span>
       <select onchange="setPlanSort(this.value)" style="width:auto;background:var(--s2);border:1px solid var(--border2);color:var(--text);font-family:'DM Mono',monospace;font-size:9px;padding:3px 6px;border-radius:2px;">
         <option value="sop">SOP</option><option value="eop">EOP</option><option value="name">Name</option><option value="segment">Segment</option><option value="status">Status</option>
       </select>
@@ -12977,20 +12968,15 @@ async function deleteVehicle(vehicleId) {
 
 // ── GANTT CHART ────────────────────────────────────────────
 // The Product Plan roadmap is the portfolio view (2026-11-15: the Portfolio table was merged into it):
-// one row per model (picture, name, segment · brand · body · powertrain, status, SOP→EOP bar with the
-// MCA ↻ markers, actions) and a line per mid-cycle action under it. Fixed window of GANTT_YEARS
-// calendar years, by default last year, this year and six ahead; ◀ / ▶ move it, TODAY resets it.
-// Bars outside the window are clipped at its edges; their label keeps the real dates.
-var GANTT_YEARS = 8, _ganttY0 = null, _planFilter = 'all', _planSort = 'sop';
+// one row per model (picture, name, segment · brand · body · powertrain, SOP→EOP bar coloured by status
+// with the MCA ↻ markers, ⋮ actions). Fixed window of GANTT_YEARS calendar years, by default last year,
+// this year and six ahead; ◀ / ▶ move it, TODAY resets it. A model whose life lies wholly outside the
+// window gets no row (it returns when the window reaches it); bars crossing an edge are clipped there,
+// their label keeps the real dates. Status column and status filter dropped 2026-11-16.
+var GANTT_YEARS = 8, _ganttY0 = null, _planSort = 'sop';
 var _PLAN_LEGACY = {draft:'study', planned:'plan', on_sale:'approved'};
 function ganttShift(dy) {
   _ganttY0 = dy === 0 ? null : (_ganttY0 == null ? currentRoundYear - 1 : _ganttY0) + dy;
-  buildVehicleGantt();
-}
-function setPlanFilter(f, el) {
-  _planFilter = f;
-  document.querySelectorAll('.plan-filter-btn').forEach(function(b){ b.classList.remove('active'); });
-  if (el) el.classList.add('active');
   buildVehicleGantt();
 }
 function setPlanSort(k) { _planSort = k; buildVehicleGantt(); }
@@ -13062,11 +13048,18 @@ function buildVehicleGantt() {
   if (lbl) lbl.textContent = y0 + ' – ' + (y0 + GANTT_YEARS - 1);
   const todayBtn = document.getElementById('gantt-win-today');
   if (todayBtn) todayBtn.style.visibility = _ganttY0 == null ? 'hidden' : 'visible';
-  let vehicles = activeVehicles.filter(v => _planFilter === 'all' || (_PLAN_LEGACY[v.status] || v.status) === _planFilter);
+  // Rows only for models whose life touches the window (no dates yet = always listed)
+  const wS = _planQa(y0, 1), wE = wS + GANTT_YEARS * 4 - 1;
+  const inWin = v => !(v.start_year && v.start_quarter) || (
+    _planQa(v.start_year, v.start_quarter) <= wE
+    && (v.end_year ? _planQa(v.end_year, v.end_quarter) : _planQa(currentRoundYear + 6, 4)) >= wS);
+  let vehicles = activeVehicles.filter(inWin);
   const countEl = document.getElementById('plan-vehicle-count');
-  if (countEl) countEl.textContent = vehicles.length;
+  if (countEl) countEl.textContent = vehicles.length === activeVehicles.length
+    ? vehicles.length + ' vehicle' + (vehicles.length === 1 ? '' : 's')
+    : vehicles.length + ' of ' + activeVehicles.length + ' vehicles in this window';
   if(vehicles.length===0){ wrap.innerHTML='<div style="padding:24px;color:var(--muted2);font-size:12px;">'
-    + (activeVehicles.length ? 'No models with status ' + _planFilter.toUpperCase() + '.' : 'No vehicles in plan yet.') + '</div>'; return; }
+    + (activeVehicles.length ? 'No model is in production or planned in ' + y0 + ' – ' + (y0 + GANTT_YEARS - 1) + '. Use ◀ ▶ or TODAY.' : 'No vehicles in plan yet.') + '</div>'; return; }
   const sortFns = {
     sop:     v => v.start_year ? _planQa(v.start_year, v.start_quarter || 1) : 9999,
     eop:     v => v.end_year ? _planQa(v.end_year, v.end_quarter || 4) : 9999,
@@ -13077,7 +13070,7 @@ function buildVehicleGantt() {
   const sf = sortFns[_planSort] || sortFns.sop;
   vehicles = vehicles.slice().sort((a,b) => { const x=sf(a), y=sf(b); return x<y?-1:x>y?1:(a.name||'').localeCompare(b.name||''); });
 
-  const colsTemplate='250px 90px 1fr 40px';
+  const colsTemplate='250px 1fr 40px';
   const todayQI = getCurrentQI(), curQ = todayQI;
   const qa = _planQa;
   const qStart = qa(y0, 1), numQ = GANTT_YEARS * 4, qEnd = qStart + numQ - 1;
@@ -13090,7 +13083,6 @@ function buildVehicleGantt() {
 
   let html=`<div class="gantt-header" style="grid-template-columns:${colsTemplate};">
     <div class="gantt-cell gh">Vehicle</div>
-    <div class="gantt-cell gh">Status</div>
     <div class="gantt-cell gh" style="padding:0;"><div style="display:grid;grid-template-columns:repeat(${years.length},1fr);width:100%;">
       ${years.map(y=>`<div style="padding:7px 0;text-align:center;${MN}font-size:8px;color:${y===currentRoundYear?'var(--gold)':'var(--muted)'};border-left:1px solid var(--border);">${y}</div>`).join('')}
     </div></div>
@@ -13128,17 +13120,15 @@ function buildVehicleGantt() {
         const marks = _ganttMcaMarks(v, qStart, numQ);
         barHtml=`<div class="gantt-bar-track">${todayLine}
           <div class="gantt-bar${active?' active-bar':''}" style="left:${lp}%;width:${wp}%;background:${bg};opacity:${opacity};${marks?'justify-content:flex-end;':''}" title="${_esc(tip)}">${narrow?'':label}</div>${outLbl}${marks}</div>`;
-      } else {
-        barHtml=`<div class="gantt-bar-track" title="${_esc(tip)}">${todayLine}<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:${si>qEnd?'flex-end':'flex-start'};padding:0 8px;${MN}font-size:8px;color:var(--muted2);">${si>qEnd?sq+'→'+eq+' ▶':'◀ '+sq+'→'+eq}</div></div>`;
       }
     } else {
-      barHtml='<div style="height:22px;background:var(--s3);border-radius:2px;display:flex;align-items:center;padding:0 8px;"><span style="font-size:9px;color:var(--muted2)">No dates set</span></div>';
+      barHtml='<div style="height:22px;background:var(--s3);border-radius:2px;display:flex;align-items:center;padding:0 8px;"><span style="font-size:9px;color:var(--muted2)">'
+        + String(st).toUpperCase() + ' · no dates set</span></div>';
     }
     html+=`<div class="gantt-row" style="grid-template-columns:${colsTemplate};">
       <div class="gantt-cell" style="gap:8px;">${_VIS.vehicle(v, 44)}
         <div style="min-width:0;"><div class="gantt-model-name"><span class="gantt-seg-dot" style="display:inline-block;background:${sc}"></span>${_esc(v.name)}</div>
         <div style="${MN}font-size:8px;color:var(--muted2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${sub}">${sub}</div></div></div>
-      <div class="gantt-cell">${statusBadge(v.status)}</div>
       <div class="gantt-bar-cell">${barHtml}</div>
       <div class="gantt-cell" style="justify-content:center;padding:0;"><button class="plan-kebab" data-vid="${v.id}" data-action="plan-menu" title="Actions">⋮</button></div></div>`;
   });
