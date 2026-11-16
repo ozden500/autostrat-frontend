@@ -1989,7 +1989,7 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
     <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
       <span style="font-family:'DM Mono',monospace;font-size:8px;color:var(--muted2);">Sort:</span>
       <select onchange="setPlanSort(this.value)" style="width:auto;background:var(--s2);border:1px solid var(--border2);color:var(--text);font-family:'DM Mono',monospace;font-size:9px;padding:3px 6px;border-radius:2px;">
-        <option value="sop">SOP</option><option value="eop">EOP</option><option value="name">Name</option><option value="segment">Segment</option><option value="status">Status</option>
+        <option value="sop">SOP</option><option value="eop">EOP</option><option value="name">Name</option><option value="segment">Segment</option><option value="brand">Brand</option><option value="status">Status</option>
       </select>
     </div>
   </div>
@@ -12983,6 +12983,10 @@ function ganttShift(dy) {
 }
 function setPlanSort(k) { _planSort = k; buildVehicleGantt(); }
 function _planQa(y, q) { return (parseInt(y) - 2025) * 4 + (parseInt(q) - 1); }
+// The model's brand name as the row shows it (brand row, else the name saved in its specs)
+function _planBrand(v) {
+  return v.brand_id ? ((BRAND_DATA[v.brand_id] || {}).name || v.brand_id) : ((v.rolled_up_specs || {}).brand_name || '');
+}
 // The model's actions, listed in the ⋮ menu at the end of its row (2026-11-16; were buttons in an
 // Actions column). Each item keeps its data-action for the document click delegation.
 function _planRowActions(v, st, curQ) {
@@ -13070,6 +13074,7 @@ function buildVehicleGantt() {
     eop:     v => v.end_year ? _planQa(v.end_year, v.end_quarter || 4) : 9999,
     name:    v => (v.name || '').toLowerCase(),
     segment: v => v.segment_code || '',
+    brand:   v => _planBrand(v).toLowerCase() || '￿',   // no brand last
     status:  v => { const s = ({study:0, plan:1, approved:2})[_PLAN_LEGACY[v.status] || v.status]; return s == null ? 3 : s; },
   };
   const sf = sortFns[_planSort] || sortFns.sop;
@@ -13099,7 +13104,7 @@ function buildVehicleGantt() {
     const sc  = SEG_COLORS[v.segment_code]||'var(--muted)';
     const sn  = SEG_NAMES[v.segment_code] ||v.segment_code;
     const bc  = statusBarColor(v.status);
-    const brand = v.brand_id ? ((BRAND_DATA[v.brand_id]||{}).name||v.brand_id) : (rs.brand_name||'');
+    const brand = _planBrand(v);
     const pwtL = rs.pwt_type ? ({ice_only:'ICE', bev_only:'BEV', ice_and_bev:'ICE + BEV'}[rs.pwt_type] || String(rs.pwt_type).replace(/_/g, ' ').toUpperCase()) : '';
     const sub = [sn, brand, rs.body_type, pwtL].filter(Boolean).map(_esc).join(' · ');
     let barHtml='';
