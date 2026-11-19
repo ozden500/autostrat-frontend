@@ -13711,7 +13711,11 @@ async function _mcaPreview(first) {
           if (pc.basis !== 'actual_demand') return '; from there it ages along the plan\'s volume curve to EOP (too few cleared quarters to fit a trend)';
           var tr = pc.trend_pa != null ? (pc.trend_pa >= 0 ? '+' : '−') + Math.abs(pc.trend_pa * 100).toFixed(1) + '% a year' : '';
           return '; actual demand moved ' + tr + ' over its last ' + pc.quarters + ' quarters, so the plan\'s volume curve runs at '
-            + pc.pace.toFixed(2) + '× its speed to EOP' + (pc.pace <= 0.25 ? ' (the slowest allowed: growth is not projected)' : pc.pace >= 2 ? ' (the fastest allowed)' : '');
+            + pc.pace.toFixed(2) + '× its speed to EOP' + (pc.pace <= 0.25 ? ' (the slowest allowed: growth is not projected)' : pc.pace >= 2 ? ' (the fastest allowed)' : '')
+            + (pc.sold_vs_demand != null && pc.sold_vs_demand < -0.02 ? '. Sales ran ' + Math.abs(pc.sold_vs_demand * 100).toFixed(0)
+               + '% below demand over those quarters (lines or stock limited the model)' : '')
+            + (bc.base_cap_cut_units > 0 ? '; the lines cap both scenarios: ' + Math.round(bc.base_cap_cut_units).toLocaleString()
+               + ' cars of the forecast cannot be built' : '');
         })()
       + '; rivals held as they are (if they refresh too, you win fewer buyers).'
       + (bc.cap_cut_units > 0 ? ' <span style="color:var(--gold)">' + bc.cap_cut_units.toLocaleString() + ' extra cars cut: the model\'s lines are full.</span>' : '') + '</div>';
