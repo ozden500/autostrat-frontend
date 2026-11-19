@@ -13507,15 +13507,16 @@ function _mcaTilesHtml(bc) {
   var bmx = Math.max.apply(null, bi.map(function(x){ return Math.abs(x[1]); }).concat([Math.abs(br.npv_m || 0), 1]));
   var brow = function(l, x, tot){ var w = Math.round(Math.abs(x || 0) / bmx * 100);
     return '<tr' + (tot ? ' class="tot"' : '') + '><td class="lab">' + l + '</td><td style="width:40%;text-align:left;"><span class="mca-bar" style="width:' + w + '%;background:' + ((x || 0) >= 0 ? 'var(--green)' : 'var(--red)') + '"></span></td><td>' + dM(x || 0) + '</td></tr>'; };
-  if (bc.bridge) t6 += '<div class="mca-sub">How the NPV is built' + info('Present value after tax at ' + rate + '%: what the action adds over doing nothing. The lines sum to the action NPV.') + '</div>'
-    + '<table class="mca-tbl">' + bi.map(function(x){ return brow(x[0], x[1]); }).join('') + brow('Action NPV', br.npv_m, true) + '</table>';
+  if (bc.bridge) t6 += '<div id="mca-dd-bridge" style="display:' + (_mcaDd.bridge ? 'block' : 'none') + ';">'   // opens from its link
+    + '<div class="mca-sub">How the NPV is built' + info('Present value after tax at ' + rate + '%: what the action adds over doing nothing. The lines sum to the action NPV.') + '</div>'
+    + '<table class="mca-tbl">' + bi.map(function(x){ return brow(x[0], x[1]); }).join('') + brow('Action NPV', br.npv_m, true) + '</table></div>';
   var good = (mt.npv_m || 0) >= 0, nc = good ? 'var(--green)' : 'var(--red)';
   var h = '<div class="mca-verdict" style="border-color:' + (good ? 'rgba(74,222,128,.35)' : 'rgba(239,68,68,.45)') + ';background:' + (good ? 'rgba(74,222,128,.05)' : 'rgba(239,68,68,.06)') + ';">'
     + '<span style="color:' + nc + ';">' + (good ? 'Verdict · the action creates value' : 'Verdict · the action loses money') + '</span>'
     + '<span>NPV ' + dM(mt.npv_m) + ' on ' + M(b.invest.total_m) + ' invested · ' + dU(b.units - a.units) + ' cars · margin per car ' + dE(m1.car_eur - m0.car_eur) + '</span></div>';
   h += '<div class="mca-tiles">' + tile(1, 'Volumes by region', 'var(--cyan)', t1, lk('years', 'cars by year')) + tile(2, 'Price → net revenue', 'var(--gold)', t2) + tile(3, 'Investments', 'var(--purple)', t3)
     + tile(4, 'Variable cost €/car', 'var(--orange)', t4) + tile(5, 'Variable margin', 'var(--green)', t5)
-    + tile(6, 'Financial metrics', 'var(--cyan)', t6, lk('years', 'cash flow by year')
+    + tile(6, 'Financial metrics', 'var(--cyan)', t6, (bc.bridge ? lk('bridge', 'ⓘ how the NPV is built') : '') + lk('years', 'cash flow by year')
       + (bc.sensitivity ? lk('sens', 'sensitivities') : '') + (bc.rate_curve ? lk('rate', 'NPV by discount rate') : '')) + '</div>';
   return h + '<div class="eop-note">Same template as §10: per-car figures are averages over every car sold from now to EOP. Regions split each scenario\'s cars by where the model sold in the last cleared quarters.</div>';
 }
