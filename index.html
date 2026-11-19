@@ -13026,6 +13026,7 @@ async function deleteVehicle(vehicleId) {
 // their label keeps the real dates. Status column and status filter dropped 2026-11-16.
 var GANTT_YEARS = 8, _ganttY0 = null, _planSort = 'sop';
 var MCA_MIN_LEFT_Q = 6;   // = financial_engine.MCA_MIN_LEFT_Q: change-over at least 6 q before EOP
+var MCA_MIN_GAP_Q = 8;    // = financial_engine.MCA_MIN_GAP_Q: at least 2 years after SOP / the last approved MCA
 var _roundPhase = null;   // set by updateRoundDisplay; 'results' = this round has cleared
 var _PLAN_LEGACY = {draft:'study', planned:'plan', on_sale:'approved'};
 function ganttShift(dy) {
@@ -13072,10 +13073,13 @@ function _planRowActions(v, st, curQ) {
     h += item('mca-pop', '#6aa8f0', 'Mid-cycle action details',
               (m.status === 'approved' ? 'Approved' : m.status === 'late' ? 'Late' : 'Planned') + ' · change-over ' + (m.changeover_label || '—'), mid);
   });
-  // Offered only while a change-over can still fit: the earliest is next quarter, the latest EOP − 6 q
-  // (MCA_MIN_LEFT_Q); a longer lead time is caught by the modal's preview
+  // Offered only while a change-over can still fit: the earliest is next quarter and 2 years (MCA_MIN_GAP_Q)
+  // after SOP and after the last approved MCA's change-over, the latest EOP − 6 q (MCA_MIN_LEFT_Q); a longer
+  // lead time is caught by the modal's preview
   var eopQ = v.end_year ? _planQa(v.end_year, v.end_quarter || 4) : Infinity;
-  if (st === 'approved' && v.tophat_module_id && !open.length && eopQ - MCA_MIN_LEFT_Q >= curQ + 1)
+  var gapFrom = (v.start_year ? _planQa(v.start_year, v.start_quarter || 1) : -Infinity);
+  (_planMcas[vid] || []).forEach(function(m){ if (m.status === 'approved' && m.changeover_qabs > gapFrom) gapFrom = m.changeover_qabs; });
+  if (st === 'approved' && v.tophat_module_id && !open.length && eopQ - MCA_MIN_LEFT_Q >= Math.max(curQ + 1, gapFrom + MCA_MIN_GAP_Q))
     h += item('mca', '#6aa8f0', 'Mid-cycle action', 'Refresh the top hat from a change-over quarter');
   if (st === 'approved' && !inProd)
     h += item('revise', 'var(--muted2)', 'Back to plan', 'Re-open the business case before SOP');
