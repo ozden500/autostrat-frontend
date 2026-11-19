@@ -13627,7 +13627,9 @@ async function _mcaPreview(first) {
     var e = function(x){ return (x >= 0 ? '+' : '−') + '€' + Math.abs(Math.round(x || 0)).toLocaleString(); };
     var bc = d.business_case || {}, c = d.child || {}, t = c.terms || {};
     var h = '<div class="eop-pv">';
-    h += _eopRow('New top hat: change · R&amp;D · lead', Math.round((t.change || 0) * 100) + '% · ' + m(c.rd_m) + ' · ' + c.lead_time_q + ' q');
+    var lean = !!bc.tiles;   // the six tiles carry R&D, cost, margin, warranty, investment, cars and the metrics
+    h += lean ? _eopRow('New top hat: change · lead', Math.round((t.change || 0) * 100) + '% · ' + c.lead_time_q + ' q')
+              : _eopRow('New top hat: change · R&amp;D · lead', Math.round((t.change || 0) * 100) + '% · ' + m(c.rd_m) + ' · ' + c.lead_time_q + ' q');
     h += _eopRow('Change-over · approve by', d.changeover_label + ' · ' + d.approve_by_label,
                  d.approve_by_qabs <= d.qabs ? 'var(--gold)' : '');
     h += _eopRow('Age at change-over · made younger by', d.age_at_changeover_q + ' q · ' + Math.round(d.age_credit_q) + ' q', 'var(--green)');
@@ -13639,6 +13641,7 @@ async function _mcaPreview(first) {
       h += _eopRow('Car ' + k, _mcaFmt(sb[k], false) + ' → ' + _mcaFmt(sa[k], false), dd > 0 ? 'var(--green)' : 'var(--red)');
     });
     h += _eopRow('Utility from the design + price', (d.d_util_spec >= 0 ? '+' : '') + d.d_util_spec.toFixed(2) + ' pts');
+    if (!lean) {
     h += _eopRow('Unit cost change', e(d.tpc_delta_eur) + ' / car', d.tpc_delta_eur > 0 ? 'var(--red)' : 'var(--green)');
     h += _eopRow('Margin per car before → after', '€' + Math.round(bc.margin_car_before_eur || 0).toLocaleString() + ' → €' + Math.round(bc.margin_car_after_eur || 0).toLocaleString());
     h += _eopRow('Launch warranty (4 q)', e(d.wty_launch_eur_car) + ' / car', d.wty_launch_eur_car > 0 ? 'var(--red)' : '');
@@ -13647,6 +13650,7 @@ async function _mcaPreview(first) {
     h += _eopRow('NPV at ' + ((bc.rate_pa || 0) * 100).toFixed(1) + '% · IRR', m(bc.npv_m) + ' · ' + (bc.irr_pa != null ? (bc.irr_pa * 100).toFixed(1) + '%' : '—'),
                  (bc.npv_m || 0) >= 0 ? 'var(--green)' : 'var(--red)');
     h += _eopRow('Payback', bc.payback_q ? bc.payback_q + ' q' : '—');
+    }
     h += '</div>';
     h += '<div class="eop-note">Basis: ' + (d.market.basis === 'plan' ? 'the plan (no cleared quarter yet)' : 'its last cleared quarters')
       + ', ' + Math.round(d.market.units_q).toLocaleString() + ' cars a quarter, segment share ' + (d.market.share * 100).toFixed(1) + '%'
