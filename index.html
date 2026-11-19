@@ -3016,7 +3016,9 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
     <div class="mm-grid" style="margin-top:10px;">
       <div class="mm-field"><label>Change-over quarter</label><select id="mca-co" onchange="_mcaPreview(false)"></select></div>
       <div class="mm-field"><label>Price change at change-over (%)</label><input type="number" id="mca-price" step="0.5" value="0" onchange="_mcaPreview(false)"></div>
+      <div class="mm-field"><label>Volume uptick vs do nothing (%)</label><input type="number" id="mca-vol" step="0.5" min="-30" max="50" value="0" onchange="_mcaPreview(false)"></div>
     </div>
+    <div class="eop-note" style="margin:6px 0 0;">The volume uptick is your estimate of how many more (or fewer) cars the model sells after the change-over than if you did nothing, price move included. It is spread over the remaining quarters along the do-nothing volume curve and capped at what the lines can build. The market decides the real outcome.</div>
     <div id="mca-preview"></div>
     <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px;">
       <button class="btn-mm-cancel" onclick="closeMcaModal()">CLOSE</button>
@@ -13376,6 +13378,7 @@ function _mcaPopHtml(v, m, curQ) {
     + (m.status === 'plan' && m.approve_by_label ? row('Approve by', m.approve_by_label) : '')
     + (m.age_credit_q ? row('Age credit', Math.round(m.age_credit_q) + ' q younger') : '')
     + (m.price_move_pct ? row('Price move', (m.price_move_pct > 0 ? '+' : '') + (m.price_move_pct * 100).toFixed(1) + '%') : '')
+    + (m.volume_uplift_pct ? row('Volume uptick', (m.volume_uplift_pct > 0 ? '+' : '') + (m.volume_uplift_pct * 100).toFixed(1) + '%') : '')
     + row('NPV', '<span class="' + ((m.npv_m || 0) >= 0 ? 'plan-npv-pos' : 'plan-npv-neg') + '">' + npv + '</span>')
     + (acts ? '<div style="display:flex;gap:4px;margin-top:8px;justify-content:flex-end;">' + acts + '</div>' : '');
 }
@@ -13404,18 +13407,21 @@ function openMcaModal(vid) {
   _mcaVid = vid; _mcaLast = null;
   var open = (_planMcas[vid] || []).find(function(m){ return m.status === 'plan' || m.status === 'late'; });
   _mcaInit = open ? {specs: open.child_specs || {}, changeover_qabs: open.status === 'late' ? null : open.changeover_qabs,
-                     price_move_pct: open.price_move_pct || 0} : {specs: {}, changeover_qabs: null, price_move_pct: 0};
+                     price_move_pct: open.price_move_pct || 0, volume_uplift_pct: open.volume_uplift_pct || 0}
+                : {specs: {}, changeover_qabs: null, price_move_pct: 0, volume_uplift_pct: 0};
   document.getElementById('mca-sub').textContent = v.name + ' · SOP Q' + v.start_quarter + ' ' + v.start_year +
     ' · EOP Q' + v.end_quarter + ' ' + v.end_year + (open ? ' · revising the submitted action' : '');
   document.getElementById('mca-specs').innerHTML = '<div class="eop-note">Loading the current top hat…</div>';
   document.getElementById('mca-co').innerHTML = '';
   document.getElementById('mca-price').value = ((_mcaInit.price_move_pct || 0) * 100).toFixed(1);
+  document.getElementById('mca-vol').value = ((_mcaInit.volume_uplift_pct || 0) * 100).toFixed(1);
   document.getElementById('mcaModal').classList.add('open');
   _mcaPreview(true);
 }
 function closeMcaModal() { document.getElementById('mcaModal').classList.remove('open'); }
 function _mcaBody(first) {
-  var body = {team_id: teamId, specs: {}, price_move_pct: (parseFloat(document.getElementById('mca-price').value) || 0) / 100};
+  var body = {team_id: teamId, specs: {}, price_move_pct: (parseFloat(document.getElementById('mca-price').value) || 0) / 100,
+              volume_uplift_pct: (parseFloat(document.getElementById('mca-vol').value) || 0) / 100};
   if (first) {
     body.specs = _mcaInit.specs || {};
     if (_mcaInit.changeover_qabs != null) body.changeover_qabs = _mcaInit.changeover_qabs;
@@ -13504,7 +13510,7 @@ function _mcaTilesHtml(bc) {
   // 1 · volumes by region
   var regs = Object.keys(b.regions || {}).sort(function(x, y){ return (b.regions[y] || 0) - (b.regions[x] || 0); });
   var lab = function(r){ return ((typeof SALES_MARKETS !== 'undefined' ? SALES_MARKETS : []).find(function(s){ return s.region === r; }) || {label: r}).label; };
-  var t1 = tbl([['Cars, change-over → EOP', U(a.units), U(b.units), dU(b.units - a.units), true, 'Cars sold from the change-over to EOP (before it both scenarios sell the same car): base volume follows the plan curve; the action adds the extra buyers its new top hat, price and age credit win (capped by the lines).']]
+  var t1 = tbl([['Cars, change-over → EOP', U(a.units), U(b.units), dU(b.units - a.units), true, 'Cars sold from the change-over to EOP (before it both scenarios sell the same car): base volume follows the plan curve; the action adds your volume uptick on top, along the same curve (capped by the lines).']]
     .concat(regs.map(function(r){ var x = (a.regions || {})[r] || 0, y = b.regions[r] || 0; return [_esc(lab(r)), U(x), U(y), dU(y - x)]; })));
   // 2 · price → net revenue
   var p0 = a.price, p1 = b.price;
@@ -13644,7 +13650,9 @@ function _mcaDetailHtml(bc, d) {
     h += '</table></div>';
   }
   var k4 = h.length;
-  h += '<div class="eop-note">Extra cars: the logit response to the design gain and the younger age, on the plan\'s volume curve, capped at what the model\'s lines can build. Rivals are held as they are.</div>';
+  h += '<div class="eop-note">' + (bc.uplift_basis === 'utility'
+      ? 'Extra cars: the logit response to the design gain and the younger age, on the plan\'s volume curve, capped at what the model\'s lines can build. Rivals are held as they are.'
+      : 'Extra cars: your volume uptick (' + (((bc.volume_uplift_pct || 0) >= 0 ? '+' : '') + ((bc.volume_uplift_pct || 0) * 100).toFixed(1)) + '%) on every do-nothing quarter from the change-over, capped at what the model\'s lines can build.') + '</div>';
   if (bc.tiles) {   // second level: each block opens from its link in a tile
     var note = h.slice(k4), dd = function(k, x){ return x ? '<div id="mca-dd-' + k + '" class="mca-dd" style="display:' + (_mcaDd[k] ? 'block' : 'none') + ';">' + x + '</div>' : ''; };
     h = h.slice(0, k0) + dd('years', h.slice(k1, k2) + note) + dd('sens', h.slice(k2, k3)) + dd('rate', h.slice(k3, k4));
@@ -13690,7 +13698,6 @@ async function _mcaPreview(first) {
       if (Math.abs(dd) < 1e-6) return;
       h += _eopRow('Whole car · ' + k, _mcaFmt(sb[k], false) + ' → ' + _mcaFmt(sa[k], false), dd > 0 ? 'var(--green)' : 'var(--red)');
     });
-    h += _eopRow('Utility from the design + price', (d.d_util_spec >= 0 ? '+' : '') + d.d_util_spec.toFixed(2) + ' pts');
     if (!lean) {
     h += _eopRow('Unit cost change', e(d.tpc_delta_eur) + ' / car', d.tpc_delta_eur > 0 ? 'var(--red)' : 'var(--green)');
     h += _eopRow('Margin per car before → after', '€' + Math.round(bc.margin_car_before_eur || 0).toLocaleString() + ' → €' + Math.round(bc.margin_car_after_eur || 0).toLocaleString());
