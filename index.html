@@ -415,6 +415,7 @@ input[type=text]:focus,input[type=number]:focus{outline:none;border-color:var(--
 .mca-tile-h{font-family:'DM Mono',monospace;font-size:8px;letter-spacing:1.3px;text-transform:uppercase;margin-bottom:6px;}
 .mca-t3 td:not(:first-child),.mca-t3 th:not(:first-child){width:23%;}
 .mca-verdict{display:flex;flex-wrap:wrap;gap:4px 14px;align-items:center;margin-top:10px;padding:8px 12px;border:1px solid;border-radius:4px;font-family:'DM Mono',monospace;font-size:10px;}
+.mca-sub{font-family:'DM Mono',monospace;font-size:8px;letter-spacing:1px;text-transform:uppercase;color:var(--muted2);margin:10px 0 2px;}
 .mca-links{display:flex;flex-wrap:wrap;gap:4px 12px;margin-top:8px;}
 .mca-lnk{font-family:'DM Mono',monospace;font-size:9.5px;background:none;border:1px solid var(--border2);border-radius:3px;color:var(--gold);cursor:pointer;padding:3px 8px;}
 .mca-dd{margin-top:10px;border:1px solid var(--border2);border-left:3px solid var(--cyan);border-radius:4px;background:var(--s1);padding:2px 12px 10px;}
@@ -13499,13 +13500,22 @@ function _mcaTilesHtml(bc) {
     ['NPV / invested capital', '—', '—', mt.npv_per_invest !== null && mt.npv_per_invest !== undefined ? sg(mt.npv_per_invest, mt.npv_per_invest.toFixed(1) + '×') : '—', false, 'Action NPV ÷ its investment.'],
     ['IRR', '—', '—', irr, false, 'Return on the action\'s own cash flows (R&D first, extra margin later); compare with ' + rate + '%.'],
     ['Payback', '—', '—', mt.payback_q ? mt.payback_q + ' q' : 'never', false, 'Quarters from now until the action\'s cumulative cash turns positive.']]);
+  // the action's NPV bridge, embedded under the metrics (present value after tax; the items sum to the NPV)
+  var br = bc.bridge || {};
+  var bi = [['Extra cars × new margin', br.extra_cars_m], ['Margin change, cars sold anyway', br.margin_change_m], ['Launch warranty', br.warranty_m],
+            ['New top hat R&amp;D', br.rd_m], ['Tooling + line variant', br.capex_m]].filter(function(x){ return Math.abs(x[1] || 0) >= 0.05; });
+  var bmx = Math.max.apply(null, bi.map(function(x){ return Math.abs(x[1]); }).concat([Math.abs(br.npv_m || 0), 1]));
+  var brow = function(l, x, tot){ var w = Math.round(Math.abs(x || 0) / bmx * 100);
+    return '<tr' + (tot ? ' class="tot"' : '') + '><td class="lab">' + l + '</td><td style="width:40%;text-align:left;"><span class="mca-bar" style="width:' + w + '%;background:' + ((x || 0) >= 0 ? 'var(--green)' : 'var(--red)') + '"></span></td><td>' + dM(x || 0) + '</td></tr>'; };
+  if (bc.bridge) t6 += '<div class="mca-sub">How the NPV is built' + info('Present value after tax at ' + rate + '%: what the action adds over doing nothing. The lines sum to the action NPV.') + '</div>'
+    + '<table class="mca-tbl">' + bi.map(function(x){ return brow(x[0], x[1]); }).join('') + brow('Action NPV', br.npv_m, true) + '</table>';
   var good = (mt.npv_m || 0) >= 0, nc = good ? 'var(--green)' : 'var(--red)';
   var h = '<div class="mca-verdict" style="border-color:' + (good ? 'rgba(74,222,128,.35)' : 'rgba(239,68,68,.45)') + ';background:' + (good ? 'rgba(74,222,128,.05)' : 'rgba(239,68,68,.06)') + ';">'
     + '<span style="color:' + nc + ';">' + (good ? 'Verdict · the action creates value' : 'Verdict · the action loses money') + '</span>'
     + '<span>NPV ' + dM(mt.npv_m) + ' on ' + M(b.invest.total_m) + ' invested · ' + dU(b.units - a.units) + ' cars · margin per car ' + dE(m1.car_eur - m0.car_eur) + '</span></div>';
   h += '<div class="mca-tiles">' + tile(1, 'Volumes by region', 'var(--cyan)', t1, lk('years', 'cars by year')) + tile(2, 'Price → net revenue', 'var(--gold)', t2) + tile(3, 'Investments', 'var(--purple)', t3)
     + tile(4, 'Variable cost €/car', 'var(--orange)', t4) + tile(5, 'Variable margin', 'var(--green)', t5)
-    + tile(6, 'Financial metrics', 'var(--cyan)', t6, lk('bridge', 'ⓘ how the NPV is built') + lk('years', 'cash flow by year')
+    + tile(6, 'Financial metrics', 'var(--cyan)', t6, lk('years', 'cash flow by year')
       + (bc.sensitivity ? lk('sens', 'sensitivities') : '') + (bc.rate_curve ? lk('rate', 'NPV by discount rate') : '')) + '</div>';
   return h + '<div class="eop-note">Same template as §10: per-car figures are averages over every car sold from now to EOP. Regions split each scenario\'s cars by where the model sold in the last cleared quarters.</div>';
 }
@@ -13586,7 +13596,7 @@ function _mcaDetailHtml(bc, d) {
   h += '<div class="eop-note">Extra cars: the logit response to the design gain and the younger age, on the plan\'s volume curve, capped at what the model\'s lines can build. Rivals are held as they are.</div>';
   if (bc.tiles) {   // second level: each block opens from its link in a tile
     var note = h.slice(k4), dd = function(k, x){ return x ? '<div id="mca-dd-' + k + '" class="mca-dd" style="display:' + (_mcaDd[k] ? 'block' : 'none') + ';">' + x + '</div>' : ''; };
-    h = h.slice(0, k0) + dd('bridge', h.slice(k0, k1)) + dd('years', h.slice(k1, k2) + note) + dd('sens', h.slice(k2, k3)) + dd('rate', h.slice(k3, k4));
+    h = h.slice(0, k0) + dd('years', h.slice(k1, k2) + note) + dd('sens', h.slice(k2, k3)) + dd('rate', h.slice(k3, k4));
   }
   return h + '</details>';
 }
