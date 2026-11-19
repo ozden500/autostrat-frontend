@@ -3010,7 +3010,8 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
     <div class="eop-note" style="margin-top:0">A new top hat, derived from the current one, replaces it from the change-over
       quarter: buyers see the better design and a younger model. It is a business case: submit it, then approve it by its
       approve-by quarter (the new top hat's development and supplier tooling must be done by the change-over).</div>
-    <div style="font-size:10px;color:var(--muted2);margin:12px 0 4px;letter-spacing:.08em;">NEW TOP HAT (within the derivative range)</div>
+    <div style="font-size:10px;color:var(--muted2);margin:12px 0 4px;letter-spacing:.08em;">NEW TOP HAT MODULE RATINGS (within the derivative range)</div>
+    <div class="eop-note" style="margin:0 0 6px;">A mid-cycle action keeps the body’s hard points: interior space stays as it is, safety moves only through restraints and minor reinforcement (a third of the derivative range). The car moves by the top hat’s share of each rating (rows below).</div>
     <div id="mca-specs"></div>
     <div class="mm-grid" style="margin-top:10px;">
       <div class="mm-field"><label>Change-over quarter</label><select id="mca-co" onchange="_mcaPreview(false)"></select></div>
@@ -9408,6 +9409,24 @@ var _MARKET_E = {
     {max:9999,label:'VERY POOR',     color:'#ef4444'}
   ],
 
+  // Interior space (2026-11-19, financial_engine.MCE_SPACE_W / MCE_SPACE_K / space_ref_m3 /
+  // mce_space_score): roominess (m³, the top hat's) against what is typical for its segment × body,
+  // weighted per segment; the weight comes out of the other attributes pro rata. Outside §4's band
+  // (0.75..1.35 × typical) = legacy data, scored typical.
+  SPACE_W: {a_segment:0.04, b_segment:0.05, c_segment:0.05, d_segment:0.05, e_segment:0.04, f_segment:0.03,
+            sports:0.01, mpv:0.10, pickup:0.06, c_van:0.10, d_van:0.12, e_van:0.12},
+  SPACE_K: 4.0,
+  spaceRef: function(config_key) {
+    var parts = String(config_key || 'C').split('_');
+    var seg = (parts[0] || 'C').toUpperCase(), body = parts.slice(1).join('_').toUpperCase();
+    return 2.5 * ((_TOPHAT_PC.SEGMENT_SCALE || {})[seg] || 1.0) * ((_TOPHAT_PC.BODY_SCALE || {})[body] || 1.0);
+  },
+  spaceScore: function(room, ref) {
+    room = parseFloat(room); ref = parseFloat(ref);
+    if (!(room > 0) || !(ref > 0) || room < 0.75 * ref - 0.05 || room > 1.35 * ref + 0.05) return 50;
+    return Math.max(0, Math.min(100, Math.round(100 / (1 + Math.exp(this.SPACE_K * (ref - room) / ref)))));
+  },
+
   // Sigmoid utility score: 50 at benchmark, asymptotic to 0/100
   // dir 'lo' = lower actual is better (e.g. fuel, 0-100 time)
   // dir 'hi' = higher actual is better (e.g. safety, comfort)
@@ -9467,6 +9486,9 @@ var _MARKET_E = {
     // Reliability: 0-100%
     sc.reliability = this._score(d01(o.reliability, 0.5) * 100, bench.reliability, 'hi', 2.0);
 
+    // Space: roominess vs typical for its size and shape (o.roominess, o.roominess_ref m³)
+    sc.space = this.spaceScore(o.roominess, o.roominess_ref);
+
     // ── 2. Brand dimension bonuses ───────────────────────────────
     var brand = (o.brand_code || '').toUpperCase();
     var bf    = this.BRAND_FIT[brand];
@@ -9503,6 +9525,8 @@ var _MARKET_E = {
     var utility = 0;
     var attrs   = ['price','efficiency','performance','safety','comfort','technology','reliability'];
     attrs.forEach(function(a) { utility += (sc[a]||50) * (weights[a]||0); });
+    var _ws = this.SPACE_W[seg] != null ? this.SPACE_W[seg] : 0.05;
+    utility = (1 - _ws) * utility + _ws * sc.space;
     // Model ageing, as clearing applies it (main._mce_utility): -0.5 pts a quarter since SOP (net of
     // a facelift's age credit), at most -15. o.age_quarters, 0 for a proposal at launch (2026-10-06).
     var _ageQ = parseFloat(o.age_quarters) || 0;
@@ -13309,8 +13333,7 @@ async function saveEop() {
 var _planMcas = {}, _mcaVid = null, _mcaOk = false, _mcaSeq = 0, _mcaTimer = null, _mcaLast = null, _mcaInit = null;
 var _MCA_SPECS = [
   {k: 'reliability', l: 'Reliability', pct: true}, {k: 'comfort', l: 'Comfort', pct: true},
-  {k: 'safety', l: 'Safety', pct: true}, {k: 'premiumness', l: 'Premiumness', pct: false},
-  {k: 'roominess', l: 'Roominess', pct: false}];
+  {k: 'safety', l: 'Safety', pct: true}, {k: 'premiumness', l: 'Premiumness', pct: false}];   // no roominess: an MCA keeps the hard points
 async function _loadPlanMcas() {
   _planMcas = {};
   if (!sessionId || !teamId) return;
@@ -13638,7 +13661,7 @@ async function _mcaPreview(first) {
       if (sa[k] == null || sb[k] == null) return;
       var dd = sa[k] - sb[k];
       if (Math.abs(dd) < 1e-6) return;
-      h += _eopRow('Car ' + k, _mcaFmt(sb[k], false) + ' → ' + _mcaFmt(sa[k], false), dd > 0 ? 'var(--green)' : 'var(--red)');
+      h += _eopRow('Whole car · ' + k, _mcaFmt(sb[k], false) + ' → ' + _mcaFmt(sa[k], false), dd > 0 ? 'var(--green)' : 'var(--red)');
     });
     h += _eopRow('Utility from the design + price', (d.d_util_spec >= 0 ? '+' : '') + d.d_util_spec.toFixed(2) + ' pts');
     if (!lean) {
@@ -26535,6 +26558,8 @@ function buildReviewSection() {
         comfort:        cmfN  != null ? cmfN  : 0.5,   // passing 0-1 avoids d01 misreading a
         premiumness:    premN != null ? premN : 0.3,   // genuine 1% (stored "1") as 100%.
         reliability:    relN  != null ? relN  : 0.5,
+        roominess:      thS.roominess != null ? parseFloat(thS.roominess) : null,
+        roominess_ref:  _MARKET_E.spaceRef(M.tophat.configKey || thS.config_key),
         adas_level:     esS.adas_level  || 1,
         connectivity:   esS.connectivity|| 30,
         brand_code:     _prop.study ? (_prop.study.brand_code || '') : '',
