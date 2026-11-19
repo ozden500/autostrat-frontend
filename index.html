@@ -410,6 +410,16 @@ input[type=text]:focus,input[type=number]:focus{outline:none;border-color:var(--
 .mca-tbl td{font-family:'DM Mono',monospace;text-align:right;padding:3px 6px;border-bottom:1px solid var(--border);white-space:nowrap;}
 .mca-tbl tr.tot td{border-top:1px solid var(--border2);font-weight:600;}
 .mca-tbl td.lab{font-family:inherit;color:var(--text);}
+.mca-car{display:flex;align-items:stretch;gap:6px;}
+.mca-car-track{display:flex;gap:10px;overflow-x:auto;scroll-snap-type:x mandatory;flex:1;padding:2px 2px 6px;scrollbar-width:thin;}
+.mca-car-nav{flex:0 0 26px;background:var(--s2);border:1px solid var(--border2);color:var(--text);border-radius:6px;font-size:18px;cursor:pointer;}
+.mca-car-nav:hover{border-color:var(--gold);color:var(--gold);}
+.mca-pkg{flex:0 0 226px;scroll-snap-align:start;background:var(--s2);border:1px solid var(--border2);border-radius:8px;padding:8px;cursor:pointer;display:flex;flex-direction:column;gap:4px;}
+.mca-pkg:hover{border-color:var(--border3);}
+.mca-pkg.on{border-color:var(--gold);box-shadow:0 0 0 1px var(--gold) inset;background:var(--s3);}
+.mca-pkg-h{font-size:12px;font-weight:600;color:var(--white);display:flex;justify-content:space-between;align-items:center;}
+.mca-pkg-h span{font-size:10px;color:var(--gold);font-weight:500;}
+.mca-pkg-d{font-size:10.5px;color:var(--muted2);line-height:1.35;min-height:28px;}
 .mca-tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:10px;margin-top:10px;}
 .mca-tile{background:var(--s1);border:1px solid var(--border2);border-top:3px solid var(--cyan);border-radius:4px;padding:10px 12px;min-width:0;overflow-x:auto;}
 .mca-tile-h{font-family:'DM Mono',monospace;font-size:8px;letter-spacing:1.3px;text-transform:uppercase;margin-bottom:6px;}
@@ -3013,7 +3023,7 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
     <div style="font-size:10px;color:var(--muted2);margin:12px 0 4px;letter-spacing:.08em;">THE CAR AFTER THE CHANGE-OVER (the new top hat delivers it, within its derivative range)</div>
     <div class="eop-note" style="margin:0 0 6px;">A mid-cycle action keeps the body’s hard points: interior space stays as it is, safety moves only through restraints and minor reinforcement. Each slider is the whole car; behind it only the top hat changes, by the car’s move ÷ the top hat’s share of that rating, so a slider’s range is narrower than the top hat’s own.</div>
     <div id="mca-specs"></div>
-    <div style="font-size:10px;color:var(--muted2);margin:14px 0 4px;letter-spacing:.08em;">DESIGN REFRESH (what buyers see: the more of the car looks new, the younger it feels)</div>
+    <div style="font-size:10px;color:var(--muted2);margin:14px 0 4px;letter-spacing:.08em;">DESIGN REFRESH: choose a content package (what buyers see)</div>
     <div id="mca-design"></div>
     <div class="mm-grid" style="margin-top:10px;">
       <div class="mm-field"><label>Change-over quarter</label><select id="mca-co" onchange="_mcaPreview(false)"></select></div>
@@ -13380,7 +13390,7 @@ function _mcaPopHtml(v, m, curQ) {
     + (m.status === 'plan' && m.approve_by_label ? row('Approve by', m.approve_by_label) : '')
     + (m.age_credit_q ? row('Age credit', Math.round(m.age_credit_q) + ' q younger') : '')
     + (m.price_move_pct ? row('Price move', (m.price_move_pct > 0 ? '+' : '') + (m.price_move_pct * 100).toFixed(1) + '%') : '')
-    + ((m.design || []).length ? row('Design refresh', m.design.length + ' item' + (m.design.length > 1 ? 's' : '')) : '')
+    + ((m.design || []).length ? row('Design refresh', (_MCA_PKGS.find(function(p){ return p.k === _mcaPkgOf(m.design); }) || {name: 'Custom'}).name) : '')
     + (m.volume_uplift_pct ? row('Volume uptick', (m.volume_uplift_pct > 0 ? '+' : '') + (m.volume_uplift_pct * 100).toFixed(1) + '%') : '')
     + row('NPV', '<span class="' + ((m.npv_m || 0) >= 0 ? 'plan-npv-pos' : 'plan-npv-neg') + '">' + npv + '</span>')
     + (acts ? '<div style="display:flex;gap:4px;margin-top:8px;justify-content:flex-end;">' + acts + '</div>' : '');
@@ -13423,50 +13433,135 @@ function openMcaModal(vid) {
   document.getElementById('mcaModal').classList.add('open');
   _mcaPreview(true);
 }
-// The design refresh (2026-11-19): exterior / interior items, each with what buyers see (freshness)
-// and the engineering it adds to the new top hat (server: MCA_DESIGN_ITEMS, mca_design_scope)
-function _mcaRenderDesign(d) {
-  var items = d.design_items || [], on = {};
-  ((d.design || {}).items || []).forEach(function(k){ on[k] = 1; });
-  if (!items.length) { document.getElementById('mca-design').innerHTML = ''; return; }
-  var col = function(g, title) {
-    return '<div><div style="font-size:11px;font-weight:600;margin-bottom:4px;">' + title + '</div>'
-      + items.filter(function(it){ return it.group === g; }).map(function(it){
-          return '<label style="display:flex;align-items:center;gap:6px;font-size:11px;padding:2px 0;cursor:pointer;">'
-            + '<input type="checkbox" data-dk="' + it.key + '"' + (on[it.key] ? ' checked' : '') + ' onchange="_mcaPreview(false)">'
-            + '<span style="flex:1">' + _esc(it.label) + '</span>'
-            + '<span style="color:var(--muted2);font-size:10px;" title="share of a full refresh buyers see">' + Math.round(it.freshness * 100) + '%</span></label>';
-        }).join('') + '</div>';
-  };
-  var pre = Object.keys(d.design_presets || {}).map(function(k){
-    return '<a href="#" class="mca-lnk" onclick="_mcaDesignPreset(\'' + k + '\');return false;">' + {light: 'Light (bumpers)', medium: 'Medium (+ lamps, wheels, interior trim)', full: 'Full refresh'}[k] + '</a>';
-  }).join(' · ') + ' · <a href="#" class="mca-lnk" onclick="_mcaDesignPreset(null);return false;">None</a>';
-  document.getElementById('mca-design').innerHTML =
-      '<div style="font-size:10px;margin-bottom:6px;">Presets: ' + pre + '</div>'
-    + '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:4px 18px;">' + col('exterior', 'Exterior') + col('interior', 'Interior') + '</div>'
-    + '<div id="mca-design-sum" class="eop-note" style="margin-top:6px;"></div>';
+// The design refresh as content packages (2026-11-19): a carousel from the smallest scope to the
+// largest, each drawn (side view + cabin) with the parts that change highlighted; the last slot is a
+// custom pick. Teams see what changes, not the weights behind it (server: MCA_DESIGN_ITEMS).
+var _MCA_PKGS = [
+  {k: 'bumpers',  name: 'Bumper refresh',          desc: 'New front bumper and grille, new rear bumper.',
+   items: ['front_bumper', 'rear_bumper']},
+  {k: 'facelift', name: 'Exterior facelift',       desc: 'Bumpers, a new lighting signature front and rear, new wheel designs and colours.',
+   items: ['front_bumper', 'rear_bumper', 'headlamps', 'tail_lamps', 'wheels']},
+  {k: 'trim',     name: 'Facelift + interior trim', desc: 'The exterior facelift plus new displays, seat fabrics and interior materials.',
+   items: ['front_bumper', 'rear_bumper', 'headlamps', 'tail_lamps', 'wheels', 'displays', 'seats', 'plastics']},
+  {k: 'major',    name: 'Major refresh',           desc: 'Adds a new hood, dashboard, centre console and door trims.',
+   items: ['front_bumper', 'rear_bumper', 'headlamps', 'tail_lamps', 'wheels', 'displays', 'seats', 'plastics',
+           'hood', 'dashboard', 'console', 'door_trims']},
+  {k: 'full',     name: 'Full refresh',            desc: 'Every visible panel: also new front fenders and liftgate.',
+   items: ['front_bumper', 'rear_bumper', 'headlamps', 'tail_lamps', 'wheels', 'displays', 'seats', 'plastics',
+           'hood', 'dashboard', 'console', 'door_trims', 'fenders', 'liftgate']},
+  {k: 'custom',   name: 'Custom',                  desc: 'Pick the parts yourself.', items: null}
+];
+var _mcaPkg = null, _mcaCustom = [];
+function _mcaPkgOf(keys) {
+  var ks = (keys || []).slice().sort().join(',');
+  if (!ks) return null;
+  var hit = _MCA_PKGS.find(function(p){ return p.items && p.items.slice().sort().join(',') === ks; });
+  return hit ? hit.k : 'custom';
 }
-function _mcaDesignPreset(k) {
-  var keys = k && _mcaLast ? ((_mcaLast.design_presets || {})[k] || []) : [];
-  document.querySelectorAll('#mca-design input[data-dk]').forEach(function(x){ x.checked = keys.indexOf(x.getAttribute('data-dk')) >= 0; });
+function _mcaDesignKeys() {
+  if (!_mcaPkg) return [];
+  var p = _MCA_PKGS.find(function(x){ return x.k === _mcaPkg; });
+  return p && p.items ? p.items.slice() : _mcaCustom.slice();
+}
+// Code-drawn diagrams: an SUV side view and the cabin, one path per refreshable part
+function _mcaCarSvg(on) {
+  var hi = function(k){ return on[k] ? 'fill="var(--gold)" fill-opacity=".85" stroke="var(--goldd)"' : 'fill="var(--s4)" stroke="var(--border3)"'; };
+  var base = 'fill="var(--s3)" stroke="var(--border3)"', glass = 'fill="var(--s1)" stroke="var(--border3)"';
+  var wheel = function(cx){ return '<circle cx="' + cx + '" cy="74" r="13" fill="var(--bg)" stroke="var(--border3)"/>'
+    + '<circle cx="' + cx + '" cy="74" r="7" ' + hi('wheels') + '/>'; };
+  return '<svg viewBox="0 0 232 92" width="100%" style="display:block" stroke-width="1" stroke-linejoin="round">'
+    + '<line x1="2" y1="88" x2="230" y2="88" stroke="var(--border2)"/>'
+    + '<path d="M8,74 L8,60 Q10,52 24,50 L92,40 L116,20 L184,18 Q196,18 204,30 L214,40 Q222,44 224,56 L226,74 Z" ' + base + '/>'
+    + '<path d="M97,40 L118,24 L148,23 L148,40 Z M152,40 L152,23 L182,22 Q192,22 198,31 L203,38 Z" ' + glass + '/>'
+    + '<line x1="150" y1="41" x2="150" y2="72" stroke="var(--border3)"/>'
+    + '<path d="M24,56 L42,52 L94,44 L94,74 L75,74 A17,17 0 0 0 41,74 L24,74 Z" ' + hi('fenders') + '/>'
+    + '<path d="M40,48 L92,40 L94,44 L42,52 Z" ' + hi('hood') + '/>'
+    + '<path d="M8,74 L8,60 Q10,54 22,52 L24,52 L24,74 Z" ' + hi('front_bumper') + '/>'
+    + '<path d="M23,51 L40,48 L41,53 L25,56 Z" ' + hi('headlamps') + '/>'
+    + '<path d="M203,30 Q207,34 214,40 Q221,44 223,58 L209,58 L206,36 Z" ' + hi('liftgate') + '/>'
+    + '<path d="M211,42 L220,46 L221,52 L212,52 Z" ' + hi('tail_lamps') + '/>'
+    + '<path d="M197,74 L197,62 L224,60 L226,74 Z" ' + hi('rear_bumper') + '/>'
+    + wheel(58) + wheel(180) + '</svg>';
+}
+function _mcaCabinSvg(on) {
+  var hi = function(k){ return on[k] ? 'fill="var(--gold)" fill-opacity=".85" stroke="var(--goldd)"' : 'fill="var(--s4)" stroke="var(--border3)"'; };
+  return '<svg viewBox="0 0 232 92" width="100%" style="display:block" stroke-width="1" stroke-linejoin="round">'
+    + '<path d="M2,26 L18,30 L18,90 L2,90 Z M230,26 L214,30 L214,90 L230,90 Z" ' + hi('door_trims') + '/>'
+    + '<path d="M20,28 Q116,10 212,28 L212,44 Q116,32 20,44 Z" ' + hi('dashboard') + '/>'
+    + '<rect x="96" y="18" width="40" height="15" rx="2" ' + hi('displays') + '/>'
+    + '<rect x="46" y="26" width="28" height="10" rx="2" ' + hi('displays') + '/>'
+    + '<path d="M24,46 Q116,35 208,46" fill="none" stroke="' + (on.plastics ? 'var(--goldd)' : 'var(--border3)') + '" stroke-width="2"/>'
+    + '<rect x="84" y="34" width="8" height="5" rx="1" ' + hi('plastics') + '/><rect x="140" y="34" width="8" height="5" rx="1" ' + hi('plastics') + '/>'
+    + '<circle cx="60" cy="54" r="14" fill="none" stroke="var(--border3)" stroke-width="3"/>'
+    + '<path d="M104,46 L128,46 L136,90 L96,90 Z" ' + hi('console') + '/>'
+    + '<rect x="28" y="66" width="58" height="24" rx="8" ' + hi('seats') + '/><rect x="146" y="66" width="58" height="24" rx="8" ' + hi('seats') + '/>'
+    + '</svg>';
+}
+function _mcaRenderDesign(d) {
+  var keys = (d.design || {}).items || [];
+  _mcaPkg = _mcaPkgOf(keys);
+  _mcaCustom = _mcaPkg === 'custom' ? keys.slice() : [];
+  _mcaDrawDesign(d);
+  var cur = document.querySelector('#mca-car-track .mca-pkg.on');
+  if (cur) cur.scrollIntoView({block: 'nearest', inline: 'center'});
+}
+function _mcaDrawDesign(d) {
+  d = d || _mcaLast || {};
+  var items = d.design_items || [];
+  var lab = {}; items.forEach(function(it){ lab[it.key] = it.label; });
+  var cards = _MCA_PKGS.map(function(p){
+    var ks = p.items || _mcaCustom, on = {};
+    ks.forEach(function(k){ on[k] = 1; });
+    return '<div class="mca-pkg' + (_mcaPkg === p.k ? ' on' : '') + '" onclick="_mcaPickPkg(\'' + p.k + '\')">'
+      + '<div class="mca-pkg-h">' + p.name + (_mcaPkg === p.k ? '<span>✓ selected</span>' : '') + '</div>'
+      + _mcaCarSvg(on) + _mcaCabinSvg(on)
+      + '<div class="mca-pkg-d">' + (p.items || !_mcaCustom.length ? p.desc
+          : _mcaCustom.map(function(k){ return lab[k] || k; }).join(', ')) + '</div></div>';
+  }).join('');
+  var h = '<div class="mca-car"><button class="mca-car-nav" onclick="_mcaCarScroll(-1)" title="Smaller scope">‹</button>'
+    + '<div class="mca-car-track" id="mca-car-track">' + cards + '</div>'
+    + '<button class="mca-car-nav" onclick="_mcaCarScroll(1)" title="Larger scope">›</button></div>'
+    + '<div class="eop-note" style="margin:4px 0 0;">From the smallest scope (left) to the largest; gold = new parts. '
+    + (_mcaPkg ? '' : '<b style="color:var(--gold)">No package selected: the model keeps its look.</b>') + '</div>';
+  if (_mcaPkg === 'custom') {
+    var col = function(g, title) {
+      return '<div><div style="font-size:11px;font-weight:600;margin-bottom:4px;">' + title + '</div>'
+        + items.filter(function(it){ return it.group === g; }).map(function(it){
+            return '<label style="display:flex;align-items:center;gap:6px;font-size:11px;padding:2px 0;cursor:pointer;">'
+              + '<input type="checkbox" data-dk="' + it.key + '"' + (_mcaCustom.indexOf(it.key) >= 0 ? ' checked' : '')
+              + ' onchange="_mcaCustomToggle()"><span>' + _esc(it.label) + '</span></label>';
+          }).join('') + '</div>';
+    };
+    h += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:4px 18px;margin-top:8px;">'
+      + col('exterior', 'Exterior') + col('interior', 'Interior') + '</div>';
+  }
+  document.getElementById('mca-design').innerHTML = h;
+}
+function _mcaPickPkg(k) {
+  if (k === 'custom' && _mcaPkg !== 'custom' && !_mcaCustom.length) _mcaCustom = _mcaDesignKeys();   // start from the package shown
+  _mcaPkg = _mcaPkg === k && k !== 'custom' ? null : k;      // a second click on a package clears it
+  var t = document.getElementById('mca-car-track'), x = t ? t.scrollLeft : 0;
+  _mcaDrawDesign();
+  t = document.getElementById('mca-car-track'); if (t) t.scrollLeft = x;
   _mcaPreview(false);
 }
-function _mcaDesignSum(d) {
-  var el = document.getElementById('mca-design-sum'), sc = d.design || {};
-  if (!el) return;
-  el.innerHTML = (sc.freshness > 0
-      ? 'Perceived freshness ' + Math.round(sc.freshness * 100) + '% of a full refresh (exterior ' + Math.round((sc.exterior || 0) * 100)
-        + '% · interior ' + Math.round((sc.interior || 0) * 100) + '%): buyers see the model ' + Math.round(d.age_credit_q || 0) + ' quarters younger'
-        + (d.age_credit_q + 0.01 < (d.age_design_q || 16) * sc.freshness ? ' (never younger than new)' : '')
-      : 'No design refresh: buyers see the same look, so the model does not feel younger (better ratings still count).')
-    + ' The scope adds ' + Math.round((sc.eng_change || 0) * 100) + '% to the new top hat\'s change, which sets its R&amp;D, lead time, supplier tooling and line variant.';
+function _mcaCustomToggle() {
+  _mcaCustom = Array.prototype.map.call(document.querySelectorAll('#mca-design input[data-dk]:checked'),
+                                        function(x){ return x.getAttribute('data-dk'); });
+  var t = document.getElementById('mca-car-track'), x = t ? t.scrollLeft : 0;
+  _mcaDrawDesign();
+  t = document.getElementById('mca-car-track'); if (t) t.scrollLeft = x;
+  _mcaPreview(false);
+}
+function _mcaCarScroll(dir) {
+  var t = document.getElementById('mca-car-track');
+  if (t) t.scrollBy({left: dir * 236, behavior: 'smooth'});
 }
 function closeMcaModal() { document.getElementById('mcaModal').classList.remove('open'); }
 function _mcaBody(first) {
   var body = {team_id: teamId, specs: {}, price_move_pct: (parseFloat(document.getElementById('mca-price').value) || 0) / 100,
               volume_uplift_pct: (parseFloat(document.getElementById('mca-vol').value) || 0) / 100};
-  body.design = first ? (_mcaInit.design || []).slice()
-    : Array.prototype.map.call(document.querySelectorAll('#mca-design input[data-dk]:checked'), function(x){ return x.getAttribute('data-dk'); });
+  body.design = first ? (_mcaInit.design || []).slice() : _mcaDesignKeys();
   if (first) {
     body.specs = _mcaInit.specs || {};
     if (_mcaInit.changeover_qabs != null) body.changeover_qabs = _mcaInit.changeover_qabs;
@@ -13726,13 +13821,12 @@ async function _mcaPreview(first) {
     if (!r.ok) { box.innerHTML = '<div class="eop-note" style="color:var(--red)">' + _esc(d.detail || 'Not allowed') + '</div>'; return; }
     _mcaLast = d;
     if (first) { _mcaRenderControls(d); _mcaRenderDesign(d); }
-    _mcaDesignSum(d);
     var m = function(x){ return '€' + (Math.round((x || 0) * 10) / 10).toLocaleString() + 'M'; };
     var e = function(x){ return (x >= 0 ? '+' : '−') + '€' + Math.abs(Math.round(x || 0)).toLocaleString(); };
     var bc = d.business_case || {}, c = d.child || {}, t = c.terms || {};
     var h = '<div class="eop-pv">';
     var lean = !!bc.tiles;   // the six tiles carry R&D, cost, margin, warranty, investment, cars and the metrics
-    var chg = Math.round((t.change || 0) * 100) + '%' + (t.design_change != null ? ' (ratings ' + Math.round((t.perf_change || 0) * 100) + '% + design ' + Math.round((t.design_change || 0) * 100) + '%)' : '');
+    var chg = Math.round((t.change || 0) * 100) + '%';
     h += lean ? _eopRow('New top hat: change · lead', chg + ' · ' + c.lead_time_q + ' q')
               : _eopRow('New top hat: change · R&amp;D · lead', Math.round((t.change || 0) * 100) + '% · ' + m(c.rd_m) + ' · ' + c.lead_time_q + ' q');
     h += _eopRow('Change-over · approve by', d.changeover_label + ' · ' + d.approve_by_label,
