@@ -13504,12 +13504,12 @@ function _mcaTilesHtml(bc) {
   // 1 · volumes by region
   var regs = Object.keys(b.regions || {}).sort(function(x, y){ return (b.regions[y] || 0) - (b.regions[x] || 0); });
   var lab = function(r){ return ((typeof SALES_MARKETS !== 'undefined' ? SALES_MARKETS : []).find(function(s){ return s.region === r; }) || {label: r}).label; };
-  var t1 = tbl([['Cars to EOP', U(a.units), U(b.units), dU(b.units - a.units), true, 'Cars sold from now to EOP: base volume follows the plan curve; the action adds the extra buyers its new top hat, price and age credit win (capped by the lines).']]
+  var t1 = tbl([['Cars, change-over → EOP', U(a.units), U(b.units), dU(b.units - a.units), true, 'Cars sold from the change-over to EOP (before it both scenarios sell the same car): base volume follows the plan curve; the action adds the extra buyers its new top hat, price and age credit win (capped by the lines).']]
     .concat(regs.map(function(r){ var x = (a.regions || {})[r] || 0, y = b.regions[r] || 0; return [_esc(lab(r)), U(x), U(y), dU(y - x)]; })));
   // 2 · price → net revenue
   var p0 = a.price, p1 = b.price;
   var t2 = tbl([
-    ['Avg MSRP', E(p0.msrp_eur), E(p1.msrp_eur), dE(p1.msrp_eur - p0.msrp_eur), false, 'List price, averaged over every car sold; the price move applies from change-over.'],
+    ['Avg MSRP', E(p0.msrp_eur), E(p1.msrp_eur), dE(p1.msrp_eur - p0.msrp_eur), false, 'List price, averaged over every car sold from the change-over (the price move applies to all of them).'],
     ['Avg gross revenue', E(p0.gross_eur), E(p1.gross_eur), dE(p1.gross_eur - p0.gross_eur), false, 'What the carmaker invoices before sales incentives (last cleared quarters).'],
     ['Avg sales discount', E(-p0.discount_eur), E(-p1.discount_eur), dE(p0.discount_eur - p1.discount_eur), false, 'Incentives and fleet terms, as in the last cleared quarters.'],
     ['Avg net revenue', E(p0.net_eur), E(p1.net_eur), dE(p1.net_eur - p0.net_eur), true, 'What the carmaker books per car.']]);
@@ -13525,7 +13525,7 @@ function _mcaTilesHtml(bc) {
   var t4 = tbl([
     ['Build cost (parts + plant)', E(c0.build_eur), E(c1.build_eur), dE(c1.build_eur - c0.build_eur, true), false, 'Live cost per car in the last cleared quarters, less freight and duties.'],
     ['Freight &amp; duties', E(c0.logistics_eur), E(c1.logistics_eur), dE(c1.logistics_eur - c0.logistics_eur, true), false, 'Shipping to the markets and import duty, as cleared.'],
-    ['New top hat cost change', E(c0.tophat_eur), E(c1.tophat_eur), dE(c1.tophat_eur - c0.tophat_eur, true), false, 'New top hat unit cost − the old one, from change-over (averaged over every car).'],
+    ['New top hat cost change', E(c0.tophat_eur), E(c1.tophat_eur), dE(c1.tophat_eur - c0.tophat_eur, true), false, 'New top hat unit cost − the old one, on every car from the change-over.'],
     ['Launch warranty', E(c0.warranty_eur), E(c1.warranty_eur), dE(c1.warranty_eur - c0.warranty_eur, true), false, 'Extra claims while the new top hat is new (the first warranty-launch quarters).'],
     ['Total variable cost', E(c0.total_eur), E(c1.total_eur), dE(c1.total_eur - c0.total_eur, true), true]]);
   // 5 · variable margin
@@ -13533,7 +13533,7 @@ function _mcaTilesHtml(bc) {
   var t5 = tbl([
     ['Per car', E(m0.car_eur), E(m1.car_eur), dE(m1.car_eur - m0.car_eur), true, 'Net revenue − variable cost per car.'],
     ['As % of net revenue', P(m0.pct), P(m1.pct), dP(m0.pct, m1.pct)],
-    ['Over the life', M(m0.life_m), M(m1.life_m), dM(m1.life_m - m0.life_m), false, 'Margin per car × cars sold, from now to EOP.']]);
+    ['Over the life', M(m0.life_m), M(m1.life_m), dM(m1.life_m - m0.life_m), false, 'Margin per car × cars sold, from the change-over to EOP.']]);
   // 6 · financial metrics
   var irr = mt.irr_pa !== null && mt.irr_pa !== undefined ? (mt.irr_pa * 100).toFixed(1) + '%' : (mt.npv_m > 0 && mt.payback_q ? '&gt; 1,500%' : '—');
   var t6 = tbl([
@@ -13559,7 +13559,7 @@ function _mcaTilesHtml(bc) {
     + tile(4, 'Variable cost €/car', 'var(--orange)', t4) + tile(5, 'Variable margin', 'var(--green)', t5)
     + tile(6, 'Financial metrics', 'var(--cyan)', t6, (bc.bridge ? lk('bridge', 'ⓘ how the NPV is built') : '') + lk('years', 'cash flow by year')
       + (bc.sensitivity ? lk('sens', 'sensitivities') : '') + (bc.rate_curve ? lk('rate', 'NPV by discount rate') : '')) + '</div>';
-  return h + '<div class="eop-note">Same template as §10: per-car figures are averages over every car sold from now to EOP. Regions split each scenario\'s cars by where the model sold in the last cleared quarters.</div>';
+  return h + '<div class="eop-note">Same template as §10, compared from the change-over to EOP: before it both scenarios sell the same car; the new top hat\'s R&amp;D spent before it counts on the MCA side. NPVs are discounted to today. Regions split each scenario\'s cars by where the model sold in the last cleared quarters.</div>';
 }
 var _mcaDetOpen = true;
 function _mcaDetailHtml(bc, d) {
@@ -13568,7 +13568,7 @@ function _mcaDetailHtml(bc, d) {
   var U = function(x){ return Math.round(x || 0).toLocaleString(); };
   var DU = function(x){ x = Math.round(x || 0); return '<span class="' + (x > 0 ? 'g' : x < 0 ? 'r' : '') + '">' + (x > 0 ? '+' : x < 0 ? '−' : '') + Math.abs(x).toLocaleString() + '</span>'; };
   var s0 = bc.scenarios.do_nothing, s1 = bc.scenarios.mca, rate = ((bc.rate_pa || 0) * 100).toFixed(1);
-  var h = '<details class="mca-det"' + (_mcaDetOpen ? ' open' : '') + ' ontoggle="_mcaDetOpen=this.open"><summary>Do nothing vs mid-cycle action · ' + _qLabel(d.qabs) + ' – ' + d.eop_label + '</summary>';
+  var h = '<details class="mca-det"' + (_mcaDetOpen ? ' open' : '') + ' ontoggle="_mcaDetOpen=this.open"><summary>Do nothing vs mid-cycle action · ' + (d.changeover_label || _qLabel(d.qabs)) + ' – ' + d.eop_label + '</summary>';
   if (bc.tiles) h += _mcaTilesHtml(bc);
   else {   // a business case stored before the tiles
   h += '<h4>1 · Two scenarios to EOP (contribution after tax, ' + rate + '%)</h4><div class="mca-scroll"><table class="mca-tbl"><tr><th></th><th>1 · Do nothing</th><th>2 · Mid-cycle action</th><th>2 − 1</th></tr>';
