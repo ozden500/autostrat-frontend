@@ -3008,11 +3008,13 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
     <div class="mm-title">MID-CYCLE ACTION</div>
     <div class="mm-sub" id="mca-sub">—</div>
     <div class="eop-note" style="margin-top:0">A new top hat, derived from the current one, replaces it from the change-over
-      quarter: buyers see the better design and a younger model. It is a business case: submit it, then approve it by its
+      quarter: buyers see a refreshed look (the design refresh below) and better ratings (the sliders). It is a business case: submit it, then approve it by its
       approve-by quarter (the new top hat's development and supplier tooling must be done by the change-over).</div>
     <div style="font-size:10px;color:var(--muted2);margin:12px 0 4px;letter-spacing:.08em;">THE CAR AFTER THE CHANGE-OVER (the new top hat delivers it, within its derivative range)</div>
     <div class="eop-note" style="margin:0 0 6px;">A mid-cycle action keeps the body’s hard points: interior space stays as it is, safety moves only through restraints and minor reinforcement. Each slider is the whole car; behind it only the top hat changes, by the car’s move ÷ the top hat’s share of that rating, so a slider’s range is narrower than the top hat’s own.</div>
     <div id="mca-specs"></div>
+    <div style="font-size:10px;color:var(--muted2);margin:14px 0 4px;letter-spacing:.08em;">DESIGN REFRESH (what buyers see: the more of the car looks new, the younger it feels)</div>
+    <div id="mca-design"></div>
     <div class="mm-grid" style="margin-top:10px;">
       <div class="mm-field"><label>Change-over quarter</label><select id="mca-co" onchange="_mcaPreview(false)"></select></div>
       <div class="mm-field"><label>Price change at change-over (%)</label><input type="number" id="mca-price" step="0.5" value="0" onchange="_mcaPreview(false)"></div>
@@ -13378,6 +13380,7 @@ function _mcaPopHtml(v, m, curQ) {
     + (m.status === 'plan' && m.approve_by_label ? row('Approve by', m.approve_by_label) : '')
     + (m.age_credit_q ? row('Age credit', Math.round(m.age_credit_q) + ' q younger') : '')
     + (m.price_move_pct ? row('Price move', (m.price_move_pct > 0 ? '+' : '') + (m.price_move_pct * 100).toFixed(1) + '%') : '')
+    + ((m.design || []).length ? row('Design refresh', m.design.length + ' item' + (m.design.length > 1 ? 's' : '')) : '')
     + (m.volume_uplift_pct ? row('Volume uptick', (m.volume_uplift_pct > 0 ? '+' : '') + (m.volume_uplift_pct * 100).toFixed(1) + '%') : '')
     + row('NPV', '<span class="' + ((m.npv_m || 0) >= 0 ? 'plan-npv-pos' : 'plan-npv-neg') + '">' + npv + '</span>')
     + (acts ? '<div style="display:flex;gap:4px;margin-top:8px;justify-content:flex-end;">' + acts + '</div>' : '');
@@ -13407,21 +13410,63 @@ function openMcaModal(vid) {
   _mcaVid = vid; _mcaLast = null;
   var open = (_planMcas[vid] || []).find(function(m){ return m.status === 'plan' || m.status === 'late'; });
   _mcaInit = open ? {specs: open.child_specs || {}, changeover_qabs: open.status === 'late' ? null : open.changeover_qabs,
-                     price_move_pct: open.price_move_pct || 0, volume_uplift_pct: open.volume_uplift_pct || 0}
-                : {specs: {}, changeover_qabs: null, price_move_pct: 0, volume_uplift_pct: 0};
+                     price_move_pct: open.price_move_pct || 0, volume_uplift_pct: open.volume_uplift_pct || 0,
+                     design: open.design || []}
+                : {specs: {}, changeover_qabs: null, price_move_pct: 0, volume_uplift_pct: 0, design: []};
   document.getElementById('mca-sub').textContent = v.name + ' · SOP Q' + v.start_quarter + ' ' + v.start_year +
     ' · EOP Q' + v.end_quarter + ' ' + v.end_year + (open ? ' · revising the submitted action' : '');
   document.getElementById('mca-specs').innerHTML = '<div class="eop-note">Loading the current top hat…</div>';
   document.getElementById('mca-co').innerHTML = '';
+  document.getElementById('mca-design').innerHTML = '';
   document.getElementById('mca-price').value = ((_mcaInit.price_move_pct || 0) * 100).toFixed(1);
   document.getElementById('mca-vol').value = ((_mcaInit.volume_uplift_pct || 0) * 100).toFixed(1);
   document.getElementById('mcaModal').classList.add('open');
   _mcaPreview(true);
 }
+// The design refresh (2026-11-19): exterior / interior items, each with what buyers see (freshness)
+// and the engineering it adds to the new top hat (server: MCA_DESIGN_ITEMS, mca_design_scope)
+function _mcaRenderDesign(d) {
+  var items = d.design_items || [], on = {};
+  ((d.design || {}).items || []).forEach(function(k){ on[k] = 1; });
+  if (!items.length) { document.getElementById('mca-design').innerHTML = ''; return; }
+  var col = function(g, title) {
+    return '<div><div style="font-size:11px;font-weight:600;margin-bottom:4px;">' + title + '</div>'
+      + items.filter(function(it){ return it.group === g; }).map(function(it){
+          return '<label style="display:flex;align-items:center;gap:6px;font-size:11px;padding:2px 0;cursor:pointer;">'
+            + '<input type="checkbox" data-dk="' + it.key + '"' + (on[it.key] ? ' checked' : '') + ' onchange="_mcaPreview(false)">'
+            + '<span style="flex:1">' + _esc(it.label) + '</span>'
+            + '<span style="color:var(--muted2);font-size:10px;" title="share of a full refresh buyers see">' + Math.round(it.freshness * 100) + '%</span></label>';
+        }).join('') + '</div>';
+  };
+  var pre = Object.keys(d.design_presets || {}).map(function(k){
+    return '<a href="#" class="mca-lnk" onclick="_mcaDesignPreset(\'' + k + '\');return false;">' + {light: 'Light (bumpers)', medium: 'Medium (+ lamps, wheels, interior trim)', full: 'Full refresh'}[k] + '</a>';
+  }).join(' · ') + ' · <a href="#" class="mca-lnk" onclick="_mcaDesignPreset(null);return false;">None</a>';
+  document.getElementById('mca-design').innerHTML =
+      '<div style="font-size:10px;margin-bottom:6px;">Presets: ' + pre + '</div>'
+    + '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:4px 18px;">' + col('exterior', 'Exterior') + col('interior', 'Interior') + '</div>'
+    + '<div id="mca-design-sum" class="eop-note" style="margin-top:6px;"></div>';
+}
+function _mcaDesignPreset(k) {
+  var keys = k && _mcaLast ? ((_mcaLast.design_presets || {})[k] || []) : [];
+  document.querySelectorAll('#mca-design input[data-dk]').forEach(function(x){ x.checked = keys.indexOf(x.getAttribute('data-dk')) >= 0; });
+  _mcaPreview(false);
+}
+function _mcaDesignSum(d) {
+  var el = document.getElementById('mca-design-sum'), sc = d.design || {};
+  if (!el) return;
+  el.innerHTML = (sc.freshness > 0
+      ? 'Perceived freshness ' + Math.round(sc.freshness * 100) + '% of a full refresh (exterior ' + Math.round((sc.exterior || 0) * 100)
+        + '% · interior ' + Math.round((sc.interior || 0) * 100) + '%): buyers see the model ' + Math.round(d.age_credit_q || 0) + ' quarters younger'
+        + (d.age_credit_q + 0.01 < (d.age_design_q || 16) * sc.freshness ? ' (never younger than new)' : '')
+      : 'No design refresh: buyers see the same look, so the model does not feel younger (better ratings still count).')
+    + ' The scope adds ' + Math.round((sc.eng_change || 0) * 100) + '% to the new top hat\'s change, which sets its R&amp;D, lead time, supplier tooling and line variant.';
+}
 function closeMcaModal() { document.getElementById('mcaModal').classList.remove('open'); }
 function _mcaBody(first) {
   var body = {team_id: teamId, specs: {}, price_move_pct: (parseFloat(document.getElementById('mca-price').value) || 0) / 100,
               volume_uplift_pct: (parseFloat(document.getElementById('mca-vol').value) || 0) / 100};
+  body.design = first ? (_mcaInit.design || []).slice()
+    : Array.prototype.map.call(document.querySelectorAll('#mca-design input[data-dk]:checked'), function(x){ return x.getAttribute('data-dk'); });
   if (first) {
     body.specs = _mcaInit.specs || {};
     if (_mcaInit.changeover_qabs != null) body.changeover_qabs = _mcaInit.changeover_qabs;
@@ -13680,13 +13725,15 @@ async function _mcaPreview(first) {
     if (seq !== _mcaSeq) return;
     if (!r.ok) { box.innerHTML = '<div class="eop-note" style="color:var(--red)">' + _esc(d.detail || 'Not allowed') + '</div>'; return; }
     _mcaLast = d;
-    if (first) _mcaRenderControls(d);
+    if (first) { _mcaRenderControls(d); _mcaRenderDesign(d); }
+    _mcaDesignSum(d);
     var m = function(x){ return '€' + (Math.round((x || 0) * 10) / 10).toLocaleString() + 'M'; };
     var e = function(x){ return (x >= 0 ? '+' : '−') + '€' + Math.abs(Math.round(x || 0)).toLocaleString(); };
     var bc = d.business_case || {}, c = d.child || {}, t = c.terms || {};
     var h = '<div class="eop-pv">';
     var lean = !!bc.tiles;   // the six tiles carry R&D, cost, margin, warranty, investment, cars and the metrics
-    h += lean ? _eopRow('New top hat: change · lead', Math.round((t.change || 0) * 100) + '% · ' + c.lead_time_q + ' q')
+    var chg = Math.round((t.change || 0) * 100) + '%' + (t.design_change != null ? ' (ratings ' + Math.round((t.perf_change || 0) * 100) + '% + design ' + Math.round((t.design_change || 0) * 100) + '%)' : '');
+    h += lean ? _eopRow('New top hat: change · lead', chg + ' · ' + c.lead_time_q + ' q')
               : _eopRow('New top hat: change · R&amp;D · lead', Math.round((t.change || 0) * 100) + '% · ' + m(c.rd_m) + ' · ' + c.lead_time_q + ' q');
     h += _eopRow('Change-over · approve by', d.changeover_label + ' · ' + d.approve_by_label,
                  d.approve_by_qabs <= d.qabs ? 'var(--gold)' : '');
