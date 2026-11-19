@@ -3010,8 +3010,8 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
     <div class="eop-note" style="margin-top:0">A new top hat, derived from the current one, replaces it from the change-over
       quarter: buyers see the better design and a younger model. It is a business case: submit it, then approve it by its
       approve-by quarter (the new top hat's development and supplier tooling must be done by the change-over).</div>
-    <div style="font-size:10px;color:var(--muted2);margin:12px 0 4px;letter-spacing:.08em;">NEW TOP HAT MODULE RATINGS (within the derivative range)</div>
-    <div class="eop-note" style="margin:0 0 6px;">A mid-cycle action keeps the body’s hard points: interior space stays as it is, safety moves only through restraints and minor reinforcement (a third of the derivative range). The car moves by the top hat’s share of each rating (rows below).</div>
+    <div style="font-size:10px;color:var(--muted2);margin:12px 0 4px;letter-spacing:.08em;">THE CAR AFTER THE CHANGE-OVER (the new top hat delivers it, within its derivative range)</div>
+    <div class="eop-note" style="margin:0 0 6px;">A mid-cycle action keeps the body’s hard points: interior space stays as it is, safety moves only through restraints and minor reinforcement. Each slider is the whole car; behind it only the top hat changes, by the car’s move ÷ the top hat’s share of that rating, so a slider’s range is narrower than the top hat’s own.</div>
     <div id="mca-specs"></div>
     <div class="mm-grid" style="margin-top:10px;">
       <div class="mm-field"><label>Change-over quarter</label><select id="mca-co" onchange="_mcaPreview(false)"></select></div>
@@ -13423,26 +13423,40 @@ function _mcaBody(first) {
   }
   var d = _mcaLast;
   _MCA_SPECS.forEach(function(s){
-    var el = document.getElementById('mca-s-' + s.k);
-    if (!el || !d) return;
-    var raw = (d.donor.specs || {})[s.k];
-    var val = parseFloat(el.value);
-    body.specs[s.k] = s.pct ? Math.round(val * _mcaScale(raw) * 10000) / 10000 : val;
+    var el = document.getElementById('mca-s-' + s.k), mp = d && _mcaMap(d, s);
+    if (!el || !mp) return;
+    // the slider is the car; the top hat moves (car − car now) ÷ its share, within its limits
+    var top = Math.max(mp.lim[0], Math.min(mp.lim[1], mp.m0 + (parseFloat(el.value) - mp.car0) / mp.w));
+    body.specs[s.k] = s.pct ? Math.round(top * mp.sc * 10000) / 10000 : Math.round(top * 10000) / 10000;
   });
   var co = document.getElementById('mca-co').value;
   if (co) body.changeover_qabs = parseInt(co);
   return body;
 }
+// One rating as the modal shows it (2026-11-19): the slider is the whole car; the top hat behind it moves
+// by (car move ÷ the top hat's share, d.car_weights) within its limits. m0 / lim are the top hat (0-1 for
+// ratings, own units for premiumness), car0 the car now; sc the top hat's stored scale.
+function _mcaMap(d, s) {
+  var lim = (d.child.limits || {})[s.k];
+  if (!lim) return null;
+  var raw = (d.donor.specs || {})[s.k], cur = (d.child.specs || {})[s.k];
+  var sc = s.pct ? _mcaScale(raw) : 1;
+  var m0 = raw != null ? parseFloat(raw) / sc : (lim[0] + lim[1]) / 2;
+  var mn = cur != null ? parseFloat(cur) / sc : m0;
+  var l = s.pct ? [Math.max(0, lim[0]), Math.min(1, lim[1])] : [lim[0], lim[1]];
+  var w = (d.car_weights || {})[s.k] || 1;
+  var cb = (d.specs_before || {})[s.k];
+  var car0 = cb != null ? (parseFloat(cb) > 1 ? parseFloat(cb) / 100 : parseFloat(cb)) : m0;
+  var top = s.pct ? 1 : Infinity;
+  return {sc: sc, m0: m0, lim: l, w: w, car0: car0,
+          lo: Math.max(0, car0 + (l[0] - m0) * w), hi: Math.min(top, car0 + (l[1] - m0) * w), now: car0 + (mn - m0) * w};
+}
 function _mcaRenderControls(d) {
   var h = '';
   _MCA_SPECS.forEach(function(s){
-    var lim = (d.child.limits || {})[s.k];
-    if (!lim) return;
-    var raw = (d.donor.specs || {})[s.k], cur = (d.child.specs || {})[s.k];
-    var sc = s.pct ? _mcaScale(raw) : 1;
-    var base = raw != null ? parseFloat(raw) / sc : (lim[0] + lim[1]) / 2;
-    var now = cur != null ? parseFloat(cur) / sc : base;
-    var lo = s.pct ? Math.max(0, lim[0]) : lim[0], hi = s.pct ? Math.min(1, lim[1]) : lim[1];
+    var mp = _mcaMap(d, s);
+    if (!mp) return;
+    var base = mp.car0, now = mp.now, lo = mp.lo, hi = mp.hi;
     var step = (hi - lo) / 60;
     h += '<div class="mca-spec"><span>' + s.l + '</span>'
       + '<input type="range" id="mca-s-' + s.k + '" min="' + lo + '" max="' + hi + '" step="' + step + '" value="' + now + '"'
@@ -13661,7 +13675,7 @@ async function _mcaPreview(first) {
                  d.approve_by_qabs <= d.qabs ? 'var(--gold)' : '');
     h += _eopRow('Age at change-over · made younger by', d.age_at_changeover_q + ' q · ' + Math.round(d.age_credit_q) + ' q', 'var(--green)');
     var sb = d.specs_before || {}, sa = d.specs_after || {};
-    ['reliability', 'comfort', 'safety', 'premiumness'].forEach(function(k){
+    if (!d.car_weights) ['reliability', 'comfort', 'safety', 'premiumness'].forEach(function(k){   // older server: the car rows
       if (sa[k] == null || sb[k] == null) return;
       var dd = sa[k] - sb[k];
       if (Math.abs(dd) < 1e-6) return;
