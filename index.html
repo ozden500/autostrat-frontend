@@ -13705,7 +13705,14 @@ async function _mcaPreview(first) {
     h += '<div class="eop-note">Baseline: ' + (d.market.basis === 'plan' ? 'the original plan (no cleared quarter yet)'
         : 'actual sales of the last cleared quarters, not the original business case') + ': '
       + Math.round(d.market.units_q).toLocaleString() + ' cars a quarter at €' + Math.round(d.market.rev_car_eur || 0).toLocaleString() + ' net revenue per car, segment share ' + (d.market.share * 100).toFixed(1) + '%'
-      + (bc.volume_basis === 'plan_curve' ? '; from there it ages along the plan\'s volume curve to EOP' : '')
+      + (function(){   // the forecast: the plan curve's shape at the pace the actual demand set (mca_curve_pace)
+          var pc = (d.market || {}).pace || {};
+          if (bc.volume_basis !== 'plan_curve') return '';
+          if (pc.basis !== 'actual_demand') return '; from there it ages along the plan\'s volume curve to EOP (too few cleared quarters to fit a trend)';
+          var tr = pc.trend_pa != null ? (pc.trend_pa >= 0 ? '+' : '−') + Math.abs(pc.trend_pa * 100).toFixed(1) + '% a year' : '';
+          return '; actual demand moved ' + tr + ' over its last ' + pc.quarters + ' quarters, so the plan\'s volume curve runs at '
+            + pc.pace.toFixed(2) + '× its speed to EOP' + (pc.pace <= 0.25 ? ' (the slowest allowed: growth is not projected)' : pc.pace >= 2 ? ' (the fastest allowed)' : '');
+        })()
       + '; rivals held as they are (if they refresh too, you win fewer buyers).'
       + (bc.cap_cut_units > 0 ? ' <span style="color:var(--gold)">' + bc.cap_cut_units.toLocaleString() + ' extra cars cut: the model\'s lines are full.</span>' : '') + '</div>';
     if (bc.scenarios) h += _mcaDetailHtml(bc, d);
