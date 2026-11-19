@@ -13555,7 +13555,7 @@ function _mcaTilesHtml(bc) {
   var h = '<div class="mca-verdict" style="border-color:' + (good ? 'rgba(74,222,128,.35)' : 'rgba(239,68,68,.45)') + ';background:' + (good ? 'rgba(74,222,128,.05)' : 'rgba(239,68,68,.06)') + ';">'
     + '<span style="color:' + nc + ';">' + (good ? 'Verdict · the action creates value' : 'Verdict · the action loses money') + '</span>'
     + '<span>NPV ' + dM(mt.npv_m) + ' on ' + M(b.invest.total_m) + ' invested · ' + dU(b.units - a.units) + ' cars · margin per car ' + dE(m1.car_eur - m0.car_eur) + '</span></div>';
-  h += '<div class="mca-tiles">' + tile(1, 'Volumes by region', 'var(--cyan)', t1, lk('years', 'cars by year')) + tile(2, 'Price → net revenue', 'var(--gold)', t2) + tile(3, 'Investments', 'var(--purple)', t3)
+  h += '<div class="mca-tiles">' + tile(1, 'Volumes by region', 'var(--cyan)', t1, lk('years', 'sales by year')) + tile(2, 'Price → net revenue', 'var(--gold)', t2) + tile(3, 'Investments', 'var(--purple)', t3)
     + tile(4, 'Variable cost €/car', 'var(--orange)', t4) + tile(5, 'Variable margin', 'var(--green)', t5)
     + tile(6, 'Financial metrics', 'var(--cyan)', t6, (bc.bridge ? lk('bridge', 'ⓘ how the NPV is built') : '') + lk('years', 'cash flow by year')
       + (bc.sensitivity ? lk('sens', 'sensitivities') : '') + (bc.rate_curve ? lk('rate', 'NPV by discount rate') : '')) + '</div>';
@@ -13602,8 +13602,17 @@ function _mcaDetailHtml(bc, d) {
   var k1 = h.length;
   // 3 · year by year
   h += '<h4>Year by year</h4><div class="mca-scroll"><table class="mca-tbl"><tr><th>Year</th><th>Cars · 1</th><th>Cars · 2</th><th>Extra</th><th>Gross profit · 1</th><th>Gross profit · 2</th><th>Invest + R&amp;D</th><th>Δ cash after tax</th><th>Cum. PV of Δ</th></tr>';
+  // what the car actually sold (cleared quarters), then the two scenarios from the open quarter
+  var hist = ((d.market || {}).history || []);
+  hist.forEach(function(y){
+    h += '<tr style="color:var(--muted2)"><td>' + y.year + (y.quarters < 4 ? ' (' + y.quarters + 'q)' : '') + ' <span style="color:var(--cyan);font-size:8px;">ACTUAL</span></td><td>' + U(y.units) + '</td><td>' + U(y.units)
+      + '</td><td>—</td><td>' + M(y.gp_m) + '</td><td>' + M(y.gp_m) + '</td><td>—</td><td>—</td><td>—</td></tr>';
+  });
+  if (hist.length) h += '<tr><td colspan="9" style="text-align:left;color:var(--gold);font-size:8.5px;letter-spacing:1px;">FORECAST FROM ' + _esc(_qLabel(d.qabs)).toUpperCase() + ' · 1 DO NOTHING / 2 MID-CYCLE ACTION</td></tr>';
+  var nqOf = function(yr){ var a = Math.max((yr - 2025) * 4, d.qabs), b = Math.min((yr - 2025) * 4 + 3, d.eop_qabs); return Math.max(0, b - a + 1); };
   (bc.years || []).forEach(function(y){
-    h += '<tr><td>' + y.year + '</td><td>' + U(y.base_units) + '</td><td>' + U(y.mca_units) + '</td><td>' + DU(y.mca_units - y.base_units)
+    var nq = nqOf(y.year);
+    h += '<tr><td>' + y.year + (nq && nq < 4 ? ' (' + nq + 'q)' : '') + '</td><td>' + U(y.base_units) + '</td><td>' + U(y.mca_units) + '</td><td>' + DU(y.mca_units - y.base_units)
       + (y.cap_cut > 0 ? ' <span style="color:var(--gold)" title="cut: the lines are full">(−' + U(y.cap_cut) + ')</span>' : '') + '</td><td>' + M(y.gp0_m) + '</td><td>' + M(y.gp1_m) + '</td><td>'
       + ((y.capex_m + y.rd_m + y.wty_m) ? M(-(y.capex_m + y.rd_m + y.wty_m)) : '—') + '</td><td>' + D(y.d_fcf_m) + '</td><td>' + D(y.cum_pv_m) + '</td></tr>';
   });
@@ -13693,9 +13702,10 @@ async function _mcaPreview(first) {
     h += _eopRow('Payback', bc.payback_q ? bc.payback_q + ' q' : '—');
     }
     h += '</div>';
-    h += '<div class="eop-note">Basis: ' + (d.market.basis === 'plan' ? 'the plan (no cleared quarter yet)' : 'its last cleared quarters')
-      + ', ' + Math.round(d.market.units_q).toLocaleString() + ' cars a quarter, segment share ' + (d.market.share * 100).toFixed(1) + '%'
-      + (bc.volume_basis === 'plan_curve' ? ', following the plan\'s volume curve to EOP' : '')
+    h += '<div class="eop-note">Baseline: ' + (d.market.basis === 'plan' ? 'the original plan (no cleared quarter yet)'
+        : 'actual sales of the last cleared quarters, not the original business case') + ': '
+      + Math.round(d.market.units_q).toLocaleString() + ' cars a quarter at €' + Math.round(d.market.rev_car_eur || 0).toLocaleString() + ' net revenue per car, segment share ' + (d.market.share * 100).toFixed(1) + '%'
+      + (bc.volume_basis === 'plan_curve' ? '; from there it ages along the plan\'s volume curve to EOP' : '')
       + '; rivals held as they are (if they refresh too, you win fewer buyers).'
       + (bc.cap_cut_units > 0 ? ' <span style="color:var(--gold)">' + bc.cap_cut_units.toLocaleString() + ' extra cars cut: the model\'s lines are full.</span>' : '') + '</div>';
     if (bc.scenarios) h += _mcaDetailHtml(bc, d);
