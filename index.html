@@ -410,6 +410,12 @@ input[type=text]:focus,input[type=number]:focus{outline:none;border-color:var(--
 .mca-tbl td{font-family:'DM Mono',monospace;text-align:right;padding:3px 6px;border-bottom:1px solid var(--border);white-space:nowrap;}
 .mca-tbl tr.tot td{border-top:1px solid var(--border2);font-weight:600;}
 .mca-tbl td.lab{font-family:inherit;color:var(--text);}
+.mca-tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:10px;margin-top:10px;}
+.mca-tile{background:var(--s1);border:1px solid var(--border2);border-top:3px solid var(--cyan);border-radius:4px;padding:10px 12px;min-width:0;overflow-x:auto;}
+.mca-tile-h{font-family:'DM Mono',monospace;font-size:8px;letter-spacing:1.3px;text-transform:uppercase;margin-bottom:6px;}
+.mca-t3 td:not(:first-child),.mca-t3 th:not(:first-child){width:23%;}
+.mca-verdict{display:flex;flex-wrap:wrap;gap:4px 14px;align-items:center;margin-top:10px;padding:8px 12px;border:1px solid;border-radius:4px;font-family:'DM Mono',monospace;font-size:10px;}
+.mca-verdict span:first-child{letter-spacing:2px;text-transform:uppercase;font-size:9px;}
 .mca-tbl .g{color:var(--green);} .mca-tbl .r{color:var(--red);} .mca-tbl .base td{background:var(--s3);}
 .mca-bar{display:inline-block;height:7px;border-radius:1px;vertical-align:middle;}
 .plan-act-del{font-family:'DM Mono',monospace;font-size:8px;padding:3px 7px;border-radius:2px;
@@ -2994,7 +3000,7 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
 </div>
 
 <div class="model-modal" id="mcaModal">
-  <div class="mm-panel" style="max-width:760px;width:94vw;max-height:88vh;overflow-y:auto;">
+  <div class="mm-panel" style="max-width:1000px;width:95vw;max-height:88vh;overflow-y:auto;">
     <div class="mm-title">MID-CYCLE ACTION</div>
     <div class="mm-sub" id="mca-sub">—</div>
     <div class="eop-note" style="margin-top:0">A new top hat, derived from the current one, replaces it from the change-over
@@ -13424,6 +13430,78 @@ function _mcaFmt(x, pct) { x = parseFloat(x); return pct ? Math.round(x * 1000) 
 function _mcaQueue() { clearTimeout(_mcaTimer); _mcaTimer = setTimeout(function(){ _mcaPreview(false); }, 350); }
 // Scenario comparison (2026-11-17): 1 do nothing vs 2 do the MCA, from the open quarter to EOP:
 // totals, the incremental NPV bridge, year by year, and how both NPVs move with each parameter.
+// MCA business case as §10's executive summary (2026-11-19): the same six tiles, each with three
+// columns, 1 do nothing | 2 mid-cycle action | 2 − 1 (bc.tiles from mca_business_case; display only).
+function _mcaTilesHtml(bc) {
+  var t = bc.tiles, a = t.do_nothing, b = t.mca, mt = t.metrics || {};
+  var rate = ((bc.rate_pa || 0) * 100).toFixed(1);
+  var E = function(x){ x = Math.round(x || 0); return (x < 0 ? '−€' : '€') + Math.abs(x).toLocaleString(); };
+  var M = function(x){ x = Math.round((x || 0) * 10) / 10; var ax = Math.abs(x); return (x < 0 ? '−€' : '€') + (ax >= 100 ? Math.round(ax) : ax).toLocaleString(undefined, {maximumFractionDigits: 1}) + 'M'; };
+  var U = function(x){ return Math.round(x || 0).toLocaleString(); };
+  var P = function(x){ return x === null || x === undefined ? '—' : x.toFixed(1) + '%'; };
+  var sg = function(d, txt, inv){ var c = Math.abs(d) < 1e-9 ? '' : ((d > 0) !== !!inv ? 'g' : 'r'); return '<span class="' + c + '">' + (d > 0 ? '+' : '') + txt + '</span>'; };
+  var dE = function(d, inv){ d = Math.round(d); return d === 0 ? '€0' : sg(d, E(d), inv); };
+  var dM = function(d, inv){ d = Math.round(d * 10) / 10; return d === 0 ? '€0M' : sg(d, M(d), inv); };
+  var dU = function(d){ d = Math.round(d); return d === 0 ? '0' : sg(d, (d < 0 ? '−' : '') + Math.abs(d).toLocaleString()); };
+  var dP = function(x, y){ if (x === null || y === null || x === undefined || y === undefined) return '—'; var d = Math.round((y - x) * 10) / 10; return d === 0 ? '0 pts' : sg(d, (d < 0 ? '−' : '') + Math.abs(d).toFixed(1) + ' pts'); };
+  var info = function(tip){ return ' <span title="' + tip.replace(/"/g, '&quot;') + '" style="cursor:help;color:var(--muted);font-size:9px;">ⓘ</span>'; };
+  // r: [label, do nothing, MCA, change, bold, tip]
+  var tbl = function(rows){
+    return '<table class="mca-tbl mca-t3"><tr><th></th><th>1 · Do nothing</th><th>2 · MCA</th><th>2 − 1</th></tr>' + rows.map(function(r){
+      return '<tr' + (r[4] ? ' class="tot"' : '') + '><td class="lab">' + r[0] + (r[5] ? info(r[5]) : '') + '</td><td>' + r[1] + '</td><td>' + r[2] + '</td><td>' + r[3] + '</td></tr>';
+    }).join('') + '</table>';
+  };
+  var tile = function(i, title, col, body){
+    return '<div class="mca-tile" style="border-top-color:' + col + ';"><div class="mca-tile-h" style="color:' + col + ';">' + i + ' · ' + title + '</div>' + body + '</div>';
+  };
+  // 1 · volumes by region
+  var regs = Object.keys(b.regions || {}).sort(function(x, y){ return (b.regions[y] || 0) - (b.regions[x] || 0); });
+  var lab = function(r){ return ((typeof SALES_MARKETS !== 'undefined' ? SALES_MARKETS : []).find(function(s){ return s.region === r; }) || {label: r}).label; };
+  var t1 = tbl([['Cars to EOP', U(a.units), U(b.units), dU(b.units - a.units), true, 'Cars sold from now to EOP: base volume follows the plan curve; the action adds the extra buyers its new top hat, price and age credit win (capped by the lines).']]
+    .concat(regs.map(function(r){ var x = (a.regions || {})[r] || 0, y = b.regions[r] || 0; return [_esc(lab(r)), U(x), U(y), dU(y - x)]; })));
+  // 2 · price → net revenue
+  var p0 = a.price, p1 = b.price;
+  var t2 = tbl([
+    ['Avg MSRP', E(p0.msrp_eur), E(p1.msrp_eur), dE(p1.msrp_eur - p0.msrp_eur), false, 'List price, averaged over every car sold; the price move applies from change-over.'],
+    ['Avg gross revenue', E(p0.gross_eur), E(p1.gross_eur), dE(p1.gross_eur - p0.gross_eur), false, 'What the carmaker invoices before sales incentives (last cleared quarters).'],
+    ['Avg sales discount', E(-p0.discount_eur), E(-p1.discount_eur), dE(p0.discount_eur - p1.discount_eur), false, 'Incentives and fleet terms, as in the last cleared quarters.'],
+    ['Avg net revenue', E(p0.net_eur), E(p1.net_eur), dE(p1.net_eur - p0.net_eur), true, 'What the carmaker books per car.']]);
+  // 3 · investments
+  var i0 = a.invest, i1 = b.invest;
+  var t3 = tbl([
+    ['R&amp;D (new top hat)', M(i0.rd_m), M(i1.rd_m), dM(i1.rd_m - i0.rd_m, true), false, 'Development of the derivative top hat, spent over its lead time.'],
+    ['Plant (line variant)', M(i0.plant_m), M(i1.plant_m), dM(i1.plant_m - i0.plant_m, true), false, 'The new top hat as a variant on the model\'s lines, at change-over.'],
+    ['Supplier tooling', M(i0.supplier_m), M(i1.supplier_m), dM(i1.supplier_m - i0.supplier_m, true), false, 'Retooling in every zone the top hat is bought from, at change-over.'],
+    ['Total investment', M(i0.total_m), M(i1.total_m), dM(i1.total_m - i0.total_m, true), true]]);
+  // 4 · variable cost per car
+  var c0 = a.cost, c1 = b.cost;
+  var t4 = tbl([
+    ['Build cost (parts + plant)', E(c0.build_eur), E(c1.build_eur), dE(c1.build_eur - c0.build_eur, true), false, 'Live cost per car in the last cleared quarters, less freight and duties.'],
+    ['Freight &amp; duties', E(c0.logistics_eur), E(c1.logistics_eur), dE(c1.logistics_eur - c0.logistics_eur, true), false, 'Shipping to the markets and import duty, as cleared.'],
+    ['New top hat cost change', E(c0.tophat_eur), E(c1.tophat_eur), dE(c1.tophat_eur - c0.tophat_eur, true), false, 'New top hat unit cost − the old one, from change-over (averaged over every car).'],
+    ['Launch warranty', E(c0.warranty_eur), E(c1.warranty_eur), dE(c1.warranty_eur - c0.warranty_eur, true), false, 'Extra claims while the new top hat is new (the first warranty-launch quarters).'],
+    ['Total variable cost', E(c0.total_eur), E(c1.total_eur), dE(c1.total_eur - c0.total_eur, true), true]]);
+  // 5 · variable margin
+  var m0 = a.margin, m1 = b.margin;
+  var t5 = tbl([
+    ['Per car', E(m0.car_eur), E(m1.car_eur), dE(m1.car_eur - m0.car_eur), true, 'Net revenue − variable cost per car.'],
+    ['As % of net revenue', P(m0.pct), P(m1.pct), dP(m0.pct, m1.pct)],
+    ['Over the life', M(m0.life_m), M(m1.life_m), dM(m1.life_m - m0.life_m), false, 'Margin per car × cars sold, from now to EOP.']]);
+  // 6 · financial metrics
+  var irr = mt.irr_pa !== null && mt.irr_pa !== undefined ? (mt.irr_pa * 100).toFixed(1) + '%' : (mt.npv_m > 0 && mt.payback_q ? '&gt; 1,500%' : '—');
+  var t6 = tbl([
+    ['NPV at ' + rate + '%', M(a.npv_m), M(b.npv_m), dM(b.npv_m - a.npv_m), true, 'Contribution after tax, discounted at the team\'s cost of capital. Overhead and the programme already paid are the same in both scenarios, so they cancel; 2 − 1 is the action\'s NPV.'],
+    ['NPV / invested capital', '—', '—', mt.npv_per_invest !== null && mt.npv_per_invest !== undefined ? sg(mt.npv_per_invest, mt.npv_per_invest.toFixed(1) + '×') : '—', false, 'Action NPV ÷ its investment.'],
+    ['IRR', '—', '—', irr, false, 'Return on the action\'s own cash flows (R&D first, extra margin later); compare with ' + rate + '%.'],
+    ['Payback', '—', '—', mt.payback_q ? mt.payback_q + ' q' : 'never', false, 'Quarters from now until the action\'s cumulative cash turns positive.']]);
+  var good = (mt.npv_m || 0) >= 0, nc = good ? 'var(--green)' : 'var(--red)';
+  var h = '<div class="mca-verdict" style="border-color:' + (good ? 'rgba(74,222,128,.35)' : 'rgba(239,68,68,.45)') + ';background:' + (good ? 'rgba(74,222,128,.05)' : 'rgba(239,68,68,.06)') + ';">'
+    + '<span style="color:' + nc + ';">' + (good ? 'Verdict · the action creates value' : 'Verdict · the action loses money') + '</span>'
+    + '<span>NPV ' + dM(mt.npv_m) + ' on ' + M(b.invest.total_m) + ' invested · ' + dU(b.units - a.units) + ' cars · margin per car ' + dE(m1.car_eur - m0.car_eur) + '</span></div>';
+  h += '<div class="mca-tiles">' + tile(1, 'Volumes by region', 'var(--cyan)', t1) + tile(2, 'Price → net revenue', 'var(--gold)', t2) + tile(3, 'Investments', 'var(--purple)', t3)
+    + tile(4, 'Variable cost €/car', 'var(--orange)', t4) + tile(5, 'Variable margin', 'var(--green)', t5) + tile(6, 'Financial metrics', 'var(--cyan)', t6) + '</div>';
+  return h + '<div class="eop-note">Same template as §10: per-car figures are averages over every car sold from now to EOP. Regions split each scenario\'s cars by where the model sold in the last cleared quarters.</div>';
+}
 var _mcaDetOpen = true;
 function _mcaDetailHtml(bc, d) {
   var M = function(x){ x = Math.round((x || 0) * 10) / 10; return (x < 0 ? '−' : '') + '€' + Math.abs(x).toLocaleString(undefined, {maximumFractionDigits: 1}) + 'M'; };
@@ -13432,7 +13510,8 @@ function _mcaDetailHtml(bc, d) {
   var DU = function(x){ x = Math.round(x || 0); return '<span class="' + (x > 0 ? 'g' : x < 0 ? 'r' : '') + '">' + (x > 0 ? '+' : x < 0 ? '−' : '') + Math.abs(x).toLocaleString() + '</span>'; };
   var s0 = bc.scenarios.do_nothing, s1 = bc.scenarios.mca, rate = ((bc.rate_pa || 0) * 100).toFixed(1);
   var h = '<details class="mca-det"' + (_mcaDetOpen ? ' open' : '') + ' ontoggle="_mcaDetOpen=this.open"><summary>Do nothing vs mid-cycle action · ' + _qLabel(d.qabs) + ' – ' + d.eop_label + '</summary>';
-  // 1 · the two scenarios
+  if (bc.tiles) h += _mcaTilesHtml(bc);
+  else {   // a business case stored before the tiles
   h += '<h4>1 · Two scenarios to EOP (contribution after tax, ' + rate + '%)</h4><div class="mca-scroll"><table class="mca-tbl"><tr><th></th><th>1 · Do nothing</th><th>2 · Mid-cycle action</th><th>2 − 1</th></tr>';
   var row = function(l, a, b, money, neg){
     var dd = b - a;
@@ -13449,18 +13528,19 @@ function _mcaDetailHtml(bc, d) {
   h += row('Cash flow after tax', s0.fcf_m, s1.fcf_m, true);
   h += '<tr class="tot"><td class="lab">NPV at ' + rate + '%</td><td>' + M(s0.npv_m) + '</td><td>' + M(s1.npv_m) + '</td><td>' + D(s1.npv_m - s0.npv_m) + '</td></tr></table></div>';
   h += '<div class="eop-note">Contribution only: cars × (OEM revenue − live cost) per car, less what the action adds. Overhead and the programme already paid are the same in both scenarios, so they cancel; 2 − 1 is the action\'s NPV.</div>';
+  }
   // 2 · bridge
   var b = bc.bridge || {}, items = [['Extra cars × new margin', b.extra_cars_m], ['Margin change on the cars sold anyway', b.margin_change_m],
     ['Launch warranty', b.warranty_m], ['New top hat R&D', b.rd_m], ['Tooling + line variant', b.capex_m]];
   var mx = Math.max.apply(null, items.map(function(i){ return Math.abs(i[1] || 0); }).concat([Math.abs(b.npv_m || 0), 1]));
-  h += '<h4>2 · Incremental NPV bridge (present value after tax)</h4><table class="mca-tbl">';
+  h += '<h4>Incremental NPV bridge (present value after tax)</h4><table class="mca-tbl">';
   items.concat([['NPV of the action', b.npv_m]]).forEach(function(it, i){
     var w = Math.round(Math.abs(it[1] || 0) / mx * 140), c = (it[1] || 0) >= 0 ? 'var(--green)' : 'var(--red)';
     h += '<tr' + (i === items.length ? ' class="tot"' : '') + '><td class="lab">' + it[0] + '</td><td style="width:150px;text-align:left"><span class="mca-bar" style="width:' + w + 'px;background:' + c + '"></span></td><td>' + D(it[1]) + '</td></tr>';
   });
   h += '</table>';
   // 3 · year by year
-  h += '<h4>3 · Year by year</h4><div class="mca-scroll"><table class="mca-tbl"><tr><th>Year</th><th>Cars · 1</th><th>Cars · 2</th><th>Extra</th><th>Gross profit · 1</th><th>Gross profit · 2</th><th>Invest + R&amp;D</th><th>Δ cash after tax</th><th>Cum. PV of Δ</th></tr>';
+  h += '<h4>Year by year</h4><div class="mca-scroll"><table class="mca-tbl"><tr><th>Year</th><th>Cars · 1</th><th>Cars · 2</th><th>Extra</th><th>Gross profit · 1</th><th>Gross profit · 2</th><th>Invest + R&amp;D</th><th>Δ cash after tax</th><th>Cum. PV of Δ</th></tr>';
   (bc.years || []).forEach(function(y){
     h += '<tr><td>' + y.year + '</td><td>' + U(y.base_units) + '</td><td>' + U(y.mca_units) + '</td><td>' + DU(y.mca_units - y.base_units)
       + (y.cap_cut > 0 ? ' <span style="color:var(--gold)" title="cut: the lines are full">(−' + U(y.cap_cut) + ')</span>' : '') + '</td><td>' + M(y.gp0_m) + '</td><td>' + M(y.gp1_m) + '</td><td>'
@@ -13473,7 +13553,7 @@ function _mcaDetailHtml(bc, d) {
     bc.sensitivity.forEach(function(s){ smx = Math.max(smx, Math.abs(s.low.d_m - bc.base.d_m), Math.abs(s.high.d_m - bc.base.d_m)); });
     var tor = function(v){ var x = v - bc.base.d_m, w = Math.round(Math.abs(x) / smx * 50);
       return '<span style="display:inline-flex;width:104px;justify-content:center"><span style="width:50px;display:flex;justify-content:flex-end">' + (x < 0 ? '<span class="mca-bar" style="width:' + w + 'px;background:var(--red)"></span>' : '') + '</span><span style="width:1px;height:10px;background:var(--border2)"></span><span style="width:50px">' + (x > 0 ? '<span class="mca-bar" style="width:' + w + 'px;background:var(--green)"></span>' : '') + '</span></span>'; };
-    h += '<h4>4 · How the NPVs move with each parameter (one at a time)</h4><div class="mca-scroll"><table class="mca-tbl"><tr><th>Parameter</th><th>Case</th><th>NPV · 1</th><th>NPV · 2</th><th>Action NPV</th><th>vs base</th></tr>';
+    h += '<h4>How the NPVs move with each parameter (one at a time)</h4><div class="mca-scroll"><table class="mca-tbl"><tr><th>Parameter</th><th>Case</th><th>NPV · 1</th><th>NPV · 2</th><th>Action NPV</th><th>vs base</th></tr>';
     h += '<tr class="base"><td class="lab">Base case</td><td>—</td><td>' + M(bc.base.npv0_m) + '</td><td>' + M(bc.base.npv1_m) + '</td><td>' + D(bc.base.d_m) + '</td><td></td></tr>';
     bc.sensitivity.forEach(function(s){
       [['low', s.low_label], ['high', s.high_label]].forEach(function(p, i){
@@ -13484,7 +13564,7 @@ function _mcaDetailHtml(bc, d) {
     h += '</table></div>';
   }
   if (bc.rate_curve) {
-    h += '<h4>5 · NPV by discount rate</h4><div class="mca-scroll"><table class="mca-tbl"><tr><th>Rate</th><th>NPV · 1 Do nothing</th><th>NPV · 2 Mid-cycle action</th><th>Action NPV</th></tr>';
+    h += '<h4>NPV by discount rate</h4><div class="mca-scroll"><table class="mca-tbl"><tr><th>Rate</th><th>NPV · 1 Do nothing</th><th>NPV · 2 Mid-cycle action</th><th>Action NPV</th></tr>';
     bc.rate_curve.forEach(function(c){
       var cur = Math.abs(c.rate_pa - (bc.rate_pa || 0)) < 1e-4;
       h += '<tr' + (cur ? ' class="base"' : '') + '><td>' + (c.rate_pa * 100).toFixed(1) + '%' + (cur ? ' (team WACC)' : '') + '</td><td>' + M(c.npv0_m) + '</td><td>' + M(c.npv1_m) + '</td><td>' + D(c.d_m) + '</td></tr>';
