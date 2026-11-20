@@ -13388,7 +13388,6 @@ function _mcaPopHtml(v, m, curQ) {
     + '<div style="font-size:10px;color:var(--muted2);margin-bottom:6px;">' + _esc(v.name) + ' · new top hat</div>'
     + row('Change-over', (m.changeover_label || '—') + slip)
     + (m.status === 'plan' && m.approve_by_label ? row('Approve by', m.approve_by_label) : '')
-    + (m.age_credit_q ? row('Age credit', Math.round(m.age_credit_q) + ' q younger') : '')
     + (m.price_move_pct ? row('Price move', (m.price_move_pct > 0 ? '+' : '') + (m.price_move_pct * 100).toFixed(1) + '%') : '')
     + ((m.design || []).length ? row('Design refresh', (_MCA_PKGS.find(function(p){ return p.k === _mcaPkgOf(m.design); }) || {name: 'Custom'}).name) : '')
     + (m.volume_uplift_pct ? row('Volume uptick', (m.volume_uplift_pct > 0 ? '+' : '') + (m.volume_uplift_pct * 100).toFixed(1) + '%') : '')
@@ -13831,7 +13830,7 @@ async function _mcaPreview(first) {
               : _eopRow('New top hat: change · R&amp;D · lead', Math.round((t.change || 0) * 100) + '% · ' + m(c.rd_m) + ' · ' + c.lead_time_q + ' q');
     h += _eopRow('Change-over · approve by', d.changeover_label + ' · ' + d.approve_by_label,
                  d.approve_by_qabs <= d.qabs ? 'var(--gold)' : '');
-    h += _eopRow('Age at change-over · made younger by', d.age_at_changeover_q + ' q · ' + Math.round(d.age_credit_q) + ' q', 'var(--green)');
+    h += _eopRow('Model age at change-over', d.age_at_changeover_q + ' q');
     var sb = d.specs_before || {}, sa = d.specs_after || {};
     if (!d.car_weights) ['reliability', 'comfort', 'safety', 'premiumness'].forEach(function(k){   // older server: the car rows
       if (sa[k] == null || sb[k] == null) return;
