@@ -7918,9 +7918,9 @@ var _BATTERY_PC = {
     ELECTRODE_MIXING: {m:0.05, l:0.80, e:8.0,  n:'Electrode Slurry Mixing & Coating'},
     CELL_ASSEMBLY:    {m:0.20, l:1.50, e:12.0, n:'Cell Winding/Stacking & Assembly'},
     CELL_FORMATION:   {m:0.00, l:0.50, e:25.0, n:'Cell Formation Cycling'},
-    MODULE_ASSEMBLY:  {m:0.10, l:2.00, e:3.0,  n:'Module Assembly & Cell Welding'},
-    PACK_INTEGRATION: {m:0.15, l:3.00, e:4.0,  n:'Pack Integration & BMS Wiring'},
-    EOL_TEST:         {m:0.20, l:1.00, e:15.0, n:'End-of-Line Testing & Conditioning'},
+    MODULE_ASSEMBLY:  {m:0.10, l:0.40, e:3.0,  n:'Module Assembly & Cell Welding'},
+    PACK_INTEGRATION: {m:0.15, l:0.60, e:4.0,  n:'Pack Integration & BMS Wiring'},
+    EOL_TEST:         {m:0.20, l:0.20, e:15.0, n:'End-of-Line Testing & Conditioning'},
   },
 
   // Cell-level raw material content per kWh (kg/kWh) by chemistry
@@ -7944,7 +7944,7 @@ var _BATTERY_PC = {
 
   // Pack-level material content per kWh (kg/kWh), chemistry-independent
   PACK_MATS: [['MODULE_ALU',0.80],['PACK_STRUCT',1.20],['COOLING_PLATE',0.50],
-              ['THERMAL_FILM',0.15],['HV_WIRING',0.10],['BMS_ELECTRONICS',0.02]],
+              ['THERMAL_FILM',0.15],['HV_WIRING',0.10],['BMS_ELECTRONICS',0.005]],
 
   // Derive kWh slider range from platform volume × chemistry density (+ mass ceiling)
   // pwt (the platform's powertrain): a multi-energy platform (PHEV / REEV) may carry a small pack,
@@ -8151,7 +8151,19 @@ var _BATTERY_PC = {
         energy_kwh:l.ekwh, energy_cost_eur:l.ecost,
         process_cost_eur:l.total, spec_driven:l.spec, spec_label:l.label};}),
     };
-    var _sp=_calcBomSplit(_r.material_lines,_r.process_lines,make_buy==='BUY'?'BUY':null);
+    // Purchased cells at market price (CHEM price_kwh carries the cell maker's margin): the split's
+    // supplier overhead / profit applies to the pack work only (2026-11-21; it marked the cells up
+    // again, ~21%). MUST stay in sync with Python BatteryCostEngine (Engine Parity Rule).
+    var _sp;
+    if (make_buy==='BUY') {
+      _sp=_calcBomSplit(_r.material_lines.slice(1),_r.process_lines,'BUY');
+      var _cc=_r.material_lines[0].material_cost_eur;
+      ['raw_material_eur','direct_eur','total_eur'].forEach(function(k){ _sp.dmp[k]=Math.round((_sp.dmp[k]+_cc)*100)/100; });
+      _sp.dmp.commodity_eur=_calcBomSplit(_r.material_lines,_r.process_lines,'BUY').dmp.commodity_eur;
+      _sp.std_tpc_eur=Math.round((_sp.std_tpc_eur+_cc)*100)/100;
+    } else {
+      _sp=_calcBomSplit(_r.material_lines,_r.process_lines,null);
+    }
     _r.dmp=_sp.dmp; _r.make=_sp.make; _r.std_platform_tpc_eur=_sp.std_tpc_eur;
     return _r;
   }
@@ -13525,7 +13537,7 @@ function _mcaDrawDesign(d) {
     + '<div class="mca-car-track" id="mca-car-track">' + cards + '</div>'
     + '<button class="mca-car-nav" onclick="_mcaCarScroll(1)" title="Larger scope">›</button></div>'
     + '<div class="eop-note" style="margin:4px 0 0;">From the smallest scope (left) to the largest; gold = new parts. '
-    + (_mcaPkg ? '' : '<b style="color:var(--gold)">No package selected: the model keeps its look.</b>') + '</div>';
+    + (_mcaPkg ? '' : '<b style="color:var(--gold)">Choose a package: a mid-cycle action needs a design refresh (rating changes are optional).</b>') + '</div>';
   if (_mcaPkg === 'custom') {
     var col = function(g, title) {
       return '<div><div style="font-size:11px;font-weight:600;margin-bottom:4px;">' + title + '</div>'
@@ -29678,7 +29690,7 @@ function _p7ModuleCosts(plantId) {
     var zk = _zoneForPlant(x.p.country_code, x.p.region), z = SP_ZONES.find(function (q) { return q.key === zk; }) || SP_ZONES[0];
     anySup = true;
     x.slots.forEach(function (sk) {
-      supK[sk] = (supK[sk] || 0) + _mzcSupplierGfM(sk, kk) + _mzcSupplierGfM(sk, _MODINV_E.V_REF) * _MZC_TOOLING_SHARE * (z.labor_index || 1);
+      supK[sk] = (supK[sk] || 0) + _mzcSupplierGfM(sk, kk) + _mzcSupplierGfM(sk, _MODINV_E.V_REF) * _mzcToolingShare(sk) * (z.labor_index || 1);
     });
   });
   if (anySup) order.forEach(function (k) { rows[k].sup = supK[k] || 0; });
@@ -32528,7 +32540,7 @@ function _spBridgeLines(withCapex) {
     var zone = SP_ZONES.find(function (z) { return z.key === l0.dec.zone; }) || SP_ZONES[0];
     var share = g.some(function (l) { return !!l.dec.share_existing; });
     var inv = _mzcEstimateInvestment(l0.sk, l0.moduleId, l0.dec.zone, l0.dec.automation || 2, needK, share);
-    var gf = _mzcSupplierGfM(l0.sk, needK) + _mzcSupplierGfM(l0.sk, _MODINV_E.V_REF) * _MZC_TOOLING_SHARE * zone.labor_index;
+    var gf = _mzcSupplierGfM(l0.sk, needK) + _mzcSupplierGfM(l0.sk, _MODINV_E.V_REF) * _mzcToolingShare(l0.sk) * zone.labor_index;
     g.forEach(function (l) {
       var f = (l.p.vehicle_capacity_yr || 0) / needK;
       l.inv = {shortfall: inv.shortfall * f, isFirstTime: inv.isFirstTime, toolingM: inv.toolingM * f, capacityM: inv.capacityM * f,
@@ -32653,6 +32665,10 @@ async function _mzcLoadCapacity() {
 // module lab and §7's table assume. Supplier automation enters via auto.capacity_mult, so tracking it
 // through OEE as well would double-count it.
 var _MZC_TOOLING_SHARE = 0.15;   // one-time qualification/tooling share of a greenfield supplier line
+// by slot where the product-specific tools outweigh that (2026-11-21, main.MZC_TOOLING_SHARE_SLOT): a top
+// hat's bought content is visible surfaces and trim, its first-time tooling ~ three quarters of the line
+var _MZC_TOOLING_SHARE_SLOT = {tophat: 0.75};
+function _mzcToolingShare(sk) { return _MZC_TOOLING_SHARE_SLOT[sk] != null ? _MZC_TOOLING_SHARE_SLOT[sk] : _MZC_TOOLING_SHARE; }
 // Spec-driven supplier greenfield capex (€M) for one module slot at a given TARGET annual capacity.
 // Same _MODINV_E engine §7 uses — segment, body, platform size, ADAS level, kWh, chemistry all move it.
 function _mzcSupplierGfM(sk, capK) {
@@ -32708,7 +32724,7 @@ function _spPool(sk, moduleId, zoneKey) {
 function _spVariantToolM(sk, moduleId, pool, zone) {
   if (!pool.variant || ((pool.c && pool.c.variants) || []).indexOf(moduleId) >= 0) return 0;
   var p = _prop[sk], rf = p && p.mode === 'derivative' && p.deriv && p.module && p.module.id === moduleId && p.deriv.retool_f != null ? p.deriv.retool_f : 1;
-  return _mzcSupplierGfM(sk, _MODINV_E.V_REF) * _MZC_TOOLING_SHARE * zone.labor_index * rf;
+  return _mzcSupplierGfM(sk, _MODINV_E.V_REF) * _mzcToolingShare(sk) * zone.labor_index * rf;
 }
 function _mzcEstimateInvestment(sk, moduleId, zoneKey, autoLevel, needK, share) {
   var pool = _spPool(sk, moduleId, zoneKey);
@@ -32723,7 +32739,7 @@ function _mzcEstimateInvestment(sk, moduleId, zoneKey, autoLevel, needK, share) 
   // Capacity above is deliberately NOT zone-scaled: production equipment is globally traded, so
   // labor_index (Mexico 0.13 vs W. Europe 1.10) applies to local qualification/installation only.
   var toolingM = pool.variant ? _spVariantToolM(sk, moduleId, pool, zone)
-    : isFirstTime ? _mzcSupplierGfM(sk, _MODINV_E.V_REF) * _MZC_TOOLING_SHARE * zone.labor_index * _mzcRetoolF(moduleId, zoneKey) : 0;
+    : isFirstTime ? _mzcSupplierGfM(sk, _MODINV_E.V_REF) * _mzcToolingShare(sk) * zone.labor_index * _mzcRetoolF(moduleId, zoneKey) : 0;
   var capacityM = _mzcEstimateCapexM(sk, autoLevel, c.contracted_k || 0, shortfall);
   return { shortfall: shortfall, isFirstTime: isFirstTime, toolingM: toolingM, capacityM: capacityM, totalM: toolingM + capacityM,
            variant: pool.variant, poolKey: pool.key };
