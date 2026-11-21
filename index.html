@@ -29690,7 +29690,7 @@ function _p7ModuleCosts(plantId) {
     var zk = _zoneForPlant(x.p.country_code, x.p.region), z = SP_ZONES.find(function (q) { return q.key === zk; }) || SP_ZONES[0];
     anySup = true;
     x.slots.forEach(function (sk) {
-      supK[sk] = (supK[sk] || 0) + _mzcSupplierGfM(sk, kk) + _mzcSupplierGfM(sk, _MODINV_E.V_REF) * _mzcToolingShare(sk) * (z.labor_index || 1);
+      supK[sk] = (supK[sk] || 0) + _mzcSupplierGfM(sk, kk) + _mzcSupplierGfM(sk, _MODINV_E.V_REF) * _mzcToolingShare(sk) * _mzcToolingZoneF(z.labor_index || 1);
     });
   });
   if (anySup) order.forEach(function (k) { rows[k].sup = supK[k] || 0; });
@@ -32540,7 +32540,7 @@ function _spBridgeLines(withCapex) {
     var zone = SP_ZONES.find(function (z) { return z.key === l0.dec.zone; }) || SP_ZONES[0];
     var share = g.some(function (l) { return !!l.dec.share_existing; });
     var inv = _mzcEstimateInvestment(l0.sk, l0.moduleId, l0.dec.zone, l0.dec.automation || 2, needK, share);
-    var gf = _mzcSupplierGfM(l0.sk, needK) + _mzcSupplierGfM(l0.sk, _MODINV_E.V_REF) * _mzcToolingShare(l0.sk) * zone.labor_index;
+    var gf = _mzcSupplierGfM(l0.sk, needK) + _mzcSupplierGfM(l0.sk, _MODINV_E.V_REF) * _mzcToolingShare(l0.sk) * _mzcToolingZoneF(zone.labor_index);
     g.forEach(function (l) {
       var f = (l.p.vehicle_capacity_yr || 0) / needK;
       l.inv = {shortfall: inv.shortfall * f, isFirstTime: inv.isFirstTime, toolingM: inv.toolingM * f, capacityM: inv.capacityM * f,
@@ -32665,10 +32665,14 @@ async function _mzcLoadCapacity() {
 // module lab and §7's table assume. Supplier automation enters via auto.capacity_mult, so tracking it
 // through OEE as well would double-count it.
 var _MZC_TOOLING_SHARE = 0.15;   // one-time qualification/tooling share of a greenfield supplier line
-// by slot where the product-specific tools outweigh that (2026-11-21, main.MZC_TOOLING_SHARE_SLOT): a top
+// by slot where the product-specific tools outweigh that (2026-11-21, financial_engine.SUPPLIER_TOOLING_SHARE_SLOT): a top
 // hat's bought content is visible surfaces and trim, its first-time tooling ~ three quarters of the line
 var _MZC_TOOLING_SHARE_SLOT = {tophat: 0.75};
 function _mzcToolingShare(sk) { return _MZC_TOOLING_SHARE_SLOT[sk] != null ? _MZC_TOOLING_SHARE_SLOT[sk] : _MZC_TOOLING_SHARE; }
+// tooling in a zone vs the base (2026-11-21, financial_engine.supplier_tooling_zone_f): half fixed (steel,
+// machining, design), half the zone's labour index: China 0.62, not 0.24
+var _MZC_TOOLING_ZONE_FIXED = 0.5;
+function _mzcToolingZoneF(li) { li = (li == null || !isFinite(+li)) ? 1 : +li; return _MZC_TOOLING_ZONE_FIXED + (1 - _MZC_TOOLING_ZONE_FIXED) * li; }
 // Spec-driven supplier greenfield capex (€M) for one module slot at a given TARGET annual capacity.
 // Same _MODINV_E engine §7 uses — segment, body, platform size, ADAS level, kWh, chemistry all move it.
 function _mzcSupplierGfM(sk, capK) {
@@ -32724,7 +32728,7 @@ function _spPool(sk, moduleId, zoneKey) {
 function _spVariantToolM(sk, moduleId, pool, zone) {
   if (!pool.variant || ((pool.c && pool.c.variants) || []).indexOf(moduleId) >= 0) return 0;
   var p = _prop[sk], rf = p && p.mode === 'derivative' && p.deriv && p.module && p.module.id === moduleId && p.deriv.retool_f != null ? p.deriv.retool_f : 1;
-  return _mzcSupplierGfM(sk, _MODINV_E.V_REF) * _mzcToolingShare(sk) * zone.labor_index * rf;
+  return _mzcSupplierGfM(sk, _MODINV_E.V_REF) * _mzcToolingShare(sk) * _mzcToolingZoneF(zone.labor_index) * rf;
 }
 function _mzcEstimateInvestment(sk, moduleId, zoneKey, autoLevel, needK, share) {
   var pool = _spPool(sk, moduleId, zoneKey);
@@ -32739,7 +32743,7 @@ function _mzcEstimateInvestment(sk, moduleId, zoneKey, autoLevel, needK, share) 
   // Capacity above is deliberately NOT zone-scaled: production equipment is globally traded, so
   // labor_index (Mexico 0.13 vs W. Europe 1.10) applies to local qualification/installation only.
   var toolingM = pool.variant ? _spVariantToolM(sk, moduleId, pool, zone)
-    : isFirstTime ? _mzcSupplierGfM(sk, _MODINV_E.V_REF) * _mzcToolingShare(sk) * zone.labor_index * _mzcRetoolF(moduleId, zoneKey) : 0;
+    : isFirstTime ? _mzcSupplierGfM(sk, _MODINV_E.V_REF) * _mzcToolingShare(sk) * _mzcToolingZoneF(zone.labor_index) * _mzcRetoolF(moduleId, zoneKey) : 0;
   var capacityM = _mzcEstimateCapexM(sk, autoLevel, c.contracted_k || 0, shortfall);
   return { shortfall: shortfall, isFirstTime: isFirstTime, toolingM: toolingM, capacityM: capacityM, totalM: toolingM + capacityM,
            variant: pool.variant, poolKey: pool.key };
