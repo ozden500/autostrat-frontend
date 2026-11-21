@@ -3034,6 +3034,7 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
       <div class="mm-field"><label>Price change at change-over (%)</label><input type="number" id="mca-price" step="0.5" value="0" onchange="_mcaPreview(false)"></div>
       <div class="mm-field"><label>Volume uptick vs do nothing (%)</label><input type="number" id="mca-vol" step="0.5" min="-30" max="50" value="0" onchange="_mcaPreview(false)"></div>
     </div>
+    <div id="mca-hint" class="eop-note" style="margin:8px 0 0;padding:6px 10px;border-left:2px solid var(--gold);color:var(--text);"></div>
     <div class="eop-note" style="margin:6px 0 0;">The volume uptick is your estimate of how many more (or fewer) cars the model sells after the change-over than if you did nothing, price move included. It is spread over the remaining quarters along the do-nothing volume curve and capped at what the lines can build. The market decides the real outcome.</div>
     <div id="mca-preview"></div>
     <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px;">
@@ -13464,6 +13465,7 @@ function openMcaModal(vid) {
   document.getElementById('mca-specs').innerHTML = '<div class="eop-note">Loading the current top hat…</div>';
   document.getElementById('mca-co').innerHTML = '';
   document.getElementById('mca-design').innerHTML = '';
+  document.getElementById('mca-hint').innerHTML = '';
   document.getElementById('mca-price').value = ((_mcaInit.price_move_pct || 0) * 100).toFixed(1);
   document.getElementById('mca-vol').value = ((_mcaInit.volume_uplift_pct || 0) * 100).toFixed(1);
   document.getElementById('mcaModal').classList.add('open');
@@ -13572,6 +13574,7 @@ function _mcaDrawDesign(d) {
       + col('exterior', 'Exterior') + col('interior', 'Interior') + '</div>';
   }
   document.getElementById('mca-design').innerHTML = h;
+  _mcaHint();
 }
 function _mcaPickPkg(k) {
   if (k === 'custom' && _mcaPkg !== 'custom' && !_mcaCustom.length) _mcaCustom = _mcaDesignKeys();   // start from the package shown
@@ -13592,6 +13595,43 @@ function _mcaCustomToggle() {
 function _mcaCarScroll(dir) {
   var t = document.getElementById('mca-car-track');
   if (t) t.scrollBy({left: dir * 236, behavior: 'smooth'});
+}
+// What the team offers buyers, in words, next to the uptick it estimates (2026-11-21): the package's
+// scope, the rating moves, the price move and the model's age; no volume figure (the estimate is theirs)
+var _MCA_SCOPE_TXT = {
+  bumpers:  'a light refresh: new bumpers front and rear',
+  facelift: 'an exterior facelift: bumpers, a new lighting signature, new wheels',
+  trim:     'an exterior facelift with a refreshed interior (displays, seat fabrics, materials)',
+  major:    'a major refresh: the facelift plus a new hood, dashboard, console and door trims',
+  full:     'a full refresh of every visible panel, inside and out'
+};
+function _mcaHint() {
+  var el = document.getElementById('mca-hint');
+  if (!el) return;
+  var scope;
+  if (!_mcaPkg) scope = 'no design refresh yet (choose a package)';
+  else if (_mcaPkg !== 'custom') scope = _MCA_SCOPE_TXT[_mcaPkg] || _mcaPkg;
+  else {
+    var its = ((_mcaLast || {}).design_items || []), grp = {};
+    its.forEach(function(it){ grp[it.key] = it.group; });
+    var ex = _mcaCustom.filter(function(k){ return grp[k] === 'exterior'; }).length, inn = _mcaCustom.length - ex;
+    scope = _mcaCustom.length ? 'a custom refresh of ' + ex + ' exterior and ' + inn + ' interior part' + (inn === 1 ? '' : 's')
+                              : 'no design refresh yet (tick the parts)';
+  }
+  var mv = [];
+  document.querySelectorAll('#mca-specs input[data-base]').forEach(function(x){
+    var dlt = parseFloat(x.value) - parseFloat(x.getAttribute('data-base')), pct = x.getAttribute('data-pct') === '1';
+    if (Math.abs(dlt) < 0.005) return;
+    mv.push(x.getAttribute('data-lab').toLowerCase() + ' ' + (dlt > 0 ? '+' : '−')
+            + (pct ? (Math.round(Math.abs(dlt) * 1000) / 10) + ' pts' : (Math.round(Math.abs(dlt) * 100) / 100)));
+  });
+  var pm = parseFloat(document.getElementById('mca-price').value) || 0;
+  var d = _mcaLast || {};
+  el.innerHTML = '<b>What buyers get' + (d.changeover_label ? ' from ' + d.changeover_label : '') + ':</b> ' + _esc(scope)
+    + '; ratings ' + (mv.length ? mv.join(', ') : 'unchanged')
+    + '; price ' + (pm ? (pm > 0 ? '+' : '−') + Math.abs(pm) + '%' : 'unchanged') + '.'
+    + (d.age_at_changeover_q != null ? ' The model will be ' + d.age_at_changeover_q + ' quarters old by then.' : '')
+    + ' Set the uptick from what you know of your buyers and how your rivals\' models age and refresh.';
 }
 function closeMcaModal() { document.getElementById('mcaModal').classList.remove('open'); }
 function _mcaBody(first) {
@@ -13645,7 +13685,8 @@ function _mcaRenderControls(d) {
       + '<div class="mca-sl"><span class="mca-was" style="left:calc(6px + ' + (f * 100).toFixed(2) + '% - ' + (f * 12).toFixed(2) + 'px)"'
       + ' title="Today: ' + _mcaFmt(base, s.pct) + '"></span>'
       + '<input type="range" id="mca-s-' + s.k + '" min="' + lo + '" max="' + hi + '" step="any" value="' + now + '"'
-      + ' oninput="document.getElementById(\'mca-v-' + s.k + '\').textContent=_mcaFmt(this.value,' + s.pct + ');_mcaQueue()"></div>'
+      + ' data-base="' + base + '" data-pct="' + (s.pct ? 1 : 0) + '" data-lab="' + s.l + '"'
+      + ' oninput="document.getElementById(\'mca-v-' + s.k + '\').textContent=_mcaFmt(this.value,' + s.pct + ');_mcaHint();_mcaQueue()"></div>'
       + '<span class="mono" id="mca-v-' + s.k + '">' + _mcaFmt(now, s.pct) + '</span></div>';
   });
   document.getElementById('mca-specs').innerHTML = h || '<div class="eop-note">This top hat has no derivative envelope.</div>';
@@ -13866,6 +13907,7 @@ async function _mcaPreview(first) {
     if (!r.ok) { box.innerHTML = '<div class="eop-note" style="color:var(--red)">' + _esc(d.detail || 'Not allowed') + '</div>'; return; }
     _mcaLast = d;
     if (first) { _mcaRenderControls(d); _mcaRenderDesign(d); }
+    _mcaHint();
     var m = function(x){ return '€' + (Math.round((x || 0) * 10) / 10).toLocaleString() + 'M'; };
     var e = function(x){ return (x >= 0 ? '+' : '−') + '€' + Math.abs(Math.round(x || 0)).toLocaleString(); };
     var bc = d.business_case || {}, c = d.child || {}, t = c.terms || {};
