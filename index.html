@@ -13865,9 +13865,9 @@ async function _mcaPreview(first) {
     var bc = d.business_case || {}, c = d.child || {}, t = c.terms || {};
     var h = '<div class="eop-pv">';
     var lean = !!bc.tiles;   // the six tiles carry R&D, cost, margin, warranty, investment, cars and the metrics
-    var chg = Math.round((t.change || 0) * 100) + '%';
-    h += lean ? _eopRow('New top hat: change · lead', chg + ' · ' + c.lead_time_q + ' q')
-              : _eopRow('New top hat: change · R&amp;D · lead', Math.round((t.change || 0) * 100) + '% · ' + m(c.rd_m) + ' · ' + c.lead_time_q + ' q');
+    // no change % for teams (2026-11-21): it reads off how much each design package counts
+    h += lean ? _eopRow('New top hat: development lead time', c.lead_time_q + ' q')
+              : _eopRow('New top hat: R&amp;D · lead', m(c.rd_m) + ' · ' + c.lead_time_q + ' q');
     h += _eopRow('Change-over · approve by', d.changeover_label + ' · ' + d.approve_by_label,
                  d.approve_by_qabs <= d.qabs ? 'var(--gold)' : '');
     h += _eopRow('Model age at change-over', d.age_at_changeover_q + ' q');
