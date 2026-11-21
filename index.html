@@ -13662,7 +13662,7 @@ function _mcaQueue() { clearTimeout(_mcaTimer); _mcaTimer = setTimeout(function(
 // totals, the incremental NPV bridge, year by year, and how both NPVs move with each parameter.
 // MCA business case as §10's executive summary (2026-11-19): the same six tiles, each with three
 // columns, 1 do nothing | 2 mid-cycle action | 2 − 1 (bc.tiles from mca_business_case; display only).
-function _mcaTilesHtml(bc) {
+function _mcaTilesHtml(bc, d) {
   var t = bc.tiles, a = t.do_nothing, b = t.mca, mt = t.metrics || {};
   var rate = ((bc.rate_pa || 0) * 100).toFixed(1);
   var E = function(x){ x = Math.round(x || 0); return (x < 0 ? '−€' : '€') + Math.abs(x).toLocaleString(); };
@@ -13737,7 +13737,13 @@ function _mcaTilesHtml(bc) {
     + '<div class="mca-sub">How the NPV is built' + info('Present value after tax at ' + rate + '%: what the action adds over doing nothing. The lines sum to the action NPV.') + '</div>'
     + '<table class="mca-tbl">' + bi.map(function(x){ return brow(x[0], x[1]); }).join('') + brow('Action NPV', br.npv_m, true) + '</table></div>';
   var good = (mt.npv_m || 0) >= 0, nc = good ? 'var(--green)' : 'var(--red)';
-  var h = '<div class="mca-verdict" style="border-color:' + (good ? 'rgba(74,222,128,.35)' : 'rgba(239,68,68,.45)') + ';background:' + (good ? 'rgba(74,222,128,.05)' : 'rgba(239,68,68,.06)') + ';">'
+  var probs = (d && d.problems) || [];
+  // an action that cannot be submitted gets no verdict (2026-11-21: nothing chosen read "creates value", NPV €0)
+  var h = probs.length
+    ? '<div class="mca-verdict" style="border-color:var(--border3);background:var(--s2);">'
+      + '<span style="color:var(--muted2);">Verdict · not ready</span>'
+      + '<span>' + _esc(probs[0]) + (probs.length > 1 ? ' (+' + (probs.length - 1) + ' more below)' : '') + '</span></div>'
+    : '<div class="mca-verdict" style="border-color:' + (good ? 'rgba(74,222,128,.35)' : 'rgba(239,68,68,.45)') + ';background:' + (good ? 'rgba(74,222,128,.05)' : 'rgba(239,68,68,.06)') + ';">'
     + '<span style="color:' + nc + ';">' + (good ? 'Verdict · the action creates value' : 'Verdict · the action loses money') + '</span>'
     + '<span>NPV ' + dM(mt.npv_m) + ' on ' + M(b.invest.total_m) + ' invested · ' + dU(b.units - a.units) + ' cars · margin per car ' + dE(m1.car_eur - m0.car_eur) + '</span></div>';
   h += '<div class="mca-tiles">' + tile(1, 'Volumes by region', 'var(--cyan)', t1, lk('years', 'sales by year')) + tile(2, 'Price → net revenue', 'var(--gold)', t2) + tile(3, 'Investments', 'var(--purple)', t3)
@@ -13754,7 +13760,7 @@ function _mcaDetailHtml(bc, d) {
   var DU = function(x){ x = Math.round(x || 0); return '<span class="' + (x > 0 ? 'g' : x < 0 ? 'r' : '') + '">' + (x > 0 ? '+' : x < 0 ? '−' : '') + Math.abs(x).toLocaleString() + '</span>'; };
   var s0 = bc.scenarios.do_nothing, s1 = bc.scenarios.mca, rate = ((bc.rate_pa || 0) * 100).toFixed(1);
   var h = '<details class="mca-det"' + (_mcaDetOpen ? ' open' : '') + ' ontoggle="_mcaDetOpen=this.open"><summary>Do nothing vs mid-cycle action · ' + (d.changeover_label || _qLabel(d.qabs)) + ' – ' + d.eop_label + '</summary>';
-  if (bc.tiles) h += _mcaTilesHtml(bc);
+  if (bc.tiles) h += _mcaTilesHtml(bc, d);
   else {   // a business case stored before the tiles
   h += '<h4>1 · Two scenarios to EOP (contribution after tax, ' + rate + '%)</h4><div class="mca-scroll"><table class="mca-tbl"><tr><th></th><th>1 · Do nothing</th><th>2 · Mid-cycle action</th><th>2 − 1</th></tr>';
   var row = function(l, a, b, money, neg){
