@@ -28722,6 +28722,9 @@ var SOURCING_STRATEGIES = [
 // ── BOM Make/Buy split constants ─────────────────────────────────────────────
 var SUPPLIER_OVERHEAD_RATE = 0.12;  // 12% of supplier direct cost
 var SUPPLIER_PROFIT_RATE   = 0.08;  // 8% of (supplier direct + overhead)
+// 2026-11-22 calibration 2b / P3: direct material + process cost x 0.96 (cost ratios are on revenue after
+// incentives); bought battery cells keep their market price. Mirrors cost_engines.COST_LEVEL.
+var COST_LEVEL             = 0.96;
 var OEM_OVERHEAD_RATE      = 0.20;  // 20% of OEM direct make cost
 
 // Process code classification: MAKE = OEM plant, BUY = supplier-performed
@@ -28956,17 +28959,17 @@ function _calcBomSplit(matLines, procLines, makeBuyOverride) {
     (tag === 'BUY' ? buyProcs : makeProcs).push(l);
   });
   function sum(arr, f) { return arr.reduce(function(s,l){ return s+(l[f]||0); }, 0); }
-  var raw_mat  = sum(matLines, 'material_cost_eur');
-  var buy_lbr  = sum(buyProcs, 'labor_cost_eur');
-  var buy_eng  = sum(buyProcs, 'energy_cost_eur');
-  var buy_depr = sum(buyProcs, 'machine_cost_eur');
+  var raw_mat  = sum(matLines, 'material_cost_eur') * COST_LEVEL;
+  var buy_lbr  = sum(buyProcs, 'labor_cost_eur') * COST_LEVEL;
+  var buy_eng  = sum(buyProcs, 'energy_cost_eur') * COST_LEVEL;
+  var buy_depr = sum(buyProcs, 'machine_cost_eur') * COST_LEVEL;
   var buy_dir  = raw_mat + buy_lbr + buy_eng + buy_depr;
   var buy_oh   = buy_dir * SUPPLIER_OVERHEAD_RATE;
   var buy_prof = (buy_dir + buy_oh) * SUPPLIER_PROFIT_RATE;
   var dmp_tot  = buy_dir + buy_oh + buy_prof;
-  var mk_lbr   = sum(makeProcs, 'labor_cost_eur');
-  var mk_eng   = sum(makeProcs, 'energy_cost_eur');
-  var mk_mach  = sum(makeProcs, 'machine_cost_eur');
+  var mk_lbr   = sum(makeProcs, 'labor_cost_eur') * COST_LEVEL;
+  var mk_eng   = sum(makeProcs, 'energy_cost_eur') * COST_LEVEL;
+  var mk_mach  = sum(makeProcs, 'machine_cost_eur') * COST_LEVEL;
   var mk_dir   = mk_lbr + mk_eng + mk_mach;
   var mk_oh    = mk_dir * OEM_OVERHEAD_RATE;
   var mk_tot   = mk_dir + mk_oh;
