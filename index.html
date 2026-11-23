@@ -6313,7 +6313,7 @@ function _renderBomSplitView(r) {
   if (mk) {
     h += '<div style="'+BK+'">';
     h += '<div style="'+H2+'var(--cyan);">② Make Transformation (OEM)</div>';
-    h += row('(a) Labor — '+mk.labor_hrs_pu.toFixed(3)+' h/unit × €58/hr', mk.labor_eur);
+    h += row('(a) Labor — '+mk.labor_hrs_pu.toFixed(3)+' h/unit × €58/hr (standard rate; §7 prices it at the plant country)', mk.labor_eur);
     h += row('(b) Energy — '+mk.energy_kwh_pu.toFixed(3)+' kWh/unit × €0.08/kWh', mk.energy_eur);
     if (mk.machine_eur > 0) h += row('Machine depreciation', mk.machine_eur);
     h += '<div style="'+DIV+'"></div>';
@@ -27558,6 +27558,21 @@ function _computeDmpMake() {
   return {dmp:dmp, make:make, matEur:mat, labEur:lab};
 }
 
+// In-house process hours of the proposal's modules (labour location, 2026-11-23): the BOM 'make' labour € (at
+// COST_LEVEL, as tpcNum holds it) / €58, vehicle-plant (platform, top hat, E&S) vs powertrain (ICE, e-drive,
+// battery) modules; a module without a split takes _computeDmpMake's 12% estimate. Mirror:
+// financial_engine.make_labour_hours.
+function _propMakeHrs() {
+  var std = (_PC && _PC.US_LABOR) || 58, v = 0, w = 0;
+  ['platform','tophat','eands','pwt','epwt','battery'].forEach(function(k) {
+    var p = _prop[k]; if (!p || !p.module) return;
+    var m = _propEnsureModSplit(p.module);
+    var lab = (m.dmp && m.make) ? parseFloat(m.make.labor_eur || 0) : parseFloat(m.per_unit_tpc_eur || 0) * 0.12;
+    if (k === 'platform' || k === 'tophat' || k === 'eands') v += lab; else w += lab;
+  });
+  return {veh: Math.round(v / std * 1e4) / 1e4, pwt: Math.round(w / std * 1e4) / 1e4};
+}
+
 // Recompute DMP/Make split for a library module object using its stored specs + config_key.
 // Returns {dmp, make, tpc} using _calcBomSplit() field names (direct_eur / overhead_eur).
 // Scales engine output to stored per_unit_tpc_eur so modal and Section 7 agree.
@@ -29310,7 +29325,8 @@ var _PLANT_E = (function() {
   var MAINT_PA = 0.05, MOTHBALL_F = 0.20, LABOUR_REF = 52;
   // labour €/h by country: a verbatim copy of financial_engine._COUNTRY_RATES (labour column)
   var LABOUR = {US:38, MX:5, CA:34, DE:52, FR:47, IT:40, ES:28, PL:14, CZ:15, SK:13, RO:10, TR:8,
-                GB:44, ZA:7, MA:3, BR:9, AR:6, CN:9, JP:35, KR:24, IN:4, RU:8};
+                GB:44, ZA:7, MA:3, BR:9, AR:6, CN:9, JP:35, KR:24, IN:4, RU:8,
+                EG:2, NG:2, CO:5, TH:6, ID:3, NO:52};   // 2026-11-23: the plant countries that fell back to DE
   function labour(cc) { var v = LABOUR[String(cc || '').toUpperCase()]; return v != null ? v : LABOUR_REF; }
   function buildF(cc) { return 0.55 + 0.45 * labour(cc) / LABOUR_REF; }
   function hallCapexM(type, hallK, cc) {
@@ -29439,7 +29455,29 @@ var _MANUF_E = (function() {
   function pwtRunRef(mods){
     return pwtRun((mods||[]).map(function(x){ return {mod:x.mod, ctx:x.ctx, line:null}; }), PWT_REF_K, 2, 'CONTINENTAL', REF_ELEC);
   }
+  // Labour location (2026-11-23, docs/LABOUR_LOCATION_SPEC.md). Real labour cost per car rises almost in step with
+  // the hourly wage (Oliver Wyman / Harbour Report 2024, 17 countries); the BOM's in-house process hours used to be
+  // priced at €58/h whatever the plant's country. LABOUR_HOURS_K = real hours per BOM process hour (indirect and
+  // salaried plant staff, rework, real productivity), fitted for a C car: Mexico €195 / China 350 / US 1,478 /
+  // Germany 2,023 a car. Mirror: financial_engine.LABOUR_HOURS_K / labour_location_eur / labour_ref_eur.
+  var LABOUR_HOURS_K = 2.79, STD_LABOUR_EUR_HR = 58;
+  // €/car: K × (process hours at the plant's rate, powertrain hours at the powertrain plants' rates by weight)
+  // + the work-content labour less a standard plant's (L2, CONTINENTAL) at the same rates.
+  // hrs = {veh, pwt}; pwt = [{w, rate}] (none: the vehicle plant builds the powertrain).
+  function locLabour(labPlant, labPlantStd, hrs, rate, pwt) {
+    var hv = +((hrs || {}).veh) || 0, hp = +((hrs || {}).pwt) || 0, bom = hv * rate;
+    if (pwt && pwt.length) {
+      var tw = pwt.reduce(function (a, q) { return a + (+q.w || 0); }, 0);
+      pwt.forEach(function (q) { bom += (tw > 0 ? (+q.w || 0) / tw : 1 / pwt.length) * hp * q.rate; });
+    } else bom += hp * rate;
+    return Math.round(LABOUR_HOURS_K * bom + (+labPlant || 0) - (+labPlantStd || 0));
+  }
+  // what the BOM 'make' holds for the process hours (€58/h): the standard plant's labour
+  function refLabour(hrs) {
+    return Math.round(STD_LABOUR_EUR_HR * ((+((hrs || {}).veh) || 0) + (+((hrs || {}).pwt) || 0)));
+  }
   return {calc:calc, labour:labour, pwtRun:pwtRun, pwtRunRef:pwtRunRef, pwtKwh:pwtKwh,
+          locLabour:locLabour, refLabour:refLabour, LABOUR_HOURS_K:LABOUR_HOURS_K,
           MAINT_RATE:MAINT_RATE, OEE:OEE, JPH_MAX:JPH_MAX, AUTO_JPH:AUTO_JPH};
 })();
 
@@ -29464,7 +29502,7 @@ function _newVehManuf(ctx){
   var al=ctx.automation_level!=null?ctx.automation_level:2;
   if(typeof al==='string') al=parseInt(String(al).replace(/^L/i,''))||2;
   var shr=ctx.platform_shared||false, specs=ctx.specs||{};
-  function mc(k,capK){return {specs:specs[k]||{},segment_code:ctx.segment_code||'c_segment',body_type:(ctx.body_type||'HB').toUpperCase(),platform_size:ctx.platform_size||'medium',pwt_type:pk,automation_level:al,platform_shared:shr,cap_k:capK};}
+  function mc(k,capK,a){return {specs:specs[k]||{},segment_code:ctx.segment_code||'c_segment',body_type:(ctx.body_type||'HB').toUpperCase(),platform_size:ctx.platform_size||'medium',pwt_type:pk,automation_level:a!=null?a:al,platform_shared:shr,cap_k:capK};}
   var wcTot=_MODINV_E.workContent('platform',mc('platform',0))
            +_MODINV_E.workContent('tophat',  mc('tophat',0))
            +_MODINV_E.workContent('eands',   mc('eands',0))
@@ -29479,6 +29517,17 @@ function _newVehManuf(ctx){
            +(hasBev?(_MODINV_E.investment('epwt',mc('epwt',capK))+_MODINV_E.investment('battery',mc('battery',capK))):0);
   var mpu=Math.round(gfTot*1e6*_MANUF_E.MAINT_RATE/(m.eff_capacity_yr||1));
   m.maint_per_unit=mpu;
+  // labour location (2026-11-23): as _calcFacilityInv, the whole car on this plant (no powertrain plants)
+  var mh=ctx.make_hrs;
+  if(mh&&(+mh.veh||0)+(+mh.pwt||0)>0){
+    var wcStd=_MODINV_E.workContent('platform',mc('platform',0,2))+_MODINV_E.workContent('tophat',mc('tophat',0,2))
+             +_MODINV_E.workContent('eands',mc('eands',0,2))
+             +(hasIce?_MODINV_E.workContent('pwt',mc('pwt',0,2)):0)
+             +(hasBev?(_MODINV_E.workContent('epwt',mc('epwt',0,2))+_MODINV_E.workContent('battery',mc('battery',0,2))):0);
+    var ctr=ctx.country||{labor_eur_hr:52,elec_eur_kwh:0.18};
+    m.make_hrs_veh=+mh.veh||0; m.make_hrs_pwt=+mh.pwt||0; m.labour_plant_per_unit=m.labour_per_unit;
+    m.labour_per_unit=_MANUF_E.locLabour(m.labour_per_unit,_MANUF_E.labour(wcStd,ctr,'CONTINENTAL'),mh,ctr.labor_eur_hr,null);
+  }
   m.manuf_var_total=(m.labour_per_unit||0)+(m.energy_per_unit||0)+mpu;
   m.total_investment_m=Math.round(gfTot); m.grand_total_inv_m=Math.round(gfTot);
   return m;
@@ -29933,6 +29982,33 @@ function _calcFacilityInv(type,fac){
       m2.pwt_run_delta=Math.round(_prun-_MANUF_E.pwtRunRef(_pwMods.map(function(k){return {mod:k, ctx:_mCtx(k,0,_al2,_shr2)};})));
       m2.manuf_var_total+=m2.pwt_run_delta;
     }
+    // Labour location (2026-11-23, docs/LABOUR_LOCATION_SPEC.md): the BOM's in-house process hours at this plant's rate
+    // (powertrain hours at the powertrain plants') × LABOUR_HOURS_K, plus the work-content labour less a standard
+    // plant's (L2, CONTINENTAL) at the same rates; the reference plant holds the hours at €58. Mirror:
+    // financial_engine._calc_manuf(make_hrs=) / _manuf_var_ref(make_hrs=).
+    var _mh=_propMakeHrs();
+    m2.make_hrs_veh=_mh.veh; m2.make_hrs_pwt=_mh.pwt; m2.labour_plant_per_unit=m2.labour_per_unit;
+    if(_mh.veh+_mh.pwt>0){
+      var _lab;
+      if(fac._isRef) _lab=_MANUF_E.refLabour(_mh);
+      else {
+        var _wcStd=_MODINV_E.workContent('platform',_mCtx('platform',0,2,_shr2))
+                  +_MODINV_E.workContent('tophat',  _mCtx('tophat',0,2,_shr2))
+                  +_MODINV_E.workContent('eands',   _mCtx('eands',0,2,_shr2))
+                  +(_pwtPl.length?0:_pwc(2));
+        var _lStd=_MANUF_E.labour(_wcStd,c2,'CONTINENTAL'), _pwR=[];
+        if(_pwtPl.length){
+          var _tw2=_pwtPl.reduce(function(a,p){return a+(+p.vehicle_capacity_yr||0);},0);
+          _pwtPl.forEach(function(p){
+            var w=_tw2>0?(+p.vehicle_capacity_yr||0)/_tw2:1/_pwtPl.length;
+            var cl=INDUSTRIAL_COUNTRIES[p.region||'EU']||[], cp=cl.find(function(x){return x.code===p.country_code;})||cl[0]||{labor_eur_hr:52,elec_eur_kwh:0.18};
+            _lStd+=w*_MANUF_E.labour(_pwc(2),cp,'CONTINENTAL'); _pwR.push({w:w,rate:cp.labor_eur_hr});
+          });
+        }
+        _lab=_MANUF_E.locLabour(m2.labour_per_unit,_lStd,_mh,c2.labor_eur_hr,_pwR);
+      }
+      m2.manuf_var_total+=_lab-m2.labour_per_unit; m2.labour_per_unit=_lab;
+    }
     if(!fac._computed)fac._computed={};
     fac._computed.manuf_result=m2;fac._computed.manuf_var_total=m2.manuf_var_total;fac._computed.eff_capacity_yr=m2.eff_capacity_yr;
     // inv_m is the greenfield capex for the PHYSICAL line (invest_cap_k, shift-adjusted); cap_k is the
@@ -30080,8 +30156,12 @@ function _ensureVehiclePlantManuf(plant) {
 // already carries OEM transformation at these standard rates, so _MANUF_E's manuf_var_total must
 // contribute only the DELTA vs this reference — otherwise transformation is double-counted.
 var _manufVarRefTotal = null;
+var _manufVarRefHrs = null;
 function _getManufVarRefTotal() {
-  if (_manufVarRefTotal != null) return _manufVarRefTotal;
+  // the reference carries the proposal's process hours (labour location): recompute when they change
+  var _h = _propMakeHrs(), _hk = _h.veh + '|' + _h.pwt;
+  if (_manufVarRefTotal != null && _manufVarRefHrs === _hk) return _manufVarRefTotal;
+  _manufVarRefHrs = _hk;
   // Computed through the SAME path as an actual vehicle plant (_calcFacilityInv) so the delta is
   // exactly 0 for a standard US/jph40/L2 plant. _isRef prevents recursion back into this helper.
   var refPlant = {id:'__manuf_ref__', region:'EU', country_code:'DE', jph:40,
@@ -33155,19 +33235,6 @@ function _renderSupplyPlanSection(){
 
 
 
-function _calcModuleMakeCost(sk,countryObj){
-  var mk=_spSlotMake(sk);
-  if(!mk)return {labor_eur:0,energy_eur:0,machine_eur:0,overhead_eur:0,total_eur:0,vs_standard_eur:0};
-  var ctr=countryObj||{labor_eur_hr:52,elec_eur_kwh:0.18};
-  var lEur=Math.round(mk.labor_hrs_pu*(ctr.labor_eur_hr||52)*100)/100;
-  var eEur=Math.round(mk.energy_kwh_pu*(ctr.elec_eur_kwh||0.18)*100)/100;
-  var mEur=mk.machine_eur||0;
-  var dir=lEur+eEur+mEur;
-  var oh=Math.round(dir*OEM_OVERHEAD_RATE*100)/100;
-  var tot=dir+oh;
-  return {labor_eur:lEur,energy_eur:eEur,machine_eur:mEur,overhead_eur:oh,total_eur:Math.round(tot),
-          vs_standard_eur:Math.round(tot-(mk.total_eur||0))};
-}
 
 function _refreshSupplyPlanArea(){
   var el=document.getElementById('prop-ops-supply-plan-area');
@@ -33967,6 +34034,7 @@ function renderPropOpsCostSummary() {
     country:            ctry,
     tpc_buy_eur:        tpcBuy,
     specs:              _propModuleSpecs(),
+    make_hrs:           _propMakeHrs(),
   });
   ops._manuf = m;
 
@@ -34255,6 +34323,7 @@ function calcPropBizCase() {
         country:          _ctr,
         tpc_buy_eur:      _dmpMake.dmp,
         specs:            _propModuleSpecs(),
+        make_hrs:         _propMakeHrs(),
       });
     }
   }
