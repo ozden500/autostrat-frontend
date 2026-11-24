@@ -971,6 +971,10 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
     <div id="instructor-section" style="display:none">
       <div class="login-label">Create or load a session</div>
       <input class="login-input" id="session-name-input" type="text" placeholder="Session name e.g. Cohort A" style="letter-spacing:normal;font-size:14px;font-family:inherit" maxlength="60"/>
+      <select class="login-input" id="session-teams-select" style="letter-spacing:normal;font-size:13px;font-family:inherit">
+        <option value="24">24 teams: 12 can be played by people, 12 AI only</option>
+        <option value="12">12 teams: all can be played by people</option>
+      </select>
       <button class="login-btn" onclick="instructorCreateSession()" style="margin-bottom:10px">＋ Create New Session</button>
       <div style="color:#475569;font-size:12px;margin:8px 0">— or load existing —</div>
       <input class="login-input" id="session-id-input" type="text" placeholder="Paste Session ID" style="letter-spacing:normal;font-size:13px;font-family:monospace" maxlength="40"/>
@@ -1026,22 +1030,12 @@ body.instructor-mode .body-wrap { grid-template-columns:194px 1fr !important; }
 
   <div class="sb-sec">
     <div class="sb-lbl">Human Teams</div>
-    <div class="team-row" id="sidebar-h1"><div class="tdot" style="background:var(--h1)"></div><div class="tname" data-team="Alpha Motors">Alpha Motors</div><div class="trev" id="srev-Alpha Motors">—</div></div>
-    <div class="team-row" id="sidebar-h2"><div class="tdot" style="background:var(--h2)"></div><div class="tname" data-team="Beta Automotive">Beta Automotive</div><div class="trev" id="srev-Beta Automotive">—</div></div>
-    <div class="team-row" id="sidebar-h3"><div class="tdot" style="background:var(--h3)"></div><div class="tname" data-team="Gamma Drive">Gamma Drive</div><div class="trev" id="srev-Gamma Drive">—</div></div>
-    <div class="team-row" id="sidebar-h4"><div class="tdot" style="background:var(--h4)"></div><div class="tname" data-team="Delta Vehicles">Delta Vehicles</div><div class="trev" id="srev-Delta Vehicles">—</div></div>
-    <div class="team-row" id="sidebar-h5"><div class="tdot" style="background:var(--h5)"></div><div class="tname" data-team="Epsilon Auto">Epsilon Auto</div><div class="trev" id="srev-Epsilon Auto">—</div></div>
-    <div class="team-row" id="sidebar-h6"><div class="tdot" style="background:var(--h6)"></div><div class="tname" data-team="Zeta Motors">Zeta Motors</div><div class="trev" id="srev-Zeta Motors">—</div></div>
+    <div id="sb-human-teams"></div>
   </div>
 
-  <div class="sb-sec" style="flex:1">
-    <div class="sb-lbl">AI Competitors</div>
-    <div class="team-row"><div class="tdot" style="background:var(--a1)"></div><div class="tname">Nordvik AG</div><div class="tai">AI</div><div class="trev">€51.2B</div></div>
-    <div class="team-row"><div class="tdot" style="background:var(--a2)"></div><div class="tname">Solaris Auto</div><div class="tai">AI</div><div class="trev">€44.8B</div></div>
-    <div class="team-row"><div class="tdot" style="background:var(--a3)"></div><div class="tname">Pacific Motors</div><div class="tai">AI</div><div class="trev">€39.3B</div></div>
-    <div class="team-row"><div class="tdot" style="background:var(--a4)"></div><div class="tname">Aurum Drive</div><div class="tai">AI</div><div class="trev">€33.6B</div></div>
-    <div class="team-row"><div class="tdot" style="background:var(--a5)"></div><div class="tname">Titan Fleet</div><div class="tai">AI</div><div class="trev">€28.9B</div></div>
-    <div class="team-row"><div class="tdot" style="background:var(--a6)"></div><div class="tname">Vertex Cars</div><div class="tai">AI</div><div class="trev">€22.1B</div></div>
+  <div class="sb-sec" style="flex:1;overflow-y:auto">
+    <div class="sb-lbl" id="sb-ai-lbl">AI Competitors</div>
+    <div id="sb-ai-teams"></div>
   </div>
   </div><!-- /team-nav -->
 
@@ -16875,6 +16869,54 @@ document.addEventListener('DOMContentLoaded', () => {
 // ══════════════════════════════════════════
 // SESSION — INSTRUCTOR
 // ══════════════════════════════════════════
+// The 12 teams added in a 24-team session: AI only (no PIN a person can log in with).
+// Names and colours match team_pins (role 'ai'); brand names are in team_brand_names.
+var _AI_ONLY_TEAMS = [
+  {name:'Kestrel Motors',     color_hex:'#7f9a6a'},
+  {name:'Orvane Autoworks',   color_hex:'#9a7f6a'},
+  {name:'Meridia Cars',       color_hex:'#6a8a9a'},
+  {name:'Halcyon Auto',       color_hex:'#9a6a8a'},
+  {name:'Borealis Motor',     color_hex:'#6a9a8f'},
+  {name:'Cobalt Vehicles',    color_hex:'#6a749a'},
+  {name:'Sable Automotive',   color_hex:'#8a8a6a'},
+  {name:'Ardent Motors',      color_hex:'#9a6a6a'},
+  {name:'Lucerne Auto',         color_hex:'#a09060'},
+  {name:'Granite Motor Works',color_hex:'#7a7a8a'},
+  {name:'Tidewater Cars',     color_hex:'#5f8fa0'},
+  {name:'Corvid Mobility',    color_hex:'#8a6a9a'},
+];
+function _sessionTeamCount() {
+  var el = document.getElementById('session-teams-select');
+  return el && el.value === '12' ? 12 : 24;
+}
+
+// Sidebar team list from the session's own teams (12 or 24): claimed teams under Human Teams,
+// the rest under AI Competitors. Revenue cells keep the srev-<name> ids the results code fills.
+async function renderSidebarTeams() {
+  var hEl = document.getElementById('sb-human-teams'), aEl = document.getElementById('sb-ai-teams');
+  if (!hEl || !aEl || !sessionId) return;
+  try {
+    var r = await fetch(API_URL + '/sessions/' + sessionId + '/teams');
+    var teams = ((await r.json()).teams || []).filter(function (t) { return (t.name || '').toLowerCase() !== 'instructor'; });
+    var esc = function (s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;'); };
+    var row = function (t, ai) {
+      return '<div class="team-row"><div class="tdot" style="background:' + esc(t.color_hex || '#64748b') + '"></div>' +
+        '<div class="tname" data-team="' + esc(t.name) + '">' + esc(t.name) + '</div>' +
+        (ai ? '<div class="tai">AI</div>' : '') + '<div class="trev" id="srev-' + esc(t.name) + '">—</div></div>';
+    };
+    hEl.innerHTML = teams.filter(function (t) { return t.is_human_claimed; }).map(function (t) { return row(t, false); }).join('')
+      || '<div style="color:var(--muted2);font-size:10px;padding:4px 6px;">None yet</div>';
+    aEl.innerHTML = teams.filter(function (t) { return !t.is_human_claimed; }).map(function (t) { return row(t, true); }).join('');
+    var lbl = document.getElementById('sb-ai-lbl');
+    if (lbl) lbl.textContent = 'AI Competitors (' + teams.filter(function (t) { return !t.is_human_claimed; }).length + ')';
+    var me = currentUser && currentUser.team_name;
+    document.querySelectorAll('#sb-human-teams .team-row, #sb-ai-teams .team-row').forEach(function (rw) {
+      var tn = rw.querySelector('.tname');
+      if (tn && tn.dataset.team === me) { rw.classList.add('you'); tn.style.color = currentUser.color_hex; }
+    });
+  } catch (e) { console.warn('renderSidebarTeams:', e); }
+}
+
 async function instructorCreateSession() {
   const name = document.getElementById('session-name-input').value.trim() || 'AutoStrat Session';
   const err  = document.getElementById('login-error2');
@@ -16947,6 +16989,19 @@ async function instructorCreateSession() {
       });
     }
     console.log('Human team slots pre-registered');
+
+    // 24-team sessions (2026-11-24): 12 more competitors, AI only (their team_pins role is 'ai',
+    // which login refuses). Created after the 12 above so those keep slots 0-11 and their archetypes.
+    if (_sessionTeamCount() === 24) {
+      err.textContent = 'Creating 12 more AI competitors...';
+      for (const ai of _AI_ONLY_TEAMS) {
+        await fetch(`${API_URL}/teams`, {
+          method:'POST', headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({session_id:sessionId, name:ai.name, color_hex:ai.color_hex, team_type:'ai'})
+        });
+      }
+      console.log('AI-only teams created');
+    }
 
     // Auto-initialize default plant footprint for all teams
     await fetch(`${API_URL}/sessions/${sessionId}/plants/initialize`, {method: 'POST'});
@@ -17075,6 +17130,7 @@ function enterSimulator() {
   sessionStorage.setItem('as_tname',     currentUser?.team_name || '');
   sessionStorage.setItem('as_color',     currentUser?.color_hex || '');
   if (sessionId && roundId) checkRoundStateOnEntry();
+  renderSidebarTeams();
 }
 
 async function checkRoundStateOnEntry() {
