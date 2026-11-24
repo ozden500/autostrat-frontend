@@ -9422,6 +9422,15 @@ var _MARKET_E = {
     e_van:     {price:0.17,efficiency:0.15,performance:0.04,safety:0.14,comfort:0.13,technology:0.10,reliability:0.27}
   },
 
+  // Outside competitors' nest weight vs the session's team count: (12 / n) ^ (10/3), 1 at <= 12 teams.
+  // Mirrors financial_engine.ext_competitor_scale (Engine Parity Rule).
+  EXT_REF_TEAMS: 12,
+  EXT_SCALE_EXP: 10 / 3,
+  extScale: function (nTeams) {
+    var n = parseInt(nTeams, 10) || 0;
+    return n <= this.EXT_REF_TEAMS ? 1 : Math.pow(this.EXT_REF_TEAMS / n, this.EXT_SCALE_EXP);
+  },
+
   // External competitor profile per segment: n=count, u=utility, ext_dp=incumbent brand advantage
   SEG_EXT: {
     a_segment: {n:6, u:53, ext_dp:1.7},
@@ -9590,7 +9599,7 @@ var _MARKET_E = {
     var expU     = Math.exp(lam * utility);
     var expU_n   = Math.pow(expU, nestT);
     var extRaw   = Math.exp(lam * segExt.u) * segExt.ext_dp * segExt.n;
-    var extExp_n = Math.pow(extRaw, nestT);
+    var extExp_n = Math.pow(extRaw, nestT) * this.extScale(window._sessionTeamCount);
     var share    = Math.round(expU_n / (expU_n + extExp_n) * 100 * 10) / 10;
     var segK  = this.SEG_SIZE_K[seg] || 500;
     var volK  = Math.round(share / 100 * segK * 10) / 10;
@@ -16898,6 +16907,7 @@ async function renderSidebarTeams() {
   try {
     var r = await fetch(API_URL + '/sessions/' + sessionId + '/teams');
     var teams = ((await r.json()).teams || []).filter(function (t) { return (t.name || '').toLowerCase() !== 'instructor'; });
+    window._sessionTeamCount = teams.length;   // _MARKET_E.extScale
     var esc = function (s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;'); };
     var row = function (t, ai) {
       return '<div class="team-row"><div class="tdot" style="background:' + esc(t.color_hex || '#64748b') + '"></div>' +
