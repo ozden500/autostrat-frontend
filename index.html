@@ -9366,8 +9366,7 @@ var _MARKET_E = {
   VERSION: "1.0.0",
 
   // Own-price elasticity per segment (absolute values). Mirrors _MCE_SEG_ELASTICITY in main.py.
-  // Applied server-side during market clearing: adj_vol = base_vol × (ref_price / avg_price)^ε
-  // Not used in proposal preview (competition unknown at proposal time).
+  // The segment's base elasticity; demandEps scales it by region (demand curves, below).
   SEG_ELASTICITY: {
     a_segment:2.0, b_segment:1.8, c_segment:1.5, d_segment:1.3,
     e_segment:1.0, f_segment:0.6, sports:0.9,    mpv:1.2,
@@ -9426,10 +9425,19 @@ var _MARKET_E = {
   // list price, passed as price_eur_k) is scored against the region's reference price and the weights
   // are tilted for the region, renormalised. Mirrors financial_engine MCE_REGION_PRICE_F /
   // MCE_REGION_TILT / mce_region_ref_price / mce_region_weights (Engine Parity Rule).
-  REGION_PRICE_F: {
-    pickup:    {NA:1.10, EU:0.85, SA:0.55, APAC:0.40, MEA:0.50},
-    d_segment: {NA:0.95, EU:1.10, SA:0.80, APAC:0.60, MEA:0.80}
-  },
+  // Since 2026-11-25 every segment has a regional price level (pickups and D-SUVs also tilt weights).
+  REGION_PRICE_F: (function() {
+    var mass = {NA:0.95, EU:1.00, SA:0.80, APAC:0.60, MEA:0.80};
+    var prem = {NA:0.95, EU:1.00, SA:1.10, APAC:0.90, MEA:1.00};
+    var van  = {NA:0.95, EU:1.00, SA:0.85, APAC:0.65, MEA:0.80};
+    return {
+      a_segment:mass, b_segment:mass, c_segment:mass, mpv:mass,
+      e_segment:prem, f_segment:prem, sports:prem,
+      c_van:van, d_van:van, e_van:van,
+      pickup:    {NA:1.10, EU:0.85, SA:0.55, APAC:0.40, MEA:0.50},
+      d_segment: {NA:0.95, EU:1.10, SA:0.80, APAC:0.60, MEA:0.80}
+    };
+  })(),
   REGION_TILT: (function() {
     var work = {price:1.6, reliability:1.5, efficiency:1.2, comfort:0.6, technology:0.6, performance:0.8};
     var value = {price:1.4, reliability:1.3, technology:0.7, comfort:0.9};
@@ -9444,6 +9452,32 @@ var _MARKET_E = {
   regionRefPrice: function(seg, region, refP) {
     var f = (this.REGION_PRICE_F[seg] || {})[String(region || '').toUpperCase()];
     return refP * (f != null ? f : 1.0);
+  },
+  // Demand curves (2026-11-25): a segment's demand in a region = 2024 volume x (anchor price / average
+  // price on offer)^eps, anchor = reference x REGION_PRICE_F, eps = SEG_ELASTICITY x the region's
+  // factor (square root for premium segments), clamped. Mirrors financial_engine demand_price_f /
+  // demand_anchor_price_k / demand_eps / demand_factor, DEMAND_EPS_REGION_F / DEMAND_PREMIUM_SEGS /
+  // DEMAND_CLAMP (Engine Parity Rule).
+  DEMAND_EPS_REGION_F: {NA:0.85, EU:1.00, APAC:1.25, MEA:1.30, SA:1.40},
+  DEMAND_PREMIUM_SEGS: ['e_segment', 'f_segment', 'sports'],
+  DEMAND_CLAMP: [0.25, 3.0],
+  demandPriceF: function(seg, region) {
+    var f = (this.REGION_PRICE_F[seg] || {})[String(region || '').toUpperCase()];
+    return f != null ? f : 1.0;
+  },
+  demandAnchorPrice: function(seg, region, refP) { return refP * this.demandPriceF(seg, region); },
+  demandEps: function(seg, region) {
+    var f = this.DEMAND_EPS_REGION_F[String(region || '').toUpperCase()];
+    if (f == null) f = 1.0;
+    if (this.DEMAND_PREMIUM_SEGS.indexOf(seg) >= 0) f = Math.sqrt(f);
+    var e = this.SEG_ELASTICITY[seg];
+    return (e != null ? e : 1.0) * f;
+  },
+  demandFactor: function(seg, region, avgPriceK, refP) {
+    var a = parseFloat(avgPriceK) || 0;
+    if (a <= 0) return 1.0;
+    var raw = Math.pow(this.demandAnchorPrice(seg, region, refP) / a, this.demandEps(seg, region));
+    return Math.max(this.DEMAND_CLAMP[0], Math.min(this.DEMAND_CLAMP[1], raw));
   },
   regionWeights: function(seg, region, w) {
     var tilt = (this.REGION_TILT[seg] || {})[String(region || '').toUpperCase()];
@@ -28351,7 +28385,7 @@ function _propComDerive() {
     if (c.markets.some(function (m) { return m.region === sm.region; })) return;
     var cp = typeof _findClosestPlant === 'function' ? _findClosestPlant(sm.region) : null;
     c.markets.push({region: sm.region, selected: sm.default_vol_pct > 0, plant_id: cp ? cp.id : null,
-                    msrp_eur_k: Math.round(defPK * (sm.default_price_idx || 1) * 10) / 10, disc_avg: _P9_DISC_DEFAULT, years: []});
+                    msrp_eur_k: Math.round(defPK * _MARKET_E.demandPriceF(v.segment_code || 'c_segment', sm.region) * 10) / 10, disc_avg: _P9_DISC_DEFAULT, years: []});
   });
   c.markets.forEach(function (m) {
     if (!pl.some(function (p) { return p.id === m.plant_id; })) {
@@ -28437,6 +28471,19 @@ function buildCommercialSection() {
   _propTallySchedule();
 }
 
+// The region's demand curve at this MSRP (_MARKET_E.demandFactor): the segment's buyers there if every
+// car on offer cost what this one does, vs the region's 2024 volume at its normal price level.
+function _p9DemandHint(R, m) {
+  var seg = (_prop.study || {}).segment_code || 'c_segment', ref = _MARKET_E.SEG_PRICE[seg] || 28;
+  var anc = _MARKET_E.demandAnchorPrice(seg, R, ref), eps = _MARKET_E.demandEps(seg, R);
+  var f = _MARKET_E.demandFactor(seg, R, parseFloat(m.msrp_eur_k) || 0, ref);
+  var col = f < 0.9 ? 'var(--red)' : f > 1.1 ? 'var(--green)' : 'var(--muted2)';
+  return '<div title="Demand curve: the segment’s buyers in this region = 2024 volume × (normal price €' + anc.toFixed(1)
+    + 'k / average price on offer)^' + eps.toFixed(2) + '. Shown as if every car on offer cost this MSRP; outside competitors sell at the normal price."'
+    + ' style="font-size:9px;color:var(--muted2);margin-top:2px;white-space:nowrap;cursor:help;">market €'
+    + anc.toFixed(1) + 'k · ε ' + eps.toFixed(1) + ' · <span style="color:' + col + ';">×' + f.toFixed(2) + '</span></div>';
+}
+
 function _p9QuickTable() {
   var c = _prop.commercial, pl = _propComPlants(), MN = 'font-family:DM Mono,monospace;';
   var th = function (t, al) { return '<th style="' + MN + 'font-size:8px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);padding:6px 8px;background:var(--s2);border-bottom:1px solid var(--border);text-align:' + (al || 'right') + ';font-weight:400;white-space:nowrap;">' + t + '</th>'; };
@@ -28459,7 +28506,7 @@ function _p9QuickTable() {
       + '<td style="padding:6px 8px;' + MN + 'font-size:10px;"><select id="prop-com-plant-' + R + '" onchange="onPropComPlant(\'' + R + '\',this.value)" style="background:var(--s2);border:1px solid var(--border2);color:var(--text);border-radius:2px;padding:3px 6px;font-size:10px;' + MN + '">'
       + pl.map(function (q) { return '<option value="' + q.id + '"' + (q.id === m.plant_id ? ' selected' : '') + '>' + _esc(q.country_name || q.country_code) + '</option>'; }).join('') + '</select>'
       + '<div style="font-size:9px;color:var(--muted2);margin-top:2px;">freight ' + _p9e(lo.l) + ' · duty ' + (lo.t * 100).toFixed(1) + '%</div></td>'
-      + '<td style="padding:6px 8px;text-align:right;"><input type="number" min="5" max="500" step="0.5" id="prop-com-msrp-' + R + '" value="' + (m.msrp_eur_k || 0) + '" onchange="onPropComMsrp(\'' + R + '\',this.value)" style="width:72px;color:var(--gold);' + inp + '"></td>'
+      + '<td style="padding:6px 8px;text-align:right;"><input type="number" min="5" max="500" step="0.5" id="prop-com-msrp-' + R + '" value="' + (m.msrp_eur_k || 0) + '" onchange="onPropComMsrp(\'' + R + '\',this.value)" style="width:72px;color:var(--gold);' + inp + '">' + _p9DemandHint(R, m) + '</td>'
       + '<td style="padding:6px 8px;text-align:right;' + MN + 'font-size:10px;color:var(--muted2);"><input type="number" min="-30" max="40" step="0.5" id="prop-com-disc-' + R + '" value="' + (Math.round(L.d * 10) / 10) + '" onchange="onPropComDiscAvg(\'' + R + '\',this.value)" style="width:58px;color:var(--text);' + inp + '"> %</td>'
       + td(on && L.v ? _p9e(L.cost) : '—', 'var(--orange)')
       + td(on && L.v ? _p9e(mg) : '—', mg >= 0 ? 'var(--cyan)' : 'var(--red)')
