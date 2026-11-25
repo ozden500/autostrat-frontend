@@ -30369,9 +30369,11 @@ function _computeUnitEconCostSold(plant) {
 function _computeUnitEconCost(plant) {
   var tpcNum = _computeBaseTpc();
   var mfr = plant ? _ensureVehiclePlantManuf(plant) : null;
-  var srcAdj = (_prop.operations && _prop.operations.supply_plan &&
-                typeof _prop.operations.supply_plan._total_piece_adj_eur === 'number')
-                ? _prop.operations.supply_plan._total_piece_adj_eur : 0;
+  var _spo = (_prop.operations && _prop.operations.supply_plan) || {};
+  var srcAdj = typeof _spo._total_piece_adj_eur === 'number' ? _spo._total_piece_adj_eur : 0;
+  // the plant's own sourcing when §8 has split it by plant (clearing costs each region at its plants)
+  if (plant && _spo._plant_piece_adj_eur && typeof _spo._plant_piece_adj_eur[plant.id] === 'number')
+    srcAdj = _spo._plant_piece_adj_eur[plant.id];
   // OEM transformation already in tpcNum via BOM 'make'; add only the plant delta (not the
   // full manuf_var_total) so it is not double-counted.
   var baseC = tpcNum + (mfr ? mfr.buy_cost_adj : 0) + _manufVarDelta(mfr) + srcAdj;
@@ -32927,6 +32929,21 @@ function _calcSupplyPlanTotals(){
     totalRisk+=l.w*l.m.risk*(0.5+li); totalW+=l.w*(0.5+li);
   });
   var riskScore=totalW>0?Math.min(1,totalRisk/totalW):0.25;
+  // Per vehicle plant (2026-11-25): a car built at V carries V's own bought parts, the powertrain plants'
+  // (by their volume shares) and the powertrain shipped to V. Their weighted sum is totalAdj; clearing
+  // charges each region its supplying plants' figure (financial_engine.plant_cost_deviation_eur).
+  var byPlant={};
+  _spPlantSlotsWeights().forEach(function(x){ if(x.ptype==='vehicle') byPlant[x.p.id]=0; });
+  if(Object.keys(byPlant).length){
+    lines.forEach(function(l){
+      if(!l.p) return;
+      if(l.ptype==='vehicle'){ if(byPlant[l.p.id]!==undefined) byPlant[l.p.id]+=l.m.piece_adj; }
+      else Object.keys(byPlant).forEach(function(k){ byPlant[k]+=l.w*l.m.piece_adj; });
+    });
+    _spTransferLines().forEach(function(t){ if(byPlant[t.v.id]!==undefined) byPlant[t.v.id]+=t.wP*t.m.adj; });
+    Object.keys(byPlant).forEach(function(k){ byPlant[k]=Math.round(byPlant[k]); });
+    sp._plant_piece_adj_eur=byPlant;
+  } else delete sp._plant_piece_adj_eur;
   sp._total_piece_adj_eur=Math.round(totalAdj);
   sp._risk_score=Math.round(riskScore*100)/100;
   sp._total_landed_parts_eur=Math.round(totalLanded);
