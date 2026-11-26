@@ -9427,15 +9427,15 @@ var _MARKET_E = {
   // MCE_REGION_TILT / mce_region_ref_price / mce_region_weights (Engine Parity Rule).
   // Since 2026-11-25 every segment has a regional price level (pickups and D-SUVs also tilt weights).
   REGION_PRICE_F: (function() {
-    var mass = {NA:0.95, EU:1.00, SA:0.80, APAC:0.60, MEA:0.80};
+    var mass = {NA:0.95, EU:1.00, SA:0.80, APAC:0.70, MEA:0.80};
     var prem = {NA:0.95, EU:1.00, SA:1.10, APAC:0.90, MEA:1.00};
-    var van  = {NA:0.95, EU:1.00, SA:0.85, APAC:0.65, MEA:0.80};
+    var van  = {NA:0.95, EU:1.00, SA:0.85, APAC:0.75, MEA:0.80};
     return {
       a_segment:mass, b_segment:mass, c_segment:mass, mpv:mass,
       e_segment:prem, f_segment:prem, sports:prem,
       c_van:van, d_van:van, e_van:van,
       pickup:    {NA:1.10, EU:0.85, SA:0.55, APAC:0.40, MEA:0.50},
-      d_segment: {NA:0.95, EU:1.10, SA:0.80, APAC:0.60, MEA:0.80}
+      d_segment: {NA:0.95, EU:1.10, SA:0.80, APAC:0.70, MEA:0.80}
     };
   })(),
   REGION_TILT: (function() {
@@ -29188,43 +29188,43 @@ var SP_MODULE_TYPES = {
 // duty{} and logistics{} are both keyed by DESTINATION ZONE (EW/EE/ND/MX/CN/JP/KR/SEA/IN/LA/ME)
 // — diagonal = domestic shipment (0% duty, cheapest €25/m³ freight tier)
 var SP_ZONES = [
-  {key:'EU_WEST', label:'W. Europe', flag:'🇪🇺', desc:'Core EU manufacturing economies — DE/FR/IT/ES/GB, Benelux, the Alpine and Nordic countries, IE/PT', labor_index:1.10, risk:0.10,
+  {key:'EU_WEST', label:'W. Europe', flag:'🇪🇺', desc:'Core EU manufacturing economies — DE/FR/IT/ES/GB, Benelux, the Alpine and Nordic countries, IE/PT', labor_index:1.10, risk:0.10, mat_index:1.00, cell_index:1.00,
    logistics:{EW:25, EE:35, ND:75, MX:75, CN:85, JP:85, KR:85, SEA:95, IN:95, LA:120,ME:90, AF:105, RU:70},
    duty:     {EW:0,  EE:0,  ND:2.5,MX:0,  CN:6,  JP:0,  KR:0,  SEA:5, IN:10, LA:14, ME:3, AF:5, RU:15}},
-  {key:'EU_EAST', label:'E. Europe', flag:'🇪🇺', desc:'Lower-cost EU/Customs-Union — PL/CZ/SK/RO/TR, HU, the Balkans, GR, the Baltics', labor_index:0.32, risk:0.20,
+  {key:'EU_EAST', label:'E. Europe', flag:'🇪🇺', desc:'Lower-cost EU/Customs-Union — PL/CZ/SK/RO/TR, HU, the Balkans, GR, the Baltics', labor_index:0.32, risk:0.20, mat_index:0.98, cell_index:1.00,
    logistics:{EW:35, EE:25, ND:75, MX:75, CN:85, JP:85, KR:85, SEA:95, IN:95, LA:120,ME:90, AF:105, RU:50},
    duty:     {EW:0,  EE:0,  ND:2.5,MX:0,  CN:6,  JP:0,  KR:0,  SEA:5, IN:10, LA:14, ME:3, AF:5, RU:15}},
-  {key:'NA_DEVELOPED', label:'US / Canada', flag:'🇺🇸', desc:'High-cost North America', labor_index:0.95, risk:0.12,
+  {key:'NA_DEVELOPED', label:'US / Canada', flag:'🇺🇸', desc:'High-cost North America', labor_index:0.95, risk:0.12, mat_index:1.00, cell_index:0.89,
    logistics:{EW:75, EE:75, ND:25, MX:40, CN:80, JP:80, KR:80, SEA:100,IN:100,LA:90, ME:130, AF:130, RU:140},
    duty:     {EW:3.5,EE:3.5,ND:0,  MX:0,  CN:6,  JP:0,  KR:0,  SEA:5, IN:10, LA:14, ME:4, AF:10, RU:15}},
-  {key:'MEXICO', label:'Mexico', flag:'🇲🇽', desc:'Low-cost USMCA member — distinct FTA network (EU-Mexico, Mexico-Japan)', labor_index:0.13, risk:0.28,
+  {key:'MEXICO', label:'Mexico', flag:'🇲🇽', desc:'Low-cost USMCA member — distinct FTA network (EU-Mexico, Mexico-Japan)', labor_index:0.13, risk:0.28, mat_index:1.03, cell_index:0.97,
    logistics:{EW:75, EE:75, ND:40, MX:25, CN:80, JP:80, KR:80, SEA:100,IN:100,LA:90, ME:130, AF:130, RU:140},
    duty:     {EW:0,  EE:0,  ND:0,  MX:0,  CN:5,  JP:0,  KR:8,  SEA:5, IN:10, LA:3,  ME:4, AF:12, RU:15}},
-  {key:'CHINA', label:'China', flag:'🇨🇳', desc:'Large-scale, low-to-mid-cost — high tariff exposure into NA (§301)', labor_index:0.24, risk:0.55,
+  {key:'CHINA', label:'China', flag:'🇨🇳', desc:'Large-scale, low-to-mid-cost — high tariff exposure into NA (§301)', labor_index:0.24, risk:0.55, mat_index:0.88, cell_index:0.78,
    logistics:{EW:85, EE:85, ND:80, MX:80, CN:25, JP:45, KR:45, SEA:55, IN:55, LA:140,ME:95, AF:110, RU:75},
    duty:     {EW:4,  EE:4,  ND:25, MX:5,  CN:0,  JP:6,  KR:6,  SEA:3, IN:10, LA:14, ME:4, AF:12, RU:8}},
-  {key:'JAPAN', label:'Japan', flag:'🇯🇵', desc:'High-cost, high-quality — EU-Japan EPA, no comprehensive Japan-US deal', labor_index:0.92, risk:0.10,
+  {key:'JAPAN', label:'Japan', flag:'🇯🇵', desc:'High-cost, high-quality — EU-Japan EPA, no comprehensive Japan-US deal', labor_index:0.92, risk:0.10, mat_index:0.98, cell_index:0.92,
    logistics:{EW:85, EE:85, ND:80, MX:80, CN:45, JP:25, KR:45, SEA:55, IN:55, LA:140,ME:95, AF:110, RU:90},
    duty:     {EW:0,  EE:0,  ND:2.5,MX:0,  CN:6,  JP:0,  KR:6,  SEA:0, IN:0,  LA:14, ME:4, AF:12, RU:15}},
-  {key:'KOREA', label:'South Korea', flag:'🇰🇷', desc:'KORUS + EU-Korea FTA — near-zero tariffs into NA/EU', labor_index:0.63, risk:0.16,
+  {key:'KOREA', label:'South Korea', flag:'🇰🇷', desc:'KORUS + EU-Korea FTA — near-zero tariffs into NA/EU', labor_index:0.63, risk:0.16, mat_index:0.96, cell_index:0.88,
    logistics:{EW:85, EE:85, ND:80, MX:80, CN:45, JP:45, KR:25, SEA:55, IN:55, LA:140,ME:95, AF:110, RU:85},
    duty:     {EW:0,  EE:0,  ND:0,  MX:6,  CN:6,  JP:6,  KR:0,  SEA:0, IN:0,  LA:10, ME:4, AF:12, RU:15}},
-  {key:'SE_ASIA', label:'ASEAN', flag:'🇹🇭', desc:'Low-cost ASEAN (all 11 South-East Asian states), AFTA/RCEP — plants in TH/ID', labor_index:0.12, risk:0.42,
+  {key:'SE_ASIA', label:'ASEAN', flag:'🇹🇭', desc:'Low-cost ASEAN (all 11 South-East Asian states), AFTA/RCEP — plants in TH/ID', labor_index:0.12, risk:0.42, mat_index:1.00, cell_index:0.88,
    logistics:{EW:95, EE:95, ND:100,MX:100,CN:55, JP:55, KR:55, SEA:25, IN:50, LA:150,ME:100, AF:105, RU:110},
    duty:     {EW:4,  EE:4,  ND:2.5,MX:5,  CN:3,  JP:0,  KR:0,  SEA:0, IN:5,  LA:14, ME:5, AF:12, RU:10}},
-  {key:'INDIA', label:'India', flag:'🇮🇳', desc:'Low-cost, large-scale — protectionist, outside RCEP but inside JP/KR CEPA', labor_index:0.11, risk:0.40,
+  {key:'INDIA', label:'India', flag:'🇮🇳', desc:'Low-cost, large-scale — protectionist, outside RCEP but inside JP/KR CEPA', labor_index:0.11, risk:0.40, mat_index:0.95, cell_index:0.97,
    logistics:{EW:95, EE:95, ND:100,MX:100,CN:55, JP:55, KR:55, SEA:50, IN:25, LA:150,ME:100, AF:90, RU:100},
    duty:     {EW:4,  EE:4,  ND:2.5,MX:5,  CN:6,  JP:0,  KR:0,  SEA:5, IN:0,  LA:14, ME:5, AF:12, RU:10}},
-  {key:'LATAM', label:'Latin America', flag:'🇧🇷', desc:'Mercosur core (BR/AR) + Colombia, with the rest of South America — high common external tariff', labor_index:0.18, risk:0.42,
+  {key:'LATAM', label:'Latin America', flag:'🇧🇷', desc:'Mercosur core (BR/AR) + Colombia, with the rest of South America — high common external tariff', labor_index:0.18, risk:0.42, mat_index:1.03, cell_index:1.00,
    logistics:{EW:120,EE:120,ND:90, MX:90, CN:140,JP:140,KR:140,SEA:150,IN:150,LA:25, ME:160, AF:140, RU:160},
    duty:     {EW:4,  EE:4,  ND:2.5,MX:1,  CN:6,  JP:0,  KR:5,  SEA:5, IN:10, LA:0,  ME:5, AF:14, RU:15}},
-  {key:'MEA', label:'Middle East & N. Africa', flag:'🇲🇦', desc:'MENA — Morocco/Egypt hold EU association agreements, Saudi Arabia the GCC', labor_index:0.14, risk:0.48,
+  {key:'MEA', label:'Middle East & N. Africa', flag:'🇲🇦', desc:'MENA — Morocco/Egypt hold EU association agreements, Saudi Arabia the GCC', labor_index:0.14, risk:0.48, mat_index:1.05, cell_index:1.00,
    logistics:{EW:90, EE:90, ND:130,MX:130,CN:95, JP:95, KR:95, SEA:100,IN:100,LA:160,ME:25, AF:60, RU:85},
    duty:     {EW:1,  EE:1,  ND:2.5,MX:5,  CN:6,  JP:0,  KR:8,  SEA:5, IN:10, LA:14, ME:0, AF:6, RU:10}},
-  {key:'SSA', label:'Sub-Saharan Africa', flag:'🇿🇦', desc:'South Africa / Nigeria — AfCFTA, AGOA into the US, EU partnership agreements; high tariffs into Africa', labor_index:0.09, risk:0.55,
+  {key:'SSA', label:'Sub-Saharan Africa', flag:'🇿🇦', desc:'South Africa / Nigeria — AfCFTA, AGOA into the US, EU partnership agreements; high tariffs into Africa', labor_index:0.09, risk:0.55, mat_index:1.08, cell_index:1.03,
    logistics:{EW:105, EE:105, ND:130, MX:130, CN:110, JP:110, KR:110, SEA:105, IN:90, LA:140, ME:60, AF:30, RU:130},
    duty:     {EW:0, EE:0, ND:0, MX:5, CN:4, JP:0, KR:8, SEA:5, IN:10, LA:14, ME:3, AF:0, RU:15}},
-  {key:'RUSSIA', label:'Russia', flag:'🇷🇺', desc:'Low-cost, sanctioned — only for teams outside the sanctions bloc; sanctions-level duty into the EU, US, Japan and Korea; secondary-sanctions risk', labor_index:0.20, risk:0.70,
+  {key:'RUSSIA', label:'Russia', flag:'🇷🇺', desc:'Low-cost, sanctioned — only for teams outside the sanctions bloc; sanctions-level duty into the EU, US, Japan and Korea; secondary-sanctions risk', labor_index:0.20, risk:0.70, mat_index:1.03, cell_index:0.95,
    logistics:{EW:70, EE:50, ND:140, MX:140, CN:75, JP:90, KR:85, SEA:110, IN:100, LA:160, ME:85, AF:130, RU:25},
    duty:     {EW:50, EE:50, ND:50, MX:10, CN:5, JP:50, KR:50, SEA:8, IN:8, LA:14, ME:5, AF:10, RU:0}},
 ];
@@ -32780,6 +32780,13 @@ function _spSyncPlanWithPlants(){
   });
 }
 
+// Material / supply-chain cost of a zone (2026-11-26): the share of a bought part the labour index does not touch
+// (materials, upstream tiers, energy, equipment, supplier margin); battery = the cell index. Mirrors
+// cost_engines.SupplyPlanEngine.zone_mat_f.
+function _spZoneMatF(zone,sk){
+  var f=+(zone&&zone[sk==='battery'?'cell_index':'mat_index']);
+  return f>0?f:1;
+}
 function _calcModuleSupplyMetrics(sk,zoneKey,autoLevel,plantRegion,plantCountryCode){
   var mt=SP_MODULE_TYPES[sk];
   if(!mt)return {piece_adj:0,risk:0.25,base_buy:0,base_tpc:0,buy_pct:0,labor_adj:0,logistics_eur:0,duty_eur:0,landed_eur:0};
@@ -32792,18 +32799,19 @@ function _calcModuleSupplyMetrics(sk,zoneKey,autoLevel,plantRegion,plantCountryC
   // Use BOM-derived supplier labor as the basis for zone labor adjustment
   var laborBase=dmpData?parseFloat(dmpData.buy_labor_eur||0):buyCost*mt.labor_intensity;
   var laborAdj=laborBase*(zone.labor_index*auto.labor_factor-1.0);
+  var matAdj=Math.max(0,buyCost-laborBase)*(_spZoneMatF(zone,sk)-1.0);
   var destZone=_zoneForPlant(plantCountryCode,plantRegion);
   var destAbbr=_ZONE_ABBR[destZone]||destZone;
   var dutyEur=buyCost*(zone.duty[destAbbr]||0)/100;
   var volumeM3=(buyCost/1000)*(MODULE_VOLUME_FACTOR[sk]||MODULE_VOLUME_FACTOR.platform);
   var freightEur=volumeM3*(zone.logistics[destAbbr]||80);
-  var pieceAdj=Math.round(laborAdj+freightEur+dutyEur);
-  var landedEur=Math.round(buyCost+laborAdj+freightEur+dutyEur);
+  var pieceAdj=Math.round(laborAdj+matAdj+freightEur+dutyEur);
+  var landedEur=Math.round(buyCost+laborAdj+matAdj+freightEur+dutyEur);
   var risk=zone.risk*(1-mt.labor_intensity*0.20);
   return {
     piece_adj:pieceAdj,risk:risk,base_buy:Math.round(buyCost),
     base_tpc:Math.round(tpcRaw),buy_pct:Math.round(mt.buy_fraction*100),
-    labor_adj:Math.round(laborAdj),logistics_eur:freightEur,duty_eur:Math.round(dutyEur),
+    labor_adj:Math.round(laborAdj),mat_adj:Math.round(matAdj),logistics_eur:freightEur,duty_eur:Math.round(dutyEur),
     landed_eur:landedEur
   };
 }
@@ -33355,7 +33363,7 @@ function _renderSupplyPlanSection(){
     var TD = 'text-align:right;padding:4px 6px;white-space:nowrap;border-bottom:1px solid rgba(255,255,255,.04);';
     h += '<div style="overflow-x:auto;margin-top:6px;background:var(--s2);border:1px solid var(--border2);border-radius:4px;">'
       + '<table style="border-collapse:collapse;width:100%;' + MO + 'font-size:8.5px;color:var(--text);"><thead><tr>'
-      + ['Plant · module', 'Zone · automation', 'Standard DMP', 'Labour', 'Freight', 'Duty', 'Landed €/car', 'Tooling', 'Capacity', 'Supplier capex', 'Contract', 'New capacity', 'Price discount'].map(function (t, i) {
+      + ['Plant · module', 'Zone · automation', 'Standard DMP', 'Labour + materials', 'Freight', 'Duty', 'Landed €/car', 'Tooling', 'Capacity', 'Supplier capex', 'Contract', 'New capacity', 'Price discount'].map(function (t, i) {
           return '<th style="' + TH + (i < 2 || i === 10 ? 'text-align:left;' : '') + '">' + t + '</th>'; }).join('')
       + '</tr></thead><tbody>';
     lines.forEach(function (l) {
@@ -33372,7 +33380,7 @@ function _renderSupplyPlanSection(){
         + '<td style="' + TD + 'text-align:left;">' + _esc(l.p.country_code || '') + ' · ' + (_SP_TYPE_LABELS[l.sk] || l.sk) + ' <b style="color:var(--white);">' + _esc(_spSlotLabel(l.sk)) + '</b></td>'
         + '<td style="' + TD + 'text-align:left;">' + (z.flag || '') + ' ' + (z.label || l.dec.zone) + ' · L' + l.dec.automation + ' ' + (al.label || '') + (_spDecLock(l.sk, l.dec) ? ' 🔒' : '') + '</td>'
         + '<td style="' + TD + '">' + eur(l.m.base_buy) + '</td>'
-        + '<td style="' + TD + 'color:' + col(l.m.labor_adj) + ';">' + dEur(l.m.labor_adj) + '</td>'
+        + '<td style="' + TD + 'color:' + col(l.m.labor_adj + (l.m.mat_adj || 0)) + ';">' + dEur(l.m.labor_adj + (l.m.mat_adj || 0)) + '</td>'
         + '<td style="' + TD + '">' + eur(l.m.logistics_eur) + '</td>'
         + '<td style="' + TD + '">' + eur(l.m.duty_eur) + '</td>'
         + '<td style="' + TD + 'color:var(--cyan);font-weight:700;">' + eur(l.m.landed_eur) + '</td>'
@@ -33760,13 +33768,13 @@ function _srcMapDraw() {
         var r = _calcModuleSupplyMetrics(sk, z, m.automation || 2, sel.p.region, sel.p.country_code);
         if (!(r.base_buy > 0)) return '';
         return '<tr><td style="padding:0 8px 0 10px;">' + _esc(_SRC_SLOT[sk] || sk) + (zoneOfSlot(sel, sk) === z ? ' ✓' : '') + '</td>'
-          + '<td style="text-align:right;padding:0 6px;">' + eur(r.labor_adj) + '</td><td style="text-align:right;padding:0 6px;">' + eur(r.logistics_eur)
+          + '<td style="text-align:right;padding:0 6px;">' + eur(r.labor_adj + (r.mat_adj || 0)) + '</td><td style="text-align:right;padding:0 6px;">' + eur(r.logistics_eur)
           + '</td><td style="text-align:right;padding:0 6px;">' + eur(r.duty_eur) + '</td><td style="text-align:right;padding:0 0 0 6px;">' + eur(r.landed_eur) + '</td></tr>';
       }).join('');
       if (rows) h += '<table style="border-collapse:collapse;font-size:10px;margin-top:2px;"><tr style="color:var(--muted2);font-size:9px;">'
-        + '<td style="padding:0 8px 0 10px;">per car</td><td style="text-align:right;padding:0 6px;">labour</td><td style="text-align:right;padding:0 6px;">freight</td>'
+        + '<td style="padding:0 8px 0 10px;">per car</td><td style="text-align:right;padding:0 6px;">labour + materials</td><td style="text-align:right;padding:0 6px;">freight</td>'
         + '<td style="text-align:right;padding:0 6px;">duty</td><td style="text-align:right;padding:0 0 0 6px;">landed</td></tr>' + rows + '</table>'
-        + '<span style="color:var(--muted2);font-size:9px;">✓ = picked from here now · labour vs the reference supplier</span>';
+        + '<span style="color:var(--muted2);font-size:9px;">✓ = picked from here now · labour and materials vs the reference supplier</span>';
     }
     var cs = contracts[z] || [];
     if (cs.length) h += '<br><span style="color:' + _SRC_GOLD + ';">Supplier capacity you hold here:</span>' + cs.map(function (c) {
